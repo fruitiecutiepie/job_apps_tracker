@@ -58,15 +58,17 @@ export function CalendarView({ applications, onOpen }: ApplicationsViewProps) {
   return (
     <section className="calendar" aria-labelledby="calendar-heading">
       <div className="calendar__toolbar">
-        <button type="button" className="icon-button" onClick={() => goToMonth(-1)} aria-label="Previous month">
-          <span aria-hidden="true">←</span>
-        </button>
-        <h2 id="calendar-heading" aria-live="polite">
-          {monthFormatter.format(month)}
-        </h2>
-        <button type="button" className="icon-button" onClick={() => goToMonth(1)} aria-label="Next month">
-          <span aria-hidden="true">→</span>
-        </button>
+        <div className="calendar__month-nav">
+          <button type="button" className="icon-button" onClick={() => goToMonth(-1)} aria-label="Previous month">
+            <span aria-hidden="true">←</span>
+          </button>
+          <h2 id="calendar-heading" aria-live="polite">
+            {monthFormatter.format(month)}
+          </h2>
+          <button type="button" className="icon-button" onClick={() => goToMonth(1)} aria-label="Next month">
+            <span aria-hidden="true">→</span>
+          </button>
+        </div>
         <button type="button" className="button button--quiet" onClick={() => setMonth(monthStart(new Date()))}>
           Today
         </button>

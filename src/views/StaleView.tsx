@@ -38,6 +38,7 @@ export function StaleView({ applications, onOpen }: ApplicationsViewProps) {
           {THRESHOLDS.map((days) => (
             <label key={days}>
               <input
+                className="sr-only"
                 type="radio"
                 name="stale-threshold"
                 value={days}

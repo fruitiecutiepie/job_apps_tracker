@@ -468,7 +468,7 @@ export default function App() {
 
         <section aria-label="Application filters" className="global-filters">
           <label className="search-field">
-            <span className="sr-only">Search applications</span>
+            <span>Search</span>
             <Search aria-hidden="true" size={18} />
             <input
               aria-label="Search applications"

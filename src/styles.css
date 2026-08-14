@@ -64,6 +64,18 @@ a:focus-visible,
   outline-offset: 2px;
 }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 h1,
 h2,
 h3,
@@ -99,7 +111,24 @@ p {
   font-size: 1.2rem;
   font-weight: 700;
   letter-spacing: -0.01em;
+  text-decoration: none;
   white-space: nowrap;
+}
+
+.brand > span {
+  display: grid;
+  line-height: 1.15;
+}
+
+.brand small {
+  color: #c8d4d9;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    sans-serif;
+  font-size: 0.68rem;
+  font-weight: 650;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .brand__mark {
@@ -124,6 +153,9 @@ p {
 }
 
 .view-nav__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
   min-height: 42px;
   padding: 0.65rem 0.8rem;
   border: 0;
@@ -132,6 +164,10 @@ p {
   background: transparent;
   font-size: 0.9rem;
   white-space: nowrap;
+}
+
+.view-nav__item svg {
+  flex-shrink: 0;
 }
 
 .view-nav__item:hover {
@@ -160,7 +196,15 @@ p {
 }
 
 .button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
   padding: 0.65rem 1rem;
+}
+
+.button svg {
+  flex-shrink: 0;
 }
 
 .icon-button {
@@ -233,6 +277,7 @@ p {
 
 .workspace-header__summary,
 .view-heading p,
+.view-toolbar p,
 .statistics__total {
   margin-bottom: 0;
   color: var(--muted);
@@ -266,7 +311,8 @@ p {
 
 .global-filters {
   display: grid;
-  grid-template-columns: minmax(15rem, 1fr) minmax(13rem, 18rem);
+  grid-template-columns: minmax(15rem, 1fr) minmax(13rem, 18rem) auto;
+  align-items: end;
   gap: 0.85rem;
   padding: 0 clamp(1rem, 3vw, 2.5rem) 1rem;
 }
@@ -285,7 +331,7 @@ p {
 .field textarea,
 .search-field input,
 .filter-field select,
-.application-card__move {
+.application-card__move select {
   width: 100%;
   min-height: 44px;
   padding: 0.65rem 0.75rem;
@@ -302,7 +348,34 @@ p {
 
 .search-field,
 .filter-field {
-  display: block;
+  display: grid;
+  align-content: start;
+  gap: 0.38rem;
+  color: #34454e;
+  font-size: 0.84rem;
+  font-weight: 750;
+}
+
+.search-field {
+  grid-template-columns: 1fr;
+}
+
+.search-field svg {
+  grid-column: 1;
+  grid-row: 2;
+  z-index: 1;
+  align-self: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 0.75rem;
+  color: var(--muted);
+  pointer-events: none;
+}
+
+.search-field input {
+  grid-column: 1;
+  grid-row: 2;
+  padding-left: 2.55rem;
 }
 
 .view-surface {
@@ -325,20 +398,31 @@ p {
 
 .view-toolbar {
   flex-wrap: wrap;
+  align-items: end;
   margin-bottom: 1rem;
 }
 
 .view-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 1.25rem;
 }
 
 .view-heading h2,
+.view-toolbar h2,
 .calendar__toolbar h2,
 .section-heading-row h2,
 .section-heading-row h3 {
-  margin-bottom: 0.25rem;
+  margin-bottom: 0;
   color: var(--ink);
   font-family: Georgia, "Times New Roman", serif;
+}
+
+.view-toolbar h2,
+.view-heading h2 {
+  margin-bottom: 0.25rem;
 }
 
 .count-badge {
@@ -347,6 +431,7 @@ p {
   min-height: 1.75rem;
   padding: 0.2rem 0.45rem;
   place-items: center;
+  flex-shrink: 0;
   border-radius: 99rem;
   color: #36525c;
   background: #e6eae7;
@@ -393,14 +478,15 @@ p {
 
 .kanban-column__header {
   display: flex;
-  align-items: start;
+  align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
   min-height: 3.2rem;
   margin-bottom: 0.65rem;
 }
 
-.kanban-column__header h2 {
+.kanban-column__header h2,
+.kanban-column__header h3 {
   margin: 0;
   color: #2d414a;
   font-size: 0.9rem;
@@ -460,7 +546,21 @@ p {
   line-height: 1.45;
 }
 
+.application-card__action span {
+  display: block;
+  margin-bottom: 0.12rem;
+  color: #7b8587;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .application-card__move {
+  display: block;
+}
+
+.application-card__move select {
   min-height: 38px;
   padding: 0.45rem 0.55rem;
   font-size: 0.78rem;
@@ -480,12 +580,21 @@ td {
   text-align: left;
 }
 
-th {
+thead th {
   color: #57666d;
   background: #f2f2ec;
   font-size: 0.75rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
+}
+
+tbody th {
+  color: var(--ink);
+  background: transparent;
+  font-size: inherit;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 tbody tr:hover {
@@ -518,6 +627,11 @@ tbody tr:hover {
 }
 
 .table-view__date {
+  display: block;
+  margin-top: 0.2rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 650;
   white-space: nowrap;
 }
 
@@ -556,10 +670,11 @@ tbody tr:hover {
 .table-state-select {
   min-width: 12rem;
   max-width: 100%;
-  border: 1px solid var(--border);
+  min-height: 38px;
+  border: 1px solid var(--line-strong);
   border-radius: 0.55rem;
-  background: var(--surface);
-  color: var(--text);
+  background: #fff;
+  color: var(--ink);
   padding: 0.4rem 0.6rem;
   font: inherit;
 }
@@ -569,6 +684,9 @@ tbody tr:hover {
 .stale-list {
   display: grid;
   gap: 1rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
 
 .action-group {
@@ -586,50 +704,86 @@ tbody tr:hover {
 .stale-row {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 1rem;
+  column-gap: 1rem;
+  row-gap: 0.2rem;
+  align-items: start;
+  width: 100%;
   padding: 0.85rem;
   border: 1px solid #ddded8;
   border-radius: 0.7rem;
   background: #fff;
+  text-align: left;
 }
 
-.action-card button,
-.stale-row button {
-  justify-self: start;
-}
-
-.action-card p,
-.stale-row p {
-  margin: 0.25rem 0 0;
-  color: var(--muted);
+.action-card:hover,
+.stale-row:hover {
+  border-color: #c5cdc8;
 }
 
 .action-card__date {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  justify-self: end;
+  align-self: center;
   color: #526269;
   font-size: 0.82rem;
   font-weight: 750;
   white-space: nowrap;
 }
 
+.action-card strong,
+.stale-row strong {
+  color: var(--ink);
+}
+
+.action-card > span:not(.action-card__date),
+.stale-row small {
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 500;
+}
+
+.stale-row > span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.stale-row > span:last-child {
+  justify-items: end;
+  text-align: right;
+}
+
+.stale-row small {
+  display: block;
+}
+
 .segmented-control {
   display: inline-flex;
+  margin: 0;
   padding: 0.2rem;
   border: 1px solid var(--line);
   border-radius: 0.7rem;
   background: #ecece6;
+  min-width: 0;
 }
 
-.segmented-control button {
+.segmented-control label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   min-height: 38px;
   padding: 0.45rem 0.75rem;
-  border: 0;
   border-radius: 0.5rem;
   color: #55646b;
-  background: transparent;
   font-weight: 750;
+  cursor: pointer;
 }
 
-.segmented-control button[aria-pressed="true"] {
+.segmented-control label:hover {
+  color: var(--ink);
+}
+
+.segmented-control label:has(:checked) {
   color: var(--ink);
   background: #fff;
   box-shadow: 0 2px 8px rgb(20 42 55 / 9%);
@@ -637,6 +791,17 @@ tbody tr:hover {
 
 .calendar__toolbar {
   margin-bottom: 1rem;
+}
+
+.calendar__month-nav {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  min-width: 0;
+}
+
+.calendar__toolbar h2 {
+  margin: 0;
 }
 
 .calendar__grid {
@@ -693,6 +858,8 @@ tbody tr:hover {
 }
 
 .calendar__event {
+  display: grid;
+  gap: 0.12rem;
   width: 100%;
   padding: 0.38rem 0.45rem;
   overflow: hidden;
@@ -704,12 +871,35 @@ tbody tr:hover {
   font-size: 0.72rem;
   font-weight: 750;
   text-align: left;
+}
+
+.calendar__event strong,
+.calendar__event span {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.calendar__event span {
+  color: #3f5d64;
+  font-weight: 500;
+}
+
 .statistics__total {
-  margin-bottom: 1rem;
+  display: grid;
+  justify-items: end;
+  margin-bottom: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.statistics__total strong {
+  color: var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
 }
 
 .statistics__table {
@@ -855,7 +1045,15 @@ tbody tr:hover {
   }
 
   .action-card__date {
+    grid-column: 1;
+    grid-row: auto;
+    justify-self: start;
     white-space: normal;
+  }
+
+  .stale-row > span:last-child {
+    justify-items: start;
+    text-align: left;
   }
 
   .dialog-backdrop {
@@ -887,9 +1085,18 @@ tbody tr:hover {
   }
 
   .view-toolbar,
-  .calendar__toolbar {
+  .calendar__toolbar,
+  .view-heading {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .statistics__total {
+    justify-items: start;
+  }
+
+  .calendar__month-nav {
+    justify-content: space-between;
   }
 
   .segmented-control {
