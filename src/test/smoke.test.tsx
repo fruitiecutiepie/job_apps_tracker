@@ -1,0 +1,91 @@
+import { render, screen, within } from '@testing-library/react'
+import userEvent from '@testing-library/user-event'
+import { expect, it, vi } from 'vitest'
+
+import App from '../App'
+import type { TrackerDocument } from '../domain/types'
+
+function readSavedDocument(): TrackerDocument {
+  const storageKey = localStorage.key(0)
+
+  expect(storageKey).not.toBeNull()
+  return JSON.parse(localStorage.getItem(storageKey!)!) as TrackerDocument
+}
+
+it('completes the primary tracker journey and persists it across reloads', async () => {
+  const user = userEvent.setup()
+  const firstRender = render(<App />)
+
+  expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+  expect(readSavedDocument().applications).toHaveLength(19)
+
+  for (const view of [
+    'Table',
+    'Next actions',
+    'Calendar',
+    'Stale',
+    'Statistics',
+  ]) {
+    const viewButton = screen.getByRole('button', { name: view })
+    await user.click(viewButton)
+    expect(viewButton).toHaveAttribute('aria-current', 'page')
+  }
+
+  await user.click(screen.getByRole('button', { name: 'Kanban' }))
+  expect(screen.getByRole('heading', { name: 'Applied' })).toBeInTheDocument()
+
+  await user.click(screen.getByRole('button', { name: 'Add application' }))
+  const addDialog = screen.getByRole('dialog', { name: 'Add application' })
+  await user.type(within(addDialog).getByLabelText('Company'), 'Smoke Test Co')
+  await user.type(within(addDialog).getByLabelText('Role'), 'Product Designer')
+  await user.selectOptions(within(addDialog).getByLabelText('State'), 'applied')
+  await user.type(within(addDialog).getByLabelText('Next action'), 'Send portfolio')
+  await user.click(within(addDialog).getByRole('button', { name: 'Add application' }))
+
+  expect(screen.getByRole('status')).toHaveTextContent('Application added.')
+  await user.type(screen.getByRole('searchbox'), 'Smoke Test Co')
+
+  await user.click(
+    screen.getByRole('button', { name: 'Open Smoke Test Co, Product Designer' }),
+  )
+  const editDialog = screen.getByRole('dialog', { name: 'Edit application' })
+  await user.selectOptions(within(editDialog).getByLabelText('State'), 'offer')
+  await user.click(within(editDialog).getByRole('button', { name: 'Save changes' }))
+
+  expect(screen.getByRole('status')).toHaveTextContent('Application updated.')
+
+  const savedAfterEdit = readSavedDocument()
+  const smokeApplication = savedAfterEdit.applications.find(
+    (application) => application.company === 'Smoke Test Co',
+  )
+
+  expect(savedAfterEdit.applications).toHaveLength(20)
+  expect(smokeApplication?.state).toBe('offer')
+  expect(smokeApplication?.state_history.map((entry) => entry.state)).toEqual([
+    'applied',
+    'offer',
+  ])
+
+  firstRender.unmount()
+
+  const reloadedUser = userEvent.setup()
+  render(<App />)
+  await reloadedUser.type(screen.getByRole('searchbox'), 'Smoke Test Co')
+
+  expect(
+    screen.getByRole('button', { name: 'Open Smoke Test Co, Product Designer' }),
+  ).toBeInTheDocument()
+  expect(readSavedDocument().applications).toHaveLength(20)
+
+  const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  await reloadedUser.click(screen.getByRole('button', { name: 'Reset demo data' }))
+
+  expect(confirm).toHaveBeenCalledOnce()
+  expect(screen.getByRole('status')).toHaveTextContent('Demo data restored.')
+  expect(readSavedDocument().applications).toHaveLength(19)
+  expect(
+    readSavedDocument().applications.some(
+      (application) => application.company === 'Smoke Test Co',
+    ),
+  ).toBe(false)
+})
