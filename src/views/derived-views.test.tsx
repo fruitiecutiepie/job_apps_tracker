@@ -108,13 +108,13 @@ describe('StaleView', () => {
       application('Thirty-one Days', { updated_at: localDate(-31) }),
     ]
 
-    render(<StaleView applications={applications} onOpen={vi.fn()} />)
+    render(<StaleView applications={applications} onOpen={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByRole('radio', { name: '14 days' })).toBeChecked()
     expect(screen.queryByText('Eight Days')).not.toBeInTheDocument()
-    expect(screen.getAllByRole('button').map((button) => button.textContent)).toEqual([
-      expect.stringContaining('Thirty-one Days'),
-      expect.stringContaining('Fourteen Days'),
+    expect(screen.getAllByRole('listitem').map((item) => within(item).getByText(/Days$/).textContent)).toEqual([
+      'Thirty-one Days',
+      'Fourteen Days',
     ])
 
     fireEvent.click(screen.getByRole('radio', { name: '7 days' }))
@@ -123,6 +123,51 @@ describe('StaleView', () => {
     fireEvent.click(screen.getByRole('radio', { name: '30 days' }))
     expect(screen.queryByText('Fourteen Days')).not.toBeInTheDocument()
     expect(screen.getByText('Thirty-one Days')).toBeInTheDocument()
+  })
+
+  it('offers a Move to Rejected shortcut to the counterpart of the current state', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const onMove = vi.fn()
+    const live = application('Live Loop', { state: 'interview_1', updated_at: localDate(-14) })
+    const closed = application('Already Closed', { state: 'interview_1_rejected', updated_at: localDate(-20) })
+
+    render(<StaleView applications={[live, closed]} onOpen={vi.fn()} onMove={onMove} />)
+
+    const shortcut = screen.getByRole('button', { name: 'Move Live Loop to Interview 1 — Rejected' })
+    expect(shortcut).toHaveTextContent('Move to Rejected')
+    fireEvent.click(shortcut)
+    expect(onMove).toHaveBeenCalledWith(live.id, 'interview_1_rejected')
+    expect(
+      screen.queryByRole('button', { name: 'Move Already Closed to Interview 1 — Rejected' }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('uses Auto-rejected as the counterpart for Applied', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const onMove = vi.fn()
+    const record = application('Applied Co', { updated_at: localDate(-14) })
+
+    render(<StaleView applications={[record]} onOpen={vi.fn()} onMove={onMove} />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move Applied Co to Auto-rejected' }))
+    expect(onMove).toHaveBeenCalledWith(record.id, 'auto_rejected')
+  })
+
+  it('omits the Move to Rejected shortcut when the current state has no counterpart', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    render(
+      <StaleView
+        applications={[application('Offer Taken', { state: 'accepted', updated_at: localDate(-14) })]}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+      />,
+    )
+
+    expect(screen.queryByRole('button', { name: /Move Offer Taken to / })).not.toBeInTheDocument()
   })
 })
 
@@ -316,6 +361,9 @@ describe('KanbanView', () => {
       target: { value: 'accepted' },
     })
     expect(onMove).toHaveBeenCalledWith(record.id, 'accepted')
+    expect(
+      screen.queryByRole('button', { name: 'Move Keyboard Movers to Auto-rejected' }),
+    ).not.toBeInTheDocument()
   })
 
   it('moves a dragged card to any other state', () => {

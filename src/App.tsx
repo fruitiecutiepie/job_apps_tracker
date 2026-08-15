@@ -44,6 +44,7 @@ import {
   type StateId,
   type TrackerDocument,
 } from './domain'
+import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
 import {
   CalendarView,
   KanbanView,
@@ -445,7 +446,7 @@ export default function App() {
     async function initialize() {
       try {
         const legacy = tryLoadLegacyLocalStorage()
-        if (legacy) {
+        if (legacy && !isDemoTrackerProfile()) {
           await saveTrackerDatabase(legacy)
           clearLegacyLocalStorage()
           if (!cancelled) {
@@ -533,7 +534,7 @@ export default function App() {
             <h1>Could not load tracker data</h1>
             <p className="workspace-header__summary">{loadError ?? 'Tracker data is unavailable.'}</p>
             <p className="workspace-header__summary">
-              Fix or remove <code>data/tracker.json</code>, then reload the page. Your file was not overwritten.
+              Fix or remove <code>{trackerDatabasePath()}</code>, then reload the page. Your file was not overwritten.
             </p>
           </section>
         </main>
@@ -579,7 +580,7 @@ export default function App() {
       case 'calendar':
         return <CalendarView {...shared} />
       case 'stale':
-        return <StaleView {...shared} />
+        return <StaleView {...shared} onMove={move} />
       case 'statistics':
         return <StatisticsView applications={filteredApplications} />
       default:
@@ -688,25 +689,27 @@ export default function App() {
             >
               <Download aria-hidden="true" size={17} /> Export
             </button>
-            <button
-              className="button button--quiet"
-              onClick={async () => {
-                if (window.confirm('Reset the tracker to the original 19 demo applications? This replaces your current data.')) {
-                  try {
-                    const next = await resetTrackerDatabase()
-                    setTracker(next)
-                    setSearch('')
-                    setStateFilter('all')
-                    setNotice('Demo data restored.')
-                  } catch (error) {
-                    setNotice(`Reset failed: ${errorMessage(error)}`)
+            {isDemoTrackerProfile() && (
+              <button
+                className="button button--quiet"
+                onClick={async () => {
+                  if (window.confirm('Reset the tracker to the original 19 demo applications? This replaces your current data.')) {
+                    try {
+                      const next = await resetTrackerDatabase()
+                      setTracker(next)
+                      setSearch('')
+                      setStateFilter('all')
+                      setNotice('Demo data restored.')
+                    } catch (error) {
+                      setNotice(`Reset failed: ${errorMessage(error)}`)
+                    }
                   }
-                }
-              }}
-              type="button"
-            >
-              <RotateCcw aria-hidden="true" size={17} /> Reset demo data
-            </button>
+                }}
+                type="button"
+              >
+                <RotateCcw aria-hidden="true" size={17} /> Reset demo data
+              </button>
+            )}
           </div>
         </section>
 

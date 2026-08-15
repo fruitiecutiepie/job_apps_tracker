@@ -4,8 +4,8 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite'
 
 import { MAX_ATTACHMENT_BYTES } from '../src/domain/attachmentPaths'
+import { createEmptyDocument, refreshTrackerDatabase } from '../src/domain/database'
 import { createDemoDocument } from '../src/domain/demo'
-import { refreshTrackerDatabase } from '../src/domain/database'
 import type { TrackerDatabase } from '../src/domain/types'
 import { assertTrackerDocument, parseTrackerDocument } from '../src/domain/validation'
 import {
@@ -13,18 +13,10 @@ import {
   resolveApplicationAttachmentsDir,
   resolveAttachmentFilePath,
 } from './attachment-fs'
+import { resolveTrackerProfile, trackerFilePaths, type TrackerProfile } from './tracker-paths'
 
 const DB_ROUTE = '/__db'
 const ATTACHMENTS_ROUTE = '/__attachments'
-
-function trackerPaths(root: string) {
-  const dataDir = path.join(root, 'data')
-  return {
-    dataDir,
-    dbPath: path.join(dataDir, 'tracker.json'),
-    tmpPath: path.join(dataDir, 'tracker.json.tmp'),
-  }
-}
 
 function writeDatabaseAtomic(dbPath: string, tmpPath: string, database: TrackerDatabase): void {
   const payload = `${JSON.stringify(database, null, 2)}\n`
@@ -37,11 +29,16 @@ function readDatabaseFile(dbPath: string): TrackerDatabase {
   return assertTrackerDocument(parseTrackerDocument(text))
 }
 
-function seedDatabase(dbPath: string, tmpPath: string, dataDir: string): TrackerDatabase {
+function seedDatabase(
+  dbPath: string,
+  tmpPath: string,
+  dataDir: string,
+  profile: TrackerProfile,
+): TrackerDatabase {
   fs.mkdirSync(dataDir, { recursive: true })
-  const demo = createDemoDocument()
-  writeDatabaseAtomic(dbPath, tmpPath, demo)
-  return demo
+  const document = profile === 'demo' ? createDemoDocument() : createEmptyDocument()
+  writeDatabaseAtomic(dbPath, tmpPath, document)
+  return document
 }
 
 function sendJson(res: ServerResponse, status: number, payload: unknown): void {
@@ -79,12 +76,12 @@ function parseAttachmentRoute(req: IncomingMessage): {
   }
 }
 
-function handleTrackerDb(root: string, req: IncomingMessage, res: ServerResponse): void {
-  const { dataDir, dbPath, tmpPath } = trackerPaths(root)
+function handleTrackerDb(root: string, profile: TrackerProfile, req: IncomingMessage, res: ServerResponse): void {
+  const { dataDir, dbPath, tmpPath } = trackerFilePaths(root, profile)
 
   if (req.method === 'GET') {
     if (!fs.existsSync(dbPath)) {
-      const seeded = seedDatabase(dbPath, tmpPath, dataDir)
+      const seeded = seedDatabase(dbPath, tmpPath, dataDir, profile)
       sendJson(res, 200, seeded)
       return
     }
@@ -125,9 +122,14 @@ function handleTrackerDb(root: string, req: IncomingMessage, res: ServerResponse
   }
 
   if (req.method === 'DELETE') {
+    if (profile !== 'demo') {
+      sendText(res, 405, 'Demo reset is only available when running the demo profile')
+      return
+    }
+
     try {
-      removeAttachmentsRoot(root)
-      const demo = seedDatabase(dbPath, tmpPath, dataDir)
+      removeAttachmentsRoot(dataDir)
+      const demo = seedDatabase(dbPath, tmpPath, dataDir, profile)
       sendJson(res, 200, demo)
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error)
@@ -139,12 +141,13 @@ function handleTrackerDb(root: string, req: IncomingMessage, res: ServerResponse
   sendText(res, 405, 'Method not allowed')
 }
 
-function handleAttachments(root: string, req: IncomingMessage, res: ServerResponse): void {
+function handleAttachments(root: string, profile: TrackerProfile, req: IncomingMessage, res: ServerResponse): void {
+  const { dataDir } = trackerFilePaths(root, profile)
   const route = parseAttachmentRoute(req)
   const { applicationId, attachmentId, filename } = route
 
   if (req.method === 'GET' && applicationId && attachmentId) {
-    const filePath = resolveAttachmentFilePath(root, applicationId, attachmentId)
+    const filePath = resolveAttachmentFilePath(dataDir, applicationId, attachmentId)
     if (!filePath || !fs.existsSync(filePath)) {
       sendText(res, 404, 'Attachment not found')
       return
@@ -160,7 +163,7 @@ function handleAttachments(root: string, req: IncomingMessage, res: ServerRespon
   }
 
   if (req.method === 'PUT' && applicationId && attachmentId) {
-    const filePath = resolveAttachmentFilePath(root, applicationId, attachmentId)
+    const filePath = resolveAttachmentFilePath(dataDir, applicationId, attachmentId)
     if (!filePath) {
       sendText(res, 400, 'Attachment path is invalid')
       return
@@ -193,13 +196,13 @@ function handleAttachments(root: string, req: IncomingMessage, res: ServerRespon
 
   if (req.method === 'DELETE') {
     if (!applicationId) {
-      removeAttachmentsRoot(root)
+      removeAttachmentsRoot(dataDir)
       sendText(res, 200, 'OK')
       return
     }
 
     if (!attachmentId) {
-      const dirPath = resolveApplicationAttachmentsDir(root, applicationId)
+      const dirPath = resolveApplicationAttachmentsDir(dataDir, applicationId)
       if (!dirPath) {
         sendText(res, 400, 'Application id is invalid')
         return
@@ -209,7 +212,7 @@ function handleAttachments(root: string, req: IncomingMessage, res: ServerRespon
       return
     }
 
-    const filePath = resolveAttachmentFilePath(root, applicationId, attachmentId)
+    const filePath = resolveAttachmentFilePath(dataDir, applicationId, attachmentId)
     if (!filePath) {
       sendText(res, 400, 'Attachment path is invalid')
       return
@@ -224,15 +227,16 @@ function handleAttachments(root: string, req: IncomingMessage, res: ServerRespon
 
 function registerTrackerMiddleware(server: ViteDevServer | PreviewServer): void {
   const root = server.config.root
+  const profile = resolveTrackerProfile()
 
   server.middlewares.use((req, res, next) => {
     const pathname = parseUrl(req).pathname
     if (pathname === DB_ROUTE) {
-      handleTrackerDb(root, req, res)
+      handleTrackerDb(root, profile, req, res)
       return
     }
     if (pathname === ATTACHMENTS_ROUTE || pathname.startsWith(`${ATTACHMENTS_ROUTE}/`)) {
-      handleAttachments(root, req, res)
+      handleAttachments(root, profile, req, res)
       return
     }
     next()

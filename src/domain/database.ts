@@ -14,6 +14,10 @@ export function prepareTrackerDatabase(applications: Application[]): TrackerData
   }
 }
 
+export function createEmptyDocument(): TrackerDatabase {
+  return prepareTrackerDatabase([])
+}
+
 export function refreshTrackerDatabase(database: TrackerDatabase): TrackerDatabase {
   return prepareTrackerDatabase(database.applications)
 }

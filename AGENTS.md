@@ -20,6 +20,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - `StateId` is a closed union of exactly 19 states. `STATE_CONFIG` in `src/domain/states.ts` is the only source for state order and display labels.
 - Preserve the configured labels exactly, including the em dashes in rejection labels.
 - Any state may move directly to any other state. Do not add a transition graph or broader pipeline stages.
+- `rejectedStateFor` is a UI convenience that maps a live state to its rejected counterpart (`applied` → `auto_rejected`, otherwise `{state}_rejected` when that id exists). It must not restrict moves.
 - A real state change updates `state` and `updated_at` and appends one timestamped `state_history` entry.
 - Moving to the current state is a no-op: it must not update timestamps, replace the object, or append history.
 - Editing unrelated fields updates `updated_at` but never appends state history.
@@ -35,21 +36,21 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 ### Persistence, import, and export
 
-- Persist one self-describing JSON database file at `data/tracker.json` with shape `{ schema, applications, indexes }`. The embedded `schema` object is the current JSON Schema; update it when the shape evolves instead of running migrations.
+- Persist one self-describing JSON database file with shape `{ schema, applications, indexes }`. The live app uses `data/tracker.json`; the demo profile uses `data/demo/tracker.json`. The embedded `schema` object is the current JSON Schema; update it when the shape evolves instead of running migrations.
 - `applications` is the source of truth. Rebuild `indexes` on every successful load or save when they are missing or stale. Do not hand-edit indexes; edit `applications` or go through mutations.
-- Seed demo data only when `data/tracker.json` is absent. A valid saved document—even an empty one—must not be reseeded on reload.
+- Seed an empty live document when `data/tracker.json` is absent. Seed demo data only for `data/demo/tracker.json` when that file is absent, via `pnpm dev:demo` or `pnpm start:demo`. A valid saved document—even an empty one—must not be reseeded on reload.
 - Validate and canonicalize an imported document before confirmation or replacement. A parse error, validation error, unsupported legacy `schema_version`, or cancelled confirmation must leave saved data untouched.
 - Import still accepts legacy `{ schema_version: 1, applications }` exports. Canonicalize applications, attach the current schema, and rebuild indexes.
 - Ignore unknown imported fields for forward compatibility. Reject duplicate IDs, invalid states, malformed timestamps, invalid URLs, and supplied history whose final state differs from the current state. Missing `state_history` is accepted for compatibility and synthesized from the current state; supplied history must be non-empty.
 - Import replaces the entire collection; export writes a zip archive with `tracker.json` plus attachment files. Legacy JSON import still works without files.
-- Application attachments store metadata on each application and file bytes under `data/attachments/{applicationId}/{attachmentId}`. Missing `attachments` on import canonicalizes to `[]`. Add and remove attachments through mutations; cap each file at 25 MiB.
+- Application attachments store metadata on each application and file bytes under `{dataDir}/attachments/{applicationId}/{attachmentId}` (`data/attachments/` live, `data/demo/attachments/` demo). Missing `attachments` on import canonicalizes to `[]`. Add and remove attachments through mutations; cap each file at 25 MiB.
 - Keep view-only values derived. Never persist Kanban columns, stale status, date groups, stage durations, statistics, or filters. Do not persist overdue/upcoming buckets, calendar day maps, or stale membership because they depend on browser-local "today".
-- On first launch after upgrading from browser storage, migrate a valid legacy `localStorage` document into `data/tracker.json` once, then stop using `localStorage`.
-- A Cursor `beforeSubmitPrompt` hook backs up `data/tracker.json` and `data/attachments/` to `data/backups/{timestamp}/` before agent prompts. Agents should edit applications through mutations and attachment APIs; do not bypass the backup hook with alternate write paths.
+- On first launch after upgrading from browser storage, migrate a valid legacy `localStorage` document into `data/tracker.json` once (live profile only), then stop using `localStorage`.
+- A Cursor `beforeSubmitPrompt` hook backs up live and demo `tracker.json` files and their attachment directories to `data/backups/{timestamp}/` before agent prompts. Agents should edit applications through mutations and attachment APIs; do not bypass the backup hook with alternate write paths.
 
 ### Demo data
 
-- First launch and reset must produce the same 19 deterministic fictional records, exactly one ending in each configured state.
+- `pnpm dev:demo` and `pnpm start:demo` first launch, plus confirmed demo reset, must produce the same 19 deterministic fictional records, exactly one ending in each configured state. Demo reset is unavailable on the live profile and must not write demo records into `data/tracker.json`.
 - The examples intentionally include prior history, dated and undated actions, overdue work, notes, and stale timestamps so every view has useful content.
 - If states change, update the union, configuration, demo coverage, validation, and tests together. Preserve the runtime assertion that demo data covers every state exactly once.
 
@@ -77,11 +78,11 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - The editor saves ordinary field edits before applying a state move. Keep the move mutation responsible for state history so one save cannot append duplicate entries.
 - Submitting the editor currently refreshes `updated_at` even when no editable value changed. An explicit same-state move is the only exact timestamp-preserving no-op. Change this only deliberately and update its tests with the behavior.
 - Import validation rebuilds canonical objects, which is how unknown fields are ignored. Avoid retaining the raw imported object.
-- Invalid `data/tracker.json` files are not overwritten on startup. The app shows an error and leaves the file untouched. Invalid file imports are also non-destructive.
-- The Vite dev and preview servers expose `GET`/`PUT`/`DELETE` on `/__db` to read and write `data/tracker.json`. Use `pnpm start` after `pnpm build` for a production build with the same file-backed database.
+- Invalid `data/tracker.json` or `data/demo/tracker.json` files are not overwritten on startup. The app shows an error and leaves the file untouched. Invalid file imports are also non-destructive.
+- The Vite dev and preview servers expose `GET`/`PUT`/`DELETE` on `/__db` to read and write the active profile's database file. `pnpm dev` and `pnpm start` use `data/tracker.json`. `pnpm dev:demo` and `pnpm start:demo` use `data/demo/tracker.json`. `DELETE` reseeds demo data only on the demo profile.
 - Global filtering can intentionally hide Kanban columns and affects the collection shown by statistics. The table also has its own row filter.
 - Tests that depend on dates should control the clock and account for browser timezone boundaries rather than assuming UTC display days.
-- Test setup mocks `/__db` with an in-memory store and supplies a `ResizeObserver` stub. Add new browser API stubs centrally so component tests remain consistent.
+- Test setup mocks `/__db` with an in-memory store, seeds demo data, and supplies a `ResizeObserver` stub. Add new browser API stubs centrally so component tests remain consistent.
 
 ## Working on a change
 

@@ -2,7 +2,8 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
-import { loadTrackerDocument, saveTrackerDocument } from '../domain/storage'
+import { createDemoDocument } from '../domain/demo'
+import { loadTrackerDocument, resetTrackerDocument, saveTrackerDocument } from '../domain/storage'
 import { handleTestAttachmentFetch, wipeTestAttachments } from './attachmentStore'
 import { testTrackerStore } from './trackerStore'
 
@@ -15,6 +16,7 @@ beforeEach(() => {
   window.localStorage.clear()
   testTrackerStore.clear()
   wipeTestAttachments()
+  saveTrackerDocument(createDemoDocument(), testTrackerStore)
 
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
@@ -35,9 +37,8 @@ beforeEach(() => {
     }
 
     if (init?.method === 'DELETE') {
-      testTrackerStore.clear()
       wipeTestAttachments()
-      const demo = loadTrackerDocument(testTrackerStore)
+      const demo = resetTrackerDocument(testTrackerStore)
       return new Response(JSON.stringify(demo), { status: 200 })
     }
 

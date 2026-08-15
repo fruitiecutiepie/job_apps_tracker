@@ -7,6 +7,7 @@ import {
   createApplication,
   createAttachmentMetadata,
   createDemoDocument,
+  createEmptyDocument,
   createUuidV7,
   editApplication,
   indexesAreStale,
@@ -17,9 +18,11 @@ import {
   packTrackerArchive,
   parseTrackerDocument,
   rebuildIndexes,
+  rejectedStateFor,
   removeAttachment,
   saveTrackerDocument,
   serializeTrackerDocument,
+  trackerDatabasePath,
   unpackTrackerArchive,
   validateTrackerDocument,
 } from './index'
@@ -36,6 +39,34 @@ describe('state configuration and demo content', () => {
     expect(new Set(STATE_IDS).size).toBe(19)
     expect(STATE_CONFIG.find(({ id }) => id === 'offer_rejected')?.label).toBe(
       'Offer — Rejected',
+    )
+  })
+
+  it('maps each state to its rejected counterpart when one exists', () => {
+    const expected: Record<(typeof STATE_IDS)[number], (typeof STATE_IDS)[number] | null> = {
+      headhunted: null,
+      no_openings: null,
+      applied: 'auto_rejected',
+      auto_rejected: null,
+      recruiter_messaged: 'recruiter_messaged_rejected',
+      recruiter_messaged_rejected: null,
+      online_assessment: 'online_assessment_rejected',
+      online_assessment_rejected: null,
+      recruiter_interview: 'recruiter_interview_rejected',
+      recruiter_interview_rejected: null,
+      take_home_assessment: 'take_home_assessment_rejected',
+      take_home_assessment_rejected: null,
+      interview_1: 'interview_1_rejected',
+      interview_1_rejected: null,
+      interview_2: 'interview_2_rejected',
+      interview_2_rejected: null,
+      offer: 'offer_rejected',
+      offer_rejected: null,
+      accepted: null,
+    }
+
+    expect(STATE_IDS.map((id) => [id, rejectedStateFor(id)])).toEqual(
+      STATE_IDS.map((id) => [id, expected[id]]),
     )
   })
 
@@ -77,6 +108,13 @@ describe('state configuration and demo content', () => {
     } finally {
       vi.useRealTimers()
     }
+  })
+})
+
+describe('tracker profiles', () => {
+  it('keeps live and demo databases on separate paths', () => {
+    expect(trackerDatabasePath('live')).toBe('data/tracker.json')
+    expect(trackerDatabasePath('demo')).toBe('data/demo/tracker.json')
   })
 })
 
@@ -342,17 +380,24 @@ describe('document validation and persistence', () => {
     })
   })
 
-  it('seeds only absent storage and preserves subsequent saved data', () => {
-    const storage = new MemoryStorage()
-    const seeded = loadTrackerDocument(storage, REFERENCE)
-    expect(seeded.applications).toHaveLength(19)
+  it('creates an empty canonical document', () => {
+    const document = createEmptyDocument()
+    expect(document.applications).toEqual([])
+    expect(document.indexes.by_id).toEqual({})
+  })
 
+  it('seeds an empty document only when storage is absent and preserves subsequent saved data', () => {
+    const storage = new MemoryStorage()
+    const seeded = loadTrackerDocument(storage)
+    expect(seeded.applications).toEqual([])
+
+    const demo = createDemoDocument(REFERENCE)
     const changed: TrackerDocument = {
-      ...seeded,
-      applications: seeded.applications.slice(1),
+      ...demo,
+      applications: demo.applications.slice(1),
     }
     saveTrackerDocument(changed, storage)
-    const loaded = loadTrackerDocument(storage, new Date('2030-01-01T00:00:00Z'))
+    const loaded = loadTrackerDocument(storage)
     expect(loaded.applications).toEqual(changed.applications)
   })
 
@@ -360,7 +405,7 @@ describe('document validation and persistence', () => {
     const storage = new MemoryStorage()
     storage.setItem('job-applications-tracker:v1', '{invalid')
 
-    expect(() => loadTrackerDocument(storage, REFERENCE)).toThrow()
+    expect(() => loadTrackerDocument(storage)).toThrow()
     expect(storage.getItem('job-applications-tracker:v1')).toBe('{invalid')
   })
 

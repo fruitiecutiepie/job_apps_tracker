@@ -37,3 +37,9 @@ export function isStateId(value: unknown): value is StateId {
 export function stateLabel(state: StateId): string {
   return STATE_LABELS[state]
 }
+
+export function rejectedStateFor(state: StateId): StateId | null {
+  if (state === 'applied') return 'auto_rejected'
+  const counterpart = `${state}_rejected`
+  return isStateId(counterpart) ? counterpart : null
+}

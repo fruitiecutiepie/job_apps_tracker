@@ -8,9 +8,12 @@ Run:
 pnpm test:smoke
 ```
 
-This checks first-launch demo data, navigation through all six views, creating and
+This checks the demo-profile journey: 19 first-load examples, navigation through all six views, creating and
 searching for an application, changing its state and recording history, persistence
 across an app reload, and confirmed demo-data reset.
+
+Live first launch (empty `data/tracker.json`, no reset control) is covered by the
+app integration tests.
 
 ## Manual browser-only checks
 
@@ -18,12 +21,15 @@ These checks cover visual and native-browser behavior that the automated compone
 test cannot judge reliably:
 
 1. Run `pnpm dev` and open the address shown in the terminal. Confirm `data/tracker.json`
-   is created on first launch.
-2. Confirm Kanban shows 19 ordered columns with one demo application in each state.
+   is created empty on first launch and that **Reset demo data** is not shown.
+2. Run `pnpm dev:demo` and confirm `data/demo/tracker.json` is created. Confirm Kanban
+   shows 19 ordered columns with one demo application in each state.
    Narrow the window and confirm the board scrolls horizontally without clipping cards.
    Confirm cards last updated 14 or more days ago look greyed out and show an untouched-age label.
 3. Open Table, Next actions, Calendar, Stale, and Statistics. Confirm each view is
    readable at both wide and narrow window sizes.
+   On Stale, confirm a live-state row has Move to Rejected and that already-rejected,
+   accepted, headhunted, and no-openings rows do not.
 4. Add an application with a next action and date. Drag it to another Kanban column,
    then use its state selector to move it again. Reload the page and confirm it remains.
 5. Use Tab, Shift+Tab, Enter, and Escape to navigate controls and the application
@@ -34,7 +40,7 @@ test cannot judge reliably:
 7. Add an attachment in the application editor, save, reopen the application, and open
    the file. Remove an attachment and confirm it disappears after save.
 8. Choose Reset demo data, cancel once, then confirm it. Confirm the same 19 examples
-   are restored.
+   are restored in `data/demo/` and that `data/tracker.json` is unchanged.
 
-The manual steps change only this browser's local tracker data. The final reset restores
+The demo-profile steps change only `data/demo/` tracker data. The final reset restores
 the deterministic demo data.

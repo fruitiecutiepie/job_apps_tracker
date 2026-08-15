@@ -1,4 +1,4 @@
-import { ensureFreshIndexes, refreshTrackerDatabase } from './database'
+import { createEmptyDocument, ensureFreshIndexes, refreshTrackerDatabase } from './database'
 import { createDemoDocument } from './demo'
 import { serializeTrackerDocument } from './export'
 import type { TrackerDatabase } from './types'
@@ -58,13 +58,12 @@ export function saveTrackerDocument(
 
 export function loadTrackerDocument(
   storage: StorageLike = new MemoryTrackerStore(),
-  reference?: Date,
 ): TrackerDatabase {
   const saved = storage.getItem(STORAGE_KEY)
   if (saved === null) {
-    const demo = createDemoDocument(reference)
-    saveTrackerDocument(demo, storage)
-    return demo
+    const empty = createEmptyDocument()
+    saveTrackerDocument(empty, storage)
+    return empty
   }
   try {
     const parsed = parseTrackerDocument(saved)
