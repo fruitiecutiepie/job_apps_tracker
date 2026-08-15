@@ -23,7 +23,8 @@ test cannot judge reliably:
 1. Run `pnpm dev` and open the address shown in the terminal. Confirm `data/tracker.json`
    is created empty on first launch and that **Reset demo data** is not shown.
 2. Run `pnpm dev:demo` and confirm `data/demo/tracker.json` is created. Confirm Kanban
-   shows 19 ordered columns with one demo application in each state.
+   shows 11 stage columns with a labelled lane for each of the 19 states and one demo
+   application in each state.
    Narrow the window and confirm the board scrolls horizontally without clipping cards.
    Confirm cards last updated 14 or more days ago look greyed out and show an untouched-age label.
 3. Open Table, Next actions, Calendar, Stale, and Statistics. Confirm each view is

@@ -1,3 +1,31 @@
+import { rejectedStateFor, STATE_CONFIG } from "../domain";
+import type { StateId } from "../domain";
+
+export interface KanbanColumnGroup {
+  lanes: StateId[];
+}
+
+const REJECTED_COUNTERPARTS = new Set(
+  STATE_CONFIG.map(({ id }) => rejectedStateFor(id)).filter((id): id is StateId => id !== null),
+);
+
+export function kanbanColumnGroups(visibleStates?: readonly StateId[]): KanbanColumnGroup[] {
+  if (visibleStates) {
+    const visible = new Set(visibleStates);
+    return STATE_CONFIG.filter(({ id }) => visible.has(id)).map(({ id }) => ({ lanes: [id] }));
+  }
+
+  return STATE_CONFIG.reduce<KanbanColumnGroup[]>((groups, { id }) => {
+    if (REJECTED_COUNTERPARTS.has(id)) return groups;
+
+    const lanes: StateId[] = [id];
+    const rejected = rejectedStateFor(id);
+    if (rejected) lanes.push(rejected);
+    groups.push({ lanes });
+    return groups;
+  }, []);
+}
+
 const shortDateFormatter = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
   month: "short",

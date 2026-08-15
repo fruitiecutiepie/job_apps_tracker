@@ -8,6 +8,7 @@ import { NextActionsView } from './NextActionsView'
 import { StaleView } from './StaleView'
 import { StatisticsView } from './StatisticsView'
 import { TableView } from './TableView'
+import { kanbanColumnGroups } from './viewUtils'
 
 const now = new Date(2026, 7, 14, 12)
 
@@ -403,6 +404,20 @@ describe('StatisticsView', () => {
   })
 })
 
+describe('kanbanColumnGroups', () => {
+  it('groups live states with their rejected counterparts into 11 columns', () => {
+    const groups = kanbanColumnGroups()
+
+    expect(groups).toHaveLength(11)
+    expect(groups[2]).toEqual({ lanes: ['applied', 'auto_rejected'] })
+    expect(groups.flatMap((group) => group.lanes)).toHaveLength(19)
+  })
+
+  it('returns a single unpaired lane when filtering to a rejected state', () => {
+    expect(kanbanColumnGroups(['auto_rejected'])).toEqual([{ lanes: ['auto_rejected'] }])
+  })
+})
+
 describe('KanbanView', () => {
   it('supports opening and moving a card through its accessible controls', () => {
     const onOpen = vi.fn()
@@ -447,6 +462,33 @@ describe('KanbanView', () => {
     fireEvent.drop(destination!, { dataTransfer })
 
     expect(onMove).toHaveBeenCalledWith(record.id, 'accepted')
+  })
+
+  it('moves a dragged card onto a nested rejected lane', () => {
+    const onMove = vi.fn()
+    const record = application('Nested Drop Co')
+    const values = new Map<string, string>()
+    const dataTransfer = {
+      effectAllowed: 'none',
+      dropEffect: 'none',
+      setData: (type: string, value: string) => values.set(type, value),
+      getData: (type: string) => values.get(type) ?? '',
+    }
+
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onMove={onMove} />)
+
+    const card = screen.getByText('Nested Drop Co').closest('article')
+    const destination = screen
+      .getByRole('heading', { level: 3, name: 'Auto-rejected' })
+      .closest('section')
+    expect(card).not.toBeNull()
+    expect(destination).not.toBeNull()
+
+    fireEvent.dragStart(card!, { dataTransfer })
+    fireEvent.dragOver(destination!, { dataTransfer })
+    fireEvent.drop(destination!, { dataTransfer })
+
+    expect(onMove).toHaveBeenCalledWith(record.id, 'auto_rejected')
   })
 
   it('shows attachment filenames on a card when present', () => {

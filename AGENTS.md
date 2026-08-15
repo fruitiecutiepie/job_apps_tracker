@@ -64,6 +64,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Statistics use configured state order. Current counts come from `state`; ever-reached counts come from `state_history` and count each application once per reached state.
 - Browser-local dates control calendar placement, overdue boundaries, and stale thresholds. Persisted timestamps remain timezone-qualified.
 - Overdue grouping compares browser-local calendar days, so an action earlier today is not overdue. Stale thresholds are inclusive: an application exactly 7, 14, or 30 days old qualifies for that threshold.
+- Kanban pairs each live state with its `rejectedStateFor` counterpart in one stage column (11 columns, 19 labelled lanes). Pairing is derived view layout only; each state remains its own drop target. Global state filtering still shows one lane per selected state without forcing a pair.
 
 ### Accessibility and interaction
 

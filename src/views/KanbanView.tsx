@@ -7,6 +7,7 @@ import {
   applicationAgeInDays,
   DEFAULT_STALE_THRESHOLD_DAYS,
   formatShortDate,
+  kanbanColumnGroups,
 } from "./viewUtils";
 
 export function KanbanView({
@@ -16,9 +17,11 @@ export function KanbanView({
   visibleStates,
 }: MovableApplicationsViewProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const renderedStates = visibleStates
-    ? STATE_CONFIG.filter(({ id }) => visibleStates.includes(id))
-    : STATE_CONFIG;
+  const columnGroups = useMemo(() => kanbanColumnGroups(visibleStates), [visibleStates]);
+  const stateById = useMemo(
+    () => new Map(STATE_CONFIG.map((state) => [state.id, state])),
+    [],
+  );
   const [dropTarget, setDropTarget] = useState<StateId | null>(null);
   const applicationsByState = useMemo(
     () =>
@@ -48,113 +51,131 @@ export function KanbanView({
       </p>
       <div className="kanban__scroller" aria-describedby="kanban-instructions">
         <div className="kanban__columns">
-        {renderedStates.map((state) => {
-            const stateApplications = applicationsByState.get(state.id) ?? [];
-            return (
-              <section
-                className={`kanban-column${dropTarget === state.id ? " kanban-column--drop-target" : ""}`}
-                aria-labelledby={`kanban-state-${state.id}`}
-                key={state.id}
-                onDragEnter={(event) => {
-                  event.preventDefault();
-                  setDropTarget(state.id);
-                }}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  event.dataTransfer.dropEffect = "move";
-                }}
-                onDragLeave={(event) => {
-                  if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropTarget(null);
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  moveDroppedApplication(state.id, event.dataTransfer.getData("text/plain"));
-                }}
-              >
-                <header className="kanban-column__header">
-                  <h3 id={`kanban-state-${state.id}`}>{state.label}</h3>
-                  <span className="count-badge" aria-label={`${stateApplications.length} applications`}>
-                    {stateApplications.length}
-                  </span>
-                </header>
-
-                <div className="kanban-column__cards">
-                  {stateApplications.length === 0 ? (
-                    <p className="kanban-column__empty">Drop an application here</p>
-                  ) : null}
-                  {stateApplications.map((application) => {
-                    const ageInDays = applicationAgeInDays(application.updated_at);
-                    const stale = ageInDays >= DEFAULT_STALE_THRESHOLD_DAYS;
-                    const openLabel = [
-                      `Open ${application.company}`,
-                      application.role,
-                      stale ? `stale, last updated ${ageInDays} days ago` : null,
+          {columnGroups.map((group) => (
+            <div className="kanban-column" key={group.lanes.join("-")}>
+              {group.lanes.map((stateId) => {
+                const state = stateById.get(stateId);
+                if (!state) return null;
+                const stateApplications = applicationsByState.get(state.id) ?? [];
+                const isRejectedLane = stateId !== group.lanes[0];
+                return (
+                  <section
+                    className={[
+                      "kanban-lane",
+                      isRejectedLane ? "kanban-lane--rejected" : "",
+                      dropTarget === state.id ? "kanban-lane--drop-target" : "",
                     ]
                       .filter(Boolean)
-                      .join(", ");
-                    return (
-                      <article
-                        className={[
-                          "application-card",
-                          stale ? "application-card--stale" : "",
-                          draggingId === application.id ? "application-card--dragging" : "",
+                      .join(" ")}
+                    aria-labelledby={`kanban-state-${state.id}`}
+                    key={state.id}
+                    onDragEnter={(event) => {
+                      event.preventDefault();
+                      setDropTarget(state.id);
+                    }}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = "move";
+                    }}
+                    onDragLeave={(event) => {
+                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+                        setDropTarget(null);
+                      }
+                    }}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      moveDroppedApplication(state.id, event.dataTransfer.getData("text/plain"));
+                    }}
+                  >
+                    <header className="kanban-lane__header">
+                      <h3 id={`kanban-state-${state.id}`}>{state.label}</h3>
+                      <span className="count-badge" aria-label={`${stateApplications.length} applications`}>
+                        {stateApplications.length}
+                      </span>
+                    </header>
+
+                    <div className="kanban-lane__cards">
+                      {stateApplications.length === 0 ? (
+                        <p className="kanban-lane__empty">Drop an application here</p>
+                      ) : null}
+                      {stateApplications.map((application) => {
+                        const ageInDays = applicationAgeInDays(application.updated_at);
+                        const stale = ageInDays >= DEFAULT_STALE_THRESHOLD_DAYS;
+                        const openLabel = [
+                          `Open ${application.company}`,
+                          application.role,
+                          stale ? `stale, last updated ${ageInDays} days ago` : null,
                         ]
                           .filter(Boolean)
-                          .join(" ")}
-                        draggable
-                        key={application.id}
-                        onDragStart={(event) => {
-                          setDraggingId(application.id);
-                          event.dataTransfer.effectAllowed = "move";
-                          event.dataTransfer.setData("text/plain", application.id);
-                        }}
-                        onDragEnd={() => {
-                          setDraggingId(null);
-                          setDropTarget(null);
-                        }}
-                      >
-                        <button
-                          type="button"
-                          className="application-card__open"
-                          onClick={() => onOpen(application.id)}
-                          aria-label={openLabel}
-                        >
-                          <strong>{application.company}</strong>
-                          {application.role ? <span>{application.role}</span> : null}
-                        </button>
-                        {stale ? (
-                          <p className="application-card__age">Untouched {ageInDays} days</p>
-                        ) : null}
-                        {application.next_action?.trim() ? (
-                          <p className="application-card__action">
-                            <span>Next</span> {application.next_action}
-                            {application.next_action_at ? (
-                              <time dateTime={application.next_action_at}> · {formatShortDate(application.next_action_at)}</time>
-                            ) : null}
-                          </p>
-                        ) : null}
-                        <AttachmentFilenames attachments={application.attachments} variant="card" />
-                        <label className="application-card__move">
-                          <span className="sr-only">Move {application.company} to state</span>
-                          <select
-                            aria-label={`Move ${application.company} to state`}
-                            value={application.state}
-                            onChange={(event) => onMove(application.id, event.target.value as StateId)}
+                          .join(", ");
+                        return (
+                          <article
+                            className={[
+                              "application-card",
+                              stale ? "application-card--stale" : "",
+                              draggingId === application.id ? "application-card--dragging" : "",
+                            ]
+                              .filter(Boolean)
+                              .join(" ")}
+                            draggable
+                            key={application.id}
+                            onDragStart={(event) => {
+                              setDraggingId(application.id);
+                              event.dataTransfer.effectAllowed = "move";
+                              event.dataTransfer.setData("text/plain", application.id);
+                            }}
+                            onDragEnd={() => {
+                              setDraggingId(null);
+                              setDropTarget(null);
+                            }}
                           >
-                            {STATE_CONFIG.map((option) => (
-                              <option key={option.id} value={option.id}>
-                                {stateLabel(option.id)}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </article>
-                    );
-                  })}
-                </div>
-              </section>
-            );
-          })}
+                            <button
+                              type="button"
+                              className="application-card__open"
+                              onClick={() => onOpen(application.id)}
+                              aria-label={openLabel}
+                            >
+                              <strong>{application.company}</strong>
+                              {application.role ? <span>{application.role}</span> : null}
+                            </button>
+                            {stale ? (
+                              <p className="application-card__age">Untouched {ageInDays} days</p>
+                            ) : null}
+                            {application.next_action?.trim() ? (
+                              <p className="application-card__action">
+                                <span>Next</span> {application.next_action}
+                                {application.next_action_at ? (
+                                  <time dateTime={application.next_action_at}>
+                                    {" "}
+                                    · {formatShortDate(application.next_action_at)}
+                                  </time>
+                                ) : null}
+                              </p>
+                            ) : null}
+                            <AttachmentFilenames attachments={application.attachments} variant="card" />
+                            <label className="application-card__move">
+                              <span className="sr-only">Move {application.company} to state</span>
+                              <select
+                                aria-label={`Move ${application.company} to state`}
+                                value={application.state}
+                                onChange={(event) => onMove(application.id, event.target.value as StateId)}
+                              >
+                                {STATE_CONFIG.map((option) => (
+                                  <option key={option.id} value={option.id}>
+                                    {stateLabel(option.id)}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </article>
+                        );
+                      })}
+                    </div>
+                  </section>
+                );
+              })}
+            </div>
+          ))}
         </div>
       </div>
     </section>

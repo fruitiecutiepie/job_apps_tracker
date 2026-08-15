@@ -6,7 +6,7 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 
 ## Features
 
-- Kanban board with 19 ordered columns, drag-and-drop, attachment filenames on cards, a state-selector fallback, and muted styling for applications untouched for 14 days
+- Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, attachment filenames on cards, a state-selector fallback, and muted styling for applications untouched for 14 days
 - Sortable and filterable table with an attachments column
 - Next actions grouped as overdue, upcoming, or unscheduled
 - Calendar driven by next-action dates
@@ -56,7 +56,7 @@ Open an existing application from any view to edit or delete it. Moving to anoth
 
 ### Find the right view
 
-- **Kanban** shows one ordered column per visible state, attachment filenames on cards, and lets you move applications. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.
+- **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames appear on cards, and you can move applications by drag-and-drop or the state selector. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.
 - **Table** sorts and column-filters by company, role, source, state, next action, attachments, created date, or last update. Column filters only affect the table and are not saved. Global search, state, and company filters still apply across views.
 - **Next actions** separates overdue, upcoming, and undated work.
 - **Calendar** places applications only by their next-action date; select an item to edit it.
