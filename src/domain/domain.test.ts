@@ -7,33 +7,22 @@ import {
   createDemoDocument,
   createUuidV7,
   editApplication,
+  indexesAreStale,
   loadTrackerDocument,
   moveApplication,
   moveApplicationState,
   parseTrackerDocument,
+  rebuildIndexes,
   saveTrackerDocument,
   serializeTrackerDocument,
   validateTrackerDocument,
 } from './index'
-import type { StorageLike, TrackerDocument } from './index'
+import type { TrackerDocument } from './index'
+import { MemoryTrackerStore } from './storage'
 
 const REFERENCE = new Date('2026-08-14T12:00:00+10:00')
 
-class MemoryStorage implements StorageLike {
-  private values = new Map<string, string>()
-
-  getItem(key: string): string | null {
-    return this.values.get(key) ?? null
-  }
-
-  setItem(key: string, value: string): void {
-    this.values.set(key, value)
-  }
-
-  removeItem(key: string): void {
-    this.values.delete(key)
-  }
-}
+class MemoryStorage extends MemoryTrackerStore {}
 
 describe('state configuration and demo content', () => {
   it('defines the complete ordered state list and preserves rejection labels', () => {
@@ -52,6 +41,8 @@ describe('state configuration and demo content', () => {
     expect(document.applications.every((application) =>
       application.state_history.at(-1)?.state === application.state,
     )).toBe(true)
+    expect(document.schema).toBeDefined()
+    expect(document.indexes.by_id).toHaveProperty(document.applications[0]!.id)
 
     const now = REFERENCE.getTime()
     expect(document.applications.some(({ next_action, next_action_at }) =>
@@ -150,6 +141,26 @@ describe('application mutations', () => {
   })
 })
 
+describe('indexes', () => {
+  it('rebuilds query indexes from applications', () => {
+    const document = createDemoDocument(REFERENCE)
+    const indexes = rebuildIndexes(document.applications)
+
+    expect(Object.keys(indexes.by_id)).toHaveLength(19)
+    expect(indexes.stats_current.applied).toBe(1)
+    expect(indexes.stats_ever_reached.applied).toBeGreaterThanOrEqual(1)
+    expect(indexesAreStale(document.applications, indexes)).toBe(false)
+  })
+
+  it('detects stale indexes after collection changes', () => {
+    const document = createDemoDocument(REFERENCE)
+    const indexes = rebuildIndexes(document.applications)
+    const shortened = document.applications.slice(1)
+
+    expect(indexesAreStale(shortened, indexes)).toBe(true)
+  })
+})
+
 describe('document validation and persistence', () => {
   it('sanitizes unknown fields, synthesizes omitted history, and clears orphan dates', () => {
     const raw = {
@@ -172,11 +183,22 @@ describe('document validation and persistence', () => {
 
     const parsed = parseTrackerDocument(JSON.stringify(raw))
     expect(parsed).not.toHaveProperty('ignored')
+    expect(parsed).not.toHaveProperty('schema_version')
+    expect(parsed.schema).toBeDefined()
+    expect(parsed.indexes).toBeDefined()
     expect(parsed.applications[0]).not.toHaveProperty('ignored_application_field')
     expect(parsed.applications[0]?.next_action_at).toBeNull()
     expect(parsed.applications[0]?.state_history).toEqual([
       { state: 'applied', at: '2026-08-14T09:00:00+10:00' },
     ])
+  })
+
+  it('accepts the new self-describing database shape', () => {
+    const document = createDemoDocument(REFERENCE)
+    const parsed = parseTrackerDocument(JSON.stringify(document))
+
+    expect(parsed.applications).toEqual(document.applications)
+    expect(parsed.indexes.stats_current).toEqual(document.indexes.stats_current)
   })
 
   it.each([
@@ -247,7 +269,8 @@ describe('document validation and persistence', () => {
       applications: seeded.applications.slice(1),
     }
     saveTrackerDocument(changed, storage)
-    expect(loadTrackerDocument(storage, new Date('2030-01-01T00:00:00Z'))).toEqual(changed)
+    const loaded = loadTrackerDocument(storage, new Date('2030-01-01T00:00:00Z'))
+    expect(loaded.applications).toEqual(changed.applications)
   })
 
   it('leaves invalid stored data untouched', () => {
@@ -260,6 +283,8 @@ describe('document validation and persistence', () => {
 
   it('round-trips the canonical export document', () => {
     const document = createDemoDocument(REFERENCE)
-    expect(parseTrackerDocument(serializeTrackerDocument(document))).toEqual(document)
+    const roundTrip = parseTrackerDocument(serializeTrackerDocument(document))
+    expect(roundTrip.applications).toEqual(document.applications)
+    expect(roundTrip.indexes.stats_current).toEqual(document.indexes.stats_current)
   })
 })

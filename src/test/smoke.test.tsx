@@ -1,20 +1,24 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { expect, it, vi } from 'vitest'
 
+import { loadTrackerDocument } from '../domain/storage'
 import App from '../App'
-import type { TrackerDocument } from '../domain/types'
+import { testTrackerStore } from './trackerStore'
 
-function readSavedDocument(): TrackerDocument {
-  const storageKey = localStorage.key(0)
+function readSavedDocument() {
+  return loadTrackerDocument(testTrackerStore)
+}
 
-  expect(storageKey).not.toBeNull()
-  return JSON.parse(localStorage.getItem(storageKey!)!) as TrackerDocument
+async function renderLoadedApp() {
+  const view = render(<App />)
+  await waitFor(() => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument())
+  return view
 }
 
 it('completes the primary tracker journey and persists it across reloads', async () => {
   const user = userEvent.setup()
-  const firstRender = render(<App />)
+  const firstRender = await renderLoadedApp()
 
   expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
   expect(readSavedDocument().applications).toHaveLength(19)
@@ -69,7 +73,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   firstRender.unmount()
 
   const reloadedUser = userEvent.setup()
-  render(<App />)
+  await renderLoadedApp()
   await reloadedUser.type(screen.getByRole('searchbox'), 'Smoke Test Co')
 
   expect(

@@ -35,12 +35,16 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 ### Persistence, import, and export
 
-- Persist one `{ schema_version, applications }` document under the versioned key `job-applications-tracker:v1`.
-- Seed demo data only when storage is absent. A valid saved document—even an empty one—must not be reseeded on reload.
-- Validate and canonicalize an imported document before confirmation or replacement. A parse error, validation error, unsupported schema, or cancelled confirmation must leave saved data untouched.
+- Persist one self-describing JSON database file at `data/tracker.json` with shape `{ schema, applications, indexes }`. The embedded `schema` object is the current JSON Schema; update it when the shape evolves instead of running migrations.
+- `applications` is the source of truth. Rebuild `indexes` on every successful load or save when they are missing or stale. Do not hand-edit indexes; edit `applications` or go through mutations.
+- Seed demo data only when `data/tracker.json` is absent. A valid saved document—even an empty one—must not be reseeded on reload.
+- Validate and canonicalize an imported document before confirmation or replacement. A parse error, validation error, unsupported legacy `schema_version`, or cancelled confirmation must leave saved data untouched.
+- Import still accepts legacy `{ schema_version: 1, applications }` exports. Canonicalize applications, attach the current schema, and rebuild indexes.
 - Ignore unknown imported fields for forward compatibility. Reject duplicate IDs, invalid states, malformed timestamps, invalid URLs, and supplied history whose final state differs from the current state. Missing `state_history` is accepted for compatibility and synthesized from the current state; supplied history must be non-empty.
-- Import replaces the entire collection; export writes the canonical document. Do not silently merge imports.
-- Keep view-only values derived. Never persist Kanban columns, stale status, date groups, stage durations, statistics, or filters.
+- Import replaces the entire collection; export writes the canonical database document. Do not silently merge imports.
+- Keep view-only values derived. Never persist Kanban columns, stale status, date groups, stage durations, statistics, or filters. Do not persist overdue/upcoming buckets, calendar day maps, or stale membership because they depend on browser-local "today".
+- On first launch after upgrading from browser storage, migrate a valid legacy `localStorage` document into `data/tracker.json` once, then stop using `localStorage`.
+- A Cursor `beforeSubmitPrompt` hook backs up `data/tracker.json` to `data/backups/` before agent prompts. Agents should edit the database file directly or go through mutations; do not bypass the backup hook with alternate write paths.
 
 ### Demo data
 
@@ -72,11 +76,11 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - The editor saves ordinary field edits before applying a state move. Keep the move mutation responsible for state history so one save cannot append duplicate entries.
 - Submitting the editor currently refreshes `updated_at` even when no editable value changed. An explicit same-state move is the only exact timestamp-preserving no-op. Change this only deliberately and update its tests with the behavior.
 - Import validation rebuilds canonical objects, which is how unknown fields are ignored. Avoid retaining the raw imported object.
-- On startup, `App.tsx` currently catches an invalid saved document, restores demo data, and overwrites that invalid document. This conflicts with the intended “seed only when storage is absent” rule. Treat it as a known defect: do not copy the fallback into other paths, and add focused startup tests when fixing it. Invalid file imports are already non-destructive.
-- Local storage is scoped by origin. A different port or host may look like an empty first launch even though another origin still has data.
+- Invalid `data/tracker.json` files are not overwritten on startup. The app shows an error and leaves the file untouched. Invalid file imports are also non-destructive.
+- The Vite dev and preview servers expose `GET`/`PUT`/`DELETE` on `/__db` to read and write `data/tracker.json`. Use `pnpm start` after `pnpm build` for a production build with the same file-backed database.
 - Global filtering can intentionally hide Kanban columns and affects the collection shown by statistics. The table also has its own row filter.
 - Tests that depend on dates should control the clock and account for browser timezone boundaries rather than assuming UTC display days.
-- Test setup clears local storage after each test and supplies a `ResizeObserver` stub. Add new browser API stubs centrally so component tests remain consistent.
+- Test setup mocks `/__db` with an in-memory store and supplies a `ResizeObserver` stub. Add new browser API stubs centrally so component tests remain consistent.
 
 ## Working on a change
 

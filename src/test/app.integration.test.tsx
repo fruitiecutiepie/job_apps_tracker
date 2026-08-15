@@ -2,7 +2,9 @@ import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
+import { loadTrackerDocument } from '../domain/storage'
 import App from '../App'
+import { testTrackerStore } from './trackerStore'
 
 const states = [
   'Headhunted',
@@ -27,18 +29,13 @@ const states = [
 ] as const
 
 function readSavedDocument() {
-  const storageKey = window.localStorage.key(0)
-  expect(storageKey).not.toBeNull()
-  return JSON.parse(window.localStorage.getItem(storageKey!)!) as {
-    schema_version: number
-    applications: Array<{
-      id: string
-      company: string
-      role: string | null
-      state: string
-      state_history: Array<{ state: string; at: string }>
-    }>
-  }
+  return loadTrackerDocument(testTrackerStore)
+}
+
+async function renderLoadedApp() {
+  const view = render(<App />)
+  await waitFor(() => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument())
+  return view
 }
 
 function jsonFile(contents: string, name = 'applications.json') {
@@ -51,34 +48,32 @@ function jsonFile(contents: string, name = 'applications.json') {
 }
 
 describe('job applications tracker', () => {
-  it('starts with every configured state represented in the Kanban', () => {
-    render(<App />)
+  it('starts with every configured state represented in the Kanban', async () => {
+    await renderLoadedApp()
 
     for (const state of states) {
       expect(screen.getByRole('heading', { name: state })).toBeInTheDocument()
     }
 
-    expect(window.localStorage.length).toBe(1)
     const savedDocument = readSavedDocument()
-    expect(savedDocument.schema_version).toBe(1)
     expect(savedDocument.applications).toHaveLength(19)
-    expect(new Set(savedDocument.applications.map((application: { state: string }) => application.state)).size).toBe(19)
+    expect(savedDocument.schema).toBeDefined()
+    expect(savedDocument.indexes.by_id).toBeDefined()
+    expect(new Set(savedDocument.applications.map((application) => application.state)).size).toBe(19)
   })
 
-  it('recovers unreadable saved data with the demo set and a warning', () => {
-    window.localStorage.setItem('job-applications-tracker:v1', '{invalid')
+  it('shows an error when saved data is unreadable and leaves storage untouched', async () => {
+    testTrackerStore.setItem('job-applications-tracker:v1', '{invalid')
 
     render(<App />)
+    await waitFor(() => expect(screen.getByText('Could not load tracker data')).toBeInTheDocument())
 
-    expect(screen.getByRole('status')).toHaveTextContent(
-      'Saved data could not be read, so the demo applications were restored.',
-    )
-    expect(readSavedDocument().applications).toHaveLength(19)
+    expect(testTrackerStore.getItem('job-applications-tracker:v1')).toBe('{invalid')
   })
 
   it('offers all six views and keeps the shared collection available while navigating', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    await renderLoadedApp()
 
     for (const view of ['Table', 'Next actions', 'Calendar', 'Stale', 'Statistics'] as const) {
       await user.click(screen.getByRole('button', { name: view }))
@@ -91,7 +86,7 @@ describe('job applications tracker', () => {
 
   it('creates an application through the accessible form and can find it globally', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    await renderLoadedApp()
 
     await user.click(screen.getByRole('button', { name: 'Add application' }))
 
@@ -124,7 +119,7 @@ describe('job applications tracker', () => {
 
   it('filters the Kanban by state without changing saved applications', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    await renderLoadedApp()
 
     await user.selectOptions(screen.getByLabelText('Filter by state'), 'accepted')
 
@@ -137,7 +132,7 @@ describe('job applications tracker', () => {
 
   it('persists edits across reloads and appends history only when state changes', async () => {
     const user = userEvent.setup()
-    const { unmount } = render(<App />)
+    const { unmount } = await renderLoadedApp()
     const before = readSavedDocument().applications.find(
       (application) => application.company === 'Saffron Systems',
     )!
@@ -164,7 +159,7 @@ describe('job applications tracker', () => {
     expect(after.state_history.at(-1)?.state).toBe('interview_2')
 
     unmount()
-    render(<App />)
+    await renderLoadedApp()
     await user.type(
       screen.getByRole('searchbox', { name: 'Search applications' }),
       'Saffron Systems International',
@@ -176,7 +171,7 @@ describe('job applications tracker', () => {
   it('honors deletion cancellation before deleting and saving an application', async () => {
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
-    render(<App />)
+    await renderLoadedApp()
 
     await user.click(
       screen.getByRole('button', {
@@ -202,7 +197,7 @@ describe('job applications tracker', () => {
   it('resets to the same 19 examples only after confirmation and clears display filters', async () => {
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
-    render(<App />)
+    await renderLoadedApp()
 
     await user.click(screen.getByRole('button', { name: 'Add application' }))
     const dialog = screen.getByRole('dialog', { name: 'Add application' })
@@ -231,7 +226,7 @@ describe('job applications tracker', () => {
   it('replaces saved data from a valid import only after confirmation', async () => {
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
-    render(<App />)
+    await renderLoadedApp()
 
     const original = readSavedDocument()
     const imported = {
@@ -262,20 +257,20 @@ describe('job applications tracker', () => {
   it('leaves saved data untouched when an import document is invalid', async () => {
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm')
-    render(<App />)
-    const before = window.localStorage.getItem(window.localStorage.key(0)!)
+    await renderLoadedApp()
+    const before = JSON.stringify(readSavedDocument())
 
     const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
     await user.upload(input, jsonFile('{"schema_version":2,"applications":[]}'))
 
     expect(await screen.findByRole('status')).toHaveTextContent(/Import failed:.*schema/i)
-    expect(window.localStorage.getItem(window.localStorage.key(0)!)).toBe(before)
+    expect(JSON.stringify(readSavedDocument())).toBe(before)
     expect(confirm).not.toHaveBeenCalled()
   })
 
   it('exposes form labels and prevents an orphaned next-action date', async () => {
     const user = userEvent.setup()
-    render(<App />)
+    await renderLoadedApp()
 
     await user.click(screen.getByRole('button', { name: 'Add application' }))
     const dialog = screen.getByRole('dialog', { name: 'Add application' })

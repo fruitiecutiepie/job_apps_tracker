@@ -16,14 +16,15 @@ import {
   STATE_CONFIG,
   STATE_LABELS,
   addApplication,
-  createDemoDocument,
+  clearLegacyLocalStorage,
   deleteApplication,
   downloadTrackerDocument,
-  loadTrackerDocument,
+  loadTrackerDatabase,
   moveApplication,
   parseTrackerDocument,
-  resetTrackerDocument,
-  saveTrackerDocument,
+  resetTrackerDatabase,
+  saveTrackerDatabase,
+  tryLoadLegacyLocalStorage,
   updateApplication,
   type Application,
   type ApplicationInput,
@@ -49,19 +50,6 @@ const VIEW_OPTIONS = [
   { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
 ] as const
-
-function initializeTracker(): { tracker: TrackerDocument; warning: string | null } {
-  try {
-    return { tracker: loadTrackerDocument(), warning: null }
-  } catch {
-    const tracker = createDemoDocument()
-    saveTrackerDocument(tracker)
-    return {
-      tracker,
-      warning: 'Saved data could not be read, so the demo applications were restored.',
-    }
-  }
-}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
@@ -267,17 +255,54 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
 }
 
 export default function App() {
-  const [initial] = useState(initializeTracker)
-  const [tracker, setTracker] = useState(initial.tracker)
+  const [tracker, setTracker] = useState<TrackerDocument | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<ViewId>('kanban')
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<StateId | 'all'>('all')
   const [editor, setEditor] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
-  const [notice, setNotice] = useState<string | null>(initial.warning)
+  const [notice, setNotice] = useState<string | null>(null)
   const addButtonRef = useRef<HTMLButtonElement>(null)
   const editorOpenerRef = useRef<HTMLElement | null>(null)
   const editorWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    let cancelled = false
+
+    async function initialize() {
+      try {
+        const legacy = tryLoadLegacyLocalStorage()
+        if (legacy) {
+          await saveTrackerDatabase(legacy)
+          clearLegacyLocalStorage()
+          if (!cancelled) {
+            setNotice('Moved your previous browser data into the local JSON file.')
+          }
+        }
+
+        const loaded = await loadTrackerDatabase()
+        if (!cancelled) {
+          setTracker(loaded)
+          setLoadError(null)
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setLoadError(errorMessage(error))
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
+    initialize()
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     if (editor) {
@@ -293,15 +318,20 @@ export default function App() {
     focusTarget?.focus()
   }, [editor])
 
-  const commit = (next: TrackerDocument, message?: string) => {
-    saveTrackerDocument(next)
-    setTracker(next)
-    if (message) setNotice(message)
+  const commit = async (next: TrackerDocument, message?: string) => {
+    try {
+      const saved = await saveTrackerDatabase(next)
+      setTracker(saved)
+      if (message) setNotice(message)
+    } catch (error) {
+      setNotice(`Save failed: ${errorMessage(error)}`)
+    }
   }
 
   const filteredApplications = useMemo(() => {
     const query = search.trim().toLocaleLowerCase()
-    return tracker.applications.filter((application) => {
+    const applications = tracker?.applications ?? []
+    return applications.filter((application) => {
       if (stateFilter !== 'all' && application.state !== stateFilter) return false
       if (!query) return true
       return [
@@ -312,7 +342,33 @@ export default function App() {
         STATE_LABELS[application.state],
       ].some((value) => value?.toLocaleLowerCase().includes(query))
     })
-  }, [search, stateFilter, tracker.applications])
+  }, [search, stateFilter, tracker?.applications])
+
+  if (loading) {
+    return (
+      <div className="app-shell">
+        <main id="main">
+          <p className="workspace-header__summary">Loading tracker data…</p>
+        </main>
+      </div>
+    )
+  }
+
+  if (loadError || !tracker) {
+    return (
+      <div className="app-shell">
+        <main id="main">
+          <section className="workspace-header">
+            <h1>Could not load tracker data</h1>
+            <p className="workspace-header__summary">{loadError ?? 'Tracker data is unavailable.'}</p>
+            <p className="workspace-header__summary">
+              Fix or remove <code>data/tracker.json</code>, then reload the page. Your file was not overwritten.
+            </p>
+          </section>
+        </main>
+      </div>
+    )
+  }
 
   const editingApplication = editor?.mode === 'edit'
     ? tracker.applications.find((application) => application.id === editor.id) ?? null
@@ -441,13 +497,17 @@ export default function App() {
             </button>
             <button
               className="button button--quiet"
-              onClick={() => {
+              onClick={async () => {
                 if (window.confirm('Reset the tracker to the original 19 demo applications? This replaces your current data.')) {
-                  const next = resetTrackerDocument()
-                  setTracker(next)
-                  setSearch('')
-                  setStateFilter('all')
-                  setNotice('Demo data restored.')
+                  try {
+                    const next = await resetTrackerDatabase()
+                    setTracker(next)
+                    setSearch('')
+                    setStateFilter('all')
+                    setNotice('Demo data restored.')
+                  } catch (error) {
+                    setNotice(`Reset failed: ${errorMessage(error)}`)
+                  }
                 }
               }}
               type="button"

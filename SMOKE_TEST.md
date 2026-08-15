@@ -17,7 +17,8 @@ across an app reload, and confirmed demo-data reset.
 These checks cover visual and native-browser behavior that the automated component
 test cannot judge reliably:
 
-1. Run `pnpm dev` and open the address shown in the terminal.
+1. Run `pnpm dev` and open the address shown in the terminal. Confirm `data/tracker.json`
+   is created on first launch.
 2. Confirm Kanban shows 19 ordered columns with one demo application in each state.
    Narrow the window and confirm the board scrolls horizontally without clipping cards.
 3. Open Table, Next actions, Calendar, Stale, and Statistics. Confirm each view is

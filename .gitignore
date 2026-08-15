@@ -3,3 +3,6 @@ dist
 coverage
 *.local
 .DS_Store
+data/tracker.json
+data/tracker.json.tmp
+data/backups/

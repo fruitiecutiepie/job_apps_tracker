@@ -1,9 +1,10 @@
 import { isStateId } from './states'
-import type { Application, StateHistoryEntry, TrackerDocument } from './types'
+import type { Application, StateHistoryEntry, TrackerDatabase } from './types'
+import { prepareTrackerDatabase } from './database'
 
 export interface ValidationSuccess {
   ok: true
-  value: TrackerDocument
+  value: TrackerDatabase
   errors: []
 }
 
@@ -154,14 +155,13 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
   }
 }
 
-export function validateTrackerDocument(value: unknown): ValidationResult {
-  const errors: ValidationError[] = []
-  if (!isRecord(value)) return { ok: false, errors: [{ path: '$', message: 'must be a JSON object' }] }
-  if (value.schema_version !== 1) addError(errors, 'schema_version', 'must be 1')
-  if (!Array.isArray(value.applications)) addError(errors, 'applications', 'must be an array')
-  if (!Array.isArray(value.applications)) return { ok: false, errors }
+function validateApplications(value: unknown, errors: ValidationError[]): Application[] | null {
+  if (!Array.isArray(value)) {
+    addError(errors, 'applications', 'must be an array')
+    return null
+  }
 
-  const applications = value.applications
+  const applications = value
     .map((application, index) => applicationValue(application, index, errors))
     .filter((application): application is Application => application !== null)
   const seen = new Set<string>()
@@ -170,12 +170,26 @@ export function validateTrackerDocument(value: unknown): ValidationResult {
     seen.add(application.id)
   })
 
-  return errors.length > 0
-    ? { ok: false, errors }
-    : { ok: true, value: { schema_version: 1, applications }, errors: [] }
+  return applications
 }
 
-export function parseTrackerDocument(text: string): TrackerDocument {
+export function validateTrackerDocument(value: unknown): ValidationResult {
+  const errors: ValidationError[] = []
+  if (!isRecord(value)) return { ok: false, errors: [{ path: '$', message: 'must be a JSON object' }] }
+
+  if ('schema_version' in value && value.schema_version !== 1) {
+    addError(errors, 'schema_version', 'must be 1')
+  }
+
+  const applications = validateApplications(value.applications, errors)
+  if (!applications) return { ok: false, errors }
+
+  return errors.length > 0
+    ? { ok: false, errors }
+    : { ok: true, value: prepareTrackerDatabase(applications), errors: [] }
+}
+
+export function parseTrackerDocument(text: string): TrackerDatabase {
   let value: unknown
   try {
     value = JSON.parse(text) as unknown
@@ -185,7 +199,7 @@ export function parseTrackerDocument(text: string): TrackerDocument {
   return assertTrackerDocument(value)
 }
 
-export function assertTrackerDocument(value: unknown): TrackerDocument {
+export function assertTrackerDocument(value: unknown): TrackerDatabase {
   const result = validateTrackerDocument(value)
   if (!result.ok) {
     throw new TypeError(result.errors.map(({ path, message }) => `${path}: ${message}`).join('\n'))

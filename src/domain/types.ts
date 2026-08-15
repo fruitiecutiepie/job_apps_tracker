@@ -38,7 +38,31 @@ export interface Application {
   updated_at: string
 }
 
-export interface TrackerDocument {
+export type JsonSchemaObject = Record<string, unknown>
+
+export interface TrackerIndexes {
+  by_id: Record<string, number>
+  by_state: Record<StateId, string[]>
+  by_updated_at: string[]
+  by_next_action_at: string[]
+  with_next_action: string[]
+  unscheduled_next_actions: string[]
+  ever_reached: Record<StateId, string[]>
+  search_text: Record<string, string>
+  stats_current: Record<StateId, number>
+  stats_ever_reached: Record<StateId, number>
+}
+
+export interface TrackerDatabase {
+  schema: JsonSchemaObject
+  applications: Application[]
+  indexes: TrackerIndexes
+}
+
+/** Canonical persisted tracker document (JSON file database). */
+export type TrackerDocument = TrackerDatabase
+
+export interface LegacyTrackerDocument {
   schema_version: 1
   applications: Application[]
 }

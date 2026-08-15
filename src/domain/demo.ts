@@ -1,3 +1,4 @@
+import { prepareTrackerDatabase } from './database'
 import { STATE_IDS } from './states'
 import type { Application, StateHistoryEntry, StateId, TrackerDocument } from './types'
 
@@ -92,5 +93,5 @@ export function createDemoDocument(
   ) {
     throw new Error('Demo data must contain exactly one application per state')
   }
-  return { schema_version: 1, applications }
+  return prepareTrackerDatabase(applications)
 }

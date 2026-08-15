@@ -1,6 +1,6 @@
 # Job Applications Tracker
 
-A polished, local-first job search organizer built with React and TypeScript. It keeps application data in your browser and provides focused views for tracking progress, upcoming work, stale applications, and pipeline statistics—without an account, backend, or synchronization service.
+A polished, local-first job search organizer built with React and TypeScript. It keeps application data in a JSON file on disk and provides focused views for tracking progress, upcoming work, stale applications, and pipeline statistics—without an account, backend, or synchronization service.
 
 On first launch, the tracker creates 19 editable fictional applications, exactly one in each configured state. They are ordinary records: you can edit, move, or delete them, and reset the app later to restore the original examples.
 
@@ -27,7 +27,14 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open the local address printed by Vite.
+Open the local address printed by Vite. The tracker reads and writes `data/tracker.json` in the project directory through the dev server.
+
+For a production build with the same file-backed database:
+
+```sh
+pnpm build
+pnpm start
+```
 
 ## Using the app
 
@@ -58,7 +65,9 @@ Export a backup before importing or resetting if you may need the current data a
 
 ## Data and privacy
 
-All data stays in `localStorage` under `job-applications-tracker:v1`. It is specific to the current browser profile and site origin; there is no server copy. Clearing site data, switching browser profiles, or using a different development origin can make unexported applications unavailable.
+All data stays in `data/tracker.json` inside the project directory (gitignored). The dev server and `pnpm start` read and write that file through `/__db`. There is no remote server copy. Export a backup before importing or resetting if you may need the current data again.
+
+On first launch after this upgrade, a valid legacy `localStorage` document from the same browser origin is copied into `data/tracker.json` once, then browser storage is cleared.
 
 ## Development checks
 
