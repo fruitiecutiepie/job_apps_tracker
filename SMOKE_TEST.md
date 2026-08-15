@@ -21,6 +21,7 @@ test cannot judge reliably:
    is created on first launch.
 2. Confirm Kanban shows 19 ordered columns with one demo application in each state.
    Narrow the window and confirm the board scrolls horizontally without clipping cards.
+   Confirm cards last updated 14 or more days ago look greyed out and show an untouched-age label.
 3. Open Table, Next actions, Calendar, Stale, and Statistics. Confirm each view is
    readable at both wide and narrow window sizes.
 4. Add an application with a next action and date. Drag it to another Kanban column,

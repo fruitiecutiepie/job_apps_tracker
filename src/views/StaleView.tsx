@@ -1,29 +1,27 @@
 import { useMemo, useState } from "react";
 import type { ApplicationsViewProps } from "./types";
-import { formatShortDate, localDayNumber, parseTimestamp } from "./viewUtils";
+import { applicationAgeInDays, DEFAULT_STALE_THRESHOLD_DAYS, formatShortDate } from "./viewUtils";
 
 const THRESHOLDS = [7, 14, 30] as const;
 type Threshold = (typeof THRESHOLDS)[number];
 
 export function StaleView({ applications, onOpen }: ApplicationsViewProps) {
-  const [threshold, setThreshold] = useState<Threshold>(14);
-  const today = localDayNumber(new Date());
+  const [threshold, setThreshold] = useState<Threshold>(DEFAULT_STALE_THRESHOLD_DAYS);
 
   const staleApplications = useMemo(
     () =>
       applications
-        .map((application) => {
-          const updatedAt = parseTimestamp(application.updated_at);
-        const ageInDays = updatedAt ? Math.max(0, today - localDayNumber(updatedAt)) : 0;
-          return { application, ageInDays };
-        })
+        .map((application) => ({
+          application,
+          ageInDays: applicationAgeInDays(application.updated_at),
+        }))
         .filter(({ ageInDays }) => ageInDays >= threshold)
         .sort(
           (left, right) =>
             new Date(left.application.updated_at).getTime() -
             new Date(right.application.updated_at).getTime(),
         ),
-    [applications, threshold, today],
+    [applications, threshold],
   );
 
   return (

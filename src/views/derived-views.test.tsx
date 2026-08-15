@@ -364,4 +364,33 @@ describe('KanbanView', () => {
 
     expect(screen.queryByLabelText('Attachments')).not.toBeInTheDocument()
   })
+
+  it('greys out cards last updated 14 or more days ago', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    render(
+      <KanbanView
+        applications={[
+          application('Fresh Co', { updated_at: localDate(-13) }),
+          application('Quiet Co', { updated_at: localDate(-14) }),
+        ]}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+      />,
+    )
+
+    const fresh = screen.getByText('Fresh Co').closest('article')
+    const quiet = screen.getByText('Quiet Co').closest('article')
+    expect(fresh).not.toHaveClass('application-card--stale')
+    expect(quiet).toHaveClass('application-card--stale')
+    expect(screen.getByRole('button', { name: 'Open Fresh Co, Software engineer' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('button', {
+        name: 'Open Quiet Co, Software engineer, stale, last updated 14 days ago',
+      }),
+    ).toBeInTheDocument()
+    expect(within(quiet!).getByText('Untouched 14 days')).toBeInTheDocument()
+    expect(screen.queryByText('Untouched 13 days')).not.toBeInTheDocument()
+  })
 })

@@ -6,7 +6,7 @@ On first launch, the tracker creates 19 editable fictional applications, exactly
 
 ## Features
 
-- Kanban board with 19 ordered columns, drag-and-drop, attachment filenames on cards, and a state-selector fallback
+- Kanban board with 19 ordered columns, drag-and-drop, attachment filenames on cards, a state-selector fallback, and muted styling for applications untouched for 14 days
 - Sortable and filterable table with an attachments column
 - Next actions grouped as overdue, upcoming, or unscheduled
 - Calendar driven by next-action dates
@@ -46,7 +46,7 @@ Open an existing application from any view to edit or delete it. Moving to anoth
 
 ### Find the right view
 
-- **Kanban** shows one ordered column per visible state, attachment filenames on cards, and lets you move applications.
+- **Kanban** shows one ordered column per visible state, attachment filenames on cards, and lets you move applications. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.
 - **Table** supports row filtering and sorting by company, role, state, next action, or last update, plus an attachments column.
 - **Next actions** separates overdue, upcoming, and undated work.
 - **Calendar** places applications only by their next-action date; select an item to edit it.

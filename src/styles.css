@@ -508,7 +508,9 @@ p {
 }
 
 .application-card {
-  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  padding: 0.55rem;
   border: 1px solid #d5d7d2;
   border-radius: 0.7rem;
   background: #fff;
@@ -519,10 +521,52 @@ p {
   opacity: 0.45;
 }
 
+.application-card--stale {
+  border-color: #cfd0ca;
+  background: #ecebe6;
+  box-shadow: none;
+  color: #6a757c;
+}
+
+.application-card--stale .application-card__open {
+  color: #5c6a71;
+}
+
+.application-card--stale .application-card__open span,
+.application-card--stale .application-card__action,
+.application-card--stale .application-card__attachments,
+.application-card--stale .application-card__attachments-icon,
+.application-card--stale .application-card__age {
+  color: #8a9397;
+}
+
+.application-card--stale .application-card__move select {
+  color: #6a757c;
+  background: #e4e3de;
+  border-color: #d0d2cd;
+}
+
+.application-card__open,
+.application-card__age,
+.application-card__action,
+.application-card__attachments,
+.application-card__move {
+  margin: 0;
+  padding: 0.25rem 0.2rem;
+}
+
+.application-card__age {
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .application-card__open {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
   width: 100%;
-  padding: 0;
   border: 0;
   color: var(--ink);
   background: transparent;
@@ -532,23 +576,21 @@ p {
 }
 
 .application-card__open span {
-  display: block;
-  margin-top: 0.2rem;
   color: var(--muted);
   font-size: 0.82rem;
   font-weight: 500;
 }
 
 .application-card__action {
-  margin: 0.65rem 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
   color: #536269;
   font-size: 0.82rem;
   line-height: 1.45;
 }
 
 .application-card__action span {
-  display: block;
-  margin-bottom: 0.12rem;
   color: #7b8587;
   font-size: 0.68rem;
   font-weight: 800;
@@ -560,7 +602,6 @@ p {
   display: flex;
   align-items: flex-start;
   gap: 0.35rem;
-  margin: 0.55rem 0 0.65rem;
   color: #536269;
   font-size: 0.78rem;
   line-height: 1.4;
