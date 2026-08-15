@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { STATE_CONFIG, stateLabel } from "../domain";
 import type { StateId } from "../domain";
+import { AttachmentFilenames } from "./AttachmentFilenames";
 import type { MovableApplicationsViewProps } from "./types";
 import { formatShortDate } from "./viewUtils";
 
@@ -109,6 +110,7 @@ export function KanbanView({
                           ) : null}
                         </p>
                       ) : null}
+                      <AttachmentFilenames attachments={application.attachments} variant="card" />
                       <label className="application-card__move">
                         <span className="sr-only">Move {application.company} to state</span>
                         <select

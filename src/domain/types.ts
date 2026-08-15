@@ -24,6 +24,14 @@ export interface StateHistoryEntry {
   at: string
 }
 
+export interface Attachment {
+  id: string
+  filename: string
+  mime: string | null
+  size: number
+  created_at: string
+}
+
 export interface Application {
   id: string
   company: string
@@ -34,6 +42,7 @@ export interface Application {
   next_action: string | null
   next_action_at: string | null
   notes: string | null
+  attachments: Attachment[]
   created_at: string
   updated_at: string
 }
@@ -78,5 +87,5 @@ export interface ApplicationInput {
 }
 
 export type ApplicationEdits = Partial<
-  Pick<Application, 'company' | 'role' | 'url' | 'next_action' | 'next_action_at' | 'notes'>
+  Pick<Application, 'company' | 'role' | 'url' | 'next_action' | 'next_action_at' | 'notes' | 'attachments'>
 >

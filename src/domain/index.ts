@@ -1,3 +1,6 @@
+export * from './archive'
+export * from './attachmentPaths'
+export * from './attachments'
 export * from './database'
 export * from './demo'
 export * from './export'

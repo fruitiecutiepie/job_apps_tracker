@@ -6,8 +6,8 @@ On first launch, the tracker creates 19 editable fictional applications, exactly
 
 ## Features
 
-- Kanban board with 19 ordered columns, drag-and-drop, and a state-selector fallback
-- Sortable and filterable table
+- Kanban board with 19 ordered columns, drag-and-drop, attachment filenames on cards, and a state-selector fallback
+- Sortable and filterable table with an attachments column
 - Next actions grouped as overdue, upcoming, or unscheduled
 - Calendar driven by next-action dates
 - Stale applications with 7-, 14-, and 30-day thresholds
@@ -46,8 +46,8 @@ Open an existing application from any view to edit or delete it. Moving to anoth
 
 ### Find the right view
 
-- **Kanban** shows one ordered column per visible state and lets you move applications.
-- **Table** supports row filtering and sorting by company, role, state, next action, or last update.
+- **Kanban** shows one ordered column per visible state, attachment filenames on cards, and lets you move applications.
+- **Table** supports row filtering and sorting by company, role, state, next action, or last update, plus an attachments column.
 - **Next actions** separates overdue, upcoming, and undated work.
 - **Calendar** places applications only by their next-action date; select an item to edit it.
 - **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved.
@@ -57,15 +57,15 @@ The global search and state filters apply across views. Dates, calendar days, ov
 
 ### Back up or replace data
 
-- **Export JSON** downloads the complete canonical tracker document with a timestamped filename.
-- **Import JSON** validates a document before asking to replace all current applications. Invalid files and cancelled confirmations do not change saved data.
+- **Export** downloads a zip archive with `tracker.json` and any attachment files.
+- **Import** accepts zip archives or legacy JSON. Zip import validates the document before asking to replace all current applications and attachments.
 - **Reset demo data** asks for confirmation and restores the original 19 examples.
 
 Export a backup before importing or resetting if you may need the current data again.
 
 ## Data and privacy
 
-All data stays in `data/tracker.json` inside the project directory (gitignored). The dev server and `pnpm start` read and write that file through `/__db`. There is no remote server copy. Export a backup before importing or resetting if you may need the current data again.
+All data stays in `data/tracker.json` inside the project directory (gitignored), with attachment files in `data/attachments/` (also gitignored). The dev server and `pnpm start` read and write those paths through `/__db` and `/__attachments`. There is no remote server copy. Export a backup before importing or resetting if you may need the current data again.
 
 On first launch after this upgrade, a valid legacy `localStorage` document from the same browser origin is copied into `data/tracker.json` once, then browser storage is cleared.
 

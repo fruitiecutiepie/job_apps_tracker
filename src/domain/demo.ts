@@ -80,6 +80,7 @@ export function createDemoDocument(
           ? localDay(reference, seed.nextActionDaysFromNow, 9).toISOString()
           : null,
       notes: seed.notes ?? null,
+      attachments: [],
       created_at: createdAt,
       updated_at: updatedAt,
     }

@@ -3,18 +3,24 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   STATE_CONFIG,
   STATE_IDS,
+  addAttachment,
   createApplication,
+  createAttachmentMetadata,
   createDemoDocument,
   createUuidV7,
   editApplication,
   indexesAreStale,
+  isSafeArchiveAttachmentPath,
   loadTrackerDocument,
   moveApplication,
   moveApplicationState,
+  packTrackerArchive,
   parseTrackerDocument,
   rebuildIndexes,
+  removeAttachment,
   saveTrackerDocument,
   serializeTrackerDocument,
+  unpackTrackerArchive,
   validateTrackerDocument,
 } from './index'
 import type { TrackerDocument } from './index'
@@ -100,6 +106,7 @@ describe('application mutations', () => {
     expect(application.role).toBe('Engineer')
     expect(application.url).toBe('https://example.com/jobs/1')
     expect(application.state_history).toEqual([{ state: 'applied', at: REFERENCE.toISOString() }])
+    expect(application.attachments).toEqual([])
     expect(() => createApplication({ company: 'Northwind', url: 'ftp://example.com' }, REFERENCE))
       .toThrow(/URL/i)
   })
@@ -158,6 +165,82 @@ describe('indexes', () => {
     const shortened = document.applications.slice(1)
 
     expect(indexesAreStale(shortened, indexes)).toBe(true)
+  })
+})
+
+describe('attachments', () => {
+  it('canonicalizes missing attachments to an empty array', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({
+      schema_version: 1,
+      applications: [{
+        id: '018f24c0-0000-7000-8000-000000000001',
+        company: 'Northwind',
+        role: null,
+        url: null,
+        state: 'applied',
+        next_action: null,
+        next_action_at: null,
+        notes: null,
+        created_at: REFERENCE.toISOString(),
+        updated_at: REFERENCE.toISOString(),
+      }],
+    }))
+
+    expect(parsed.applications[0]?.attachments).toEqual([])
+  })
+
+  it('adds and removes attachment metadata without changing state history', () => {
+    const application = createApplication({ company: 'Northwind' }, REFERENCE)
+    const attachment = createAttachmentMetadata('resume.pdf', 'application/pdf', 1200, REFERENCE)
+    const withAttachment = addAttachment(application, attachment, REFERENCE)
+
+    expect(withAttachment.attachments).toHaveLength(1)
+    expect(withAttachment.state_history).toEqual(application.state_history)
+
+    const removed = removeAttachment(
+      withAttachment,
+      attachment.id,
+      new Date('2026-08-16T02:00:00.000Z'),
+    )
+    expect(removed.attachments).toHaveLength(0)
+    expect(removed.updated_at).toBe('2026-08-16T02:00:00.000Z')
+  })
+
+  it('includes attachment filenames in search indexes', () => {
+    const application = addAttachment(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      createAttachmentMetadata('cover-letter.pdf', 'application/pdf', 900, REFERENCE),
+      REFERENCE,
+    )
+    const indexes = rebuildIndexes([application])
+    expect(indexes.search_text[application.id]).toContain('cover-letter.pdf')
+  })
+})
+
+describe('tracker archives', () => {
+  it('round-trips zip archives with tracker.json and attachment files', () => {
+    const document = createDemoDocument(REFERENCE)
+    const applicationId = document.applications[0]!.id
+    const attachmentId = '018f0000-0000-7000-8000-000000000099'
+    document.applications[0]!.attachments = [
+      createAttachmentMetadata('notes.pdf', 'application/pdf', 42, REFERENCE, attachmentId),
+    ]
+    const files = [{
+      applicationId,
+      attachmentId,
+      data: new Uint8Array([1, 2, 3]),
+    }]
+    const unpacked = unpackTrackerArchive(packTrackerArchive(document, files))
+
+    expect(unpacked.document.applications[0]?.attachments[0]?.filename).toBe('notes.pdf')
+    expect(unpacked.files).toHaveLength(1)
+    expect(unpacked.files[0]?.data).toEqual(new Uint8Array([1, 2, 3]))
+  })
+
+  it('rejects archive attachment paths with traversal segments', () => {
+    expect(
+      isSafeArchiveAttachmentPath('attachments/../018f0000-0000-7000-8000-000000000001/018f0000-0000-7000-8000-000000000002'),
+    ).toBeNull()
   })
 })
 

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
 import { loadTrackerDocument, saveTrackerDocument } from '../domain/storage'
+import { handleTestAttachmentFetch, wipeTestAttachments } from './attachmentStore'
 import { testTrackerStore } from './trackerStore'
 
 afterEach(() => {
@@ -13,9 +14,15 @@ afterEach(() => {
 beforeEach(() => {
   window.localStorage.clear()
   testTrackerStore.clear()
+  wipeTestAttachments()
 
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()
+
+    if (url.startsWith('/__attachments')) {
+      return handleTestAttachmentFetch(url, init)
+    }
+
     if (url !== '/__db') {
       throw new Error(`Unhandled fetch in tests: ${url}`)
     }
@@ -29,6 +36,7 @@ beforeEach(() => {
 
     if (init?.method === 'DELETE') {
       testTrackerStore.clear()
+      wipeTestAttachments()
       const demo = loadTrackerDocument(testTrackerStore)
       return new Response(JSON.stringify(demo), { status: 200 })
     }

@@ -27,10 +27,12 @@ test cannot judge reliably:
    then use its state selector to move it again. Reload the page and confirm it remains.
 5. Use Tab, Shift+Tab, Enter, and Escape to navigate controls and the application
    dialog. Confirm focus is visible and every form field has a useful label.
-6. Export the data and confirm a timestamped JSON file is downloaded. Try an invalid
-   import and confirm the saved data is unchanged; try a valid import and confirm the
-   replacement prompt appears.
-7. Choose Reset demo data, cancel once, then confirm it. Confirm the same 19 examples
+6. Export the data and confirm a timestamped zip file is downloaded. Try an invalid
+   import and confirm the saved data is unchanged; try a valid zip or JSON import and
+   confirm the replacement prompt appears.
+7. Add an attachment in the application editor, save, reopen the application, and open
+   the file. Remove an attachment and confirm it disappears after save.
+8. Choose Reset demo data, cancel once, then confirm it. Confirm the same 19 examples
    are restored.
 
 The manual steps change only this browser's local tracker data. The final reset restores

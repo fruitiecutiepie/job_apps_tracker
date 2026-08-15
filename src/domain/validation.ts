@@ -1,5 +1,6 @@
+import { safeAttachmentFilename } from './attachmentPaths'
 import { isStateId } from './states'
-import type { Application, StateHistoryEntry, TrackerDatabase } from './types'
+import type { Application, Attachment, StateHistoryEntry, TrackerDatabase } from './types'
 import { prepareTrackerDatabase } from './database'
 
 export interface ValidationSuccess {
@@ -113,6 +114,76 @@ function historyValue(
   return history
 }
 
+function attachmentValue(value: unknown, path: string, errors: ValidationError[]): Attachment | null {
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object')
+    return null
+  }
+  if (!nonBlank(value.id)) addError(errors, `${path}.id`, 'is required')
+  if (!nonBlank(value.filename)) addError(errors, `${path}.filename`, 'is required')
+  if (!validTimestamp(value.created_at)) {
+    addError(errors, `${path}.created_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (typeof value.size !== 'number' || !Number.isInteger(value.size) || value.size < 1) {
+    addError(errors, `${path}.size`, 'must be a positive integer')
+  }
+  if (
+    !nonBlank(value.id)
+    || !nonBlank(value.filename)
+    || !validTimestamp(value.created_at)
+    || typeof value.size !== 'number'
+    || !Number.isInteger(value.size)
+    || value.size < 1
+  ) {
+    return null
+  }
+
+  let filename: string
+  try {
+    filename = safeAttachmentFilename(value.filename)
+  } catch {
+    addError(errors, `${path}.filename`, 'is invalid')
+    return null
+  }
+
+  let mime: string | null = null
+  if (value.mime !== undefined && value.mime !== null) {
+    if (typeof value.mime !== 'string') {
+      addError(errors, `${path}.mime`, 'must be a string or null')
+    } else {
+      mime = value.mime.trim() || null
+    }
+  }
+
+  return {
+    id: value.id.trim(),
+    filename,
+    mime,
+    size: value.size as number,
+    created_at: value.created_at,
+  }
+}
+
+function attachmentsValue(value: unknown, path: string, errors: ValidationError[]): Attachment[] {
+  if (value === undefined) return []
+  if (!Array.isArray(value)) {
+    addError(errors, path, 'must be an array')
+    return []
+  }
+
+  const attachments = value
+    .map((attachment, index) => attachmentValue(attachment, `${path}[${index}]`, errors))
+    .filter((attachment): attachment is Attachment => attachment !== null)
+
+  const seen = new Set<string>()
+  attachments.forEach((attachment, index) => {
+    if (seen.has(attachment.id)) addError(errors, `${path}[${index}].id`, 'duplicates another attachment')
+    seen.add(attachment.id)
+  })
+
+  return attachments
+}
+
 function applicationValue(value: unknown, index: number, errors: ValidationError[]): Application | null {
   const path = `applications[${index}]`
   if (!isRecord(value)) {
@@ -150,6 +221,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     next_action: nextAction,
     next_action_at: nextAction ? nextActionAt : null,
     notes: nullableText(value.notes, `${path}.notes`, errors),
+    attachments: attachmentsValue(value.attachments, `${path}.attachments`, errors),
     created_at: value.created_at,
     updated_at: value.updated_at,
   }

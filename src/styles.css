@@ -556,6 +556,34 @@ p {
   text-transform: uppercase;
 }
 
+.application-card__attachments {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  margin: 0.55rem 0 0.65rem;
+  color: #536269;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
+.application-card__attachments-icon {
+  flex: none;
+  margin-top: 0.1rem;
+  color: #7b8587;
+}
+
+.attachment-filenames--card {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-filenames--table {
+  color: var(--ink);
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
 .application-card__move {
   display: block;
 }
@@ -1112,6 +1140,43 @@ tbody tr:hover {
   .dialog__actions-spacer {
     display: none;
   }
+}
+
+.attachment-field {
+  gap: 0.75rem;
+}
+
+.attachment-list {
+  display: grid;
+  gap: 0.5rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.attachment-item {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  display: flex;
+  gap: 0.75rem;
+  justify-content: space-between;
+  padding: 0.65rem 0.85rem;
+}
+
+.attachment-item__meta {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.attachment-item__meta small {
+  color: var(--text-muted);
+}
+
+.attachment-item__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }
 
 @media (prefers-reduced-motion: reduce) {

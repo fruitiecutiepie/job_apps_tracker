@@ -31,6 +31,7 @@ export const TRACKER_JSON_SCHEMA = {
         'next_action',
         'next_action_at',
         'notes',
+        'attachments',
         'created_at',
         'updated_at',
       ],
@@ -57,8 +58,24 @@ export const TRACKER_JSON_SCHEMA = {
         next_action: { type: ['string', 'null'] },
         next_action_at: { type: ['string', 'null'] },
         notes: { type: ['string', 'null'] },
+        attachments: {
+          type: 'array',
+          items: { $ref: '#/$defs/attachment' },
+        },
         created_at: { type: 'string' },
         updated_at: { type: 'string' },
+      },
+    },
+    attachment: {
+      type: 'object',
+      required: ['id', 'filename', 'mime', 'size', 'created_at'],
+      additionalProperties: false,
+      properties: {
+        id: { type: 'string', minLength: 1 },
+        filename: { type: 'string', minLength: 1 },
+        mime: { type: ['string', 'null'] },
+        size: { type: 'integer', minimum: 1 },
+        created_at: { type: 'string' },
       },
     },
     indexes: {

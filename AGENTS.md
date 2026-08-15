@@ -41,10 +41,11 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Validate and canonicalize an imported document before confirmation or replacement. A parse error, validation error, unsupported legacy `schema_version`, or cancelled confirmation must leave saved data untouched.
 - Import still accepts legacy `{ schema_version: 1, applications }` exports. Canonicalize applications, attach the current schema, and rebuild indexes.
 - Ignore unknown imported fields for forward compatibility. Reject duplicate IDs, invalid states, malformed timestamps, invalid URLs, and supplied history whose final state differs from the current state. Missing `state_history` is accepted for compatibility and synthesized from the current state; supplied history must be non-empty.
-- Import replaces the entire collection; export writes the canonical database document. Do not silently merge imports.
+- Import replaces the entire collection; export writes a zip archive with `tracker.json` plus attachment files. Legacy JSON import still works without files.
+- Application attachments store metadata on each application and file bytes under `data/attachments/{applicationId}/{attachmentId}`. Missing `attachments` on import canonicalizes to `[]`. Add and remove attachments through mutations; cap each file at 25 MiB.
 - Keep view-only values derived. Never persist Kanban columns, stale status, date groups, stage durations, statistics, or filters. Do not persist overdue/upcoming buckets, calendar day maps, or stale membership because they depend on browser-local "today".
 - On first launch after upgrading from browser storage, migrate a valid legacy `localStorage` document into `data/tracker.json` once, then stop using `localStorage`.
-- A Cursor `beforeSubmitPrompt` hook backs up `data/tracker.json` to `data/backups/` before agent prompts. Agents should edit the database file directly or go through mutations; do not bypass the backup hook with alternate write paths.
+- A Cursor `beforeSubmitPrompt` hook backs up `data/tracker.json` and `data/attachments/` to `data/backups/{timestamp}/` before agent prompts. Agents should edit applications through mutations and attachment APIs; do not bypass the backup hook with alternate write paths.
 
 ### Demo data
 

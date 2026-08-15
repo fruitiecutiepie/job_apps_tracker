@@ -17,17 +17,30 @@ import {
   STATE_LABELS,
   addApplication,
   clearLegacyLocalStorage,
+  createAttachmentMetadata,
+  createUuidV7,
   deleteApplication,
-  downloadTrackerDocument,
+  deleteApplicationAttachmentFolder,
+  downloadTrackerArchive,
+  formatFileSize,
+  importTrackerArchive,
+  isZipArchive,
   loadTrackerDatabase,
+  MAX_ATTACHMENT_BYTES,
   moveApplication,
+  openAttachmentFile,
   parseTrackerDocument,
+  readFileAsUint8Array,
   resetTrackerDatabase,
   saveTrackerDatabase,
   tryLoadLegacyLocalStorage,
+  unpackTrackerArchive,
   updateApplication,
+  uploadAttachmentFile,
+  deleteAttachmentFile,
   type Application,
   type ApplicationInput,
+  type Attachment,
   type StateId,
   type TrackerDocument,
 } from './domain'
@@ -66,6 +79,31 @@ function fromDateTimeInput(value: string): string | null {
   return value ? new Date(value).toISOString() : null
 }
 
+async function applyAttachmentPlan(
+  applicationId: string,
+  plan: AttachmentSavePlan,
+  at: Date,
+): Promise<Attachment[]> {
+  for (const attachmentId of plan.removedAttachmentIds) {
+    await deleteAttachmentFile(applicationId, attachmentId)
+  }
+
+  const finalAttachments = [...plan.keptAttachments]
+  for (const staged of plan.stagedFiles) {
+    const metadata = createAttachmentMetadata(
+      staged.file.name,
+      staged.file.type || null,
+      staged.file.size,
+      at,
+      staged.id,
+    )
+    await uploadAttachmentFile(applicationId, metadata.id, staged.file, metadata.mime)
+    finalAttachments.push(metadata)
+  }
+
+  return finalAttachments
+}
+
 interface EditorValues {
   company: string
   role: string
@@ -76,16 +114,28 @@ interface EditorValues {
   notes: string
 }
 
+interface StagedAttachmentFile {
+  id: string
+  file: File
+}
+
+interface AttachmentSavePlan {
+  keptAttachments: Attachment[]
+  removedAttachmentIds: string[]
+  stagedFiles: StagedAttachmentFile[]
+}
+
 interface ApplicationEditorProps {
   application: Application | null
   onClose: () => void
   onDelete?: () => void
-  onSave: (values: EditorValues) => void
+  onSave: (values: EditorValues, attachmentPlan: AttachmentSavePlan) => Promise<void>
 }
 
 function ApplicationEditor({ application, onClose, onDelete, onSave }: ApplicationEditorProps) {
   const isEditing = application !== null
   const dialogRef = useRef<HTMLElement>(null)
+  const fileInputRef = useRef<HTMLInputElement>(null)
   const [values, setValues] = useState<EditorValues>(() => ({
     company: application?.company ?? '',
     role: application?.role ?? '',
@@ -95,7 +145,15 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
     nextActionAt: toDateTimeInput(application?.next_action_at ?? null),
     notes: application?.notes ?? '',
   }))
+  const [keptAttachments] = useState<Attachment[]>(() => application?.attachments ?? [])
+  const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([])
+  const [stagedFiles, setStagedFiles] = useState<StagedAttachmentFile[]>([])
   const [formError, setFormError] = useState<string | null>(null)
+  const [saving, setSaving] = useState(false)
+
+  const visibleAttachments = keptAttachments.filter(
+    (attachment) => !removedAttachmentIds.includes(attachment.id),
+  )
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -139,6 +197,42 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
     setValues((current) => ({ ...current, [key]: value }))
   }
 
+  const stageFiles = (files: FileList | null) => {
+    if (!files) return
+    const next = [...stagedFiles]
+    for (const file of Array.from(files)) {
+      if (file.size === 0) {
+        setFormError('Attachment files must not be empty.')
+        continue
+      }
+      if (file.size > MAX_ATTACHMENT_BYTES) {
+        setFormError(`Each attachment must be ${formatFileSize(MAX_ATTACHMENT_BYTES)} or smaller.`)
+        continue
+      }
+      next.push({ id: createUuidV7(), file })
+    }
+    setStagedFiles(next)
+    setFormError(null)
+  }
+
+  const removeStagedFile = (id: string) => {
+    setStagedFiles((current) => current.filter((item) => item.id !== id))
+  }
+
+  const removeExistingAttachment = (attachment: Attachment) => {
+    if (!window.confirm(`Remove ${attachment.filename} from this application?`)) return
+    setRemovedAttachmentIds((current) => [...current, attachment.id])
+  }
+
+  const openAttachment = async (attachment: Attachment) => {
+    if (!application) return
+    try {
+      await openAttachmentFile(application.id, attachment.id, attachment.filename)
+    } catch (error) {
+      setFormError(errorMessage(error))
+    }
+  }
+
   return (
     <div className="dialog-backdrop" onMouseDown={(event) => event.currentTarget === event.target && onClose()}>
       <section
@@ -161,13 +255,20 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
 
         <form
           className="application-form"
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault()
             setFormError(null)
+            setSaving(true)
             try {
-              onSave(values)
+              await onSave(values, {
+                keptAttachments: visibleAttachments,
+                removedAttachmentIds,
+                stagedFiles,
+              })
             } catch (error) {
               setFormError(errorMessage(error))
+            } finally {
+              setSaving(false)
             }
           }}
         >
@@ -234,6 +335,76 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
                 value={values.notes}
               />
             </label>
+            <div className="field field--wide attachment-field">
+              <span>Attachments</span>
+              {visibleAttachments.length > 0 && (
+                <ul className="attachment-list" aria-label="Current attachments">
+                  {visibleAttachments.map((attachment) => (
+                    <li className="attachment-item" key={attachment.id}>
+                      <span className="attachment-item__meta">
+                        <strong>{attachment.filename}</strong>
+                        <small>{formatFileSize(attachment.size)}</small>
+                      </span>
+                      <span className="attachment-item__actions">
+                        {isEditing && (
+                          <button
+                            className="button button--quiet"
+                            onClick={() => openAttachment(attachment)}
+                            type="button"
+                          >
+                            Open
+                          </button>
+                        )}
+                        <button
+                          className="button button--quiet"
+                          onClick={() => removeExistingAttachment(attachment)}
+                          type="button"
+                        >
+                          Remove
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {stagedFiles.length > 0 && (
+                <ul className="attachment-list" aria-label="Attachments to add">
+                  {stagedFiles.map((staged) => (
+                    <li className="attachment-item" key={staged.id}>
+                      <span className="attachment-item__meta">
+                        <strong>{staged.file.name}</strong>
+                        <small>{formatFileSize(staged.file.size)}</small>
+                      </span>
+                      <button
+                        className="button button--quiet"
+                        onClick={() => removeStagedFile(staged.id)}
+                        type="button"
+                      >
+                        Remove
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <button
+                className="button button--quiet"
+                onClick={() => fileInputRef.current?.click()}
+                type="button"
+              >
+                Add files
+              </button>
+              <input
+                aria-label="Attachments"
+                className="sr-only"
+                multiple
+                onChange={(event) => {
+                  stageFiles(event.target.files)
+                  event.target.value = ''
+                }}
+                ref={fileInputRef}
+                type="file"
+              />
+            </div>
           </div>
 
           {formError && <p className="form-error" role="alert">{formError}</p>}
@@ -244,7 +415,7 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
             )}
             <span className="dialog__actions-spacer" />
             <button className="button button--quiet" onClick={onClose} type="button">Cancel</button>
-            <button className="button button--primary" type="submit">
+            <button className="button button--primary" disabled={saving} type="submit">
               {isEditing ? 'Save changes' : 'Add application'}
             </button>
           </div>
@@ -474,16 +645,30 @@ export default function App() {
               <Upload aria-hidden="true" size={17} /> Import
             </button>
             <input
-              accept="application/json,.json"
+              accept="application/json,.json,application/zip,.zip"
               className="sr-only"
               onChange={async (event) => {
                 const file = event.target.files?.[0]
                 event.target.value = ''
                 if (!file) return
                 try {
-                  const imported = parseTrackerDocument(await file.text())
+                  const bytes = await readFileAsUint8Array(file)
+                  if (isZipArchive(bytes)) {
+                    const { document, files } = unpackTrackerArchive(bytes)
+                    if (window.confirm(`Replace your current tracker with ${document.applications.length} imported applications and ${files.length} attachments?`)) {
+                      const saved = await importTrackerArchive(document, files)
+                      setTracker(saved)
+                      setNotice(`Imported ${saved.applications.length} applications.`)
+                    }
+                    return
+                  }
+
+                  const imported = parseTrackerDocument(new TextDecoder().decode(bytes))
                   if (window.confirm(`Replace your current tracker with ${imported.applications.length} imported applications?`)) {
-                    commit(imported, `Imported ${imported.applications.length} applications.`)
+                    await importTrackerArchive(imported, [])
+                    const saved = await loadTrackerDatabase()
+                    setTracker(saved)
+                    setNotice(`Imported ${saved.applications.length} applications.`)
                   }
                 } catch (error) {
                   setNotice(`Import failed: ${errorMessage(error)}`)
@@ -492,7 +677,15 @@ export default function App() {
               ref={importInputRef}
               type="file"
             />
-            <button className="button button--quiet" onClick={() => downloadTrackerDocument(tracker)} type="button">
+            <button
+              className="button button--quiet"
+              onClick={() => {
+                downloadTrackerArchive(tracker).catch((error) => {
+                  setNotice(`Export failed: ${errorMessage(error)}`)
+                })
+              }}
+              type="button"
+            >
               <Download aria-hidden="true" size={17} /> Export
             </button>
             <button
@@ -570,13 +763,14 @@ export default function App() {
         <ApplicationEditor
           application={editor.mode === 'edit' ? editingApplication : null}
           onClose={closeEditor}
-          onDelete={editor.mode === 'edit' ? () => {
+          onDelete={editor.mode === 'edit' ? async () => {
             if (window.confirm(`Delete ${editingApplication?.company ?? 'this application'}?`)) {
-              commit(deleteApplication(tracker, editor.id), 'Application deleted.')
+              await deleteApplicationAttachmentFolder(editor.id)
+              await commit(deleteApplication(tracker, editor.id), 'Application deleted.')
               closeEditor()
             }
           } : undefined}
-          onSave={(values) => {
+          onSave={async (values, attachmentPlan) => {
             const input: ApplicationInput = {
               company: values.company,
               role: values.role || null,
@@ -588,8 +782,15 @@ export default function App() {
             }
             const now = new Date()
             if (editor.mode === 'add') {
-              commit(addApplication(tracker, input, now), 'Application added.')
+              let next = addApplication(tracker, input, now)
+              const created = next.applications.at(-1)!
+              const attachments = await applyAttachmentPlan(created.id, attachmentPlan, now)
+              if (attachments.length > 0) {
+                next = updateApplication(next, created.id, { attachments }, now)
+              }
+              await commit(next, 'Application added.')
             } else {
+              const attachments = await applyAttachmentPlan(editor.id, attachmentPlan, now)
               let next = updateApplication(tracker, editor.id, {
                 company: input.company,
                 role: input.role,
@@ -597,9 +798,10 @@ export default function App() {
                 next_action: input.next_action,
                 next_action_at: input.next_action_at,
                 notes: input.notes,
+                attachments,
               }, now)
               next = moveApplication(next, editor.id, values.state, now)
-              commit(next, 'Application updated.')
+              await commit(next, 'Application updated.')
             }
             closeEditor()
           }}

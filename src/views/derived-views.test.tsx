@@ -32,6 +32,7 @@ function application(
     next_action: null,
     next_action_at: null,
     notes: null,
+    attachments: [],
     created_at: localDate(-40),
     updated_at: localDate(-1),
     ...overrides,
@@ -236,6 +237,30 @@ describe('TableView', () => {
     expect(onOpen).toHaveBeenCalledWith(applications[1].id)
     expect(applications).toHaveLength(3)
   })
+
+  it('shows attachment filenames and filters rows by filename', () => {
+    const applications = [
+      application('Resume Ready', {
+        attachments: [{
+          id: '018f0000-0000-7000-8000-000000000002',
+          filename: 'resume.pdf',
+          mime: 'application/pdf',
+          size: 900,
+          created_at: localDate(-1),
+        }],
+      }),
+      application('Plain Record'),
+    ]
+
+    render(<TableView applications={applications} onOpen={vi.fn()} onMove={vi.fn()} />)
+
+    expect(screen.getByText('resume.pdf')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter table' }), {
+      target: { value: 'resume.pdf' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Resume Ready'])
+  })
 })
 
 describe('StatisticsView', () => {
@@ -316,5 +341,27 @@ describe('KanbanView', () => {
     fireEvent.drop(destination!, { dataTransfer })
 
     expect(onMove).toHaveBeenCalledWith(record.id, 'accepted')
+  })
+
+  it('shows attachment filenames on a card when present', () => {
+    const record = application('Paperclip Corp', {
+      attachments: [{
+        id: '018f0000-0000-7000-8000-000000000001',
+        filename: 'resume.pdf',
+        mime: 'application/pdf',
+        size: 1200,
+        created_at: localDate(-1),
+      }],
+    })
+
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onMove={vi.fn()} />)
+
+    expect(screen.getByLabelText('Attachments')).toHaveTextContent('resume.pdf')
+  })
+
+  it('omits attachment filenames when there are no attachments', () => {
+    render(<KanbanView applications={[application('No Files Co')]} onOpen={vi.fn()} onMove={vi.fn()} />)
+
+    expect(screen.queryByLabelText('Attachments')).not.toBeInTheDocument()
   })
 })

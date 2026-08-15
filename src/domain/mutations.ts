@@ -1,6 +1,14 @@
 import { createUuidV7 } from './id'
 import { isStateId } from './states'
-import type { Application, ApplicationEdits, ApplicationInput, StateId, TrackerDocument } from './types'
+import { safeAttachmentFilename } from './attachmentPaths'
+import type {
+  Application,
+  ApplicationEdits,
+  ApplicationInput,
+  Attachment,
+  StateId,
+  TrackerDocument,
+} from './types'
 
 function timestamp(at: Date | string): string {
   const date = at instanceof Date ? at : new Date(at)
@@ -37,6 +45,24 @@ function optionalTimestamp(value: string | null | undefined): string | null {
   return timestamp(candidate)
 }
 
+export function createAttachmentMetadata(
+  filename: string,
+  mime: string | null,
+  size: number,
+  at: Date | string = new Date(),
+  id: string = createUuidV7(at instanceof Date ? at : new Date(at)),
+): Attachment {
+  if (!Number.isInteger(size) || size < 1) throw new TypeError('Attachment size must be a positive integer')
+  const createdAt = timestamp(at)
+  return {
+    id,
+    filename: safeAttachmentFilename(filename),
+    mime: optionalText(mime),
+    size,
+    created_at: createdAt,
+  }
+}
+
 export function createApplication(
   input: ApplicationInput,
   at: Date | string = new Date(),
@@ -57,6 +83,7 @@ export function createApplication(
     next_action: nextAction,
     next_action_at: nextAction ? optionalTimestamp(input.next_action_at) : null,
     notes: optionalText(input.notes),
+    attachments: [],
     created_at: createdAt,
     updated_at: createdAt,
   }
@@ -83,6 +110,37 @@ export function editApplication(
     next_action: nextAction,
     next_action_at: nextActionAt,
     notes: 'notes' in edits ? optionalText(edits.notes) : application.notes,
+    attachments: 'attachments' in edits ? edits.attachments ?? [] : application.attachments,
+    updated_at: timestamp(at),
+  }
+}
+
+export function addAttachment(
+  application: Application,
+  attachment: Attachment,
+  at: Date | string = new Date(),
+): Application {
+  if (application.attachments.some((item) => item.id === attachment.id)) {
+    throw new TypeError('Attachment id already exists on this application')
+  }
+  return {
+    ...application,
+    attachments: [...application.attachments, attachment],
+    updated_at: timestamp(at),
+  }
+}
+
+export function removeAttachment(
+  application: Application,
+  attachmentId: string,
+  at: Date | string = new Date(),
+): Application {
+  if (!application.attachments.some((item) => item.id === attachmentId)) {
+    return application
+  }
+  return {
+    ...application,
+    attachments: application.attachments.filter((item) => item.id !== attachmentId),
     updated_at: timestamp(at),
   }
 }

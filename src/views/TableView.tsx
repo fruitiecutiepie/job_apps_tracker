@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { STATE_CONFIG, stateLabel } from "../domain";
 import type { StateId } from "../domain";
+import { AttachmentFilenames } from "./AttachmentFilenames";
 import type { MovableApplicationsViewProps } from "./types";
 import { formatShortDate, parseTimestamp } from "./viewUtils";
 
@@ -35,6 +36,7 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
           application.next_action,
           application.next_action_at,
           application.updated_at,
+          ...application.attachments.map((attachment) => attachment.filename),
         ].some((value) => value?.toLocaleLowerCase().includes(normalizedQuery));
       })
       .sort((left, right) => {
@@ -97,6 +99,7 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
               {sortableHeader("role", "Role")}
               {sortableHeader("state", "State")}
               {sortableHeader("next_action", "Next action")}
+              <th scope="col">Attachments</th>
               {sortableHeader("updated_at", "Last update")}
             </tr>
           </thead>
@@ -133,6 +136,13 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
                         </time>
                       ) : null}
                     </>
+                  ) : (
+                    <span aria-label="Not set">—</span>
+                  )}
+                </td>
+                <td>
+                  {application.attachments.length > 0 ? (
+                    <AttachmentFilenames attachments={application.attachments} variant="table" />
                   ) : (
                     <span aria-label="Not set">—</span>
                   )}

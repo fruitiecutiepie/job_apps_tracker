@@ -287,4 +287,40 @@ describe('job applications tracker', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(readSavedDocument().applications).toHaveLength(19)
   })
+
+  it('adds and removes an attachment from the application editor', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Open Saffron Systems, Product Operations Manager',
+      }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const file = new File(['cover letter'], 'cover-letter.txt', { type: 'text/plain' })
+    await user.upload(within(dialog).getByLabelText('Attachments'), file)
+    expect(within(dialog).getByText('cover-letter.txt')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const saved = readSavedDocument()
+    const saffron = saved.applications.find((application) => application.company === 'Saffron Systems')
+    expect(saffron?.attachments).toHaveLength(1)
+    expect(saffron?.attachments[0]?.filename).toBe('cover-letter.txt')
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Open Saffron Systems, Product Operations Manager',
+      }),
+    )
+    const editDialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    await user.click(within(editDialog).getByRole('button', { name: 'Remove' }))
+    await user.click(within(editDialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(confirm).toHaveBeenCalled()
+    expect(
+      readSavedDocument().applications.find((application) => application.company === 'Saffron Systems')?.attachments,
+    ).toHaveLength(0)
+  })
 })
