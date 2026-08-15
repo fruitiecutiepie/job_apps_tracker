@@ -61,6 +61,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
     search_text[application.id] = [
       application.company,
       application.role,
+      application.source,
       application.notes,
       application.next_action,
       STATE_LABELS[application.state],

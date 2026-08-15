@@ -26,6 +26,7 @@ export const TRACKER_JSON_SCHEMA = {
         'company',
         'role',
         'url',
+        'source',
         'state',
         'state_history',
         'next_action',
@@ -41,6 +42,7 @@ export const TRACKER_JSON_SCHEMA = {
         company: { type: 'string', minLength: 1 },
         role: { type: ['string', 'null'] },
         url: { type: ['string', 'null'] },
+        source: { type: ['string', 'null'] },
         state: { type: 'string', enum: [...STATE_IDS] },
         state_history: {
           type: 'array',

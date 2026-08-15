@@ -93,6 +93,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Add application' })
     await user.type(within(dialog).getByLabelText('Company'), 'Paper Kite Labs')
     await user.type(within(dialog).getByLabelText('Role'), 'Design systems engineer')
+    await user.type(within(dialog).getByLabelText('Source'), 'LinkedIn')
     await user.selectOptions(within(dialog).getByLabelText('State'), 'applied')
     await user.type(within(dialog).getByLabelText('Next action'), 'Send portfolio follow-up')
     await user.click(within(dialog).getByRole('button', { name: /save|add application/i }))
@@ -100,8 +101,11 @@ describe('job applications tracker', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
 
     const search = screen.getByRole('searchbox', { name: 'Search applications' })
-    await user.type(search, 'Paper Kite')
+    await user.type(search, 'LinkedIn')
     expect(screen.getByRole('button', { name: /Open Paper Kite Labs/ })).toBeInTheDocument()
+
+    await user.clear(search)
+    await user.type(search, 'Paper Kite')
 
     const savedDocument = readSavedDocument()
     expect(savedDocument.applications).toHaveLength(20)
@@ -110,6 +114,7 @@ describe('job applications tracker', () => {
         expect.objectContaining({
           company: 'Paper Kite Labs',
           role: 'Design systems engineer',
+          source: 'LinkedIn',
           state: 'applied',
           next_action: 'Send portfolio follow-up',
         }),

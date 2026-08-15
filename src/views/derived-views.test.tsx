@@ -27,6 +27,7 @@ function application(
     company,
     role: 'Software engineer',
     url: null,
+    source: null,
     state,
     state_history: [{ state, at: localDate(-40) }],
     next_action: null,

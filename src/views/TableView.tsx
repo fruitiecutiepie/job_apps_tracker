@@ -5,7 +5,7 @@ import { AttachmentFilenames } from "./AttachmentFilenames";
 import type { MovableApplicationsViewProps } from "./types";
 import { formatShortDate, parseTimestamp } from "./viewUtils";
 
-type SortField = "company" | "role" | "state" | "next_action" | "created_at" | "updated_at";
+type SortField = "company" | "role" | "source" | "state" | "next_action" | "created_at" | "updated_at";
 type SortDirection = "ascending" | "descending";
 
 const stateOrder = new Map(STATE_CONFIG.map((state, index) => [state.id, index]));
@@ -74,6 +74,7 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
             <tr>
               {sortableHeader("company", "Company")}
               {sortableHeader("role", "Role")}
+              {sortableHeader("source", "Source")}
               {sortableHeader("state", "State")}
               {sortableHeader("next_action", "Next action")}
               <th scope="col">Attachments</th>
@@ -90,6 +91,7 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
                   </button>
                 </th>
                 <td>{application.role || <span aria-label="Not set">—</span>}</td>
+                <td>{application.source || <span aria-label="Not set">—</span>}</td>
                 <td>
                   <select
                     aria-label={`Move ${application.company} to state`}

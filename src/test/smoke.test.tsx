@@ -42,6 +42,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   const addDialog = screen.getByRole('dialog', { name: 'Add application' })
   await user.type(within(addDialog).getByLabelText('Company'), 'Smoke Test Co')
   await user.type(within(addDialog).getByLabelText('Role'), 'Product Designer')
+  await user.type(within(addDialog).getByLabelText('Source'), 'Referral')
   await user.selectOptions(within(addDialog).getByLabelText('State'), 'applied')
   await user.type(within(addDialog).getByLabelText('Next action'), 'Send portfolio')
   await user.click(within(addDialog).getByRole('button', { name: 'Add application' }))
@@ -65,6 +66,7 @@ it('completes the primary tracker journey and persists it across reloads', async
 
   expect(savedAfterEdit.applications).toHaveLength(20)
   expect(smokeApplication?.state).toBe('offer')
+  expect(smokeApplication?.source).toBe('Referral')
   expect(smokeApplication?.state_history.map((entry) => entry.state)).toEqual([
     'applied',
     'offer',

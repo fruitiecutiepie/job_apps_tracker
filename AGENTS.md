@@ -30,7 +30,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Route creates, edits, moves, and deletes through the mutation functions in `src/domain/mutations.ts`; do not update application objects ad hoc in UI components.
 - IDs are immutable UUIDv7-compatible values generated when records are created. Company and role are editable attributes, not identity.
 - A created application receives timestamps and an initial history entry for its starting state.
-- `company` is required and non-blank. Optional text fields are canonicalized to strings or `null`.
+- `company` is required and non-blank. Optional text fields (`role`, `source`, `notes`, and similar) are canonicalized to strings or `null`; missing `source` on import canonicalizes to `null`.
 - A next action may have no date. A date may not survive without a non-blank action.
 - Application timestamps and history timestamps are timezone-qualified ISO-8601 strings.
 

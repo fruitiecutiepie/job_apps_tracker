@@ -37,6 +37,7 @@ export interface Application {
   company: string
   role: string | null
   url: string | null
+  source: string | null
   state: StateId
   state_history: StateHistoryEntry[]
   next_action: string | null
@@ -82,6 +83,7 @@ export interface ApplicationInput {
   company: string
   role?: string | null
   url?: string | null
+  source?: string | null
   state?: StateId
   next_action?: string | null
   next_action_at?: string | null
@@ -89,5 +91,5 @@ export interface ApplicationInput {
 }
 
 export type ApplicationEdits = Partial<
-  Pick<Application, 'company' | 'role' | 'url' | 'next_action' | 'next_action_at' | 'notes' | 'attachments'>
+  Pick<Application, 'company' | 'role' | 'url' | 'source' | 'next_action' | 'next_action_at' | 'notes' | 'attachments'>
 >

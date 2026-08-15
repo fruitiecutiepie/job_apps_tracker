@@ -65,6 +65,14 @@ const VIEW_OPTIONS = [
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
 ] as const
 
+const SOURCE_SUGGESTIONS = [
+  'LinkedIn',
+  'Company site',
+  'Referral',
+  'Recruiter',
+  'Job board',
+] as const
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
 }
@@ -109,6 +117,7 @@ interface EditorValues {
   company: string
   role: string
   url: string
+  source: string
   state: StateId
   nextAction: string
   nextActionAt: string
@@ -141,6 +150,7 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
     company: application?.company ?? '',
     role: application?.role ?? '',
     url: application?.url ?? '',
+    source: application?.source ?? '',
     state: application?.state ?? 'applied',
     nextAction: application?.next_action ?? '',
     nextActionAt: toDateTimeInput(application?.next_action_at ?? null),
@@ -291,6 +301,20 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
                 placeholder="e.g. Product designer"
                 value={values.role}
               />
+            </label>
+            <label className="field">
+              <span>Source</span>
+              <input
+                list="application-source-suggestions"
+                onChange={(event) => update('source', event.target.value)}
+                placeholder="e.g. LinkedIn, referral"
+                value={values.source}
+              />
+              <datalist id="application-source-suggestions">
+                {SOURCE_SUGGESTIONS.map((source) => (
+                  <option key={source} value={source} />
+                ))}
+              </datalist>
             </label>
             <label className="field field--wide">
               <span>Job URL</span>
@@ -732,7 +756,7 @@ export default function App() {
             <input
               aria-label="Search applications"
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search company, role, notes or action"
+              placeholder="Search company, role, source, notes or action"
               type="search"
               value={search}
             />
@@ -795,6 +819,7 @@ export default function App() {
               company: values.company,
               role: values.role || null,
               url: values.url || null,
+              source: values.source || null,
               state: values.state,
               next_action: values.nextAction || null,
               next_action_at: values.nextAction.trim() ? fromDateTimeInput(values.nextActionAt) : null,
@@ -815,6 +840,7 @@ export default function App() {
                 company: input.company,
                 role: input.role,
                 url: input.url,
+                source: input.source,
                 next_action: input.next_action,
                 next_action_at: input.next_action_at,
                 notes: input.notes,

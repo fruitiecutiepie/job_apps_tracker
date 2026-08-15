@@ -143,10 +143,26 @@ describe('application mutations', () => {
     expect(application.company).toBe('Northwind')
     expect(application.role).toBe('Engineer')
     expect(application.url).toBe('https://example.com/jobs/1')
+    expect(application.source).toBeNull()
     expect(application.state_history).toEqual([{ state: 'applied', at: REFERENCE.toISOString() }])
     expect(application.attachments).toEqual([])
     expect(() => createApplication({ company: 'Northwind', url: 'ftp://example.com' }, REFERENCE))
       .toThrow(/URL/i)
+  })
+
+  it('canonicalizes optional source text on create and edit', () => {
+    const created = createApplication(
+      { company: 'Northwind', source: ' LinkedIn ' },
+      REFERENCE,
+    )
+    expect(created.source).toBe('LinkedIn')
+
+    const edited = editApplication(
+      created,
+      { source: '  ' },
+      new Date('2026-08-15T12:00:00+10:00'),
+    )
+    expect(edited.source).toBeNull()
   })
 
   it('separates ordinary edits from state history and clears orphan dates', () => {
@@ -229,6 +245,7 @@ describe('attachments', () => {
         company: 'Northwind',
         role: null,
         url: null,
+        source: null,
         state: 'applied',
         next_action: null,
         next_action_at: null,
@@ -266,6 +283,15 @@ describe('attachments', () => {
     )
     const indexes = rebuildIndexes([application])
     expect(indexes.search_text[application.id]).toContain('cover-letter.pdf')
+  })
+
+  it('includes source in search indexes', () => {
+    const application = createApplication(
+      { company: 'Northwind', source: 'Referral' },
+      REFERENCE,
+    )
+    const indexes = rebuildIndexes([application])
+    expect(indexes.search_text[application.id]).toContain('referral')
   })
 })
 
@@ -306,6 +332,7 @@ describe('document validation and persistence', () => {
         company: 'Northwind',
         role: null,
         url: null,
+        source: null,
         state: 'applied',
         next_action: null,
         next_action_at: '2026-08-20T09:00:00+10:00',
@@ -326,6 +353,26 @@ describe('document validation and persistence', () => {
     expect(parsed.applications[0]?.state_history).toEqual([
       { state: 'applied', at: '2026-08-14T09:00:00+10:00' },
     ])
+  })
+
+  it('canonicalizes missing source to null on import', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({
+      schema_version: 1,
+      applications: [{
+        id: '018f24c0-0000-7000-8000-000000000002',
+        company: 'Northwind',
+        role: null,
+        url: null,
+        state: 'applied',
+        next_action: null,
+        next_action_at: null,
+        notes: null,
+        created_at: REFERENCE.toISOString(),
+        updated_at: REFERENCE.toISOString(),
+      }],
+    }))
+
+    expect(parsed.applications[0]?.source).toBeNull()
   })
 
   it('accepts the new self-describing database shape', () => {

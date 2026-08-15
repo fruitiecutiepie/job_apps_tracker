@@ -216,6 +216,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     company: value.company.trim(),
     role: nullableText(value.role, `${path}.role`, errors),
     url: urlValue(value.url, `${path}.url`, errors),
+    source: nullableText(value.source, `${path}.source`, errors),
     state: value.state,
     state_history: historyValue(value.state_history, `${path}.state_history`, value.state, value.created_at, errors),
     next_action: nextAction,
