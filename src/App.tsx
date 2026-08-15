@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import {
+  SOURCE_SUGGESTIONS,
   STATE_CONFIG,
   STATE_LABELS,
   addApplication,
@@ -63,14 +64,6 @@ const VIEW_OPTIONS = [
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
-] as const
-
-const SOURCE_SUGGESTIONS = [
-  'LinkedIn',
-  'Company site',
-  'Referral',
-  'Recruiter',
-  'Job board',
 ] as const
 
 function errorMessage(error: unknown): string {

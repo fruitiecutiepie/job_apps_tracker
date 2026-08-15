@@ -286,6 +286,66 @@ describe('TableView', () => {
     expect(applications).toHaveLength(3)
   })
 
+  it('narrows rows with column filters without changing the data', () => {
+    const applications = [
+      application('Alpha Labs', {
+        state: 'accepted',
+        state_history: [{ state: 'accepted', at: localDate(-2) }],
+        source: 'LinkedIn',
+        attachments: [{
+          id: '018f0000-0000-7000-8000-000000000002',
+          filename: 'resume.pdf',
+          mime: 'application/pdf',
+          size: 900,
+          created_at: localDate(-1),
+        }],
+      }),
+      application('Zebra Works', { source: 'Referral', role: 'Designer' }),
+    ]
+
+    render(<TableView applications={applications} onOpen={vi.fn()} onMove={vi.fn()} />)
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter Company column' }), {
+      target: { value: 'Alpha' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
+    expect(screen.getAllByRole('rowheader')).toHaveLength(2)
+
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter State column' }), {
+      target: { value: 'accepted' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Attachments column' }), {
+      target: { value: 'resume.pdf' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+    expect(applications).toHaveLength(2)
+  })
+
+  it('offers company and source datalist suggestions', () => {
+    const applications = [
+      application('Alpha Labs', { source: 'Campus fair' }),
+      application('Zebra Works', { source: 'LinkedIn' }),
+    ]
+
+    render(<TableView applications={applications} onOpen={vi.fn()} onMove={vi.fn()} />)
+
+    expect(screen.getByRole('combobox', { name: 'Filter Company column' })).toHaveAttribute(
+      'list',
+      'table-filter-company-suggestions',
+    )
+    expect(
+      [...document.querySelectorAll('#table-filter-company-suggestions option')].map((option) => option.getAttribute('value')),
+    ).toEqual(['Alpha Labs', 'Zebra Works'])
+    expect(
+      [...document.querySelectorAll('#table-filter-source-suggestions option')].map((option) => option.getAttribute('value')),
+    ).toEqual(['LinkedIn', 'Company site', 'Referral', 'Recruiter', 'Job board', 'Campus fair'])
+  })
+
   it('shows attachment filenames', () => {
     const applications = [
       application('Resume Ready', {

@@ -28,6 +28,8 @@ test cannot judge reliably:
    Confirm cards last updated 14 or more days ago look greyed out and show an untouched-age label.
 3. Open Table, Next actions, Calendar, Stale, and Statistics. Confirm each view is
    readable at both wide and narrow window sizes.
+   On Table, confirm a column filter narrows rows without changing Kanban, and that
+   Clear column filters restores the table.
    On Stale, confirm a live-state row has Move to Rejected and that already-rejected,
    accepted, headhunted, and no-openings rows do not.
 4. Add an application with a next action and date. Drag it to another Kanban column,

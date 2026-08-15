@@ -57,6 +57,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 ### View behavior
 
 - All six views consume the same application collection and respect app-wide search, state, and company filters.
+- Table column filters further narrow only the table. They are display state and must not be persisted.
 - Next actions include every non-blank action, grouped into overdue, upcoming, and unscheduled; dated entries sort chronologically.
 - Calendar placement is based only on `next_action_at`.
 - Stale means `updated_at` is at least the selected threshold in the past and sorts oldest first. The 7/14/30-day choice is display state and must not be persisted.

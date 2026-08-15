@@ -680,6 +680,29 @@ tbody tr:hover {
   text-align: left;
 }
 
+.table-col-header {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.table-col-header__label {
+  font-weight: 750;
+}
+
+.table-col-header input,
+.table-col-header select {
+  min-height: 36px;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.45rem;
+  color: var(--ink);
+  background: #fff;
+  font-size: 0.8rem;
+  font-weight: 650;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .table-sort:hover,
 .table-link:hover {
   color: var(--teal-dark);
