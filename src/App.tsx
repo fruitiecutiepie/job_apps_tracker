@@ -433,6 +433,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewId>('kanban')
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<StateId | 'all'>('all')
+  const [companyFilter, setCompanyFilter] = useState('all')
   const [editor, setEditor] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const addButtonRef = useRef<HTMLButtonElement>(null)
@@ -500,21 +501,22 @@ export default function App() {
     }
   }
 
+  const companies = useMemo(() => {
+    const names = [...new Set((tracker?.applications ?? []).map((application) => application.company))]
+    return names.sort((left, right) => left.localeCompare(right))
+  }, [tracker?.applications])
+
   const filteredApplications = useMemo(() => {
     const query = search.trim().toLocaleLowerCase()
     const applications = tracker?.applications ?? []
+    const searchText = tracker?.indexes.search_text ?? {}
     return applications.filter((application) => {
       if (stateFilter !== 'all' && application.state !== stateFilter) return false
+      if (companyFilter !== 'all' && application.company !== companyFilter) return false
       if (!query) return true
-      return [
-        application.company,
-        application.role,
-        application.notes,
-        application.next_action,
-        STATE_LABELS[application.state],
-      ].some((value) => value?.toLocaleLowerCase().includes(query))
+      return searchText[application.id]?.includes(query) ?? false
     })
-  }, [search, stateFilter, tracker?.applications])
+  }, [companyFilter, search, stateFilter, tracker?.applications, tracker?.indexes])
 
   if (loading) {
     return (
@@ -699,6 +701,7 @@ export default function App() {
                       setTracker(next)
                       setSearch('')
                       setStateFilter('all')
+                      setCompanyFilter('all')
                       setNotice('Demo data restored.')
                     } catch (error) {
                       setNotice(`Reset failed: ${errorMessage(error)}`)
@@ -745,12 +748,26 @@ export default function App() {
               {STATE_CONFIG.map((state) => <option key={state.id} value={state.id}>{state.label}</option>)}
             </select>
           </label>
-          {(search || stateFilter !== 'all') && (
+          <label className="filter-field">
+            <span>Company</span>
+            <select
+              aria-label="Filter by company"
+              onChange={(event) => setCompanyFilter(event.target.value)}
+              value={companyFilter}
+            >
+              <option value="all">All companies</option>
+              {companies.map((company) => (
+                <option key={company} value={company}>{company}</option>
+              ))}
+            </select>
+          </label>
+          {(search || stateFilter !== 'all' || companyFilter !== 'all') && (
             <button
               className="button button--quiet"
               onClick={() => {
                 setSearch('')
                 setStateFilter('all')
+                setCompanyFilter('all')
               }}
               type="button"
             >

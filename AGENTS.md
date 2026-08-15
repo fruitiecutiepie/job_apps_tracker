@@ -56,7 +56,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 ### View behavior
 
-- All six views consume the same application collection and respect app-wide search and state filters.
+- All six views consume the same application collection and respect app-wide search, state, and company filters.
 - Next actions include every non-blank action, grouped into overdue, upcoming, and unscheduled; dated entries sort chronologically.
 - Calendar placement is based only on `next_action_at`.
 - Stale means `updated_at` is at least the selected threshold in the past and sorts oldest first. The 7/14/30-day choice is display state and must not be persisted.
@@ -80,7 +80,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Import validation rebuilds canonical objects, which is how unknown fields are ignored. Avoid retaining the raw imported object.
 - Invalid `data/tracker.json` or `data/demo/tracker.json` files are not overwritten on startup. The app shows an error and leaves the file untouched. Invalid file imports are also non-destructive.
 - The Vite dev and preview servers expose `GET`/`PUT`/`DELETE` on `/__db` to read and write the active profile's database file. `pnpm dev` and `pnpm start` use `data/tracker.json`. `pnpm dev:demo` and `pnpm start:demo` use `data/demo/tracker.json`. `DELETE` reseeds demo data only on the demo profile.
-- Global filtering can intentionally hide Kanban columns and affects the collection shown by statistics. The table also has its own row filter.
+- Global filtering can intentionally hide Kanban columns and affects the collection shown by statistics.
 - Tests that depend on dates should control the clock and account for browser timezone boundaries rather than assuming UTC display days.
 - Test setup mocks `/__db` with an in-memory store, seeds demo data, and supplies a `ResizeObserver` stub. Add new browser API stubs centrally so component tests remain consistent.
 

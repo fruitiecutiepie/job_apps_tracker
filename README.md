@@ -57,13 +57,13 @@ Open an existing application from any view to edit or delete it. Moving to anoth
 ### Find the right view
 
 - **Kanban** shows one ordered column per visible state, attachment filenames on cards, and lets you move applications. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.
-- **Table** supports row filtering and sorting by company, role, state, next action, or last update, plus an attachments column.
+- **Table** sorts by company, role, state, next action, created date, or last update, and shows attachments. Use the global search, state, and company filters rather than a second table search.
 - **Next actions** separates overdue, upcoming, and undated work.
 - **Calendar** places applications only by their next-action date; select an item to edit it.
 - **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved. When the current state has a rejected counterpart, **Move to Rejected** records that outcome and keeps the history.
 - **Statistics** compares current state counts with counts for every state applications have previously reached.
 
-The global search and state filters apply across views. Dates, calendar days, overdue status, and stale thresholds use your browser's timezone.
+The global search, state, and company filters apply across views. Dates, calendar days, overdue status, and stale thresholds use your browser's timezone.
 
 ### Back up or replace data
 

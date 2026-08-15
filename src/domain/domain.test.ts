@@ -192,9 +192,23 @@ describe('indexes', () => {
     const indexes = rebuildIndexes(document.applications)
 
     expect(Object.keys(indexes.by_id)).toHaveLength(19)
+    expect(indexes.by_created_at).toHaveLength(19)
     expect(indexes.stats_current.applied).toBe(1)
     expect(indexes.stats_ever_reached.applied).toBeGreaterThanOrEqual(1)
     expect(indexesAreStale(document.applications, indexes)).toBe(false)
+  })
+
+  it('orders by created_at and groups by company', () => {
+    const acmeOlder = createApplication({ company: 'Acme' }, new Date('2026-01-01T00:00:00.000Z'))
+    const beta = createApplication({ company: 'Beta' }, new Date('2026-03-01T00:00:00.000Z'))
+    const acmeNewer = createApplication({ company: 'Acme' }, new Date('2026-06-01T00:00:00.000Z'))
+    const indexes = rebuildIndexes([acmeNewer, beta, acmeOlder])
+
+    expect(indexes.by_created_at).toEqual([acmeOlder.id, beta.id, acmeNewer.id])
+    expect(indexes.by_company).toEqual({
+      Acme: [acmeNewer.id, acmeOlder.id],
+      Beta: [beta.id],
+    })
   })
 
   it('detects stale indexes after collection changes', () => {

@@ -236,17 +236,18 @@ describe('CalendarView', () => {
 })
 
 describe('TableView', () => {
-  it('sorts, filters, opens, and moves an application without changing the data', () => {
+  it('sorts, opens, and moves an application without changing the data', () => {
     const onOpen = vi.fn()
     const onMove = vi.fn()
     const applications = [
-      application('Zebra Works', { updated_at: localDate(-3) }),
+      application('Zebra Works', { created_at: localDate(-10), updated_at: localDate(-3) }),
       application('Alpha Labs', {
         state: 'accepted',
         state_history: [{ state: 'accepted', at: localDate(-2) }],
+        created_at: localDate(-30),
         updated_at: localDate(-2),
       }),
-      application('Middle Studio', { updated_at: localDate(-1) }),
+      application('Middle Studio', { created_at: localDate(-20), updated_at: localDate(-1) }),
     ]
 
     render(
@@ -266,11 +267,12 @@ describe('TableView', () => {
       'Zebra Works',
     ])
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter table' }), {
-      target: { value: 'Accepted' },
-    })
-    expect(screen.getByText('1 shown')).toBeInTheDocument()
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+    fireEvent.click(screen.getByRole('button', { name: 'Created' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Zebra Works',
+      'Middle Studio',
+      'Alpha Labs',
+    ])
 
     fireEvent.change(
       screen.getByRole('combobox', { name: 'Move Alpha Labs to state' }),
@@ -278,12 +280,12 @@ describe('TableView', () => {
     )
     expect(onMove).toHaveBeenCalledWith(applications[1].id, 'offer')
 
-    fireEvent.click(within(screen.getByRole('rowheader')).getByRole('button'))
+    fireEvent.click(within(screen.getByRole('rowheader', { name: 'Alpha Labs' })).getByRole('button'))
     expect(onOpen).toHaveBeenCalledWith(applications[1].id)
     expect(applications).toHaveLength(3)
   })
 
-  it('shows attachment filenames and filters rows by filename', () => {
+  it('shows attachment filenames', () => {
     const applications = [
       application('Resume Ready', {
         attachments: [{
@@ -300,11 +302,6 @@ describe('TableView', () => {
     render(<TableView applications={applications} onOpen={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByText('resume.pdf')).toBeInTheDocument()
-
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter table' }), {
-      target: { value: 'resume.pdf' },
-    })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Resume Ready'])
   })
 })
 

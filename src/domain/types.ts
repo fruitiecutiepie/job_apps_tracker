@@ -52,6 +52,8 @@ export type JsonSchemaObject = Record<string, unknown>
 export interface TrackerIndexes {
   by_id: Record<string, number>
   by_state: Record<StateId, string[]>
+  by_company: Record<string, string[]>
+  by_created_at: string[]
   by_updated_at: string[]
   by_next_action_at: string[]
   with_next_action: string[]

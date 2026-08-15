@@ -83,6 +83,8 @@ export const TRACKER_JSON_SCHEMA = {
       required: [
         'by_id',
         'by_state',
+        'by_company',
+        'by_created_at',
         'by_updated_at',
         'by_next_action_at',
         'with_next_action',
@@ -105,6 +107,14 @@ export const TRACKER_JSON_SCHEMA = {
             items: { type: 'string' },
           },
         },
+        by_company: {
+          type: 'object',
+          additionalProperties: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
+        by_created_at: { type: 'array', items: { type: 'string' } },
         by_updated_at: { type: 'array', items: { type: 'string' } },
         by_next_action_at: { type: 'array', items: { type: 'string' } },
         with_next_action: { type: 'array', items: { type: 'string' } },

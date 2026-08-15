@@ -20,6 +20,8 @@ function emptyStateCounts(): Record<StateId, number> {
 export function rebuildIndexes(applications: Application[]): TrackerIndexes {
   const by_id: Record<string, number> = {}
   const by_state = emptyStateArrays()
+  const by_company: Record<string, string[]> = {}
+  const by_created_at: string[] = []
   const by_updated_at: string[] = []
   const by_next_action_at: string[] = []
   const with_next_action: string[] = []
@@ -32,6 +34,9 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
   applications.forEach((application, index) => {
     by_id[application.id] = index
     by_state[application.state].push(application.id)
+    const companyIds = by_company[application.company] ?? (by_company[application.company] = [])
+    companyIds.push(application.id)
+    by_created_at.push(application.id)
     by_updated_at.push(application.id)
     stats_current[application.state]++
 
@@ -66,6 +71,12 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       .toLocaleLowerCase()
   })
 
+  by_created_at.sort(
+    (leftId, rightId) =>
+      Date.parse(applications[by_id[leftId]].created_at) -
+      Date.parse(applications[by_id[rightId]].created_at),
+  )
+
   by_updated_at.sort(
     (leftId, rightId) =>
       Date.parse(applications[by_id[leftId]].updated_at) -
@@ -85,6 +96,8 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
   return {
     by_id,
     by_state,
+    by_company,
+    by_created_at,
     by_updated_at,
     by_next_action_at,
     with_next_action,
@@ -98,10 +111,15 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
 
 export function indexesAreStale(applications: Application[], indexes: TrackerIndexes): boolean {
   if (Object.keys(indexes.by_id).length !== applications.length) return true
+  if (!Array.isArray(indexes.by_created_at) || indexes.by_created_at.length !== applications.length) {
+    return true
+  }
+  if (!indexes.by_company || typeof indexes.by_company !== 'object') return true
 
   for (let index = 0; index < applications.length; index++) {
     const application = applications[index]!
     if (indexes.by_id[application.id] !== index) return true
+    if (!indexes.by_company[application.company]?.includes(application.id)) return true
   }
 
   return false

@@ -1,11 +1,11 @@
 import { useMemo, useState } from "react";
-import { STATE_CONFIG, stateLabel } from "../domain";
+import { STATE_CONFIG } from "../domain";
 import type { StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import type { MovableApplicationsViewProps } from "./types";
 import { formatShortDate, parseTimestamp } from "./viewUtils";
 
-type SortField = "company" | "role" | "state" | "next_action" | "updated_at";
+type SortField = "company" | "role" | "state" | "next_action" | "created_at" | "updated_at";
 type SortDirection = "ascending" | "descending";
 
 const stateOrder = new Map(STATE_CONFIG.map((state, index) => [state.id, index]));
@@ -15,50 +15,36 @@ function comparableValue(
   field: SortField,
 ): string | number {
   if (field === "state") return stateOrder.get(application.state) ?? Number.MAX_SAFE_INTEGER;
+  if (field === "created_at") return parseTimestamp(application.created_at)?.getTime() ?? 0;
   if (field === "updated_at") return parseTimestamp(application.updated_at)?.getTime() ?? 0;
   return (application[field] ?? "").toLocaleLowerCase();
 }
 
 export function TableView({ applications, onOpen, onMove }: MovableApplicationsViewProps) {
-  const [query, setQuery] = useState("");
   const [sortField, setSortField] = useState<SortField>("updated_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("descending");
 
   const visibleApplications = useMemo(() => {
-    const normalizedQuery = query.trim().toLocaleLowerCase();
-    return applications
-      .filter((application) => {
-        if (!normalizedQuery) return true;
-        return [
-          application.company,
-          application.role,
-          stateLabel(application.state),
-          application.next_action,
-          application.next_action_at,
-          application.updated_at,
-          ...application.attachments.map((attachment) => attachment.filename),
-        ].some((value) => value?.toLocaleLowerCase().includes(normalizedQuery));
-      })
-      .sort((left, right) => {
-        const leftValue = comparableValue(left, sortField);
-        const rightValue = comparableValue(right, sortField);
-        const result =
-          typeof leftValue === "number" && typeof rightValue === "number"
-            ? leftValue - rightValue
-            : String(leftValue).localeCompare(String(rightValue), undefined, {
-                numeric: true,
-                sensitivity: "base",
-              });
-        return sortDirection === "ascending" ? result : -result;
-      });
-  }, [applications, query, sortDirection, sortField]);
+    return [...applications].sort((left, right) => {
+      const leftValue = comparableValue(left, sortField);
+      const rightValue = comparableValue(right, sortField);
+      const result =
+        typeof leftValue === "number" && typeof rightValue === "number"
+          ? leftValue - rightValue
+          : String(leftValue).localeCompare(String(rightValue), undefined, {
+              numeric: true,
+              sensitivity: "base",
+            });
+      return sortDirection === "ascending" ? result : -result;
+    });
+  }, [applications, sortDirection, sortField]);
 
   const setSort = (field: SortField) => {
     if (field === sortField) {
       setSortDirection((current) => (current === "ascending" ? "descending" : "ascending"));
     } else {
       setSortField(field);
-      setSortDirection(field === "updated_at" ? "descending" : "ascending");
+      setSortDirection(field === "created_at" || field === "updated_at" ? "descending" : "ascending");
     }
   };
 
@@ -80,15 +66,6 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
           <h2 id="table-heading">All applications</h2>
           <p>{visibleApplications.length} shown</p>
         </div>
-        <label className="field table-view__search">
-          <span>Filter table</span>
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Company, role, state, or action"
-          />
-        </label>
       </div>
 
       <div className="table-scroll">
@@ -100,6 +77,7 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
               {sortableHeader("state", "State")}
               {sortableHeader("next_action", "Next action")}
               <th scope="col">Attachments</th>
+              {sortableHeader("created_at", "Created")}
               {sortableHeader("updated_at", "Last update")}
             </tr>
           </thead>
@@ -148,6 +126,9 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
                   )}
                 </td>
                 <td>
+                  <time dateTime={application.created_at}>{formatShortDate(application.created_at)}</time>
+                </td>
+                <td>
                   <time dateTime={application.updated_at}>{formatShortDate(application.updated_at)}</time>
                 </td>
               </tr>
@@ -155,7 +136,7 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
           </tbody>
         </table>
       </div>
-      {visibleApplications.length === 0 ? <p className="empty-state">No applications match this filter.</p> : null}
+      {visibleApplications.length === 0 ? <p className="empty-state">No applications to show.</p> : null}
     </section>
   );
 }

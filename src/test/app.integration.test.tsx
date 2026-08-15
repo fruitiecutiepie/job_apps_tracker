@@ -101,7 +101,7 @@ describe('job applications tracker', () => {
 
     const search = screen.getByRole('searchbox', { name: 'Search applications' })
     await user.type(search, 'Paper Kite')
-    expect(screen.getByText('Paper Kite Labs')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open Paper Kite Labs/ })).toBeInTheDocument()
 
     const savedDocument = readSavedDocument()
     expect(savedDocument.applications).toHaveLength(20)
@@ -128,6 +128,17 @@ describe('job applications tracker', () => {
 
     const savedDocument = readSavedDocument()
     expect(savedDocument.applications).toHaveLength(19)
+  })
+
+  it('filters views by company without changing saved applications', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.selectOptions(screen.getByLabelText('Filter by company'), 'Saffron Systems')
+
+    expect(screen.getByRole('button', { name: 'Open Saffron Systems, Product Operations Manager' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Open Marble & Finch/ })).not.toBeInTheDocument()
+    expect(readSavedDocument().applications).toHaveLength(19)
   })
 
   it('persists edits across reloads and appends history only when state changes', async () => {
@@ -164,7 +175,7 @@ describe('job applications tracker', () => {
       screen.getByRole('searchbox', { name: 'Search applications' }),
       'Saffron Systems International',
     )
-    expect(screen.getByText('Saffron Systems International')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open Saffron Systems International/ })).toBeInTheDocument()
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
@@ -207,8 +218,10 @@ describe('job applications tracker', () => {
 
     const search = screen.getByRole('searchbox', { name: 'Search applications' })
     const stateFilter = screen.getByLabelText('Filter by state')
+    const companyFilter = screen.getByLabelText('Filter by company')
     await user.type(search, 'Reset Me')
     await user.selectOptions(stateFilter, 'applied')
+    await user.selectOptions(companyFilter, 'Reset Me Incorporated')
 
     await user.click(screen.getByRole('button', { name: 'Reset demo data' }))
     expect(readSavedDocument().applications).toHaveLength(20)
@@ -219,6 +232,7 @@ describe('job applications tracker', () => {
     expect(new Set(readSavedDocument().applications.map((application) => application.state)).size).toBe(19)
     expect(search).toHaveValue('')
     expect(stateFilter).toHaveValue('all')
+    expect(screen.getByLabelText('Filter by company')).toHaveValue('all')
     expect(screen.getByRole('status')).toHaveTextContent('Demo data restored')
     expect(confirm).toHaveBeenCalledTimes(2)
   })
@@ -249,7 +263,7 @@ describe('job applications tracker', () => {
     await user.upload(input, file)
     await waitFor(() => expect(readSavedDocument().applications).toHaveLength(1))
     expect(readSavedDocument().applications[0].company).toBe('Imported Company')
-    expect(screen.getByText('Imported Company')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open Imported Company/ })).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('Imported 1 application')
     expect(confirm).toHaveBeenCalledTimes(2)
   })

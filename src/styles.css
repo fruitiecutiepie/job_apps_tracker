@@ -311,7 +311,7 @@ p {
 
 .global-filters {
   display: grid;
-  grid-template-columns: minmax(15rem, 1fr) minmax(13rem, 18rem) auto;
+  grid-template-columns: minmax(15rem, 1fr) minmax(12rem, 16rem) minmax(12rem, 16rem) auto;
   align-items: end;
   gap: 0.85rem;
   padding: 0 clamp(1rem, 3vw, 2.5rem) 1rem;
@@ -689,10 +689,6 @@ tbody tr:hover {
 .table-link {
   color: #174b58;
   font-weight: 800;
-}
-
-.table-view__search {
-  min-width: min(100%, 19rem);
 }
 
 .table-view__date {
