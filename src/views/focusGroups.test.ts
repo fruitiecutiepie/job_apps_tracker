@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { createDemoDocument } from '../domain'
 import type { Application, StateEvent, StateId } from '../domain'
 import { DUE_SOON_DAYS, focusGroups, type FocusGroupId } from './focusGroups'
 
@@ -264,6 +265,15 @@ describe('focusGroups', () => {
     }
 
     expect(companiesIn(applications, 'wrapping_up')).toEqual(['Rejected With Deadline'])
+  })
+
+  it('has demo content in every group, so no label goes unexercised', () => {
+    // The demo reference date is fixed, so this is deterministic.
+    const reference = new Date('2026-08-14T02:00:00.000Z')
+    const groups = focusGroups(createDemoDocument(reference).applications, reference)
+
+    const empty = groups.filter(({ rows }) => rows.length === 0).map(({ heading }) => heading)
+    expect(empty).toEqual([])
   })
 
   it('describes a dated row by its date', () => {

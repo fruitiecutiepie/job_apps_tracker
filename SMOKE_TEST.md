@@ -41,6 +41,7 @@ test cannot judge reliably:
    that each row's stated reason agrees with the group heading it sits under.
    Confirm Northstar Labs appears under **No stage change in more than 7 days** and does not
    appear on Stale at any threshold: it was edited yesterday but has not moved in weeks.
+   Confirm every group has at least one application, so each heading and row format is visible.
    On Table, confirm a column filter narrows rows without changing Kanban, and that
    Clear column filters restores the table.
    Sort by Urgency and confirm the most pressing live applications lead, that each row
