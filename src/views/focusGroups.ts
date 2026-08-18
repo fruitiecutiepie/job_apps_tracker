@@ -1,7 +1,14 @@
 import { STATE_LABELS } from "../domain";
 import type { Application } from "../domain";
-import { STALE_GRACE_DAYS, daysUntil, describeDue, rankByUrgency, type DueKind } from "./urgency";
-import { applicationAgeInDays, upcomingStateEvent } from "./viewUtils";
+import {
+  STALE_GRACE_DAYS,
+  daysSinceLastMove,
+  daysUntil,
+  describeDue,
+  rankByUrgency,
+  type DueKind,
+} from "./urgency";
+import { upcomingStateEvent } from "./viewUtils";
 
 export type FocusGroupId =
   | "due_now"
@@ -58,7 +65,7 @@ const GROUP_LABELS: readonly Omit<FocusGroup, "rows">[] = [
   },
   {
     id: "nudge",
-    heading: `No change in more than ${STALE_GRACE_DAYS} days`,
+    heading: `No stage change in more than ${STALE_GRACE_DAYS} days`,
     emptyMessage: "Nothing undated has gone quiet.",
     ordered: true,
   },
@@ -117,7 +124,8 @@ function placementFor(
   }
   // A named task takes precedence over silence: the task is the thing to look at.
   if (application.next_action?.trim()) return "no_date";
-  if (applicationAgeInDays(application.updated_at, today) > STALE_GRACE_DAYS) return "nudge";
+  // Same measure the staleness pressure uses, so placement and score cannot disagree.
+  if (daysSinceLastMove(application, today) > STALE_GRACE_DAYS) return "nudge";
   return "quiet";
 }
 

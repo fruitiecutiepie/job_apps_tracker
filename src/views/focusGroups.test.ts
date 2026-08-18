@@ -21,7 +21,8 @@ function application(company: string, overrides: Partial<Application> = {}): App
     url: null,
     source: null,
     state,
-    state_history: [{ state, at: at(-40) }],
+    // Moved recently, so fixtures start with no silence pressure.
+    state_history: [{ state, at: at(-1) }],
     next_action: null,
     next_action_at: null,
     deadline_at: null,
@@ -53,6 +54,11 @@ function invite(daysFromToday: number, overrides: Partial<StateEvent> = {}): Sta
   }
 }
 
+function movedDaysAgo(days: number): Pick<Application, 'state_history' | 'updated_at'> {
+  // updated_at stays fresh on purpose: an edit must not count as movement.
+  return { state_history: [{ state: 'applied', at: at(-days) }], updated_at: at(0) }
+}
+
 function companiesIn(applications: Application[], id: FocusGroupId): string[] {
   const group = focusGroups(applications, today).find((candidate) => candidate.id === id)!
   return group.rows.map(({ application: item }) => item.company)
@@ -78,7 +84,7 @@ describe('focusGroups', () => {
       'Due in 1 to 7 days',
       'Due in more than 7 days',
       'Action with no date',
-      'No change in more than 7 days',
+      'No stage change in more than 7 days',
       'Nothing dated or planned',
       'Finished, action outstanding',
     ])
@@ -197,7 +203,7 @@ describe('focusGroups', () => {
   it('separates an undated action from silence and from having no plan', () => {
     const applications = [
       application('Undated', { next_action: 'Review portfolio' }),
-      application('Quiet', { updated_at: at(-25) }),
+      application('Quiet', movedDaysAgo(25)),
       application('Fresh', {}),
     ]
 
@@ -210,7 +216,7 @@ describe('focusGroups', () => {
     const applications = [
       application('Quiet With Task', {
         next_action: 'Review portfolio',
-        updated_at: at(-25),
+        ...movedDaysAgo(25),
       }),
     ]
 
@@ -219,7 +225,7 @@ describe('focusGroups', () => {
 
     // The group states the structural fact; the row still surfaces what drives the score.
     const noDate = focusGroups(applications, today).find(({ id }) => id === 'no_date')!
-    expect(noDate.rows[0].reason).toBe('No change for 25 days')
+    expect(noDate.rows[0].reason).toBe('No stage change for 25 days')
   })
 
   it('keeps a task on a finished application and labels it with its state', () => {

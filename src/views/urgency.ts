@@ -169,16 +169,26 @@ function actionPressure(application: Application, today: Date): PressureTerm {
   return { ...term, pressure: Math.max(0, 1 - days / ACTION_HORIZON_DAYS) };
 }
 
+/**
+ * Days since the application last actually moved. Deliberately not `updated_at`, which any
+ * edit refreshes — fixing a typo or saving an invite would otherwise read as progress and
+ * reset the silence that this term exists to detect.
+ */
+export function daysSinceLastMove(application: Application, today: Date = new Date()): number {
+  const lastMove = application.state_history.at(-1)?.at;
+  return lastMove ? applicationAgeInDays(lastMove, today) : 0;
+}
+
 /** Silence on a live application is pressure to nudge it, not a reason to rank it lower. */
 function stalenessPressure(application: Application, today: Date): PressureTerm {
-  const age = applicationAgeInDays(application.updated_at, today);
+  const days = daysSinceLastMove(application, today);
   const span = STALE_PEAK_DAYS - STALE_GRACE_DAYS;
-  const ramp = Math.min(1, Math.max(0, (age - STALE_GRACE_DAYS) / span));
+  const ramp = Math.min(1, Math.max(0, (days - STALE_GRACE_DAYS) / span));
   return {
     kind: "staleness",
     dueAt: null,
     pressure: STALE_MAX_PRESSURE * ramp,
-    detail: `No change for ${dayCount(age)}`,
+    detail: `No stage change for ${dayCount(days)}`,
   };
 }
 

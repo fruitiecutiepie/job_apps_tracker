@@ -30,7 +30,8 @@ function application(
     url: null,
     source: null,
     state,
-    state_history: [{ state, at: localDate(-40) }],
+    // Created 40 days ago but moved yesterday, so nothing is silent by default.
+    state_history: [{ state, at: localDate(-1) }],
     next_action: null,
     next_action_at: null,
     deadline_at: null,
@@ -86,7 +87,9 @@ describe('FocusView', () => {
       application('Oldest Follow-up', { next_action: 'Email recruiter', next_action_at: localDate(-5) }),
       application('Today Labs', { next_action: 'Join interview', next_action_at: localDate(0) }),
       application('No Date Studio', { next_action: 'Review portfolio' }),
-      application('Gone Quiet', { updated_at: localDate(-25) }),
+      application('Gone Quiet', {
+        state_history: [{ state: 'applied', at: localDate(-25) }],
+      }),
       application('Nothing Planned Inc'),
     ]
 
@@ -101,7 +104,7 @@ describe('FocusView', () => {
     ])
     expect(rowsIn('Due in 1 to 7 days')).toEqual([expect.stringContaining('Later & Co')])
     expect(rowsIn('Action with no date')).toEqual([expect.stringContaining('No Date Studio')])
-    expect(rowsIn('No change in more than 7 days')).toEqual([
+    expect(rowsIn('No stage change in more than 7 days')).toEqual([
       expect.stringContaining('Gone Quiet'),
     ])
     expect(rowsIn('Nothing dated or planned')).toEqual([
@@ -109,7 +112,7 @@ describe('FocusView', () => {
     ])
 
     expect(screen.getByText('Action overdue 5 days')).toBeInTheDocument()
-    expect(screen.getByText('No change for 25 days')).toBeInTheDocument()
+    expect(screen.getByText('No stage change for 25 days')).toBeInTheDocument()
 
     // A schedule is an ordered list; an alphabetical group is not.
     expect(groupElement('Overdue or due today').querySelector('ol')).not.toBeNull()
@@ -228,7 +231,9 @@ describe('FocusView', () => {
     render(
       <FocusView
         applications={[
-          application('Gone Quiet', { updated_at: localDate(-25) }),
+          application('Gone Quiet', {
+            state_history: [{ state: 'applied', at: localDate(-25) }],
+          }),
           application('Nothing Planned Inc'),
         ]}
         onOpen={vi.fn()}
@@ -237,7 +242,7 @@ describe('FocusView', () => {
     )
 
     expect(groupElement('Overdue or due today')).not.toHaveAttribute('open')
-    expect(groupElement('No change in more than 7 days')).toHaveAttribute('open')
+    expect(groupElement('No stage change in more than 7 days')).toHaveAttribute('open')
     expect(groupElement('Nothing dated or planned')).not.toHaveAttribute('open')
     expect(
       within(groupElement('Overdue or due today')).getByText('Nothing is overdue or due today.'),

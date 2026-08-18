@@ -30,7 +30,8 @@ function application(company: string, overrides: Partial<Application> = {}): App
     url: null,
     source: null,
     state,
-    state_history: [{ state, at: at(-40) }],
+    // Moved recently, so fixtures start with no silence pressure.
+    state_history: [{ state, at: at(-1) }],
     next_action: null,
     next_action_at: null,
     deadline_at: null,
@@ -61,6 +62,11 @@ function invite(daysFromToday: number, overrides: Partial<StateEvent> = {}): Sta
     updated_at: at(-5),
     ...overrides,
   }
+}
+
+function movedDaysAgo(days: number): Pick<Application, 'state_history' | 'updated_at'> {
+  // updated_at stays fresh on purpose: an edit must not count as movement.
+  return { state_history: [{ state: 'applied', at: at(-days) }], updated_at: at(0) }
 }
 
 function score(overrides: Partial<Application>): number {
@@ -208,7 +214,7 @@ describe('invite pressure', () => {
     expect(inviteScore).toBeGreaterThan(
       score({ next_action: 'Prepare', next_action_at: at(day) }),
     )
-    expect(inviteScore).toBeGreaterThan(score({ updated_at: at(-60) }))
+    expect(inviteScore).toBeGreaterThan(score(movedDaysAgo(60)))
   })
 
   it('wins the reason on an exact tie with a deadline', () => {
@@ -224,20 +230,20 @@ describe('invite pressure', () => {
 
 describe('staleness pressure', () => {
   it('stays silent inside the grace period and rises to the peak', () => {
-    const fresh = score({ updated_at: at(-STALE_GRACE_DAYS) })
-    expect(fresh).toBe(score({ updated_at: at(0) }))
-    expect(score({ updated_at: at(-14) })).toBeGreaterThan(fresh)
-    expect(score({ updated_at: at(-STALE_PEAK_DAYS) })).toBeGreaterThan(score({ updated_at: at(-14) }))
+    const fresh = score({ ...movedDaysAgo(STALE_GRACE_DAYS) })
+    expect(fresh).toBe(score(movedDaysAgo(0)))
+    expect(score(movedDaysAgo(14))).toBeGreaterThan(fresh)
+    expect(score({ ...movedDaysAgo(STALE_PEAK_DAYS) })).toBeGreaterThan(score(movedDaysAgo(14)))
   })
 
   it('does not keep climbing past the peak', () => {
-    expect(score({ updated_at: at(-STALE_PEAK_DAYS - 30) })).toBe(
-      score({ updated_at: at(-STALE_PEAK_DAYS) }),
+    expect(score({ ...movedDaysAgo(STALE_PEAK_DAYS + 30) })).toBe(
+      score({ ...movedDaysAgo(STALE_PEAK_DAYS) }),
     )
   })
 
   it('stays below every near-term fact but above a far-off deadline', () => {
-    const maxStale = score({ updated_at: at(-60) })
+    const maxStale = score(movedDaysAgo(60))
 
     expect(maxStale).toBeLessThan(score({ deadline_at: at(0) }))
     expect(maxStale).toBeLessThan(score({ deadline_at: at(-2) }))
@@ -249,9 +255,17 @@ describe('staleness pressure', () => {
     expect(maxStale).toBeGreaterThan(score({ next_action: 'Follow up' }))
   })
 
+  it('measures movement, so an edit does not reset the silence', () => {
+    const moved = movedDaysAgo(30)
+
+    // updated_at is today in both; only the history differs.
+    expect(score({ ...moved, updated_at: at(0) })).toBe(score(moved))
+    expect(score({ ...moved, updated_at: at(0) })).toBeGreaterThan(score(movedDaysAgo(1)))
+  })
+
   it('raises urgency rather than lowering it', () => {
-    expect(score({ updated_at: at(-30) })).toBeGreaterThan(score({ updated_at: at(-1) }))
-    expect(reason({ updated_at: at(-30) })).toBe('No change for 30 days')
+    expect(score(movedDaysAgo(30))).toBeGreaterThan(score(movedDaysAgo(1)))
+    expect(reason(movedDaysAgo(30))).toBe('No stage change for 30 days')
   })
 })
 
@@ -289,7 +303,7 @@ describe('score composition', () => {
       deadline_at: at(2),
       next_action: 'Follow up',
       next_action_at: at(4),
-      updated_at: at(-20),
+      ...movedDaysAgo(20),
     })
     const soonerDeadline = score({ deadline_at: at(0) })
 
@@ -308,7 +322,7 @@ describe('ranking order', () => {
   it('sorts most urgent first without touching the input', () => {
     const applications = [
       application('Quiet Co'),
-      application('Stale Co', { updated_at: at(-25) }),
+      application('Stale Co', movedDaysAgo(25)),
       application('Deadline Co', { deadline_at: at(1) }),
       application('Overdue Co', { next_action: 'Follow up', next_action_at: at(-2) }),
     ]
@@ -327,7 +341,7 @@ describe('ranking order', () => {
     expect(ranked.map(({ reason: text }) => text)).toEqual([
       'Action overdue 2 days',
       'Deadline in 1 day',
-      'No change for 25 days',
+      'No stage change for 25 days',
       'Nothing scheduled',
     ])
     expect(applications).toEqual(order)
