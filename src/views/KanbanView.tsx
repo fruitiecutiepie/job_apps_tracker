@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { STATE_CONFIG, stateLabel } from "../domain";
 import type { StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
+import { StageNotesButton } from "./StageNotesButton";
 import type { MovableApplicationsViewProps } from "./types";
 import {
   applicationAgeInDays,
@@ -13,6 +14,7 @@ import {
 export function KanbanView({
   applications,
   onOpen,
+  onOpenStageNotes,
   onMove,
   visibleStates,
 }: MovableApplicationsViewProps) {
@@ -153,6 +155,11 @@ export function KanbanView({
                               </p>
                             ) : null}
                             <AttachmentFilenames attachments={application.attachments} variant="card" />
+                            <StageNotesButton
+                              application={application}
+                              onOpenStageNotes={onOpenStageNotes}
+                              variant="card"
+                            />
                             <label className="application-card__move">
                               <span className="sr-only">Move {application.company} to state</span>
                               <select

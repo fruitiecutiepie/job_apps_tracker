@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -182,6 +182,276 @@ describe('job applications tracker', () => {
     )
     expect(screen.getByRole('button', { name: /Open Saffron Systems International/ })).toBeInTheDocument()
     expect(readSavedDocument().applications).toHaveLength(19)
+  })
+
+  it('records stage prep notes from the board and finds them again with search', async () => {
+    const user = userEvent.setup()
+    const { unmount } = await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    expect(within(dialog).getByRole('heading', { name: 'Applied' })).toBeInTheDocument()
+    expect(within(dialog).getByText('Current stage')).toBeInTheDocument()
+
+    await user.type(
+      within(dialog).getByLabelText('Applied prep notes'),
+      'Ask about the rebrand project',
+    )
+    await user.click(within(dialog).getByRole('button', { name: 'Save notes' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Prep notes saved.')
+
+    const saved = readSavedDocument().applications.find(
+      (application) => application.company === 'Marble & Finch',
+    )!
+    expect(saved.stage_notes).toEqual([
+      expect.objectContaining({ state: 'applied', body: 'Ask about the rebrand project' }),
+    ])
+    expect(saved.state_history).toHaveLength(1)
+
+    unmount()
+    await renderLoadedApp()
+    await user.type(screen.getByRole('searchbox', { name: 'Search applications' }), 'rebrand project')
+    expect(screen.getByRole('button', { name: /Open Marble & Finch/ })).toBeInTheDocument()
+  })
+
+  it('shows the current stage notes first as a readable outline and can clear a stage', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    const headings = within(dialog).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)
+    expect(headings).toEqual(['Interview 2', 'Interview 1', 'Offer'])
+
+    // Saved notes render, rather than opening in a textarea.
+    expect(within(dialog).queryByLabelText('Interview 2 prep notes')).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Cutting cycle time')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 1' }))
+    await user.clear(within(dialog).getByLabelText('Interview 1 prep notes'))
+    await user.click(within(dialog).getByRole('button', { name: 'Save notes' }))
+
+    const saved = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    expect(saved.stage_notes.map((note) => note.state)).toEqual(['interview_2', 'offer'])
+  })
+
+  it('folds headings and sub-points in the reading view without changing saved notes', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    const themes = within(dialog).getByRole('button', { name: 'Leadership themes' })
+    expect(themes).toHaveAttribute('aria-expanded', 'true')
+    expect(within(dialog).getByText('Cutting cycle time')).toBeInTheDocument()
+
+    await user.click(themes)
+    expect(themes).toHaveAttribute('aria-expanded', 'false')
+    expect(within(dialog).queryByText('Cutting cycle time')).not.toBeInTheDocument()
+
+    await user.click(themes)
+    const subPoints = within(dialog).getByRole('button', {
+      name: 'Growing seniors into leads sub-points',
+    })
+    expect(within(dialog).getByText('The two promotions I sponsored last year')).toBeInTheDocument()
+
+    await user.click(subPoints)
+    expect(
+      within(dialog).queryByText('The two promotions I sponsored last year'),
+    ).not.toBeInTheDocument()
+    expect(within(dialog).getByText('Cutting cycle time')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Collapse all points in Interview 2' }))
+    expect(within(dialog).queryByText('Cutting cycle time')).not.toBeInTheDocument()
+
+    // Folding is display state only.
+    const saved = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    expect(saved.stage_notes.map((note) => note.state)).toEqual([
+      'interview_1',
+      'interview_2',
+      'offer',
+    ])
+  })
+
+  it('formats notes from the editor toolbar and renders the markdown back', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    const textarea = within(dialog).getByLabelText('Applied prep notes')
+    await user.type(textarea, 'Rehearse the rebrand story')
+    await user.click(within(dialog).getByRole('button', { name: 'Bullet point in Applied' }))
+
+    expect(textarea).toHaveValue('- Rehearse the rebrand story')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Read Applied' }))
+    expect(within(dialog).getByText('Rehearse the rebrand story')).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save notes' }))
+    const saved = readSavedDocument().applications.find(
+      (application) => application.company === 'Marble & Finch',
+    )!
+    expect(saved.stage_notes[0].body).toBe('- Rehearse the rebrand story')
+  })
+
+  it('adds prep notes for a stage the application has not reached yet', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Orbit & Oak' }))
+
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.selectOptions(within(dialog).getByLabelText('Add notes for another stage'), 'interview_1')
+    await user.type(
+      within(dialog).getByLabelText('Interview 1 prep notes'),
+      'Prepare two operations stories',
+    )
+    await user.click(within(dialog).getByRole('button', { name: 'Save notes' }))
+
+    const saved = readSavedDocument().applications.find(
+      (application) => application.company === 'Orbit & Oak',
+    )!
+    expect(saved.state).toBe('online_assessment')
+    expect(saved.stage_notes).toEqual([
+      expect.objectContaining({ state: 'interview_1', body: 'Prepare two operations stories' }),
+    ])
+  })
+
+  it('folds every level of hierarchy: headings, points with detail, quotes, and code', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    await user.click(within(dialog).getByLabelText('Applied prep notes'))
+    await user.paste(
+      [
+        '## Compensation',
+        '- Base',
+        '  - Eight percent below target',
+        '- Timeline',
+        '',
+        '  They want an answer by Friday.',
+        '',
+        '> From the recruiter: bring three references and a portfolio link',
+        '',
+        '```ts',
+        'const answer = 1',
+        '```',
+      ].join('\n'),
+    )
+    await user.click(within(dialog).getByRole('button', { name: 'Read Applied' }))
+
+    // Nested spans mean a phrase can match several ancestors; presence is what matters here.
+    const shows = (text: string) => within(dialog).queryAllByText(text, { exact: false }).length > 0
+
+    const detail = [
+      'Eight percent below target',
+      'They want an answer by Friday.',
+      'portfolio link',
+      'const answer = 1',
+    ]
+    for (const text of detail) expect(shows(text), text).toBe(true)
+
+    // A point whose detail is a paragraph folds, just like one with sub-bullets.
+    await user.click(within(dialog).getByRole('button', { name: 'Timeline sub-points' }))
+    expect(shows('They want an answer by Friday.')).toBe(false)
+    expect(shows('Eight percent below target')).toBe(true)
+
+    // Quotes fold behind a preview of their own text.
+    // The fold button previews the opening words, so the tail proves the body is hidden.
+    await user.click(within(dialog).getByRole('button', { name: /^Quote: From the recruiter/ }))
+    expect(shows('portfolio link')).toBe(false)
+
+    // Code blocks fold behind a language and line count.
+    await user.click(within(dialog).getByRole('button', { name: 'ts · 1 line' }))
+    expect(shows('const answer = 1')).toBe(false)
+
+    // Collapse all reaches every fold, including ones nested inside others.
+    await user.click(within(dialog).getByRole('button', { name: 'Collapse all points in Applied' }))
+    for (const text of [...detail, 'Base', 'Timeline']) expect(shows(text), text).toBe(false)
+    expect(within(dialog).getByRole('button', { name: 'Compensation' })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
+
+    await user.click(within(dialog).getByRole('button', { name: 'Expand all points in Applied' }))
+    for (const text of [...detail, 'Base', 'Timeline']) expect(shows(text), text).toBe(true)
+  })
+
+  it('folds from the text of a point, not just its chevron', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    const shows = (text: string) => within(dialog).queryAllByText(text, { exact: false }).length > 0
+
+    // A point with sub-points folds when its own text is clicked.
+    await user.click(within(dialog).getByText('Growing seniors into leads'))
+    expect(shows('The two promotions I sponsored last year')).toBe(false)
+    expect(
+      within(dialog).getByRole('button', { name: 'Growing seniors into leads sub-points' }),
+    ).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(within(dialog).getByText('Growing seniors into leads'))
+    expect(shows('The two promotions I sponsored last year')).toBe(true)
+
+    // Heading text keeps working the same way.
+    await user.click(within(dialog).getByText('Leadership themes'))
+    expect(shows('Cutting cycle time')).toBe(false)
+
+    // A point without sub-points has nothing to fold and no control to press.
+    await user.click(within(dialog).getByText('Remote expectations'))
+    expect(shows('Remote expectations')).toBe(true)
+  })
+
+  it('leaves links and text selection alone inside a foldable point', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    const shows = (text: string) => within(dialog).queryAllByText(text, { exact: false }).length > 0
+
+    await user.click(within(dialog).getByLabelText('Applied prep notes'))
+    await user.paste('- See the [job ad](https://example.com/ad)\n  - Salary band is listed')
+    await user.click(within(dialog).getByRole('button', { name: 'Read Applied' }))
+
+    // The link is a real link, not a button nested inside one.
+    const link = within(dialog).getByRole('link', { name: 'job ad' })
+    expect(link).toHaveAttribute('href', 'https://example.com/ad')
+    expect(link.closest('button')).toBeNull()
+
+    // Clicking the link navigates rather than folding the point.
+    await user.click(link)
+    expect(shows('Salary band is listed')).toBe(true)
+
+    // Finishing a drag-selection over the point does not fold it either. fireEvent is used
+    // here because user-event clears the selection on mousedown, before the handler runs.
+    const text = within(dialog).getByText('See the', { exact: false })
+    const range = document.createRange()
+    range.selectNodeContents(text)
+    window.getSelection()?.removeAllRanges()
+    window.getSelection()?.addRange(range)
+    fireEvent.click(text)
+    expect(shows('Salary band is listed')).toBe(true)
+
+    window.getSelection()?.removeAllRanges()
+    fireEvent.click(text)
+    expect(shows('Salary band is listed')).toBe(false)
   })
 
   it('honors deletion cancellation before deleting and saving an application', async () => {

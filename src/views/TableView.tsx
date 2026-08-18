@@ -2,6 +2,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain";
 import type { Application, StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
+import { StageNotesButton } from "./StageNotesButton";
 import type { MovableApplicationsViewProps } from "./types";
 import { formatShortDate, parseTimestamp } from "./viewUtils";
 
@@ -95,7 +96,12 @@ function columnFiltersAreActive(filters: ColumnFilters): boolean {
   );
 }
 
-export function TableView({ applications, onOpen, onMove }: MovableApplicationsViewProps) {
+export function TableView({
+  applications,
+  onOpen,
+  onOpenStageNotes,
+  onMove,
+}: MovableApplicationsViewProps) {
   const [sortField, setSortField] = useState<SortField>("updated_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("descending");
   const [filters, setFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
@@ -238,6 +244,7 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
               )}
               {headerCell("Next action", textFilter("next_action", "Next action"), "next_action")}
               {headerCell("Attachments", textFilter("attachments", "Attachments"))}
+              {headerCell("Prep notes", null)}
               {headerCell("Created", textFilter("created_at", "Created"), "created_at")}
               {headerCell("Last update", textFilter("updated_at", "Last update"), "updated_at")}
             </tr>
@@ -286,6 +293,13 @@ export function TableView({ applications, onOpen, onMove }: MovableApplicationsV
                   ) : (
                     <span aria-label="Not set">—</span>
                   )}
+                </td>
+                <td>
+                  <StageNotesButton
+                    application={application}
+                    onOpenStageNotes={onOpenStageNotes}
+                    variant="table"
+                  />
                 </td>
                 <td>
                   <time dateTime={application.created_at}>{formatShortDate(application.created_at)}</time>

@@ -9,8 +9,8 @@ pnpm test:smoke
 ```
 
 This checks the demo-profile journey: 19 first-load examples, navigation through all six views, creating and
-searching for an application, changing its state and recording history, persistence
-across an app reload, and confirmed demo-data reset.
+searching for an application, changing its state and recording history, recording stage prep
+notes against it, persistence across an app reload, and confirmed demo-data reset.
 
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
@@ -40,9 +40,20 @@ test cannot judge reliably:
 6. Export the data and confirm a timestamped zip file is downloaded. Try an invalid
    import and confirm the saved data is unchanged; try a valid zip or JSON import and
    confirm the replacement prompt appears.
-7. Add an attachment in the application editor, save, reopen the application, and open
+7. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
+   application's current stage appears first and is badged, and that saved notes render as an outline
+   rather than raw text. Fold a heading, a bullet with sub-points, a bullet with a detail paragraph,
+   a quote, and a code block by clicking their text rather than their chevron, use **Collapse all**
+   and **Expand all**, then reopen the dialog and confirm nothing about the folding was saved.
+   Select a sentence inside a foldable point with the mouse and confirm it does not fold, and that
+   the text can be copied.
+   Select **Edit** on a stage, use the bold and bullet toolbar buttons, switch back with **Read**, and
+   confirm the formatting rendered. Save, reopen, and confirm the notes persist. Add notes for a stage
+   further down the pipeline and confirm searching for that text finds the application.
+   Clear a stage's notes, save, and confirm they are gone.
+8. Add an attachment in the application editor, save, reopen the application, and open
    the file. Remove an attachment and confirm it disappears after save.
-8. Choose Reset demo data, cancel once, then confirm it. Confirm the same 19 examples
+9. Choose Reset demo data, cancel once, then confirm it. Confirm the same 19 examples
    are restored in `data/demo/` and that `data/tracker.json` is unchanged.
 
 The demo-profile steps change only `data/demo/` tracker data. The final reset restores

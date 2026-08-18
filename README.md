@@ -7,12 +7,13 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 ## Features
 
 - Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, attachment filenames on cards, a state-selector fallback, and muted styling for applications untouched for 14 days
+- Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first
 - Sortable and filterable table with an attachments column
 - Next actions grouped as overdue, upcoming, or unscheduled
 - Calendar driven by next-action dates
 - Stale applications with 7-, 14-, and 30-day thresholds, plus a Move to Rejected shortcut to the current state's counterpart
 - Current-state and ever-reached statistics derived from application history
-- Global company, role, and notes search plus state filtering
+- Global company, role, notes, and stage prep note search plus state filtering
 - Add, edit, delete, import, and export controls, plus confirmed demo-data reset in the demo profile
 - Append-only state history whenever an application actually changes state
 - Responsive layouts and keyboard-accessible forms and dialogs
@@ -54,10 +55,39 @@ Select **Add application** and enter a company, optional role and URL, its curre
 
 Open an existing application from any view to edit or delete it. Moving to another state adds a timestamped history entry. You can move a Kanban card by dragging it or by using its state selector, which also works for keyboard and touch interaction.
 
+### Prepare for a stage
+
+Select **Prep notes** on a Kanban card or table row to record what you need for a stage: questions to ask, stories to tell, names to remember. Each stage of the pipeline holds its own notes, and the dialog opens with the application's current stage first so it is the first thing on screen during the interview.
+
+Add notes for a stage you have not reached yet with **Add notes for another stage**—useful for drafting offer questions while you are still interviewing. Clearing a stage's notes removes them when you save. Prep notes are searchable from the global search box.
+
+Notes are written in Markdown. A stage that already has notes opens as a rendered outline, ready to read; select **Edit** on it to change the text, and **Read** to go back. Empty stages open straight in the editor, which has a toolbar for bold, italic, heading, and bullet point.
+
+Supported syntax is a practical subset: `#` through `######` headings, `-` or `1.` lists that nest when you indent them, `**bold**`, `_italic_`, `` `code` ``, `>` block quotes, fenced code blocks, and `[links](https://example.com)`. Links open only for `http`, `https`, and `mailto` targets.
+
+In the reading view **everything with hierarchy folds**, so you can collapse a long note to its shape and open only the part you need mid-interview:
+
+- **Headings** fold everything beneath them, through to the next heading of the same or higher level.
+- **Bullets** fold whatever sits under them—sub-bullets, a detail paragraph, a quote, a code block.
+- **Quotes** and **code blocks** fold behind a one-line summary.
+- **Collapse all** folds a whole note at once, and turns into **Expand all**.
+
+Click anywhere on a heading, point, quote summary, or code summary to fold it—not just the chevron. Clicking a link inside a point follows the link, and selecting text to copy it does not fold anything.
+
+A line that simply wraps a bullet stays part of that bullet. To give a point foldable detail, leave a blank line and indent the detail under it:
+
+```markdown
+- Timeline
+
+  They want an answer by Friday.
+```
+
+What you have folded is never saved—it resets each time you open the dialog.
+
 ### Find the right view
 
-- **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames appear on cards, and you can move applications by drag-and-drop or the state selector. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.
-- **Table** sorts and column-filters by company, role, source, state, next action, attachments, created date, or last update. Column filters only affect the table and are not saved. Global search, state, and company filters still apply across views.
+- **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames and a prep notes button appear on cards, and you can move applications by drag-and-drop or the state selector. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.
+- **Table** sorts and column-filters by company, role, source, state, next action, attachments, created date, or last update, and gives each row a prep notes button. Column filters only affect the table and are not saved. Global search, state, and company filters still apply across views.
 - **Next actions** separates overdue, upcoming, and undated work.
 - **Calendar** places applications only by their next-action date; select an item to edit it.
 - **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved. When the current state has a rejected counterpart, **Move to Rejected** records that outcome and keeps the history.

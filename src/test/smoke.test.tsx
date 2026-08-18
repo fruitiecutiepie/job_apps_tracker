@@ -59,6 +59,13 @@ it('completes the primary tracker journey and persists it across reloads', async
 
   expect(screen.getByRole('status')).toHaveTextContent('Application updated.')
 
+  await user.click(screen.getByRole('button', { name: 'Add prep notes for Smoke Test Co' }))
+  const prepDialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+  await user.type(within(prepDialog).getByLabelText('Offer prep notes'), 'Confirm the review cycle')
+  await user.click(within(prepDialog).getByRole('button', { name: 'Save notes' }))
+
+  expect(screen.getByRole('status')).toHaveTextContent('Prep notes saved.')
+
   const savedAfterEdit = readSavedDocument()
   const smokeApplication = savedAfterEdit.applications.find(
     (application) => application.company === 'Smoke Test Co',
@@ -70,6 +77,9 @@ it('completes the primary tracker journey and persists it across reloads', async
   expect(smokeApplication?.state_history.map((entry) => entry.state)).toEqual([
     'applied',
     'offer',
+  ])
+  expect(smokeApplication?.stage_notes).toEqual([
+    expect.objectContaining({ state: 'offer', body: 'Confirm the review cycle' }),
   ])
 
   firstRender.unmount()

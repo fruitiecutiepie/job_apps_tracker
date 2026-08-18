@@ -30,8 +30,15 @@ export const STATE_LABELS = Object.fromEntries(
 
 const stateSet = new Set<string>(STATE_IDS)
 
+const stateOrder = new Map<StateId, number>(STATE_IDS.map((id, index) => [id, index]))
+
 export function isStateId(value: unknown): value is StateId {
   return typeof value === 'string' && stateSet.has(value)
+}
+
+/** Position of a state in the configured order, for deterministic sorting. */
+export function stateRank(state: StateId): number {
+  return stateOrder.get(state) ?? STATE_IDS.length
 }
 
 export function stateLabel(state: StateId): string {

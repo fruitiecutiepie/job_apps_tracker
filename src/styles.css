@@ -1315,3 +1315,326 @@ tbody tr:hover {
     transition-duration: 0.01ms !important;
   }
 }
+
+.stage-notes-button {
+  gap: 0.35rem;
+  padding: 0.4rem 0.55rem;
+  font-size: 0.76rem;
+  font-weight: 750;
+}
+
+.stage-notes-button--card {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 34px;
+  color: #536269;
+}
+
+.application-card--stale .stage-notes-button--card {
+  color: #7c868a;
+}
+
+.stage-notes-button--table {
+  white-space: nowrap;
+}
+
+.stage-notes {
+  display: grid;
+  gap: 1rem;
+}
+
+.stage-note {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.85rem 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+}
+
+.stage-note--current {
+  border-color: var(--teal);
+  background: var(--teal-pale);
+}
+
+.stage-note__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.stage-note__header h3 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 1rem;
+}
+
+.stage-note__badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: 99rem;
+  color: #fff;
+  background: var(--teal);
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.stage-note__meta {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.stage-note .field textarea {
+  min-height: 8rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.stage-notes__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.stage-note__mode {
+  margin-left: auto;
+  padding: 0.3rem 0.55rem;
+  font-size: 0.75rem;
+}
+
+.stage-note__meta + .stage-note__mode {
+  margin-left: 0;
+}
+
+.stage-note__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.stage-note__editor {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.stage-note__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.stage-note__format {
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0.3rem;
+}
+
+.stage-note__hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.6;
+}
+
+.stage-note__hint code,
+.markdown code {
+  padding: 0.05rem 0.3rem;
+  border-radius: 0.3rem;
+  background: #e8ece9;
+  font-size: 0.92em;
+}
+
+.markdown {
+  display: grid;
+  gap: 0.5rem;
+  color: var(--ink);
+  font-size: 0.92rem;
+  line-height: 1.55;
+}
+
+.markdown__section {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.markdown__section .markdown__section {
+  padding-left: 0.85rem;
+}
+
+.markdown__fold-all {
+  justify-self: start;
+  padding: 0.25rem 0.5rem;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.markdown__heading {
+  margin: 0.35rem 0 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1rem;
+}
+
+.markdown__heading--3,
+.markdown__heading--4,
+.markdown__heading--5,
+.markdown__heading--6 {
+  font-size: 0.92rem;
+}
+
+.markdown__fold-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.markdown__fold-text {
+  cursor: pointer;
+}
+
+.markdown__fold-text:hover {
+  color: var(--teal-dark);
+}
+
+.markdown__heading .markdown__fold-row {
+  align-items: center;
+  padding: 0.1rem 0;
+}
+
+.markdown__fold {
+  flex: none;
+  display: inline-grid;
+  padding: 0;
+  border: 0;
+  color: var(--muted);
+  background: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+.markdown__fold svg {
+  transition: transform 120ms ease;
+  transform: rotate(90deg);
+}
+
+.markdown__fold--collapsed svg {
+  transform: rotate(0deg);
+}
+
+.markdown__fold:hover {
+  color: var(--teal);
+}
+
+.markdown__paragraph {
+  margin: 0;
+}
+
+.markdown__list {
+  display: grid;
+  gap: 0.15rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.markdown__item {
+  display: grid;
+  gap: 0.15rem;
+}
+
+.markdown__item-line {
+  display: flex;
+  align-items: baseline;
+  gap: 0.35rem;
+}
+
+.markdown__fold-row > .markdown__fold {
+  align-self: center;
+  min-width: 1rem;
+  min-height: 1rem;
+}
+
+/* Foldable points keep the bullet marker their non-folding siblings get. */
+.markdown__item-line.markdown__fold-row > .markdown__fold-text::before {
+  margin-right: 0.4rem;
+  color: var(--teal);
+  content: "•";
+}
+
+ol.markdown__list > .markdown__item > .markdown__item-line.markdown__fold-row > .markdown__fold-text::before {
+  content: counter(markdown-item) ".";
+}
+
+.markdown__bullet-spacer {
+  flex: none;
+  width: 1rem;
+}
+
+.markdown__item-content::before {
+  margin-right: 0.4rem;
+  color: var(--teal);
+  content: "•";
+}
+
+.markdown__list .markdown__list {
+  padding-left: 1.35rem;
+}
+
+ol.markdown__list {
+  counter-reset: markdown-item;
+}
+
+ol.markdown__list > .markdown__item {
+  counter-increment: markdown-item;
+}
+
+ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-content::before {
+  content: counter(markdown-item) ".";
+}
+
+.markdown__code-block,
+.markdown__quote {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+}
+
+.markdown__quote {
+  padding-left: 0.6rem;
+  border-left: 2px solid #d3d8d3;
+}
+
+.markdown__fold-row--summary {
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.markdown__code {
+  margin: 0;
+  padding: 0.6rem 0.7rem;
+  overflow-x: auto;
+  border-radius: 0.5rem;
+  background: #eceee9;
+  font-size: 0.85rem;
+}
+
+.markdown__code code {
+  padding: 0;
+  background: transparent;
+}
+
+.markdown a {
+  color: var(--teal-dark);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .markdown__fold svg {
+    transition: none;
+  }
+}

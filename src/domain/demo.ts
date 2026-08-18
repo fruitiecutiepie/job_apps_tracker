@@ -1,6 +1,6 @@
 import { prepareTrackerDatabase } from './database'
 import { STATE_IDS } from './states'
-import type { Application, StateHistoryEntry, StateId, TrackerDocument } from './types'
+import type { Application, StageNote, StateHistoryEntry, StateId, TrackerDocument } from './types'
 
 interface DemoSeed {
   company: string
@@ -13,6 +13,7 @@ interface DemoSeed {
   nextActionDaysFromNow?: number
   notes?: string
   source?: string | null
+  stageNotes?: Partial<Record<StateId, string>>
 }
 
 const DEMO_SEEDS: readonly DemoSeed[] = [
@@ -24,15 +25,15 @@ const DEMO_SEEDS: readonly DemoSeed[] = [
   { company: 'Tidal Grove', role: 'Platform Engineer', state: 'recruiter_messaged_rejected', createdDaysAgo: 26, updatedDaysAgo: 17, priorStates: ['applied', 'recruiter_messaged'], notes: 'Role requires a different on-call timezone.', source: 'LinkedIn' },
   { company: 'Orbit & Oak', role: 'Operations Lead', state: 'online_assessment', createdDaysAgo: 12, updatedDaysAgo: 2, priorStates: ['applied', 'recruiter_messaged'], nextAction: 'Complete the scenario assessment', nextActionDaysFromNow: 3, notes: 'Assessment should take about 75 minutes.', source: 'Company site' },
   { company: 'Bright Harbor', role: 'Software Engineer', state: 'online_assessment_rejected', createdDaysAgo: 44, updatedDaysAgo: 29, priorStates: ['applied', 'online_assessment'], notes: 'Passed most cases; concurrency section was incomplete.' },
-  { company: 'Atlas Thread', role: 'Design Systems Lead', state: 'recruiter_interview', createdDaysAgo: 18, updatedDaysAgo: 2, priorStates: ['applied', 'recruiter_messaged'], nextAction: 'Prepare examples of system governance', nextActionDaysFromNow: 1, notes: 'Thirty-minute video call with the internal recruiter.', source: 'Recruiter' },
+  { company: 'Atlas Thread', role: 'Design Systems Lead', state: 'recruiter_interview', createdDaysAgo: 18, updatedDaysAgo: 2, priorStates: ['applied', 'recruiter_messaged'], nextAction: 'Prepare examples of system governance', nextActionDaysFromNow: 1, notes: 'Thirty-minute video call with the internal recruiter.', source: 'Recruiter', stageNotes: { recruiter_messaged: '- Recruiter is **Dana**\n- Asked for salary expectations early — answer with the band, not a number', recruiter_interview: '## Story to lead with\n\n- Consolidating four component libraries into one system\n  - Cut component duplication by half\n  - Adopted by six product teams in a quarter\n\n## Questions to ask\n\n- How is design system work resourced between product teams?\n- What does the loop after this look like?' } },
   { company: 'Cinder Studio', role: 'Product Designer', state: 'recruiter_interview_rejected', createdDaysAgo: 35, updatedDaysAgo: 20, priorStates: ['applied', 'recruiter_messaged', 'recruiter_interview'], notes: 'Team selected someone with deeper enterprise experience.', source: 'LinkedIn' },
-  { company: 'Kindred Cloud', role: 'Developer Advocate', state: 'take_home_assessment', createdDaysAgo: 16, updatedDaysAgo: 1, priorStates: ['applied', 'recruiter_interview'], nextAction: 'Submit the API tutorial', nextActionDaysFromNow: 5, notes: 'Keep the written exercise under 1,500 words.', source: 'Company site' },
+  { company: 'Kindred Cloud', role: 'Developer Advocate', state: 'take_home_assessment', createdDaysAgo: 16, updatedDaysAgo: 1, priorStates: ['applied', 'recruiter_interview'], nextAction: 'Submit the API tutorial', nextActionDaysFromNow: 5, notes: 'Keep the written exercise under 1,500 words.', source: 'Company site', stageNotes: { take_home_assessment: '## Brief\n\nWrite an API tutorial under **1,500 words**.\n\n## Outline\n\n1. Problem\n2. Quickstart\n3. One worked example\n4. Troubleshooting\n\nReuse the webhook walkthrough structure that tested well before.' } },
   { company: 'Willow Finance', role: 'Risk Product Manager', state: 'take_home_assessment_rejected', createdDaysAgo: 51, updatedDaysAgo: 24, priorStates: ['applied', 'recruiter_interview', 'take_home_assessment'], notes: 'Good feedback on structure; domain depth was the deciding factor.', source: 'Job board' },
-  { company: 'Echo Robotics', role: 'Human Factors Researcher', state: 'interview_1', createdDaysAgo: 21, updatedDaysAgo: 4, priorStates: ['applied', 'recruiter_interview'], nextAction: 'Review the research case study', nextActionDaysFromNow: 2, notes: 'Panel includes design, engineering, and research.', source: 'Referral' },
+  { company: 'Echo Robotics', role: 'Human Factors Researcher', state: 'interview_1', createdDaysAgo: 21, updatedDaysAgo: 4, priorStates: ['applied', 'recruiter_interview'], nextAction: 'Review the research case study', nextActionDaysFromNow: 2, notes: 'Panel includes design, engineering, and research.', source: 'Referral', stageNotes: { interview_1: '## Panel\n\n- Design\n- Engineering\n- Research\n\n## Case study\n\n- The teleoperation study\n  - 12 participants across two rounds\n  - Shipped three safety changes\n  - Task completion rose from **61% to 88%**\n\n## Questions to ask\n\n- Ask each panellist what they would want researched first' } },
   { company: 'Mosslight Energy', role: 'Senior Data Scientist', state: 'interview_1_rejected', createdDaysAgo: 62, updatedDaysAgo: 34, priorStates: ['applied', 'online_assessment', 'recruiter_interview', 'interview_1'], notes: 'Technical discussion went well; another candidate had energy-market experience.', source: 'LinkedIn' },
-  { company: 'Halcyon Maps', role: 'Engineering Manager', state: 'interview_2', createdDaysAgo: 25, updatedDaysAgo: 1, priorStates: ['applied', 'recruiter_interview', 'interview_1'], nextAction: 'Join the leadership interview', nextActionDaysFromNow: 0, notes: 'Final conversation with the VP of Engineering.', source: 'Recruiter' },
+  { company: 'Halcyon Maps', role: 'Engineering Manager', state: 'interview_2', createdDaysAgo: 25, updatedDaysAgo: 1, priorStates: ['applied', 'recruiter_interview', 'interview_1'], nextAction: 'Join the leadership interview', nextActionDaysFromNow: 0, notes: 'Final conversation with the VP of Engineering.', source: 'Recruiter', stageNotes: { interview_1: 'Went well. They pushed hard on incident response — reuse the on-call rotation rebuild story.', interview_2: 'Final conversation with the VP of Engineering.\n\n## Leadership themes\n\n- Growing seniors into leads\n  - The two promotions I sponsored last year\n- Cutting cycle time\n  - Trunk-based release change, two weeks to two days\n- Where I hold the hiring bar\n\n## Questions to ask\n\n- How is platform work prioritised against roadmap commitments?\n- What does the first 90 days look like?', offer: 'Before answering, confirm:\n\n- The level\n  - They hinted at Staff, the ad said Senior\n- The equity refresh policy\n- Remote expectations\n\n> From the ad: "occasional travel to the London office" — pin down what occasional means.' } },
   { company: 'Fern & Field', role: 'Brand Director', state: 'interview_2_rejected', createdDaysAgo: 73, updatedDaysAgo: 41, priorStates: ['headhunted', 'recruiter_interview', 'interview_1', 'interview_2'], nextAction: 'Thank the hiring manager and stay connected', notes: 'A thoughtful process and useful portfolio feedback.', source: 'Referral' },
-  { company: 'Lumen Pantry', role: 'Head of Growth', state: 'offer', createdDaysAgo: 33, updatedDaysAgo: 1, priorStates: ['applied', 'recruiter_interview', 'interview_1', 'interview_2'], nextAction: 'Review compensation and equity terms', nextActionDaysFromNow: 1, notes: 'Written offer received; response requested this week.', source: 'Company site' },
+  { company: 'Lumen Pantry', role: 'Head of Growth', state: 'offer', createdDaysAgo: 33, updatedDaysAgo: 1, priorStates: ['applied', 'recruiter_interview', 'interview_1', 'interview_2'], nextAction: 'Review compensation and equity terms', nextActionDaysFromNow: 1, notes: 'Written offer received; response requested this week.', source: 'Company site', stageNotes: { offer: '## Where the offer stands\n\n- Base is **8% below** target\n- Equity is above target\n- Ask for the base to move first\n\n## Confirm before accepting\n\n- Review cycle\n- Start date flexibility\n- Learning budget' } },
   { company: 'Redwood Relay', role: 'Principal Engineer', state: 'offer_rejected', createdDaysAgo: 88, updatedDaysAgo: 46, priorStates: ['headhunted', 'recruiter_interview', 'interview_1', 'interview_2', 'offer'], notes: 'Declined after the location policy changed.', source: 'Recruiter' },
   { company: 'Saffron Systems', role: 'Product Operations Manager', state: 'accepted', createdDaysAgo: 58, updatedDaysAgo: 6, priorStates: ['applied', 'recruiter_messaged', 'recruiter_interview', 'interview_1', 'interview_2', 'offer'], nextAction: 'Prepare questions for onboarding', notes: 'Start date confirmed. Background check complete.', source: 'LinkedIn' },
 ]
@@ -52,6 +53,16 @@ function historyFor(seed: DemoSeed, reference: Date): StateHistoryEntry[] {
     const fraction = states.length === 1 ? 0 : index / (states.length - 1)
     const at = new Date(created + (updated - created) * fraction).toISOString()
     return { state, at }
+  })
+}
+
+function stageNotesFor(seed: DemoSeed, history: StateHistoryEntry[], updatedAt: string): StageNote[] {
+  const reachedAt = new Map(history.map((entry) => [entry.state, entry.at]))
+  return STATE_IDS.flatMap((state) => {
+    const body = seed.stageNotes?.[state]
+    if (!body) return []
+    const at = reachedAt.get(state) ?? updatedAt
+    return [{ state, body, created_at: at, updated_at: at }]
   })
 }
 
@@ -82,6 +93,7 @@ export function createDemoDocument(
           ? localDay(reference, seed.nextActionDaysFromNow, 9).toISOString()
           : null,
       notes: seed.notes ?? null,
+      stage_notes: stageNotesFor(seed, history, updatedAt),
       attachments: [],
       created_at: createdAt,
       updated_at: updatedAt,

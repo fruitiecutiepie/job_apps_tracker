@@ -24,6 +24,19 @@ export interface StateHistoryEntry {
   at: string
 }
 
+export interface StageNote {
+  state: StateId
+  body: string
+  created_at: string
+  updated_at: string
+}
+
+/** A stage prep note as edited in the UI, before timestamps are resolved. */
+export interface StageNoteDraft {
+  state: StateId
+  body: string
+}
+
 export interface Attachment {
   id: string
   filename: string
@@ -43,6 +56,7 @@ export interface Application {
   next_action: string | null
   next_action_at: string | null
   notes: string | null
+  stage_notes: StageNote[]
   attachments: Attachment[]
   created_at: string
   updated_at: string

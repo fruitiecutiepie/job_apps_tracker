@@ -1,11 +1,13 @@
 import { createUuidV7 } from './id'
-import { isStateId } from './states'
+import { isStateId, stateRank } from './states'
 import { safeAttachmentFilename } from './attachmentPaths'
 import type {
   Application,
   ApplicationEdits,
   ApplicationInput,
   Attachment,
+  StageNote,
+  StageNoteDraft,
   StateId,
   TrackerDocument,
 } from './types'
@@ -84,6 +86,7 @@ export function createApplication(
     next_action: nextAction,
     next_action_at: nextAction ? optionalTimestamp(input.next_action_at) : null,
     notes: optionalText(input.notes),
+    stage_notes: [],
     attachments: [],
     created_at: createdAt,
     updated_at: createdAt,
@@ -115,6 +118,70 @@ export function editApplication(
     attachments: 'attachments' in edits ? edits.attachments ?? [] : application.attachments,
     updated_at: timestamp(at),
   }
+}
+
+/** The prep note recorded for one stage of an application, when there is one. */
+export function stageNoteFor(application: Application, state: StateId): StageNote | null {
+  return application.stage_notes.find((note) => note.state === state) ?? null
+}
+
+function sortedStageNotes(notes: StageNote[]): StageNote[] {
+  return [...notes].sort((left, right) => stateRank(left.state) - stateRank(right.state))
+}
+
+/**
+ * Replaces the whole set of stage prep notes with the supplied drafts. Blank bodies drop
+ * their note, unchanged bodies keep their timestamps, and the application is returned
+ * untouched when nothing changed.
+ */
+export function applyStageNotes(
+  application: Application,
+  drafts: StageNoteDraft[],
+  at: Date | string = new Date(),
+): Application {
+  const seen = new Set<StateId>()
+  const updatedAt = timestamp(at)
+  const stageNotes: StageNote[] = []
+
+  for (const draft of drafts) {
+    if (!isStateId(draft.state)) throw new TypeError('State is invalid')
+    if (seen.has(draft.state)) throw new TypeError('Each stage may hold only one prep note')
+    seen.add(draft.state)
+
+    const body = draft.body.trim()
+    if (!body) continue
+
+    const existing = stageNoteFor(application, draft.state)
+    if (existing && existing.body === body) {
+      stageNotes.push(existing)
+      continue
+    }
+    stageNotes.push({
+      state: draft.state,
+      body,
+      created_at: existing?.created_at ?? updatedAt,
+      updated_at: updatedAt,
+    })
+  }
+
+  const kept = application.stage_notes.filter((note) => !seen.has(note.state))
+  const next = sortedStageNotes([...kept, ...stageNotes])
+  const unchanged =
+    next.length === application.stage_notes.length
+    && next.every((note, index) => note === application.stage_notes[index])
+  if (unchanged) return application
+
+  return { ...application, stage_notes: next, updated_at: updatedAt }
+}
+
+/** Records, replaces, or (with a blank body) clears the prep note for one stage. */
+export function setStageNote(
+  application: Application,
+  state: StateId,
+  body: string,
+  at: Date | string = new Date(),
+): Application {
+  return applyStageNotes(application, [{ state, body }], at)
 }
 
 export function addAttachment(
@@ -182,6 +249,23 @@ export function updateApplication(
     applications: document.applications.map((application) =>
       application.id === id ? editApplication(application, edits, at) : application,
     ),
+  }
+}
+
+export function updateApplicationStageNotes(
+  document: TrackerDocument,
+  id: string,
+  drafts: StageNoteDraft[],
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = applyStageNotes(application, drafts, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
   }
 }
 

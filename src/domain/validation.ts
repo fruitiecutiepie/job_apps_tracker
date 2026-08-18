@@ -1,6 +1,6 @@
 import { safeAttachmentFilename } from './attachmentPaths'
-import { isStateId } from './states'
-import type { Application, Attachment, StateHistoryEntry, TrackerDatabase } from './types'
+import { isStateId, stateRank } from './states'
+import type { Application, Attachment, StageNote, StateHistoryEntry, TrackerDatabase } from './types'
 import { prepareTrackerDatabase } from './database'
 
 export interface ValidationSuccess {
@@ -114,6 +114,56 @@ function historyValue(
   return history
 }
 
+function stageNoteValue(value: unknown, path: string, errors: ValidationError[]): StageNote | null {
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object')
+    return null
+  }
+  if (!isStateId(value.state)) addError(errors, `${path}.state`, 'is invalid')
+  if (!nonBlank(value.body)) addError(errors, `${path}.body`, 'is required')
+  if (!validTimestamp(value.created_at)) {
+    addError(errors, `${path}.created_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (!validTimestamp(value.updated_at)) {
+    addError(errors, `${path}.updated_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (
+    !isStateId(value.state)
+    || !nonBlank(value.body)
+    || !validTimestamp(value.created_at)
+    || !validTimestamp(value.updated_at)
+  ) {
+    return null
+  }
+
+  return {
+    state: value.state,
+    body: value.body.trim(),
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+  }
+}
+
+function stageNotesValue(value: unknown, path: string, errors: ValidationError[]): StageNote[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) {
+    addError(errors, path, 'must be an array')
+    return []
+  }
+
+  const notes = value
+    .map((note, index) => stageNoteValue(note, `${path}[${index}]`, errors))
+    .filter((note): note is StageNote => note !== null)
+
+  const seen = new Set<string>()
+  notes.forEach((note, index) => {
+    if (seen.has(note.state)) addError(errors, `${path}[${index}].state`, 'duplicates another stage note')
+    seen.add(note.state)
+  })
+
+  return notes.sort((left, right) => stateRank(left.state) - stateRank(right.state))
+}
+
 function attachmentValue(value: unknown, path: string, errors: ValidationError[]): Attachment | null {
   if (!isRecord(value)) {
     addError(errors, path, 'must be an object')
@@ -222,6 +272,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     next_action: nextAction,
     next_action_at: nextAction ? nextActionAt : null,
     notes: nullableText(value.notes, `${path}.notes`, errors),
+    stage_notes: stageNotesValue(value.stage_notes, `${path}.stage_notes`, errors),
     attachments: attachmentsValue(value.attachments, `${path}.attachments`, errors),
     created_at: value.created_at,
     updated_at: value.updated_at,

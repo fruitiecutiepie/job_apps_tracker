@@ -4,6 +4,7 @@ import {
   STATE_CONFIG,
   STATE_IDS,
   addAttachment,
+  applyStageNotes,
   createApplication,
   createAttachmentMetadata,
   createDemoDocument,
@@ -22,8 +23,11 @@ import {
   removeAttachment,
   saveTrackerDocument,
   serializeTrackerDocument,
+  setStageNote,
+  stageNoteFor,
   trackerDatabasePath,
   unpackTrackerArchive,
+  updateApplicationStageNotes,
   validateTrackerDocument,
 } from './index'
 import type { TrackerDocument } from './index'
@@ -292,6 +296,201 @@ describe('attachments', () => {
     )
     const indexes = rebuildIndexes([application])
     expect(indexes.search_text[application.id]).toContain('referral')
+  })
+})
+
+describe('stage prep notes', () => {
+  const LATER = new Date('2026-08-16T02:00:00.000Z')
+
+  it('records a prep note for a stage with its own timestamps', () => {
+    const application = createApplication({ company: 'Northwind' }, REFERENCE)
+    const withNote = setStageNote(application, 'interview_1', '  Ask about the panel  ', REFERENCE)
+
+    expect(withNote.stage_notes).toEqual([
+      {
+        state: 'interview_1',
+        body: 'Ask about the panel',
+        created_at: REFERENCE.toISOString(),
+        updated_at: REFERENCE.toISOString(),
+      },
+    ])
+    expect(withNote.updated_at).toBe(REFERENCE.toISOString())
+    expect(withNote.state_history).toEqual(application.state_history)
+  })
+
+  it('records notes for a stage the application has not reached yet', () => {
+    const application = createApplication({ company: 'Northwind', state: 'applied' }, REFERENCE)
+    const withNote = setStageNote(application, 'offer', 'Target band', REFERENCE)
+
+    expect(stageNoteFor(withNote, 'offer')?.body).toBe('Target band')
+    expect(withNote.state).toBe('applied')
+  })
+
+  it('keeps created_at when a note is rewritten and refreshes updated_at', () => {
+    const application = setStageNote(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      'interview_1',
+      'First draft',
+      REFERENCE,
+    )
+    const rewritten = setStageNote(application, 'interview_1', 'Second draft', LATER)
+
+    expect(stageNoteFor(rewritten, 'interview_1')).toEqual({
+      state: 'interview_1',
+      body: 'Second draft',
+      created_at: REFERENCE.toISOString(),
+      updated_at: LATER.toISOString(),
+    })
+    expect(rewritten.updated_at).toBe(LATER.toISOString())
+  })
+
+  it('treats an unchanged note as a no-op', () => {
+    const application = setStageNote(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      'interview_1',
+      'Ask about the panel',
+      REFERENCE,
+    )
+
+    expect(setStageNote(application, 'interview_1', '  Ask about the panel ', LATER)).toBe(application)
+  })
+
+  it('clears a note when the body is blank and leaves other stages alone', () => {
+    let application = createApplication({ company: 'Northwind' }, REFERENCE)
+    application = setStageNote(application, 'interview_1', 'Panel notes', REFERENCE)
+    application = setStageNote(application, 'offer', 'Comp notes', REFERENCE)
+
+    const cleared = setStageNote(application, 'interview_1', '   ', LATER)
+    expect(cleared.stage_notes.map((note) => note.state)).toEqual(['offer'])
+    expect(cleared.updated_at).toBe(LATER.toISOString())
+  })
+
+  it('keeps notes in configured state order and rejects duplicate stages', () => {
+    const application = applyStageNotes(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [
+        { state: 'offer', body: 'Comp notes' },
+        { state: 'recruiter_interview', body: 'Recruiter notes' },
+      ],
+      REFERENCE,
+    )
+
+    expect(application.stage_notes.map((note) => note.state)).toEqual([
+      'recruiter_interview',
+      'offer',
+    ])
+    expect(() =>
+      applyStageNotes(application, [
+        { state: 'offer', body: 'One' },
+        { state: 'offer', body: 'Two' },
+      ], REFERENCE),
+    ).toThrow(/only one prep note/)
+  })
+
+  it('updates stage notes through the document without touching other applications', () => {
+    const document = createDemoDocument(REFERENCE)
+    const target = document.applications.find((application) => application.state === 'interview_1')!
+    const updated = updateApplicationStageNotes(
+      document,
+      target.id,
+      [{ state: 'interview_1', body: 'Bring the case study' }],
+      LATER,
+    )
+
+    const after = updated.applications.find((application) => application.id === target.id)!
+    expect(stageNoteFor(after, 'interview_1')?.body).toBe('Bring the case study')
+    expect(updated.applications).toHaveLength(document.applications.length)
+    expect(updated.applications.filter((application) => application.id !== target.id)).toEqual(
+      document.applications.filter((application) => application.id !== target.id),
+    )
+  })
+
+  it('canonicalizes missing stage notes and sorts supplied ones by state order', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({
+      schema_version: 1,
+      applications: [
+        {
+          id: '018f24c0-0000-7000-8000-000000000001',
+          company: 'Northwind',
+          state: 'applied',
+          created_at: REFERENCE.toISOString(),
+          updated_at: REFERENCE.toISOString(),
+        },
+        {
+          id: '018f24c0-0000-7000-8000-000000000002',
+          company: 'Southwind',
+          state: 'offer',
+          stage_notes: [
+            { state: 'offer', body: ' Comp notes ', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+            { state: 'interview_1', body: 'Panel notes', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+          ],
+          created_at: REFERENCE.toISOString(),
+          updated_at: REFERENCE.toISOString(),
+        },
+      ],
+    }))
+
+    expect(parsed.applications[0]?.stage_notes).toEqual([])
+    expect(parsed.applications[1]?.stage_notes.map((note) => note.state)).toEqual([
+      'interview_1',
+      'offer',
+    ])
+    expect(parsed.applications[1]?.stage_notes[1]?.body).toBe('Comp notes')
+  })
+
+  it('rejects blank bodies, invalid stages, and duplicate stages', () => {
+    const stageNotes = (notes: unknown) => ({
+      schema_version: 1,
+      applications: [{
+        id: '018f24c0-0000-7000-8000-000000000001',
+        company: 'Northwind',
+        state: 'applied',
+        stage_notes: notes,
+        created_at: REFERENCE.toISOString(),
+        updated_at: REFERENCE.toISOString(),
+      }],
+    })
+
+    const blank = validateTrackerDocument(stageNotes([
+      { state: 'applied', body: '   ', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+    ]))
+    expect(blank.ok).toBe(false)
+
+    const invalidState = validateTrackerDocument(stageNotes([
+      { state: 'nope', body: 'Notes', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+    ]))
+    expect(invalidState.ok).toBe(false)
+
+    const duplicated = validateTrackerDocument(stageNotes([
+      { state: 'applied', body: 'One', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+      { state: 'applied', body: 'Two', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+    ]))
+    expect(duplicated.ok).toBe(false)
+  })
+
+  it('includes stage note text in search indexes', () => {
+    const application = setStageNote(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      'interview_1',
+      'Rehearse the migration story',
+      REFERENCE,
+    )
+    const indexes = rebuildIndexes([application])
+
+    expect(indexes.search_text[application.id]).toContain('rehearse the migration story')
+    expect(indexes.search_text[application.id]).toContain('interview 1')
+  })
+
+  it('round-trips stage notes through export and import', () => {
+    const document = createDemoDocument(REFERENCE)
+    const roundTrip = parseTrackerDocument(serializeTrackerDocument(document))
+
+    expect(roundTrip.applications.map((application) => application.stage_notes)).toEqual(
+      document.applications.map((application) => application.stage_notes),
+    )
+    expect(
+      document.applications.some((application) => application.stage_notes.length > 0),
+    ).toBe(true)
   })
 })
 

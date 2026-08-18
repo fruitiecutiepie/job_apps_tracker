@@ -65,6 +65,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       application.notes,
       application.next_action,
       STATE_LABELS[application.state],
+      ...application.stage_notes.map((note) => `${STATE_LABELS[note.state]} ${note.body}`),
       ...application.attachments.map((attachment) => attachment.filename),
     ]
       .filter(Boolean)

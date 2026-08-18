@@ -37,15 +37,19 @@ import {
   tryLoadLegacyLocalStorage,
   unpackTrackerArchive,
   updateApplication,
+  updateApplicationStageNotes,
   uploadAttachmentFile,
   deleteAttachmentFile,
   type Application,
   type ApplicationInput,
   type Attachment,
+  type StageNoteDraft,
   type StateId,
   type TrackerDocument,
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
+import { StageNotesDialog } from './StageNotesDialog'
+import { useDialogKeyboard } from './useDialogKeyboard'
 import {
   CalendarView,
   KanbanView,
@@ -159,43 +163,7 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
     (attachment) => !removedAttachmentIds.includes(attachment.id),
   )
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        onClose()
-        return
-      }
-
-      if (event.key !== 'Tab') return
-
-      const dialog = dialogRef.current
-      if (!dialog) return
-      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(
-        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
-      ))
-      const first = focusable[0]
-      const last = focusable.at(-1)
-      if (!first || !last) {
-        event.preventDefault()
-        dialog.focus()
-        return
-      }
-
-      const active = document.activeElement
-      const focusIsOutside = !active || !dialog.contains(active)
-      if (event.shiftKey && (active === first || active === dialog || focusIsOutside)) {
-        event.preventDefault()
-        last.focus()
-      } else if (!event.shiftKey && (active === last || active === dialog || focusIsOutside)) {
-        event.preventDefault()
-        first.focus()
-      }
-    }
-
-    document.addEventListener('keydown', handleKeyDown)
-    return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose])
+  useDialogKeyboard(dialogRef, onClose)
 
   const update = <Key extends keyof EditorValues>(key: Key, value: EditorValues[Key]) => {
     setValues((current) => ({ ...current, [key]: value }))
@@ -452,11 +420,13 @@ export default function App() {
   const [stateFilter, setStateFilter] = useState<StateId | 'all'>('all')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [editor, setEditor] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
+  const [stageNotesId, setStageNotesId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
   const addButtonRef = useRef<HTMLButtonElement>(null)
-  const editorOpenerRef = useRef<HTMLElement | null>(null)
-  const editorWasOpenRef = useRef(false)
+  const dialogOpenerRef = useRef<HTMLElement | null>(null)
+  const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const dialogIsOpen = editor !== null || stageNotesId !== null
 
   useEffect(() => {
     let cancelled = false
@@ -495,18 +465,18 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (editor) {
-      editorWasOpenRef.current = true
+    if (dialogIsOpen) {
+      dialogWasOpenRef.current = true
       return
     }
-    if (!editorWasOpenRef.current) return
+    if (!dialogWasOpenRef.current) return
 
-    editorWasOpenRef.current = false
-    const opener = editorOpenerRef.current
-    editorOpenerRef.current = null
+    dialogWasOpenRef.current = false
+    const opener = dialogOpenerRef.current
+    dialogOpenerRef.current = null
     const focusTarget = opener?.isConnected ? opener : addButtonRef.current
     focusTarget?.focus()
-  }, [editor])
+  }, [dialogIsOpen])
 
   const commit = async (next: TrackerDocument, message?: string) => {
     try {
@@ -565,20 +535,29 @@ export default function App() {
     ? tracker.applications.find((application) => application.id === editor.id) ?? null
     : null
 
-  const rememberEditorOpener = (opener?: HTMLElement) => {
+  const stageNotesApplication = stageNotesId
+    ? tracker.applications.find((application) => application.id === stageNotesId) ?? null
+    : null
+
+  const rememberDialogOpener = (opener?: HTMLElement) => {
     const activeElement = document.activeElement
-    editorOpenerRef.current = opener
+    dialogOpenerRef.current = opener
       ?? (activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null)
   }
 
   const openApplication = (id: string) => {
-    rememberEditorOpener()
+    rememberDialogOpener()
     setEditor({ mode: 'edit', id })
   }
 
   const openNewApplication = (opener: HTMLButtonElement) => {
-    rememberEditorOpener(opener)
+    rememberDialogOpener(opener)
     setEditor({ mode: 'add' })
+  }
+
+  const openStageNotes = (id: string) => {
+    rememberDialogOpener()
+    setStageNotesId(id)
   }
 
   const closeEditor = () => setEditor(null)
@@ -590,7 +569,11 @@ export default function App() {
   }
 
   const currentView = (() => {
-    const shared = { applications: filteredApplications, onOpen: openApplication }
+    const shared = {
+      applications: filteredApplications,
+      onOpen: openApplication,
+      onOpenStageNotes: openStageNotes,
+    }
     switch (activeView) {
       case 'table':
         return <TableView {...shared} onMove={move} />
@@ -843,6 +826,20 @@ export default function App() {
               await commit(next, 'Application updated.')
             }
             closeEditor()
+          }}
+        />
+      )}
+
+      {stageNotesApplication && (
+        <StageNotesDialog
+          application={stageNotesApplication}
+          onClose={() => setStageNotesId(null)}
+          onSave={async (drafts: StageNoteDraft[]) => {
+            await commit(
+              updateApplicationStageNotes(tracker, stageNotesApplication.id, drafts, new Date()),
+              'Prep notes saved.',
+            )
+            setStageNotesId(null)
           }}
         />
       )}

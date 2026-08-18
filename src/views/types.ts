@@ -3,6 +3,7 @@ import type { Application, StateId } from "../domain";
 export interface ApplicationsViewProps {
   applications: Application[];
   onOpen: (id: string) => void;
+  onOpenStageNotes: (id: string) => void;
 }
 
 export interface MovableApplicationsViewProps extends ApplicationsViewProps {
