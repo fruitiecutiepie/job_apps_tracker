@@ -1,6 +1,13 @@
 import { safeAttachmentFilename } from './attachmentPaths'
 import { isStateId, stateRank } from './states'
-import type { Application, Attachment, StageNote, StateHistoryEntry, TrackerDatabase } from './types'
+import type {
+  Application,
+  Attachment,
+  StageNote,
+  StateEvent,
+  StateHistoryEntry,
+  TrackerDatabase,
+} from './types'
 import { prepareTrackerDatabase } from './database'
 
 export interface ValidationSuccess {
@@ -164,6 +171,114 @@ function stageNotesValue(value: unknown, path: string, errors: ValidationError[]
   return notes.sort((left, right) => stateRank(left.state) - stateRank(right.state))
 }
 
+function stateEventValue(value: unknown, path: string, errors: ValidationError[]): StateEvent | null {
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object')
+    return null
+  }
+  if (!nonBlank(value.id)) addError(errors, `${path}.id`, 'is required')
+  if (!isStateId(value.state)) addError(errors, `${path}.state`, 'is invalid')
+  if (!nonBlank(value.summary)) addError(errors, `${path}.summary`, 'is required')
+  if (!validTimestamp(value.starts_at)) {
+    addError(errors, `${path}.starts_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (!validTimestamp(value.created_at)) {
+    addError(errors, `${path}.created_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (!validTimestamp(value.updated_at)) {
+    addError(errors, `${path}.updated_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+
+  let endsAt: string | null = null
+  if (value.ends_at !== undefined && value.ends_at !== null && value.ends_at !== '') {
+    if (validTimestamp(value.ends_at)) {
+      endsAt = value.ends_at
+    } else {
+      addError(errors, `${path}.ends_at`, 'must be a timezone-qualified ISO-8601 timestamp or null')
+    }
+  }
+  if (endsAt && validTimestamp(value.starts_at) && Date.parse(endsAt) < Date.parse(value.starts_at)) {
+    addError(errors, `${path}.ends_at`, 'must not precede starts_at')
+    endsAt = null
+  }
+
+  let sequence = 0
+  if (value.sequence !== undefined && value.sequence !== null) {
+    if (typeof value.sequence !== 'number' || !Number.isInteger(value.sequence) || value.sequence < 0) {
+      addError(errors, `${path}.sequence`, 'must be a non-negative integer')
+    } else {
+      sequence = value.sequence
+    }
+  }
+
+  let cancelled = false
+  if (value.cancelled !== undefined && value.cancelled !== null) {
+    if (typeof value.cancelled !== 'boolean') {
+      addError(errors, `${path}.cancelled`, 'must be a boolean')
+    } else {
+      cancelled = value.cancelled
+    }
+  }
+
+  if (
+    !nonBlank(value.id)
+    || !isStateId(value.state)
+    || !nonBlank(value.summary)
+    || !validTimestamp(value.starts_at)
+    || !validTimestamp(value.created_at)
+    || !validTimestamp(value.updated_at)
+  ) {
+    return null
+  }
+
+  return {
+    id: value.id.trim(),
+    state: value.state,
+    summary: value.summary.trim(),
+    starts_at: value.starts_at,
+    ends_at: endsAt,
+    location: nullableText(value.location, `${path}.location`, errors),
+    url: urlValue(value.url, `${path}.url`, errors),
+    ics_uid: nullableText(value.ics_uid, `${path}.ics_uid`, errors),
+    sequence,
+    cancelled,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+  }
+}
+
+function stateEventsValue(value: unknown, path: string, errors: ValidationError[]): StateEvent[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) {
+    addError(errors, path, 'must be an array')
+    return []
+  }
+
+  const events = value
+    .map((event, index) => stateEventValue(event, `${path}[${index}]`, errors))
+    .filter((event): event is StateEvent => event !== null)
+
+  const seenIds = new Set<string>()
+  const seenUids = new Set<string>()
+  events.forEach((event, index) => {
+    if (seenIds.has(event.id)) addError(errors, `${path}[${index}].id`, 'duplicates another invite')
+    seenIds.add(event.id)
+    if (event.ics_uid) {
+      if (seenUids.has(event.ics_uid)) {
+        addError(errors, `${path}[${index}].ics_uid`, 'duplicates another invite')
+      }
+      seenUids.add(event.ics_uid)
+    }
+  })
+
+  return events.sort(
+    (left, right) =>
+      stateRank(left.state) - stateRank(right.state)
+      || Date.parse(left.starts_at) - Date.parse(right.starts_at)
+      || left.id.localeCompare(right.id),
+  )
+}
+
 function attachmentValue(value: unknown, path: string, errors: ValidationError[]): Attachment | null {
   if (!isRecord(value)) {
     addError(errors, path, 'must be an object')
@@ -273,6 +388,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     next_action_at: nextAction ? nextActionAt : null,
     notes: nullableText(value.notes, `${path}.notes`, errors),
     stage_notes: stageNotesValue(value.stage_notes, `${path}.stage_notes`, errors),
+    state_events: stateEventsValue(value.state_events, `${path}.state_events`, errors),
     attachments: attachmentsValue(value.attachments, `${path}.attachments`, errors),
     created_at: value.created_at,
     updated_at: value.updated_at,

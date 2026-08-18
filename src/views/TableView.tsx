@@ -2,11 +2,20 @@ import { useMemo, useState, type ReactNode } from "react";
 import { SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain";
 import type { Application, StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
+import { InviteSummaries, inviteFilterText } from "./InviteSummaries";
 import { StageNotesButton } from "./StageNotesButton";
 import type { MovableApplicationsViewProps } from "./types";
-import { formatShortDate, parseTimestamp } from "./viewUtils";
+import { formatShortDate, parseTimestamp, upcomingStateEvent } from "./viewUtils";
 
-type SortField = "company" | "role" | "source" | "state" | "next_action" | "created_at" | "updated_at";
+type SortField =
+  | "company"
+  | "role"
+  | "source"
+  | "state"
+  | "next_action"
+  | "invites"
+  | "created_at"
+  | "updated_at";
 type SortDirection = "ascending" | "descending";
 type StateColumnFilter = StateId | "all";
 
@@ -16,6 +25,7 @@ interface ColumnFilters {
   source: string;
   state: StateColumnFilter;
   next_action: string;
+  invites: string;
   attachments: string;
   created_at: string;
   updated_at: string;
@@ -27,6 +37,7 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
   source: "",
   state: "all",
   next_action: "",
+  invites: "",
   attachments: "",
   created_at: "",
   updated_at: "",
@@ -36,6 +47,11 @@ const stateOrder = new Map(STATE_CONFIG.map((state, index) => [state.id, index])
 
 function comparableValue(application: Application, field: SortField): string | number {
   if (field === "state") return stateOrder.get(application.state) ?? Number.MAX_SAFE_INTEGER;
+  // Sorting by invite means sorting by what is next, so rows with nothing ahead sink.
+  if (field === "invites") {
+    const next = upcomingStateEvent(application);
+    return next ? Date.parse(next.starts_at) : Number.MAX_SAFE_INTEGER;
+  }
   if (field === "created_at") return parseTimestamp(application.created_at)?.getTime() ?? 0;
   if (field === "updated_at") return parseTimestamp(application.updated_at)?.getTime() ?? 0;
   return (application[field] ?? "").toLocaleLowerCase();
@@ -57,6 +73,7 @@ function matchesColumnFilters(application: Application, filters: ColumnFilters):
     .filter((value) => value && value !== "Not scheduled")
     .join(" ");
   if (!includesQuery(nextActionText, filters.next_action)) return false;
+  if (!includesQuery(inviteFilterText(application.state_events), filters.invites)) return false;
   if (!includesQuery(application.attachments.map((attachment) => attachment.filename).join(" "), filters.attachments)) {
     return false;
   }
@@ -89,6 +106,7 @@ function columnFiltersAreActive(filters: ColumnFilters): boolean {
         filters.role.trim() ||
         filters.source.trim() ||
         filters.next_action.trim() ||
+        filters.invites.trim() ||
         filters.attachments.trim() ||
         filters.created_at.trim() ||
         filters.updated_at.trim(),
@@ -240,6 +258,7 @@ export function TableView({
                 "state",
               )}
               {headerCell("Next action", textFilter("next_action", "Next action"), "next_action")}
+              {headerCell("Invites", textFilter("invites", "Invites"), "invites")}
               {headerCell("Attachments", textFilter("attachments", "Attachments"))}
               {headerCell("Prep notes", null)}
               {headerCell("Created", textFilter("created_at", "Created"), "created_at")}
@@ -280,6 +299,13 @@ export function TableView({
                         </time>
                       ) : null}
                     </>
+                  ) : (
+                    <span aria-label="Not set">—</span>
+                  )}
+                </td>
+                <td>
+                  {application.state_events.length > 0 ? (
+                    <InviteSummaries invites={application.state_events} />
                   ) : (
                     <span aria-label="Not set">—</span>
                   )}

@@ -1,4 +1,5 @@
 export { CalendarView } from "./CalendarView";
+export { InviteSummaries } from "./InviteSummaries";
 export { KanbanView } from "./KanbanView";
 export { NextActionsView } from "./NextActionsView";
 export { StageNotesButton } from "./StageNotesButton";

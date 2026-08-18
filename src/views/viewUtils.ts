@@ -1,5 +1,5 @@
 import { rejectedStateFor, STATE_CONFIG } from "../domain";
-import type { StateId } from "../domain";
+import type { Application, StateEvent, StateId } from "../domain";
 
 export interface KanbanColumnGroup {
   lanes: StateId[];
@@ -67,6 +67,27 @@ export function applicationAgeInDays(updatedAt: string, today: Date = new Date()
   const updated = parseTimestamp(updatedAt)
   if (!updated) return 0
   return Math.max(0, localDayNumber(today) - localDayNumber(updated))
+}
+
+/**
+ * The next invite worth showing on a card: soonest first, cancelled ones skipped,
+ * and anything earlier today still counts — the same browser-local day boundary
+ * the overdue grouping uses.
+ */
+export function upcomingStateEvent(
+  application: Application,
+  today: Date = new Date(),
+): StateEvent | null {
+  const from = startOfLocalDay(today).getTime();
+  return (
+    application.state_events
+      .filter((event) => {
+        if (event.cancelled) return false;
+        const at = parseTimestamp(event.starts_at);
+        return at !== null && at.getTime() >= from;
+      })
+      .sort((left, right) => Date.parse(left.starts_at) - Date.parse(right.starts_at))[0] ?? null
+  );
 }
 
 export function localDateKey(date: Date): string {

@@ -6,14 +6,15 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 
 ## Features
 
-- Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, attachment filenames on cards, a state-selector fallback, and muted styling for applications untouched for 14 days
+- Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, the next upcoming invite and attachment filenames on cards, a state-selector fallback, and muted styling for applications untouched for 14 days
 - Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first
-- Sortable and filterable table with an attachments column
+- Sortable and filterable table with invites and attachments columns, where sorting by invite sorts by what is next
 - Next actions grouped as overdue, upcoming, or unscheduled
-- Calendar driven by next-action dates
+- Calendar invites imported from the `.ics` a recruiter sends, filed against a stage, with a rescheduled invite replacing the one it supersedes
+- Calendar showing next-action dates and invites together, day by day
 - Stale applications with 7-, 14-, and 30-day thresholds, plus a Move to Rejected shortcut to the current state's counterpart
 - Current-state and ever-reached statistics derived from application history
-- Global company, role, notes, and stage prep note search plus state filtering
+- Global company, role, notes, stage prep note, and invite search plus state filtering
 - Add, edit, delete, import, and export controls, plus confirmed demo-data reset in the demo profile
 - Append-only state history whenever an application actually changes state
 - Responsive layouts and keyboard-accessible forms and dialogs
@@ -54,6 +55,25 @@ Use `pnpm start:demo` after a build to preview against the demo database.
 Select **Add application** and enter a company, optional role and URL, its current state, notes, and an optional next action. A next action can be saved without a date; its date is cleared automatically if the action text is removed. URLs must begin with `http://` or `https://`.
 
 Open an existing application from any view to edit or delete it. Moving to another state adds a timestamped history entry. You can move a Kanban card by dragging it or by using its state selector, which also works for keyboard and touch interaction.
+
+### Link a calendar invite to a stage
+
+Open an application and use **Import .ics file** under Interview invites to read the calendar attachment a
+recruiter emailed you. The time, place, and joining link come from the file; the stage it is filed under
+defaults to the application's current state, and you can change it to any other. **Add invite manually**
+records one by hand instead, for an interview arranged over the phone.
+
+Re-importing a rescheduled invite updates the one it replaces rather than adding a second, because invites are
+matched on the calendar UID inside the file. The stage you filed it under survives the update, and an invite
+older than the one you already have is ignored. Cancelled invites stay on the record, marked as cancelled, so
+you can see what was called off.
+
+Invites appear on the Calendar beside dated next actions, and a Kanban card shows the next one still ahead.
+The table's Invites column lists them all, filters on their text, and sorts by whichever is next. Their text
+is searchable from the global search box.
+
+The tracker reads invites; it does not talk to your calendar. Nothing is sent anywhere, and nothing changes in
+Google Calendar or Outlook when you edit an invite here.
 
 ### Prepare for a stage
 

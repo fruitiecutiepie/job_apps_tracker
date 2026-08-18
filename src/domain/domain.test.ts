@@ -4,7 +4,9 @@ import {
   STATE_CONFIG,
   STATE_IDS,
   addAttachment,
+  addStateEvent,
   applyStageNotes,
+  applyStateEvents,
   createApplication,
   createAttachmentMetadata,
   createDemoDocument,
@@ -21,13 +23,16 @@ import {
   rebuildIndexes,
   rejectedStateFor,
   removeAttachment,
+  removeStateEvent,
   saveTrackerDocument,
   serializeTrackerDocument,
   setStageNote,
   stageNoteFor,
+  stateEventsFor,
   trackerDatabasePath,
   unpackTrackerArchive,
   updateApplicationStageNotes,
+  updateApplicationStateEvents,
   validateTrackerDocument,
 } from './index'
 import type { TrackerDocument } from './index'
@@ -490,6 +495,315 @@ describe('stage prep notes', () => {
     )
     expect(
       document.applications.some((application) => application.stage_notes.length > 0),
+    ).toBe(true)
+  })
+})
+
+describe('calendar invites', () => {
+  const LATER = new Date('2026-08-16T02:00:00.000Z')
+
+  function invite(overrides: Record<string, unknown> = {}) {
+    return {
+      state: 'interview_1' as const,
+      summary: 'Interview 1 — panel',
+      starts_at: '2026-08-20T04:00:00.000Z',
+      ...overrides,
+    }
+  }
+
+  it('files an invite against a state with its own timestamps', () => {
+    const application = createApplication({ company: 'Northwind' }, REFERENCE)
+    const withInvite = addStateEvent(application, invite({ ends_at: '2026-08-20T05:00:00.000Z' }), REFERENCE)
+    const [event] = withInvite.state_events
+
+    expect(event).toMatchObject({
+      state: 'interview_1',
+      summary: 'Interview 1 — panel',
+      starts_at: '2026-08-20T04:00:00.000Z',
+      ends_at: '2026-08-20T05:00:00.000Z',
+      location: null,
+      url: null,
+      ics_uid: null,
+      sequence: 0,
+      cancelled: false,
+      created_at: REFERENCE.toISOString(),
+      updated_at: REFERENCE.toISOString(),
+    })
+    expect(withInvite.updated_at).toBe(REFERENCE.toISOString())
+    expect(withInvite.state_history).toEqual(application.state_history)
+  })
+
+  it('files an invite against a state the application has not reached', () => {
+    const application = createApplication({ company: 'Northwind', state: 'applied' }, REFERENCE)
+    const withInvite = addStateEvent(application, invite({ state: 'offer' }), REFERENCE)
+
+    expect(stateEventsFor(withInvite, 'offer')).toHaveLength(1)
+    expect(withInvite.state).toBe('applied')
+  })
+
+  it('keeps several invites for one state in start order', () => {
+    const application = applyStateEvents(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [
+        invite({ summary: 'Afternoon panel', starts_at: '2026-08-20T06:00:00.000Z' }),
+        invite({ summary: 'Morning panel', starts_at: '2026-08-20T01:00:00.000Z' }),
+      ],
+      REFERENCE,
+    )
+
+    expect(application.state_events.map((event) => event.summary)).toEqual([
+      'Morning panel',
+      'Afternoon panel',
+    ])
+  })
+
+  it('orders invites by configured state order before start time', () => {
+    const application = applyStateEvents(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [
+        invite({ state: 'offer', starts_at: '2026-08-19T04:00:00.000Z' }),
+        invite({ state: 'recruiter_interview', starts_at: '2026-08-22T04:00:00.000Z' }),
+      ],
+      REFERENCE,
+    )
+
+    expect(application.state_events.map((event) => event.state)).toEqual([
+      'recruiter_interview',
+      'offer',
+    ])
+  })
+
+  it('drops an invite whose description was cleared', () => {
+    const application = applyStateEvents(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [invite()],
+      REFERENCE,
+    )
+    const cleared = applyStateEvents(
+      application,
+      [{ ...invite(), id: application.state_events[0]!.id, summary: '   ' }],
+      LATER,
+    )
+
+    expect(cleared.state_events).toEqual([])
+    expect(cleared.updated_at).toBe(LATER.toISOString())
+  })
+
+  it('keeps timestamps when nothing about an invite changed', () => {
+    const application = applyStateEvents(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [invite()],
+      REFERENCE,
+    )
+    const resaved = applyStateEvents(
+      application,
+      [{ ...invite(), id: application.state_events[0]!.id }],
+      LATER,
+    )
+
+    expect(resaved).toBe(application)
+  })
+
+  it('keeps created_at and refreshes updated_at when an invite is rescheduled', () => {
+    const application = applyStateEvents(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [invite()],
+      REFERENCE,
+    )
+    const moved = applyStateEvents(
+      application,
+      [{
+        ...invite(),
+        id: application.state_events[0]!.id,
+        starts_at: '2026-08-21T04:00:00.000Z',
+      }],
+      LATER,
+    )
+
+    expect(moved.state_events[0]!.created_at).toBe(REFERENCE.toISOString())
+    expect(moved.state_events[0]!.updated_at).toBe(LATER.toISOString())
+    expect(moved.updated_at).toBe(LATER.toISOString())
+  })
+
+  it('rejects an invite that ends before it starts', () => {
+    expect(() =>
+      addStateEvent(
+        createApplication({ company: 'Northwind' }, REFERENCE),
+        invite({ ends_at: '2026-08-20T03:00:00.000Z' }),
+        REFERENCE,
+      ),
+    ).toThrow(/end before it starts/)
+  })
+
+  it('rejects two invites sharing one calendar UID', () => {
+    expect(() =>
+      applyStateEvents(
+        createApplication({ company: 'Northwind' }, REFERENCE),
+        [invite({ ics_uid: 'shared@example.com' }), invite({ ics_uid: 'shared@example.com' })],
+        REFERENCE,
+      ),
+    ).toThrow(/UID/)
+  })
+
+  it('replaces the invite a rescheduled one supersedes, keeping the stage it was filed under', () => {
+    const application = addStateEvent(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      invite({ ics_uid: 'panel@example.com', state: 'interview_2' }),
+      REFERENCE,
+    )
+    const rescheduled = addStateEvent(
+      application,
+      invite({
+        ics_uid: 'panel@example.com',
+        state: 'applied',
+        starts_at: '2026-08-27T04:00:00.000Z',
+        sequence: 1,
+      }),
+      LATER,
+    )
+
+    expect(rescheduled.state_events).toHaveLength(1)
+    expect(rescheduled.state_events[0]).toMatchObject({
+      state: 'interview_2',
+      starts_at: '2026-08-27T04:00:00.000Z',
+      sequence: 1,
+      created_at: REFERENCE.toISOString(),
+      updated_at: LATER.toISOString(),
+    })
+    expect(rescheduled.state_events[0]!.id).toBe(application.state_events[0]!.id)
+  })
+
+  it('ignores an invite that is older than the one already stored', () => {
+    const application = addStateEvent(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      invite({ ics_uid: 'panel@example.com', sequence: 3 }),
+      REFERENCE,
+    )
+    const stale = addStateEvent(
+      application,
+      invite({ ics_uid: 'panel@example.com', sequence: 2, starts_at: '2026-09-01T04:00:00.000Z' }),
+      LATER,
+    )
+
+    expect(stale).toBe(application)
+  })
+
+  it('re-importing the same invite changes nothing', () => {
+    const application = addStateEvent(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      invite({ ics_uid: 'panel@example.com' }),
+      REFERENCE,
+    )
+
+    expect(addStateEvent(application, invite({ ics_uid: 'panel@example.com' }), LATER)).toBe(
+      application,
+    )
+  })
+
+  it('keeps invites with different UIDs side by side', () => {
+    let application = addStateEvent(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      invite({ ics_uid: 'one@example.com' }),
+      REFERENCE,
+    )
+    application = addStateEvent(
+      application,
+      invite({ ics_uid: 'two@example.com', starts_at: '2026-08-21T04:00:00.000Z' }),
+      LATER,
+    )
+
+    expect(application.state_events).toHaveLength(2)
+  })
+
+  it('removes an invite and leaves an unknown id alone', () => {
+    const application = addStateEvent(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      invite(),
+      REFERENCE,
+    )
+    const removed = removeStateEvent(application, application.state_events[0]!.id, LATER)
+
+    expect(removed.state_events).toEqual([])
+    expect(removed.updated_at).toBe(LATER.toISOString())
+    expect(removeStateEvent(application, 'missing', LATER)).toBe(application)
+  })
+
+  it('updates invites through the document without touching other applications', () => {
+    const document = createDemoDocument(REFERENCE)
+    const target = document.applications[0]!
+    const next = updateApplicationStateEvents(document, target.id, [invite()], LATER)
+
+    expect(next.applications[0]!.state_events).toHaveLength(1)
+    expect(next.applications[1]).toBe(document.applications[1])
+    expect(updateApplicationStateEvents(document, 'missing', [invite()], LATER)).toBe(document)
+  })
+
+  it('canonicalizes missing invites on import and rejects invalid ones', () => {
+    const withEvents = (events: unknown) => ({
+      schema_version: 1,
+      applications: [{
+        id: '018f24c0-0000-7000-8000-000000000001',
+        company: 'Northwind',
+        state: 'applied',
+        state_events: events,
+        created_at: REFERENCE.toISOString(),
+        updated_at: REFERENCE.toISOString(),
+      }],
+    })
+
+    const missing = validateTrackerDocument(withEvents(undefined))
+    expect(missing.ok).toBe(true)
+    if (missing.ok) expect(missing.value.applications[0]!.state_events).toEqual([])
+
+    const stored = {
+      id: '018f24c0-0000-7000-8000-0000000000aa',
+      state: 'applied',
+      summary: 'Screening call',
+      starts_at: REFERENCE.toISOString(),
+      created_at: REFERENCE.toISOString(),
+      updated_at: REFERENCE.toISOString(),
+    }
+
+    expect(validateTrackerDocument(withEvents([stored])).ok).toBe(true)
+    expect(validateTrackerDocument(withEvents([{ ...stored, summary: '  ' }])).ok).toBe(false)
+    expect(validateTrackerDocument(withEvents([{ ...stored, state: 'nope' }])).ok).toBe(false)
+    expect(validateTrackerDocument(withEvents([{ ...stored, starts_at: 'soon' }])).ok).toBe(false)
+    expect(
+      validateTrackerDocument(withEvents([{ ...stored, ends_at: '2026-08-13T12:00:00.000Z' }])).ok,
+    ).toBe(false)
+    expect(validateTrackerDocument(withEvents([{ ...stored, url: 'mailto:dana@example.com' }])).ok)
+      .toBe(false)
+    expect(validateTrackerDocument(withEvents([{ ...stored, sequence: -1 }])).ok).toBe(false)
+    expect(
+      validateTrackerDocument(withEvents([
+        { ...stored, ics_uid: 'shared@example.com' },
+        { ...stored, id: '018f24c0-0000-7000-8000-0000000000bb', ics_uid: 'shared@example.com' },
+      ])).ok,
+    ).toBe(false)
+  })
+
+  it('includes invite text in search indexes', () => {
+    const application = addStateEvent(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      invite({ summary: 'Panel with the platform team', location: 'Level 4, Example St' }),
+      REFERENCE,
+    )
+    const indexes = rebuildIndexes([application])
+
+    expect(indexes.search_text[application.id]).toContain('panel with the platform team')
+    expect(indexes.search_text[application.id]).toContain('level 4, example st')
+    expect(indexes.search_text[application.id]).toContain('interview 1')
+  })
+
+  it('round-trips invites through export and import', () => {
+    const document = createDemoDocument(REFERENCE)
+    const roundTrip = parseTrackerDocument(serializeTrackerDocument(document))
+
+    expect(roundTrip.applications.map((application) => application.state_events)).toEqual(
+      document.applications.map((application) => application.state_events),
+    )
+    expect(
+      document.applications.some((application) => application.state_events.length > 0),
     ).toBe(true)
   })
 })

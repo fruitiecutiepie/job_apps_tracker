@@ -671,6 +671,7 @@ p {
 .application-card--stale .application-card__open,
 .application-card--stale .application-card__open span,
 .application-card--stale .application-card__action,
+.application-card--stale .application-card__invite,
 .application-card--stale .application-card__attachments,
 .application-card--stale .application-card__attachments-icon,
 .application-card--stale .application-card__age,
@@ -681,6 +682,7 @@ p {
 .application-card__open,
 .application-card__age,
 .application-card__action,
+.application-card__invite,
 .application-card__attachments {
   margin: 0;
   padding: 0;
@@ -713,7 +715,8 @@ p {
   font-weight: 400;
 }
 
-.application-card__action {
+.application-card__action,
+.application-card__invite {
   display: flex;
   flex-direction: column;
   gap: var(--s1);
@@ -722,7 +725,8 @@ p {
   line-height: 1.4;
 }
 
-.application-card__action span {
+.application-card__action span,
+.application-card__invite span {
   color: var(--ink-3);
   font-size: var(--t1);
   font-weight: 500;
@@ -1143,6 +1147,21 @@ tbody tr:hover {
   font-weight: 400;
 }
 
+.calendar__event--invite {
+  border-left-color: var(--line-strong);
+  background: var(--surface-2);
+}
+
+.calendar__event--cancelled {
+  border-left-color: var(--line);
+}
+
+.calendar__event--cancelled strong,
+.calendar__event--cancelled span {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
 /* ---------------------------------------------------------- statistics --- */
 
 .statistics__total {
@@ -1295,6 +1314,109 @@ tbody tr:hover {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2);
+}
+
+/* ------------------------------------------------------------- invites --- */
+
+.invite-summaries {
+  display: grid;
+  gap: var(--s1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.invite-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  font-size: var(--t2);
+  line-height: 1.4;
+}
+
+.invite-summary .table-view__date {
+  display: inline;
+}
+
+.invite-summary--cancelled .invite-summary__text,
+.invite-summary--cancelled .table-view__date {
+  color: var(--ink-3);
+  text-decoration: line-through;
+}
+
+.invite-summary__badge {
+  padding: 0 var(--s2);
+  border-radius: var(--pill);
+  color: var(--ink-2);
+  background: var(--surface-3);
+  font-size: var(--t1);
+  font-weight: 600;
+}
+
+.invite-field {
+  gap: var(--s3);
+}
+
+.invite-list {
+  display: grid;
+  gap: var(--s3);
+}
+
+.invite-item {
+  display: grid;
+  gap: var(--s3);
+  margin: 0;
+  padding: var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r1);
+}
+
+.invite-item__head,
+.invite-item__grid {
+  display: grid;
+  gap: var(--s3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.invite-item__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.invite-item__cancelled {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  margin-right: auto;
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+.invite-item__cancelled input {
+  width: auto;
+  min-height: auto;
+  accent-color: var(--accent);
+}
+
+.invite-field__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.invite-field__hint,
+.invite-field__notice {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 400;
+}
+
+.invite-field__notice {
+  color: var(--ink);
 }
 
 /* --------------------------------------------------------- stage notes --- */
@@ -1664,6 +1786,11 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .invite-item__head,
+  .invite-item__grid {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .field--wide {

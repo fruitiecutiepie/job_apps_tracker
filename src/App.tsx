@@ -39,16 +39,26 @@ import {
   unpackTrackerArchive,
   updateApplication,
   updateApplicationStageNotes,
+  updateApplicationStateEvents,
   uploadAttachmentFile,
   deleteAttachmentFile,
   type Application,
   type ApplicationInput,
   type Attachment,
   type StageNoteDraft,
+  type StateEventDraft,
   type StateId,
   type TrackerDocument,
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
+import { fromDateTimeInput, toDateTimeInput } from './dateInput'
+import { InviteFields } from './InviteFields'
+import {
+  firstInviteProblem,
+  inviteDrafts,
+  inviteRowsFor,
+  type InviteRow,
+} from './invites'
 import { StageNotesDialog } from './StageNotesDialog'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import {
@@ -137,17 +147,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
 }
 
-function toDateTimeInput(value: string | null): string {
-  if (!value) return ''
-  const date = new Date(value)
-  const pad = (part: number) => String(part).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`
-}
-
-function fromDateTimeInput(value: string): string | null {
-  return value ? new Date(value).toISOString() : null
-}
-
 async function applyAttachmentPlan(
   applicationId: string,
   plan: AttachmentSavePlan,
@@ -199,7 +198,11 @@ interface ApplicationEditorProps {
   application: Application | null
   onClose: () => void
   onDelete?: () => void
-  onSave: (values: EditorValues, attachmentPlan: AttachmentSavePlan) => Promise<void>
+  onSave: (
+    values: EditorValues,
+    attachmentPlan: AttachmentSavePlan,
+    invites: StateEventDraft[],
+  ) => Promise<void>
 }
 
 function ApplicationEditor({ application, onClose, onDelete, onSave }: ApplicationEditorProps) {
@@ -216,6 +219,7 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
     nextActionAt: toDateTimeInput(application?.next_action_at ?? null),
     notes: application?.notes ?? '',
   }))
+  const [invites, setInvites] = useState<InviteRow[]>(() => inviteRowsFor(application))
   const [keptAttachments] = useState<Attachment[]>(() => application?.attachments ?? [])
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([])
   const [stagedFiles, setStagedFiles] = useState<StagedAttachmentFile[]>([])
@@ -290,13 +294,22 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
           onSubmit={async (event) => {
             event.preventDefault()
             setFormError(null)
+            const inviteProblem = firstInviteProblem(invites)
+            if (inviteProblem) {
+              setFormError(inviteProblem)
+              return
+            }
             setSaving(true)
             try {
-              await onSave(values, {
-                keptAttachments: visibleAttachments,
-                removedAttachmentIds,
-                stagedFiles,
-              })
+              await onSave(
+                values,
+                {
+                  keptAttachments: visibleAttachments,
+                  removedAttachmentIds,
+                  stagedFiles,
+                },
+                inviteDrafts(invites),
+              )
             } catch (error) {
               setFormError(errorMessage(error))
             } finally {
@@ -381,6 +394,11 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
                 value={values.notes}
               />
             </label>
+            <InviteFields
+              defaultState={values.state}
+              onChange={setInvites}
+              rows={invites}
+            />
             <div className="field field--wide attachment-field">
               <span>Attachments</span>
               {visibleAttachments.length > 0 && (
@@ -856,7 +874,7 @@ export default function App() {
               closeEditor()
             }
           } : undefined}
-          onSave={async (values, attachmentPlan) => {
+          onSave={async (values, attachmentPlan, invites) => {
             const input: ApplicationInput = {
               company: values.company,
               role: values.role || null,
@@ -875,6 +893,7 @@ export default function App() {
               if (attachments.length > 0) {
                 next = updateApplication(next, created.id, { attachments }, now)
               }
+              next = updateApplicationStateEvents(next, created.id, invites, now)
               await commit(next, 'Application added.')
             } else {
               const attachments = await applyAttachmentPlan(editor.id, attachmentPlan, now)
@@ -888,6 +907,7 @@ export default function App() {
                 notes: input.notes,
                 attachments,
               }, now)
+              next = updateApplicationStateEvents(next, editor.id, invites, now)
               next = moveApplication(next, editor.id, values.state, now)
               await commit(next, 'Application updated.')
             }

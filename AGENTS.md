@@ -7,6 +7,9 @@ This file applies to the entire repository. Keep changes within the app's curren
 - `src/App.tsx` coordinates shared filters, dialogs, imports, exports, persistence, and the six views.
 - `src/StageNotesDialog.tsx` is the stage prep notes dialog and `src/StageNoteEditor.tsx` its Markdown editor; `src/useDialogKeyboard.ts` holds the Escape and focus-trap behavior both dialogs share.
 - `src/markdown/` parses the supported Markdown subset into an AST and renders it as a foldable outline.
+- `src/calendar/` reads the iCalendar subset that recruiter invites arrive in; `src/invites.ts` turns those
+  events into editor rows and mutation drafts, and `src/InviteFields.tsx` is the editor's invite section.
+- `src/dateInput.ts` is the only place `datetime-local` wall time is converted to and from stored timestamps.
 - `src/domain/` is the source of truth for types, state configuration, mutations, validation, storage, IDs, and demo data.
 - `src/views/` contains view components and their derived-data helpers.
 - `src/test/` contains app integration and smoke tests; view-focused tests live beside the views.
@@ -24,6 +27,11 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 - `StateId` is a closed union of exactly 19 states. `STATE_CONFIG` in `src/domain/states.ts` is the only source for state order and display labels.
 - Preserve the configured labels exactly, including the em dashes in rejection labels.
+- Name things `state` in code and stored data — `StateId`, `state`, `state_history`, `state_events`. Use
+  "stage" only in copy a reader sees, where it reads more naturally ("prep notes for this stage", the Kanban
+  stage columns). `stage_notes` predates this rule and stays as it is: it is a persisted field, and renaming
+  it would silently canonicalize every existing note away on load. Note that `stagedFiles` in the attachment
+  flow uses "stage" in its git sense, which is a third meaning — another reason not to reach for the word.
 - Any state may move directly to any other state. Do not add a transition graph or broader pipeline stages.
 - `rejectedStateFor` is a UI convenience that maps a live state to its rejected counterpart (`applied` → `auto_rejected`, otherwise `{state}_rejected` when that id exists). It must not restrict moves.
 - A real state change updates `state` and `updated_at` and appends one timestamped `state_history` entry.
@@ -39,6 +47,19 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Stage prep notes hang off an application as `stage_notes`, at most one per `StateId`, stored in configured state order. A note may target any state, including one the application has not reached, because notes are written before a stage happens.
 - A stage note `body` is raw Markdown text. Store exactly what was typed: no HTML is stored, generated, or injected, and the renderer maps the parsed AST to elements rather than using `dangerouslySetInnerHTML`.
 - Route stage note changes through `applyStageNotes`, `setStageNote`, or `updateApplicationStageNotes`. A blank body removes that stage's note, an unchanged body is a no-op that returns the same object, and a rewritten body keeps `created_at` while refreshing the note's `updated_at` and the application's `updated_at`. Stage notes never append state history.
+- Calendar invites hang off an application as `state_events`, each filed against one `StateId`, stored in
+  configured state order and then start time. A state may hold several invites, and an invite may target a
+  state the application has not reached. An invite may target any state; nothing about the invite decides
+  which stage it belongs to.
+- Route invite changes through `applyStateEvents`, `addStateEvent`, `removeStateEvent`,
+  `updateApplicationStateEvents`, or `addApplicationStateEvent`. A blank summary drops that invite the way a
+  blank body drops a prep note, an unchanged draft is a no-op that returns the same object, and a rescheduled
+  invite keeps its `created_at` while refreshing its `updated_at` and the application's. Invites never append
+  state history.
+- `ics_uid` is the identity that makes re-importing safe: `addStateEvent` replaces the invite already holding
+  that UID instead of appending beside it, keeps the `state` that invite was filed under, and ignores an
+  invite whose `sequence` is behind the stored one. Two invites on one application may not share a UID.
+- An invite must have a summary and a start; `ends_at` may be absent but may not precede `starts_at`.
 - A next action may have no date. A date may not survive without a non-blank action.
 - Application timestamps and history timestamps are timezone-qualified ISO-8601 strings.
 
@@ -52,6 +73,9 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Ignore unknown imported fields for forward compatibility. Reject duplicate IDs, invalid states, malformed timestamps, invalid URLs, and supplied history whose final state differs from the current state. Missing `state_history` is accepted for compatibility and synthesized from the current state; supplied history must be non-empty.
 - Import replaces the entire collection; export writes a zip archive with `tracker.json` plus attachment files. Legacy JSON import still works without files.
 - Missing `stage_notes` on import canonicalizes to `[]`. Reject blank bodies, invalid states, and duplicate states within one application.
+- Missing `state_events` on import canonicalizes to `[]`. Reject blank summaries, invalid states, malformed
+  timestamps, an end before the start, a non-http(s) link, a negative sequence, duplicate ids, and duplicate
+  calendar UIDs within one application.
 - Application attachments store metadata on each application and file bytes under `{dataDir}/attachments/{applicationId}/{attachmentId}` (`data/attachments/` live, `data/demo/attachments/` demo). Missing `attachments` on import canonicalizes to `[]`. Add and remove attachments through mutations; cap each file at 25 MiB.
 - Keep view-only values derived. Never persist Kanban columns, stale status, date groups, stage durations, statistics, or filters. Do not persist overdue/upcoming buckets, calendar day maps, or stale membership because they depend on browser-local "today".
 - On first launch after upgrading from browser storage, migrate a valid legacy `localStorage` document into `data/tracker.json` once (live profile only), then stop using `localStorage`.
@@ -60,7 +84,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 ### Demo data
 
 - `pnpm dev:demo` and `pnpm start:demo` first launch, plus confirmed demo reset, must produce the same 19 deterministic fictional records, exactly one ending in each configured state. Demo reset is unavailable on the live profile and must not write demo records into `data/tracker.json`.
-- The examples intentionally include prior history, dated and undated actions, overdue work, notes, stage prep notes, and stale timestamps so every view has useful content.
+- The examples intentionally include prior history, dated and undated actions, overdue work, notes, stage prep notes, calendar invites (including one cancelled), and stale timestamps so every view has useful content.
 - If states change, update the union, configuration, demo coverage, validation, and tests together. Preserve the runtime assertion that demo data covers every state exactly once.
 
 ### View behavior
@@ -78,6 +102,10 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   `Move {company} to state` — it is the accessible and touch fallback for drag-and-drop.
 - All six views consume the same application collection and respect app-wide search, state, and company filters.
 - Table column filters further narrow only the table. They are display state and must not be persisted.
+- The table's Invites column lists every invite on an application, soonest first, with a cancelled one marked
+  in words as well as struck through. Its filter matches summary, location, date, and the word "cancelled" —
+  so it reaches past invites the column shows but the Kanban card does not. Sorting the column sorts by the
+  next invite still ahead, which sinks rows with nothing coming to the bottom ascending.
 - Stage prep notes open in their own dialog from the Kanban card and the table row. It lists the application's current stage first, then every other stage that has notes, so the stage you are interviewing for is on screen first. Global search matches stage note text through `search_text`.
 - A stage that already has notes opens as a rendered outline; an empty stage opens in the editor. Read and edit mode, and which points are folded, are display state and must not be persisted.
 - `src/markdown/parseMarkdown.ts` supports headings, nested ordered and unordered lists, paragraphs with hard line breaks, block quotes, fenced code, bold, italic, inline code, escapes, and links. It is deliberately a subset, not CommonMark. Links render only for `http`, `https`, and `mailto` targets; anything else falls back to plain text. Extend the parser and its tests together.
@@ -86,7 +114,11 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - `FoldRow` renders one pattern for every fold: a chevron `button` that owns the accessible name and keyboard focus, plus adjacent text that toggles on click. Do not wrap the text in the button—note text contains links, which may not nest inside a button, and a button would make the note hard to select and copy. The text handler ignores clicks that land on a link or that end a non-collapsed selection; keep both guards.
 - `MarkdownNotes` builds fold keys with the `blockKey`/`itemKey` helpers, and both the renderer and the Collapse all collector walk the tree with them. Adding a foldable block means updating `collectBlockKeys` alongside the renderer, or Collapse all silently misses it. The integration test that collapses every level exists to catch exactly that drift.
 - Next actions include every non-blank action, grouped into overdue, upcoming, and unscheduled; dated entries sort chronologically.
-- Calendar placement is based only on `next_action_at`.
+- The calendar places dated next actions and calendar invites, each on its browser-local day and in time
+  order within it. An invite reads as its time and summary, a cancelled one says so and is struck through,
+  and both kinds open their application.
+- A Kanban card shows the soonest invite that is still ahead, skipping cancelled ones and using the same
+  browser-local day boundary as overdue grouping, so an invite earlier today still counts.
 - Stale means `updated_at` is at least the selected threshold in the past and sorts oldest first. The 7/14/30-day choice is display state and must not be persisted.
 - Statistics use configured state order. Current counts come from `state`; ever-reached counts come from `state_history` and count each application once per reached state.
 - Browser-local dates control calendar placement, overdue boundaries, and stale thresholds. Persisted timestamps remain timezone-qualified.
@@ -102,6 +134,12 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 ## Gotchas
 
+- `src/calendar/parseIcs.ts` is a deliberate subset of RFC 5545, not an iCalendar implementation: no
+  recurrence, alarms, or attendees. It reads UTC (`…Z`), named-zone (`TZID=`), floating, and date-only
+  starts. A named zone is resolved through `Intl` in two passes, because the offset depends on the instant
+  the offset is needed to find — that second pass is what places a time near a daylight-saving change on the
+  right side of it. An unknown zone falls back to browser-local rather than guessing, and an event whose
+  start cannot be read is returned with a null `starts_at` so a caller can report it instead of dropping it.
 - `datetime-local` inputs represent browser-local wall time. Convert them to ISO timestamps for storage and back to local values for editing; do not parse them as UTC by accident.
 - The demo uses a fixed reference timestamp for deterministic content and tests. Changing it can alter stale, overdue, and calendar expectations throughout the suite.
 - The editor saves ordinary field edits before applying a state move. Keep the move mutation responsible for state history so one save cannot append duplicate entries.

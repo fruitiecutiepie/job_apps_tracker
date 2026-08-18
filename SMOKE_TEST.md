@@ -12,6 +12,9 @@ This checks the demo-profile journey: 19 first-load examples, navigation through
 searching for an application, changing its state and recording history, recording stage prep
 notes against it, persistence across an app reload, and confirmed demo-data reset.
 
+Importing a calendar invite through the editor, replacing a rescheduled one, and refusing an invite
+with no start time are covered by the app integration tests.
+
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
 
@@ -60,9 +63,19 @@ test cannot judge reliably:
    Clear a stage's notes, save, and confirm they are gone.
 8. Add an attachment in the application editor, save, reopen the application, and open
    the file. Remove an attachment and confirm it disappears after save.
-9. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
-   and confirm it. Confirm the same 19 examples
-   are restored in `data/demo/` and that `data/tracker.json` is unchanged.
+9. In the application editor, confirm the two invite buttons read **Import .ics file** and
+   **Add invite manually**, and that the difference between them is clear before reading the hint.
+   Choose **Import .ics file** and select an `.ics` file saved from a real calendar invite. Confirm
+   the description, times, place, and any joining link are filled in, and that the stage defaults to
+   the application's current state. Save, reopen, and confirm the invite persisted. Import the same
+   file again and confirm it updates that invite rather than adding a second one. Confirm the invite
+   appears on the Calendar on its local day, on the Kanban card, and in the table's Invites column,
+   and that searching its description finds the application. On Table, sort by **Invites** and
+   confirm rows with nothing coming sink to the bottom. Tick **Cancelled**, save, and confirm the
+   calendar entry and the table cell read as cancelled and the card no longer shows it.
+10. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+    and confirm it. Confirm the same 19 examples are restored in `data/demo/`, now including
+    the demo invites, and that `data/tracker.json` is unchanged.
 
 The demo-profile steps change only `data/demo/` tracker data. The final reset restores
 the deterministic demo data.

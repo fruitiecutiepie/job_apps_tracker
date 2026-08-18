@@ -9,6 +9,7 @@ import {
   DEFAULT_STALE_THRESHOLD_DAYS,
   formatShortDate,
   kanbanColumnGroups,
+  upcomingStateEvent,
 } from "./viewUtils";
 
 export function KanbanView({
@@ -103,6 +104,7 @@ export function KanbanView({
                       {stateApplications.map((application) => {
                         const ageInDays = applicationAgeInDays(application.updated_at);
                         const stale = ageInDays >= DEFAULT_STALE_THRESHOLD_DAYS;
+                        const invite = upcomingStateEvent(application);
                         const openLabel = [
                           `Open ${application.company}`,
                           application.role,
@@ -152,6 +154,15 @@ export function KanbanView({
                                     · {formatShortDate(application.next_action_at)}
                                   </time>
                                 ) : null}
+                              </p>
+                            ) : null}
+                            {invite ? (
+                              <p className="application-card__invite">
+                                <span>Invite</span> {invite.summary}
+                                <time dateTime={invite.starts_at}>
+                                  {" "}
+                                  · {formatShortDate(invite.starts_at)}
+                                </time>
                               </p>
                             ) : null}
                             <AttachmentFilenames attachments={application.attachments} variant="card" />

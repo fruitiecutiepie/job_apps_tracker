@@ -1,14 +1,14 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { Application, StateId } from '../domain'
+import type { Application, StateEvent, StateId } from '../domain'
 import { CalendarView } from './CalendarView'
 import { KanbanView } from './KanbanView'
 import { NextActionsView } from './NextActionsView'
 import { StaleView } from './StaleView'
 import { StatisticsView } from './StatisticsView'
 import { TableView } from './TableView'
-import { kanbanColumnGroups } from './viewUtils'
+import { formatLongDate, kanbanColumnGroups } from './viewUtils'
 
 const now = new Date(2026, 7, 14, 12)
 
@@ -35,9 +35,28 @@ function application(
     next_action_at: null,
     notes: null,
     stage_notes: [],
+    state_events: [],
     attachments: [],
     created_at: localDate(-40),
     updated_at: localDate(-1),
+    ...overrides,
+  }
+}
+
+function stateEvent(overrides: Partial<StateEvent> = {}): StateEvent {
+  return {
+    id: `00000000-0000-7000-9000-${String(Math.abs(Date.parse(overrides.starts_at ?? localDate(1)))).slice(-12)}`,
+    state: 'interview_1',
+    summary: 'Interview 1 — panel',
+    starts_at: localDate(1),
+    ends_at: null,
+    location: null,
+    url: null,
+    ics_uid: null,
+    sequence: 0,
+    cancelled: false,
+    created_at: localDate(-2),
+    updated_at: localDate(-2),
     ...overrides,
   }
 }
@@ -221,6 +240,58 @@ describe('CalendarView', () => {
     expect(onOpen).toHaveBeenCalledWith(scheduled.id)
   })
 
+  it('places invites beside dated next actions in time order', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const onOpen = vi.fn()
+    const scheduled = application('Panel Company', {
+      next_action: 'Reread the brief',
+      next_action_at: new Date(2026, 7, 21, 16).toISOString(),
+      state_events: [
+        stateEvent({ summary: 'Research panel', starts_at: new Date(2026, 7, 21, 9, 30).toISOString() }),
+      ],
+    })
+
+    render(<CalendarView applications={[scheduled]} onOpen={onOpen} onOpenStageNotes={vi.fn()} />)
+
+    const day = screen.getByRole('gridcell', {
+      name: formatLongDate(new Date(2026, 7, 21)),
+    })
+    expect(within(day).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      expect.stringContaining('Research panel'),
+      expect.stringContaining('Reread the brief'),
+    ])
+
+    fireEvent.click(within(day).getByRole('button', { name: /Research panel/ }))
+    expect(onOpen).toHaveBeenCalledWith(scheduled.id)
+  })
+
+  it('marks a cancelled invite as cancelled', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    render(
+      <CalendarView
+        applications={[
+          application('Called Off', {
+            state_events: [
+              stateEvent({
+                summary: 'Leadership interview',
+                starts_at: new Date(2026, 7, 25, 10).toISOString(),
+                cancelled: true,
+              }),
+            ],
+          }),
+        ]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: /Cancelled.*Leadership interview/ }),
+    ).toBeInTheDocument()
+  })
+
   it('moves between months and returns to the current month', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
@@ -327,6 +398,53 @@ describe('TableView', () => {
     })
     expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
     expect(applications).toHaveLength(2)
+  })
+
+  it('lists invites in a column, filters on them, and sorts by what is next', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const applications = [
+      application('Later Panel', {
+        state_events: [stateEvent({ summary: 'Systems design round', starts_at: localDate(9) })],
+      }),
+      application('No Invites'),
+      application('Sooner Panel', {
+        state_events: [
+          stateEvent({ summary: 'Called off round', starts_at: localDate(2), cancelled: true }),
+          stateEvent({ summary: 'Research panel', starts_at: localDate(4), location: 'Docklands' }),
+        ],
+      }),
+    ]
+
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={vi.fn()} />)
+
+    const sooner = screen.getByRole('row', { name: /Sooner Panel/ })
+    expect(within(sooner).getByText('Called off round')).toBeInTheDocument()
+    expect(within(sooner).getByText('Cancelled')).toBeInTheDocument()
+    // Both invites show, soonest first, whether or not they are still ahead.
+    expect(within(sooner).getAllByRole('listitem').map((item) => item.textContent)).toEqual([
+      expect.stringContaining('Called off round'),
+      expect.stringContaining('Research panel'),
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Invites' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Sooner Panel',
+      'Later Panel',
+      'No Invites',
+    ])
+
+    // A cancelled invite is not what is next, so it does not pull the row forward.
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Invites column' }), {
+      target: { value: 'docklands' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Sooner Panel'])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Invites column' }), {
+      target: { value: 'cancelled' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Sooner Panel'])
   })
 
   it('offers company and source datalist suggestions', () => {
@@ -439,6 +557,27 @@ describe('KanbanView', () => {
     expect(
       screen.queryByRole('button', { name: 'Move Keyboard Movers to Auto-rejected' }),
     ).not.toBeInTheDocument()
+  })
+
+  it('shows the soonest invite still ahead and skips cancelled or past ones', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const record = application('Invite Board', {
+      state_events: [
+        stateEvent({ summary: 'Already happened', starts_at: localDate(-3) }),
+        stateEvent({ summary: 'Called off', starts_at: localDate(1), cancelled: true }),
+        stateEvent({ summary: 'Research panel', starts_at: localDate(2) }),
+        stateEvent({ summary: 'Leadership chat', starts_at: localDate(6) }),
+      ],
+    })
+
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={vi.fn()} />)
+
+    const card = screen.getByText('Invite Board').closest('article')
+    expect(within(card!).getByText(/Research panel/)).toBeInTheDocument()
+    expect(within(card!).queryByText(/Already happened/)).not.toBeInTheDocument()
+    expect(within(card!).queryByText(/Called off/)).not.toBeInTheDocument()
+    expect(within(card!).queryByText(/Leadership chat/)).not.toBeInTheDocument()
   })
 
   it('moves a dragged card to any other state', () => {

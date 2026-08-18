@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { Application } from "../domain";
+import type { Application, StateEvent } from "../domain";
 import type { ApplicationsViewProps } from "./types";
 import { formatLongDate, localDateKey, parseTimestamp } from "./viewUtils";
 
@@ -8,6 +8,23 @@ const monthFormatter = new Intl.DateTimeFormat(undefined, {
   month: "long",
   year: "numeric",
 });
+const timeFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+/**
+ * One thing shown on one day. Dated next actions and calendar invites both land
+ * here, so a day cell can carry a mix of the two in time order.
+ */
+interface CalendarEntry {
+  key: string;
+  at: string;
+  application: Application;
+  detail: string;
+  kind: "action" | "invite";
+  cancelled: boolean;
+}
 
 function monthStart(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
@@ -24,6 +41,24 @@ function buildCalendarDays(month: Date): Date[] {
   });
 }
 
+function inviteEntry(application: Application, event: StateEvent, at: Date): CalendarEntry {
+  const detail = [
+    event.cancelled ? "Cancelled" : null,
+    timeFormatter.format(at),
+    event.summary,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return {
+    key: `invite:${event.id}`,
+    at: event.starts_at,
+    application,
+    detail,
+    kind: "invite",
+    cancelled: event.cancelled,
+  };
+}
+
 export function CalendarView({ applications, onOpen }: ApplicationsViewProps) {
   const [month, setMonth] = useState(() => monthStart(new Date()));
   const days = useMemo(() => buildCalendarDays(month), [month]);
@@ -32,21 +67,39 @@ export function CalendarView({ applications, onOpen }: ApplicationsViewProps) {
     [days],
   );
 
-  const applicationsByDay = useMemo(() => {
-    const grouped = new Map<string, Application[]>();
+  const entriesByDay = useMemo(() => {
+    const grouped = new Map<string, CalendarEntry[]>();
+    const place = (entry: CalendarEntry, at: Date) => {
+      const key = localDateKey(at);
+      grouped.set(key, [...(grouped.get(key) ?? []), entry]);
+    };
+
     applications.forEach((application) => {
-      if (!application.next_action_at) return;
-      const date = parseTimestamp(application.next_action_at);
-      if (!date) return;
-      const key = localDateKey(date);
-      grouped.set(key, [...(grouped.get(key) ?? []), application]);
+      if (application.next_action_at) {
+        const at = parseTimestamp(application.next_action_at);
+        if (at) {
+          place(
+            {
+              key: `action:${application.id}`,
+              at: application.next_action_at,
+              application,
+              detail: application.next_action?.trim() || "Scheduled action",
+              kind: "action",
+              cancelled: false,
+            },
+            at,
+          );
+        }
+      }
+
+      application.state_events.forEach((event) => {
+        const at = parseTimestamp(event.starts_at);
+        if (at) place(inviteEntry(application, event, at), at);
+      });
     });
-    grouped.forEach((items) =>
-      items.sort(
-        (left, right) =>
-          new Date(left.next_action_at ?? 0).getTime() -
-          new Date(right.next_action_at ?? 0).getTime(),
-      ),
+
+    grouped.forEach((entries) =>
+      entries.sort((left, right) => Date.parse(left.at) - Date.parse(right.at)),
     );
     return grouped;
   }, [applications]);
@@ -90,7 +143,7 @@ export function CalendarView({ applications, onOpen }: ApplicationsViewProps) {
             <div className="calendar__row" role="row" key={localDateKey(week[0])}>
               {week.map((day) => {
                 const key = localDateKey(day);
-                const items = applicationsByDay.get(key) ?? [];
+                const entries = entriesByDay.get(key) ?? [];
                 const outsideMonth = day.getMonth() !== month.getMonth();
                 const isToday = key === localDateKey(new Date());
                 return (
@@ -104,16 +157,22 @@ export function CalendarView({ applications, onOpen }: ApplicationsViewProps) {
                       {day.getDate()}
                     </time>
                     <div className="calendar__events">
-                      {items.map((application) => (
+                      {entries.map((entry) => (
                         <button
                           type="button"
-                          className="calendar__event"
-                          key={application.id}
-                          onClick={() => onOpen(application.id)}
-                          title={`${application.company}: ${application.next_action ?? "Scheduled action"}`}
+                          className={[
+                            "calendar__event",
+                            `calendar__event--${entry.kind}`,
+                            entry.cancelled ? "calendar__event--cancelled" : "",
+                          ]
+                            .filter(Boolean)
+                            .join(" ")}
+                          key={entry.key}
+                          onClick={() => onOpen(entry.application.id)}
+                          title={`${entry.application.company}: ${entry.detail}`}
                         >
-                          <strong>{application.company}</strong>
-                          <span>{application.next_action?.trim() || "Scheduled action"}</span>
+                          <strong>{entry.application.company}</strong>
+                          <span>{entry.detail}</span>
                         </button>
                       ))}
                     </div>

@@ -47,6 +47,12 @@ function jsonFile(contents: string, name = 'applications.json') {
   return file
 }
 
+function icsFile(...lines: string[]) {
+  const contents = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'BEGIN:VEVENT', ...lines, 'END:VEVENT', 'END:VCALENDAR']
+    .join('\r\n')
+  return new File([contents], 'invite.ics', { type: 'text/calendar' })
+}
+
 describe('job applications tracker', () => {
   it('starts with every configured state represented in the Kanban', async () => {
     await renderLoadedApp()
@@ -577,6 +583,99 @@ describe('job applications tracker', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
     expect(readSavedDocument().applications).toHaveLength(19)
+  })
+
+  it('imports a calendar invite against a state and replaces it when it is rescheduled', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Open Paper Kite, Senior UX Researcher' }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.upload(
+      within(dialog).getByLabelText('Invite file'),
+      icsFile(
+        'UID:screen-1@example.com',
+        'SUMMARY:Screening call with Dana',
+        'DTSTART:20260901T040000Z',
+        'DTEND:20260901T043000Z',
+        'LOCATION:Video call',
+      ),
+    )
+
+    const invite = within(dialog).getByRole('group', { name: 'Invite 1' })
+    expect(within(invite).getByDisplayValue('Screening call with Dana')).toBeInTheDocument()
+    expect(within(invite).getByDisplayValue('Video call')).toBeInTheDocument()
+    // An imported invite is filed under the stage the application is in.
+    expect(within(invite).getByRole('combobox')).toHaveValue('recruiter_messaged')
+    expect(within(dialog).getByRole('status')).toHaveTextContent('1 added')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const paperKite = () =>
+      readSavedDocument().applications.find((application) => application.company === 'Paper Kite')
+    expect(paperKite()?.state_events).toHaveLength(1)
+    expect(paperKite()?.state_events[0]).toMatchObject({
+      state: 'recruiter_messaged',
+      summary: 'Screening call with Dana',
+      starts_at: '2026-09-01T04:00:00.000Z',
+      ends_at: '2026-09-01T04:30:00.000Z',
+      location: 'Video call',
+      ics_uid: 'screen-1@example.com',
+    })
+    const storedId = paperKite()!.state_events[0]!.id
+
+    await user.click(
+      screen.getByRole('button', { name: 'Open Paper Kite, Senior UX Researcher' }),
+    )
+    const reopened = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.upload(
+      within(reopened).getByLabelText('Invite file'),
+      icsFile(
+        'UID:screen-1@example.com',
+        'SUMMARY:Screening call with Dana (moved)',
+        'DTSTART:20260903T050000Z',
+        'SEQUENCE:1',
+      ),
+    )
+
+    expect(within(reopened).getAllByRole('group', { name: /^Invite/ })).toHaveLength(1)
+    expect(within(reopened).getByRole('status')).toHaveTextContent('1 updated')
+    await user.click(within(reopened).getByRole('button', { name: 'Save changes' }))
+
+    expect(paperKite()?.state_events).toHaveLength(1)
+    expect(paperKite()?.state_events[0]).toMatchObject({
+      id: storedId,
+      summary: 'Screening call with Dana (moved)',
+      starts_at: '2026-09-03T05:00:00.000Z',
+      sequence: 1,
+    })
+
+    await user.type(screen.getByRole('searchbox', { name: 'Search applications' }), 'screening call')
+    expect(screen.getByText('1 of 19 applications shown')).toBeInTheDocument()
+  })
+
+  it('refuses to save an invite that has no start time', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: 'Open Paper Kite, Senior UX Researcher' }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Add invite manually' }))
+    const invite = within(dialog).getByRole('group', { name: 'Invite 1' })
+    await user.type(within(invite).getByLabelText('What'), 'Panel interview')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Invite 1 needs a start date and time.',
+    )
+    expect(
+      readSavedDocument().applications.find((application) => application.company === 'Paper Kite')
+        ?.state_events,
+    ).toEqual([])
   })
 
   it('adds and removes an attachment from the application editor', async () => {

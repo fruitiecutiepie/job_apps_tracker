@@ -37,6 +37,40 @@ export interface StageNoteDraft {
   body: string
 }
 
+/**
+ * A calendar invite filed against one state of an application. `ics_uid` is the
+ * iCalendar UID it arrived with, which is how a rescheduled invite replaces the
+ * one it supersedes instead of sitting beside it.
+ */
+export interface StateEvent {
+  id: string
+  state: StateId
+  summary: string
+  starts_at: string
+  ends_at: string | null
+  location: string | null
+  url: string | null
+  ics_uid: string | null
+  sequence: number
+  cancelled: boolean
+  created_at: string
+  updated_at: string
+}
+
+/** An invite as edited in the UI, before an id and timestamps are resolved. */
+export interface StateEventDraft {
+  id?: string
+  state: StateId
+  summary: string
+  starts_at: string
+  ends_at?: string | null
+  location?: string | null
+  url?: string | null
+  ics_uid?: string | null
+  sequence?: number
+  cancelled?: boolean
+}
+
 export interface Attachment {
   id: string
   filename: string
@@ -57,6 +91,7 @@ export interface Application {
   next_action_at: string | null
   notes: string | null
   stage_notes: StageNote[]
+  state_events: StateEvent[]
   attachments: Attachment[]
   created_at: string
   updated_at: string

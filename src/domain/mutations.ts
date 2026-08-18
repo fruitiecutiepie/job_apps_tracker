@@ -8,6 +8,8 @@ import type {
   Attachment,
   StageNote,
   StageNoteDraft,
+  StateEvent,
+  StateEventDraft,
   StateId,
   TrackerDocument,
 } from './types'
@@ -87,6 +89,7 @@ export function createApplication(
     next_action_at: nextAction ? optionalTimestamp(input.next_action_at) : null,
     notes: optionalText(input.notes),
     stage_notes: [],
+    state_events: [],
     attachments: [],
     created_at: createdAt,
     updated_at: createdAt,
@@ -184,6 +187,163 @@ export function setStageNote(
   return applyStageNotes(application, [{ state, body }], at)
 }
 
+/** The invites filed against one state of an application, soonest first. */
+export function stateEventsFor(application: Application, state: StateId): StateEvent[] {
+  return application.state_events.filter((event) => event.state === state)
+}
+
+function sortedStateEvents(events: StateEvent[]): StateEvent[] {
+  return [...events].sort(
+    (left, right) =>
+      stateRank(left.state) - stateRank(right.state)
+      || Date.parse(left.starts_at) - Date.parse(right.starts_at)
+      || left.id.localeCompare(right.id),
+  )
+}
+
+function sameStateEvent(event: StateEvent, other: StateEvent): boolean {
+  return (
+    event.state === other.state
+    && event.summary === other.summary
+    && event.starts_at === other.starts_at
+    && event.ends_at === other.ends_at
+    && event.location === other.location
+    && event.url === other.url
+    && event.ics_uid === other.ics_uid
+    && event.sequence === other.sequence
+    && event.cancelled === other.cancelled
+  )
+}
+
+/** Canonicalizes one invite draft. Throws on anything a stored invite may not hold. */
+function canonicalStateEvent(
+  draft: StateEventDraft,
+  id: string,
+  createdAt: string,
+  updatedAt: string,
+): StateEvent {
+  if (!isStateId(draft.state)) throw new TypeError('State is invalid')
+  const startsAt = timestamp(draft.starts_at)
+  const endsAt = optionalTimestamp(draft.ends_at)
+  if (endsAt && Date.parse(endsAt) < Date.parse(startsAt)) {
+    throw new TypeError('An invite may not end before it starts')
+  }
+  const sequence = draft.sequence ?? 0
+  if (!Number.isInteger(sequence) || sequence < 0) {
+    throw new TypeError('Invite sequence must be a non-negative integer')
+  }
+
+  return {
+    id,
+    state: draft.state,
+    summary: draft.summary.trim(),
+    starts_at: startsAt,
+    ends_at: endsAt,
+    location: optionalText(draft.location),
+    url: checkedUrl(draft.url),
+    ics_uid: optionalText(draft.ics_uid),
+    sequence,
+    cancelled: draft.cancelled ?? false,
+    created_at: createdAt,
+    updated_at: updatedAt,
+  }
+}
+
+/**
+ * Replaces the whole set of invites with the supplied drafts. A draft keeps its
+ * timestamps when nothing about it changed, a blank summary drops that invite the
+ * way a blank body drops a prep note, and the application is returned untouched
+ * when nothing changed at all.
+ */
+export function applyStateEvents(
+  application: Application,
+  drafts: StateEventDraft[],
+  at: Date | string = new Date(),
+): Application {
+  const updatedAt = timestamp(at)
+  const existingById = new Map(application.state_events.map((event) => [event.id, event]))
+  const events: StateEvent[] = []
+  const seenIds = new Set<string>()
+  const seenUids = new Set<string>()
+
+  for (const draft of drafts) {
+    if (!draft.summary.trim()) continue
+
+    const existing = draft.id ? existingById.get(draft.id) : undefined
+    const id = existing?.id ?? draft.id ?? createUuidV7(at instanceof Date ? at : new Date(at))
+    if (seenIds.has(id)) throw new TypeError('Invite id already exists on this application')
+    seenIds.add(id)
+
+    const candidate = canonicalStateEvent(draft, id, existing?.created_at ?? updatedAt, updatedAt)
+    if (candidate.ics_uid) {
+      if (seenUids.has(candidate.ics_uid)) {
+        throw new TypeError('Each calendar UID may appear once on an application')
+      }
+      seenUids.add(candidate.ics_uid)
+    }
+
+    events.push(existing && sameStateEvent(existing, candidate) ? existing : candidate)
+  }
+
+  const next = sortedStateEvents(events)
+  const unchanged =
+    next.length === application.state_events.length
+    && next.every((event, index) => event === application.state_events[index])
+  if (unchanged) return application
+
+  return { ...application, state_events: next, updated_at: updatedAt }
+}
+
+/**
+ * Files one invite against a state. An invite carrying a calendar UID already on
+ * the application replaces that one rather than joining it, which is how a
+ * reschedule lands: the stored `state` survives, because which stage an invite
+ * belongs to is the reader's filing decision and not something the invite says.
+ * An invite whose `sequence` is behind the stored one is ignored as stale.
+ */
+export function addStateEvent(
+  application: Application,
+  draft: StateEventDraft,
+  at: Date | string = new Date(),
+): Application {
+  const updatedAt = timestamp(at)
+  const uid = optionalText(draft.ics_uid)
+  const superseded = uid
+    ? application.state_events.find((event) => event.ics_uid === uid)
+    : undefined
+
+  if (superseded && (draft.sequence ?? 0) < superseded.sequence) return application
+
+  const id = superseded?.id ?? createUuidV7(at instanceof Date ? at : new Date(at))
+  const candidate = canonicalStateEvent(
+    superseded ? { ...draft, state: superseded.state } : draft,
+    id,
+    superseded?.created_at ?? updatedAt,
+    updatedAt,
+  )
+  if (superseded && sameStateEvent(superseded, candidate)) return application
+
+  const kept = application.state_events.filter((event) => event.id !== id)
+  return {
+    ...application,
+    state_events: sortedStateEvents([...kept, candidate]),
+    updated_at: updatedAt,
+  }
+}
+
+export function removeStateEvent(
+  application: Application,
+  eventId: string,
+  at: Date | string = new Date(),
+): Application {
+  if (!application.state_events.some((event) => event.id === eventId)) return application
+  return {
+    ...application,
+    state_events: application.state_events.filter((event) => event.id !== eventId),
+    updated_at: timestamp(at),
+  }
+}
+
 export function addAttachment(
   application: Application,
   attachment: Attachment,
@@ -261,6 +421,40 @@ export function updateApplicationStageNotes(
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
   const updated = applyStageNotes(application, drafts, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+export function updateApplicationStateEvents(
+  document: TrackerDocument,
+  id: string,
+  drafts: StateEventDraft[],
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = applyStateEvents(application, drafts, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+export function addApplicationStateEvent(
+  document: TrackerDocument,
+  id: string,
+  draft: StateEventDraft,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = addStateEvent(application, draft, at)
   if (updated === application) return document
 
   return {
