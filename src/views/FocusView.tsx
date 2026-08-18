@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { focusGroups } from "./focusGroups";
 import { StageNotesButton } from "./StageNotesButton";
 import type { ApplicationsViewProps } from "./types";
-import { formatShortDate } from "./viewUtils";
+import { formatShortDate, upcomingStateEvent } from "./viewUtils";
 
 /**
  * An ordered group is a schedule or a priority order, so position means something and the
@@ -46,34 +46,43 @@ export function FocusView({ applications, onOpen, onOpenStageNotes }: Applicatio
             <p className="empty-inline">{group.emptyMessage}</p>
           ) : (
             <RowList ordered={group.ordered}>
-              {group.rows.map(({ application, reason }) => (
-                <li key={application.id}>
-                  <button
-                    className="action-card"
-                    type="button"
-                    onClick={() => onOpen(application.id)}
-                    aria-label={`Open ${application.company}${application.role ? `, ${application.role}` : ""}`}
-                  >
-                    <span className="action-card__date">{reason}</span>
-                    <strong>{application.next_action?.trim() || "No action set"}</strong>
-                    <span>
-                      {application.company}
-                      {application.role ? ` · ${application.role}` : ""}
-                    </span>
-                    <span>
-                      {application.deadline_at
-                        ? `Deadline ${formatShortDate(application.deadline_at)} · `
-                        : ""}
-                      {`Updated ${formatShortDate(application.updated_at)}`}
-                    </span>
-                  </button>
-                  <StageNotesButton
-                    application={application}
-                    onOpenStageNotes={onOpenStageNotes}
-                    variant="card"
-                  />
-                </li>
-              ))}
+              {group.rows.map(({ application, reason }) => {
+                const invite = upcomingStateEvent(application);
+
+                return (
+                  <li key={application.id}>
+                    <button
+                      className="action-card"
+                      type="button"
+                      onClick={() => onOpen(application.id)}
+                      aria-label={`Open ${application.company}${application.role ? `, ${application.role}` : ""}`}
+                    >
+                      <span className="action-card__date">{reason}</span>
+                      <strong>{application.next_action?.trim() || "No action set"}</strong>
+                      <span>
+                        {application.company}
+                        {application.role ? ` · ${application.role}` : ""}
+                      </span>
+                      <span>
+                        {[
+                          invite ? `${invite.summary} ${formatShortDate(invite.starts_at)}` : null,
+                          application.deadline_at
+                            ? `Deadline ${formatShortDate(application.deadline_at)}`
+                            : null,
+                          `Updated ${formatShortDate(application.updated_at)}`,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </span>
+                    </button>
+                    <StageNotesButton
+                      application={application}
+                      onOpenStageNotes={onOpenStageNotes}
+                      variant="card"
+                    />
+                  </li>
+                );
+              })}
             </RowList>
           )}
         </details>

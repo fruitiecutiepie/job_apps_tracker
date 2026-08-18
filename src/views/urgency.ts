@@ -1,6 +1,12 @@
 import { STATE_CONFIG } from "../domain";
 import type { Application, StateId } from "../domain";
-import { applicationAgeInDays, isRejectedState, localDayNumber, parseTimestamp } from "./viewUtils";
+import {
+  applicationAgeInDays,
+  isRejectedState,
+  localDayNumber,
+  parseTimestamp,
+  upcomingStateEvent,
+} from "./viewUtils";
 
 /**
  * Urgency is derived view state, never persisted: it depends on browser-local "today"
@@ -28,6 +34,12 @@ const LIVE_STATE_ORDER = new Map<StateId, number>(
   ]),
 );
 
+/**
+ * Horizons encode confidence, not importance: every dated term peaks at 1 on its own day,
+ * but a firmer commitment decays more slowly, so at equal distance an invite outranks a
+ * deadline and a deadline outranks a date you set yourself.
+ */
+export const INVITE_HORIZON_DAYS = 21;
 export const DEADLINE_HORIZON_DAYS = 14;
 export const ACTION_HORIZON_DAYS = 7;
 export const STALE_GRACE_DAYS = 7;
@@ -49,7 +61,10 @@ const STAGE_FLOOR = 0.5;
 const SCORE_EPSILON = 1e-9;
 
 /** Which pressure won, so callers can group without parsing the reason text. */
-export type UrgencyKind = "deadline" | "action" | "staleness" | "none";
+export type UrgencyKind = "invite" | "deadline" | "action" | "staleness" | "none";
+
+/** The kinds that carry a date, and so can be described relative to today. */
+export type DueKind = "invite" | "deadline" | "action";
 
 export interface UrgencyRanking {
   application: Application;
@@ -89,15 +104,34 @@ function dayCount(days: number): string {
  * The single source of date phrasing, shared by the pressure terms and by Focus, so a row
  * cannot describe a date one way while the score describes it another.
  */
-export function describeDue(kind: "deadline" | "action", days: number): string {
-  const subject = kind === "deadline" ? "Deadline" : "Action";
+export function describeDue(kind: DueKind, days: number): string {
+  const subject = kind === "invite" ? "Invite" : kind === "deadline" ? "Deadline" : "Action";
   if (days < 0) {
-    return kind === "deadline"
-      ? `Deadline passed ${dayCount(-days)} ago`
-      : `Action overdue ${dayCount(-days)}`;
+    return kind === "action"
+      ? `Action overdue ${dayCount(-days)}`
+      : `${subject} passed ${dayCount(-days)} ago`;
   }
-  if (days === 0) return kind === "deadline" ? "Deadline today" : "Action due today";
+  if (days === 0) return kind === "action" ? "Action due today" : `${subject} today`;
   return `${subject} in ${dayCount(days)}`;
+}
+
+/**
+ * A scheduled invite is the firmest signal here: a counterparty is holding time. Only
+ * invites still ahead count, because a meeting that already happened is history rather
+ * than pressure — unlike a deadline, which stays urgent precisely because it slipped.
+ */
+function invitePressure(application: Application, today: Date): PressureTerm {
+  const event = upcomingStateEvent(application, today);
+  if (!event) return NO_PRESSURE;
+  const days = daysUntil(event.starts_at, today);
+  if (days === null) return NO_PRESSURE;
+
+  return {
+    kind: "invite",
+    dueAt: event.starts_at,
+    detail: describeDue("invite", days),
+    pressure: Math.max(0, 1 - days / INVITE_HORIZON_DAYS),
+  };
 }
 
 function deadlinePressure(application: Application, today: Date): PressureTerm {
@@ -155,8 +189,9 @@ function stalenessPressure(application: Application, today: Date): PressureTerm 
 export function urgencyFor(application: Application, today: Date = new Date()): UrgencyRanking | null {
   if (classifyLifecycle(application.state) !== "live") return null;
 
-  // Ordered by precedence, so an equal-pressure tie resolves to the external fact first.
+  // Ordered by precedence, so an equal-pressure tie resolves to the firmest fact first.
   const terms = [
+    invitePressure(application, today),
     deadlinePressure(application, today),
     actionPressure(application, today),
     stalenessPressure(application, today),

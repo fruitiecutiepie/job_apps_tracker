@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Application, StateId } from '../domain'
+import type { Application, StateEvent, StateId } from '../domain'
 import { DUE_SOON_DAYS, focusGroups, type FocusGroupId } from './focusGroups'
 
 const today = new Date(2026, 7, 14, 12)
@@ -31,6 +31,24 @@ function application(company: string, overrides: Partial<Application> = {}): App
     attachments: [],
     updated_at: at(-1),
     created_at: at(-40),
+    ...overrides,
+  }
+}
+
+function invite(daysFromToday: number, overrides: Partial<StateEvent> = {}): StateEvent {
+  return {
+    id: `00000000-0000-7000-8000-${String(daysFromToday + 100).padStart(12, '0')}`,
+    state: 'interview_1',
+    summary: 'Research panel',
+    starts_at: at(daysFromToday, 14),
+    ends_at: null,
+    location: null,
+    url: null,
+    ics_uid: null,
+    sequence: 0,
+    cancelled: false,
+    created_at: at(-5),
+    updated_at: at(-5),
     ...overrides,
   }
 }
@@ -139,6 +157,41 @@ describe('focusGroups', () => {
 
     expect(companiesIn(applications, 'due_week')).toEqual(['Offer Soonest', 'Applied Sooner'])
     expect(companiesIn(applications, 'due_later')).toEqual(['Offer Later'])
+  })
+
+  it('places an application by its invite when nothing else is dated', () => {
+    // The gap this closes: an interview in two days used to read as nothing planned.
+    const applications = [application('Panel Soon', { state_events: [invite(2)] })]
+
+    expect(companiesIn(applications, 'due_week')).toEqual(['Panel Soon'])
+    expect(companiesIn(applications, 'quiet')).toEqual([])
+
+    const dueWeek = focusGroups(applications, today).find(({ id }) => id === 'due_week')!
+    expect(dueWeek.rows[0].reason).toBe('Invite in 2 days')
+  })
+
+  it('treats an invite today as due now and a cancelled one as no date at all', () => {
+    const applications = [
+      application('Interview Today', { state_events: [invite(0)] }),
+      application('Called Off', { state_events: [invite(2, { cancelled: true })] }),
+    ]
+
+    expect(companiesIn(applications, 'due_now')).toEqual(['Interview Today'])
+    expect(companiesIn(applications, 'quiet')).toEqual(['Called Off'])
+  })
+
+  it('places by the invite when it is the nearest of the three dates', () => {
+    const applications = [
+      application('Invite Nearest', {
+        deadline_at: at(9),
+        next_action: 'Prepare',
+        next_action_at: at(5),
+        state_events: [invite(1)],
+      }),
+    ]
+
+    const dueWeek = focusGroups(applications, today).find(({ id }) => id === 'due_week')!
+    expect(dueWeek.rows[0].reason).toBe('Invite in 1 day')
   })
 
   it('separates an undated action from silence and from having no plan', () => {

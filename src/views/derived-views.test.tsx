@@ -123,6 +123,27 @@ describe('FocusView', () => {
     expect(onOpen).toHaveBeenCalledWith(applications[3].id)
   })
 
+  it('surfaces an invite as the reason and shows it on the row', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const applications = [
+      application('Panel Co', {
+        state_events: [
+          stateEvent({ summary: 'Research panel', starts_at: localDate(2), location: 'Docklands' }),
+        ],
+      }),
+    ]
+
+    render(
+      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />,
+    )
+
+    // Without invites this row read as "Nothing dated or planned".
+    expect(rowsIn('Due in 1 to 7 days')).toEqual([expect.stringContaining('Panel Co')])
+    expect(screen.getByText('Invite in 2 days')).toBeInTheDocument()
+    expect(screen.getByText(/Research panel/)).toBeInTheDocument()
+  })
+
   it('offers prep notes on a row, like the Kanban card and the table row', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)

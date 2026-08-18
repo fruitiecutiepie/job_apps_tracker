@@ -1,7 +1,7 @@
 import { STATE_LABELS } from "../domain";
 import type { Application } from "../domain";
-import { STALE_GRACE_DAYS, daysUntil, describeDue, rankByUrgency } from "./urgency";
-import { applicationAgeInDays } from "./viewUtils";
+import { STALE_GRACE_DAYS, daysUntil, describeDue, rankByUrgency, type DueKind } from "./urgency";
+import { applicationAgeInDays, upcomingStateEvent } from "./viewUtils";
 
 export type FocusGroupId =
   | "due_now"
@@ -77,7 +77,7 @@ const GROUP_LABELS: readonly Omit<FocusGroup, "rows">[] = [
 ];
 
 interface DrivingDate {
-  kind: "deadline" | "action";
+  kind: DueKind;
   days: number;
 }
 
@@ -89,6 +89,11 @@ interface DrivingDate {
 function drivingDate(application: Application, today: Date): DrivingDate | null {
   const candidates: DrivingDate[] = [];
 
+  const invite = upcomingStateEvent(application, today);
+  if (invite) {
+    const days = daysUntil(invite.starts_at, today);
+    if (days !== null) candidates.push({ kind: "invite", days });
+  }
   if (application.deadline_at) {
     const days = daysUntil(application.deadline_at, today);
     if (days !== null) candidates.push({ kind: "deadline", days });

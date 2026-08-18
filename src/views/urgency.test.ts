@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
-import type { Application, StateId } from '../domain'
+import type { Application, StateEvent, StateId } from '../domain'
 import {
   ACTION_HORIZON_DAYS,
   DEADLINE_HORIZON_DAYS,
+  INVITE_HORIZON_DAYS,
   STALE_GRACE_DAYS,
   STALE_PEAK_DAYS,
   classifyLifecycle,
@@ -40,6 +41,24 @@ function application(company: string, overrides: Partial<Application> = {}): App
     // Inside the staleness grace period, so fixtures start with no pressure at all.
     updated_at: at(-1),
     created_at: at(-40),
+    ...overrides,
+  }
+}
+
+function invite(daysFromToday: number, overrides: Partial<StateEvent> = {}): StateEvent {
+  return {
+    id: `00000000-0000-7000-8000-${String(daysFromToday + 100).padStart(12, '0')}`,
+    state: 'interview_1',
+    summary: 'Research panel',
+    starts_at: at(daysFromToday, 14),
+    ends_at: null,
+    location: null,
+    url: null,
+    ics_uid: null,
+    sequence: 0,
+    cancelled: false,
+    created_at: at(-5),
+    updated_at: at(-5),
     ...overrides,
   }
 }
@@ -147,6 +166,59 @@ describe('next-action pressure', () => {
 
   it('ignores a blank action', () => {
     expect(score({ next_action: '   ' })).toBe(score({}))
+  })
+})
+
+describe('invite pressure', () => {
+  it('peaks on the day and decays more slowly than a deadline', () => {
+    expect(reason({ state_events: [invite(0)] })).toBe('Invite today')
+    expect(score({ state_events: [invite(0)] })).toBe(score({ deadline_at: at(0) }))
+
+    // Same distance, firmer commitment: the horizon is longer, so the value is higher.
+    expect(score({ state_events: [invite(5)] })).toBeGreaterThan(score({ deadline_at: at(5) }))
+    expect(score({ state_events: [invite(5)] })).toBeGreaterThan(score({ state_events: [invite(9)] }))
+  })
+
+  it('stops contributing at and beyond its horizon', () => {
+    const none = score({})
+    expect(score({ state_events: [invite(INVITE_HORIZON_DAYS)] })).toBe(none)
+    expect(score({ state_events: [invite(INVITE_HORIZON_DAYS + 5)] })).toBe(none)
+  })
+
+  it('ignores a meeting that already happened, unlike a deadline that slipped', () => {
+    // The meeting is history; a passed deadline still needs dealing with.
+    expect(score({ state_events: [invite(-2)] })).toBe(score({}))
+    expect(score({ deadline_at: at(-2) })).toBeGreaterThan(score({}))
+  })
+
+  it('ignores a cancelled invite and takes the soonest one still ahead', () => {
+    expect(score({ state_events: [invite(1, { cancelled: true })] })).toBe(score({}))
+
+    const mixed = {
+      state_events: [invite(9), invite(2, { cancelled: true }), invite(4)],
+    }
+    expect(reason(mixed)).toBe('Invite in 4 days')
+  })
+
+  it('outranks every other term at the same distance', () => {
+    const day = 3
+    const inviteScore = score({ state_events: [invite(day)] })
+
+    expect(inviteScore).toBeGreaterThan(score({ deadline_at: at(day) }))
+    expect(inviteScore).toBeGreaterThan(
+      score({ next_action: 'Prepare', next_action_at: at(day) }),
+    )
+    expect(inviteScore).toBeGreaterThan(score({ updated_at: at(-60) }))
+  })
+
+  it('wins the reason on an exact tie with a deadline', () => {
+    expect(reason({ state_events: [invite(0)], deadline_at: at(0) })).toBe('Invite today')
+  })
+
+  it('still loses to an overdue action, which is already late', () => {
+    expect(score({ next_action: 'Chase', next_action_at: at(-1) })).toBeGreaterThan(
+      score({ state_events: [invite(2)] }),
+    )
   })
 })
 
