@@ -61,6 +61,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   invite whose `sequence` is behind the stored one. Two invites on one application may not share a UID.
 - An invite must have a summary and a start; `ends_at` may be absent but may not precede `starts_at`.
 - A next action may have no date. A date may not survive without a non-blank action.
+- `deadline_at` is an external fact (a posting closing, an offer decision date), not a planning date. It is independent of `next_action`: it may be set with no next action, and clearing the next action must not clear it.
 - Application timestamps and history timestamps are timezone-qualified ISO-8601 strings.
 
 ### Persistence, import, and export
@@ -84,7 +85,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 ### Demo data
 
 - `pnpm dev:demo` and `pnpm start:demo` first launch, plus confirmed demo reset, must produce the same 19 deterministic fictional records, exactly one ending in each configured state. Demo reset is unavailable on the live profile and must not write demo records into `data/tracker.json`.
-- The examples intentionally include prior history, dated and undated actions, overdue work, notes, stage prep notes, calendar invites (including one cancelled), and stale timestamps so every view has useful content.
+- The examples intentionally include prior history, dated and undated actions, overdue work, past and future deadlines, notes, stage prep notes, calendar invites (including one cancelled), and stale timestamps so every view has useful content.
 - If states change, update the union, configuration, demo coverage, validation, and tests together. Preserve the runtime assertion that demo data covers every state exactly once.
 
 ### View behavior
@@ -113,12 +114,26 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Everything with hierarchy folds: a heading folds through to the next heading of equal or higher level, a list item folds when it has children, and quotes and code blocks fold behind a summary. Keep fold controls as real buttons carrying `aria-expanded`.
 - `FoldRow` renders one pattern for every fold: a chevron `button` that owns the accessible name and keyboard focus, plus adjacent text that toggles on click. Do not wrap the text in the button—note text contains links, which may not nest inside a button, and a button would make the note hard to select and copy. The text handler ignores clicks that land on a link or that end a non-collapsed selection; keep both guards.
 - `MarkdownNotes` builds fold keys with the `blockKey`/`itemKey` helpers, and both the renderer and the Collapse all collector walk the tree with them. Adding a foldable block means updating `collectBlockKeys` alongside the renderer, or Collapse all silently misses it. The integration test that collapses every level exists to catch exactly that drift.
-- Next actions include every non-blank action, grouped into overdue, upcoming, and unscheduled; dated entries sort chronologically.
 - The calendar places dated next actions and calendar invites, each on its browser-local day and in time
   order within it. An invite reads as its time and summary, a cancelled one says so and is struck through,
   and both kinds open their application.
 - A Kanban card shows the soonest invite that is still ahead, skipping cancelled ones and using the same
   browser-local day boundary as overdue grouping, so an invite earlier today still counts.
+- Focus groups live applications into `due_now`, `due_week`, `due_later`, `no_date`, `nudge`, `quiet`, plus a trailing `wrapping_up`. Grouping lives in `src/views/focusGroups.ts`.
+- Every Focus heading must state its own membership rule in plain terms ("Due in 1 to 7 days", not "Coming up"). If a rule changes, the heading changes with it.
+- Placement is decided by the nearest of `deadline_at` and `next_action_at`, not by which pressure wins the score. Urgency pressure decays to zero past its horizon, so grouping by the winning term would file an action dated ten days out as unplanned. Undated placement then falls through: a non-blank action goes to `no_date`, otherwise silence past `STALE_GRACE_DAYS` goes to `nudge`, otherwise `quiet`.
+- A row describes its own date via `describeDue` when it has one, so a heading and a row can never disagree about the same date. `describeDue` in `src/views/urgency.ts` is the only place date phrasing is built.
+- Focus is not an actions-only view: an application with a deadline and no next action still appears. Conversely a task left on a rejected, accepted, or no-openings application must stay visible under `wrapping_up` rather than vanishing because the ranking omits finished applications.
+- Date-driven Focus groups sort chronologically by the driving date, because a dated group is read as a schedule. `nudge` keeps ranked order; `no_date`, `quiet`, and `wrapping_up` sort by company.
+- A Focus group whose row position carries meaning (a schedule, or oldest first) renders as `<ol>`; alphabetical groups render as `<ul>`. The `ordered` flag on each group drives this, so the markup states whether order is information.
+- Focus group disclosure is display state and must not be persisted. Only the leading non-empty group starts open, derived on each render rather than remembered.
+- Deadlines are deliberately not placed on the calendar, which carries dated next actions and invites only. A deadline surfaces in the table and in Focus.
+- The table's deadline column sorts applications without a deadline last, in either direction.
+- Urgency is derived in `src/views/urgency.ts` and must never be persisted: it depends on browser-local "today", and a score without the weights that produced it is meaningless. Keep the weights in that module, not in the tracker document or `indexes`.
+- Only live applications are ranked. `classifyLifecycle` treats every `rejectedStateFor` counterpart as rejected and `accepted`/`no_openings` as closed; both are omitted from the ranking rather than scored low. This is view grouping only and must not restrict moves.
+- Stage weight comes from position among the live states, not the raw `STATE_CONFIG` index, because the configured order interleaves live and rejected states.
+- The highest single pressure sets both the score and the displayed reason; the others stack only into the headroom above it. Deadlines carry a longer horizon than next actions but not a higher ceiling, so an overdue action can outrank a deadline that is still days away. Staleness is capped below both because it is inferred rather than a recorded fact.
+- Rank comparisons treat scores within `SCORE_EPSILON` as tied so the documented tiebreak (deadline, then action date, then age, then id) decides the order instead of floating-point noise.
 - Stale means `updated_at` is at least the selected threshold in the past and sorts oldest first. The 7/14/30-day choice is display state and must not be persisted.
 - Statistics use configured state order. Current counts come from `state`; ever-reached counts come from `state_history` and count each application once per reached state.
 - Browser-local dates control calendar placement, overdue boundaries, and stale thresholds. Persisted timestamps remain timezone-qualified.

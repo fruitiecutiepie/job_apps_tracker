@@ -31,6 +31,7 @@ export const TRACKER_JSON_SCHEMA = {
         'state_history',
         'next_action',
         'next_action_at',
+        'deadline_at',
         'notes',
         'stage_notes',
         'state_events',
@@ -61,6 +62,7 @@ export const TRACKER_JSON_SCHEMA = {
         },
         next_action: { type: ['string', 'null'] },
         next_action_at: { type: ['string', 'null'] },
+        deadline_at: { type: ['string', 'null'] },
         notes: { type: ['string', 'null'] },
         stage_notes: {
           type: 'array',
@@ -147,6 +149,7 @@ export const TRACKER_JSON_SCHEMA = {
         'by_created_at',
         'by_updated_at',
         'by_next_action_at',
+        'by_deadline_at',
         'with_next_action',
         'unscheduled_next_actions',
         'ever_reached',
@@ -177,6 +180,7 @@ export const TRACKER_JSON_SCHEMA = {
         by_created_at: { type: 'array', items: { type: 'string' } },
         by_updated_at: { type: 'array', items: { type: 'string' } },
         by_next_action_at: { type: 'array', items: { type: 'string' } },
+        by_deadline_at: { type: 'array', items: { type: 'string' } },
         with_next_action: { type: 'array', items: { type: 'string' } },
         unscheduled_next_actions: { type: 'array', items: { type: 'string' } },
         ever_reached: {

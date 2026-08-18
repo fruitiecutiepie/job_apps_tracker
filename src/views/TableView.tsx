@@ -5,6 +5,7 @@ import { AttachmentFilenames } from "./AttachmentFilenames";
 import { InviteSummaries, inviteFilterText } from "./InviteSummaries";
 import { StageNotesButton } from "./StageNotesButton";
 import type { MovableApplicationsViewProps } from "./types";
+import { rankByUrgency, type UrgencyRanking } from "./urgency";
 import { formatShortDate, parseTimestamp, upcomingStateEvent } from "./viewUtils";
 
 type SortField =
@@ -14,6 +15,8 @@ type SortField =
   | "state"
   | "next_action"
   | "invites"
+  | "deadline_at"
+  | "urgency"
   | "created_at"
   | "updated_at";
 type SortDirection = "ascending" | "descending";
@@ -26,6 +29,8 @@ interface ColumnFilters {
   state: StateColumnFilter;
   next_action: string;
   invites: string;
+  deadline_at: string;
+  urgency: string;
   attachments: string;
   created_at: string;
   updated_at: string;
@@ -38,6 +43,8 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
   state: "all",
   next_action: "",
   invites: "",
+  deadline_at: "",
+  urgency: "",
   attachments: "",
   created_at: "",
   updated_at: "",
@@ -45,12 +52,26 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
 
 const stateOrder = new Map(STATE_CONFIG.map((state, index) => [state.id, index]));
 
-function comparableValue(application: Application, field: SortField): string | number {
+type UrgencyLookup = ReadonlyMap<string, UrgencyRanking>;
+
+const UNRANKED_SCORE = -1;
+
+function comparableValue(
+  application: Application,
+  field: SortField,
+  urgency: UrgencyLookup,
+): string | number {
   if (field === "state") return stateOrder.get(application.state) ?? Number.MAX_SAFE_INTEGER;
   // Sorting by invite means sorting by what is next, so rows with nothing ahead sink.
   if (field === "invites") {
     const next = upcomingStateEvent(application);
     return next ? Date.parse(next.starts_at) : Number.MAX_SAFE_INTEGER;
+  }
+  if (field === "urgency") return urgency.get(application.id)?.score ?? UNRANKED_SCORE;
+  if (field === "deadline_at") {
+    return application.deadline_at
+      ? parseTimestamp(application.deadline_at)?.getTime() ?? Number.MAX_SAFE_INTEGER
+      : Number.MAX_SAFE_INTEGER;
   }
   if (field === "created_at") return parseTimestamp(application.created_at)?.getTime() ?? 0;
   if (field === "updated_at") return parseTimestamp(application.updated_at)?.getTime() ?? 0;
@@ -63,7 +84,11 @@ function includesQuery(value: string, query: string): boolean {
   return value.toLocaleLowerCase().includes(needle);
 }
 
-function matchesColumnFilters(application: Application, filters: ColumnFilters): boolean {
+function matchesColumnFilters(
+  application: Application,
+  filters: ColumnFilters,
+  urgency: UrgencyLookup,
+): boolean {
   if (filters.state !== "all" && application.state !== filters.state) return false;
   if (!includesQuery(application.company, filters.company)) return false;
   if (!includesQuery(application.role ?? "", filters.role)) return false;
@@ -74,6 +99,9 @@ function matchesColumnFilters(application: Application, filters: ColumnFilters):
     .join(" ");
   if (!includesQuery(nextActionText, filters.next_action)) return false;
   if (!includesQuery(inviteFilterText(application.state_events), filters.invites)) return false;
+  const deadlineText = application.deadline_at ? formatShortDate(application.deadline_at) : "";
+  if (!includesQuery(deadlineText, filters.deadline_at)) return false;
+  if (!includesQuery(urgency.get(application.id)?.reason ?? "", filters.urgency)) return false;
   if (!includesQuery(application.attachments.map((attachment) => attachment.filename).join(" "), filters.attachments)) {
     return false;
   }
@@ -107,6 +135,8 @@ function columnFiltersAreActive(filters: ColumnFilters): boolean {
         filters.source.trim() ||
         filters.next_action.trim() ||
         filters.invites.trim() ||
+        filters.deadline_at.trim() ||
+        filters.urgency.trim() ||
         filters.attachments.trim() ||
         filters.created_at.trim() ||
         filters.updated_at.trim(),
@@ -137,12 +167,20 @@ export function TableView({
 
   const sourceSuggestions = useMemo(() => sourceFilterSuggestions(applications), [applications]);
 
+  const urgencyById = useMemo(() => {
+    const lookup = new Map<string, UrgencyRanking>();
+    for (const ranking of rankByUrgency(applications)) {
+      lookup.set(ranking.application.id, ranking);
+    }
+    return lookup;
+  }, [applications]);
+
   const visibleApplications = useMemo(() => {
     return applications
-      .filter((application) => matchesColumnFilters(application, filters))
+      .filter((application) => matchesColumnFilters(application, filters, urgencyById))
       .sort((left, right) => {
-        const leftValue = comparableValue(left, sortField);
-        const rightValue = comparableValue(right, sortField);
+        const leftValue = comparableValue(left, sortField, urgencyById);
+        const rightValue = comparableValue(right, sortField, urgencyById);
         const result =
           typeof leftValue === "number" && typeof rightValue === "number"
             ? leftValue - rightValue
@@ -152,14 +190,18 @@ export function TableView({
               });
         return sortDirection === "ascending" ? result : -result;
       });
-  }, [applications, filters, sortDirection, sortField]);
+  }, [applications, filters, sortDirection, sortField, urgencyById]);
 
   const setSort = (field: SortField) => {
     if (field === sortField) {
       setSortDirection((current) => (current === "ascending" ? "descending" : "ascending"));
     } else {
       setSortField(field);
-      setSortDirection(field === "created_at" || field === "updated_at" ? "descending" : "ascending");
+      setSortDirection(
+        field === "created_at" || field === "updated_at" || field === "urgency"
+          ? "descending"
+          : "ascending",
+      );
     }
   };
 
@@ -259,6 +301,8 @@ export function TableView({
               )}
               {headerCell("Next action", textFilter("next_action", "Next action"), "next_action")}
               {headerCell("Invites", textFilter("invites", "Invites"), "invites")}
+              {headerCell("Deadline", textFilter("deadline_at", "Deadline"), "deadline_at")}
+              {headerCell("Urgency", textFilter("urgency", "Urgency"), "urgency")}
               {headerCell("Attachments", textFilter("attachments", "Attachments"))}
               {headerCell("Prep notes", null)}
               {headerCell("Created", textFilter("created_at", "Created"), "created_at")}
@@ -308,6 +352,24 @@ export function TableView({
                     <InviteSummaries invites={application.state_events} />
                   ) : (
                     <span aria-label="Not set">—</span>
+                  )}
+                </td>
+                <td>
+                  {application.deadline_at ? (
+                    <time dateTime={application.deadline_at}>
+                      {formatShortDate(application.deadline_at)}
+                    </time>
+                  ) : (
+                    <span aria-label="Not set">—</span>
+                  )}
+                </td>
+                <td>
+                  {urgencyById.has(application.id) ? (
+                    <span className="table-view__urgency">
+                      {urgencyById.get(application.id)!.reason}
+                    </span>
+                  ) : (
+                    <span aria-label="Not ranked">—</span>
                   )}
                 </td>
                 <td>

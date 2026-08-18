@@ -87,6 +87,7 @@ export function createApplication(
     state_history: [{ state, at: createdAt }],
     next_action: nextAction,
     next_action_at: nextAction ? optionalTimestamp(input.next_action_at) : null,
+    deadline_at: optionalTimestamp(input.deadline_at),
     notes: optionalText(input.notes),
     stage_notes: [],
     state_events: [],
@@ -117,6 +118,8 @@ export function editApplication(
     source: 'source' in edits ? optionalText(edits.source) : application.source,
     next_action: nextAction,
     next_action_at: nextActionAt,
+    deadline_at:
+      'deadline_at' in edits ? optionalTimestamp(edits.deadline_at) : application.deadline_at,
     notes: 'notes' in edits ? optionalText(edits.notes) : application.notes,
     attachments: 'attachments' in edits ? edits.attachments ?? [] : application.attachments,
     updated_at: timestamp(at),

@@ -376,6 +376,15 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     }
   }
 
+  let deadlineAt: string | null = null
+  if (value.deadline_at !== undefined && value.deadline_at !== null && value.deadline_at !== '') {
+    if (validTimestamp(value.deadline_at)) {
+      deadlineAt = value.deadline_at
+    } else {
+      addError(errors, `${path}.deadline_at`, 'must be a timezone-qualified ISO-8601 timestamp or null')
+    }
+  }
+
   return {
     id: value.id.trim(),
     company: value.company.trim(),
@@ -386,6 +395,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     state_history: historyValue(value.state_history, `${path}.state_history`, value.state, value.created_at, errors),
     next_action: nextAction,
     next_action_at: nextAction ? nextActionAt : null,
+    deadline_at: deadlineAt,
     notes: nullableText(value.notes, `${path}.notes`, errors),
     stage_notes: stageNotesValue(value.stage_notes, `${path}.stage_notes`, errors),
     state_events: stateEventsValue(value.state_events, `${path}.state_events`, errors),

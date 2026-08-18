@@ -25,7 +25,7 @@ it('completes the primary tracker journey and persists it across reloads', async
 
   for (const view of [
     'Table',
-    'Next actions',
+    'Focus',
     'Calendar',
     'Stale',
     'Statistics',

@@ -9,6 +9,10 @@ const REJECTED_COUNTERPARTS = new Set(
   STATE_CONFIG.map(({ id }) => rejectedStateFor(id)).filter((id): id is StateId => id !== null),
 );
 
+export function isRejectedState(state: StateId): boolean {
+  return REJECTED_COUNTERPARTS.has(state);
+}
+
 export function kanbanColumnGroups(visibleStates?: readonly StateId[]): KanbanColumnGroup[] {
   if (visibleStates) {
     const visible = new Set(visibleStates);
@@ -16,7 +20,7 @@ export function kanbanColumnGroups(visibleStates?: readonly StateId[]): KanbanCo
   }
 
   return STATE_CONFIG.reduce<KanbanColumnGroup[]>((groups, { id }) => {
-    if (REJECTED_COUNTERPARTS.has(id)) return groups;
+    if (isRejectedState(id)) return groups;
 
     const lanes: StateId[] = [id];
     const rejected = rejectedStateFor(id);

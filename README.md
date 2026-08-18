@@ -8,8 +8,10 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 
 - Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, the next upcoming invite and attachment filenames on cards, a state-selector fallback, and muted styling for applications untouched for 14 days
 - Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first
-- Sortable and filterable table with invites and attachments columns, where sorting by invite sorts by what is next
-- Next actions grouped as overdue, upcoming, or unscheduled
+- Optional deadline per application, recording an external closing or decision date separately from your own next action
+- Derived urgency ranking that explains itself, combining stage, deadline, next-action date, and silence into one sortable column
+- Sortable and filterable table with invites, deadline, urgency, and attachments columns, where sorting by invite sorts by what is next
+- Focus view grouping live applications by what is most pressing, with collapsible groups and a reason on every row
 - Calendar invites imported from the `.ics` a recruiter sends, filed against a stage, with a rescheduled invite replacing the one it supersedes
 - Calendar showing next-action dates and invites together, day by day
 - Stale applications with 7-, 14-, and 30-day thresholds, plus a Move to Rejected shortcut to the current state's counterpart
@@ -52,7 +54,7 @@ Use `pnpm start:demo` after a build to preview against the demo database.
 
 ### Track an application
 
-Select **Add application** and enter a company, optional role and URL, its current state, notes, and an optional next action. A next action can be saved without a date; its date is cleared automatically if the action text is removed. URLs must begin with `http://` or `https://`.
+Select **Add application** and enter a company, optional role and URL, its current state, notes, and an optional next action. A next action can be saved without a date; its date is cleared automatically if the action text is removed. A deadline is separate: it records an external closing or decision date and can be set with no next action at all. URLs must begin with `http://` or `https://`.
 
 Open an existing application from any view to edit or delete it. Moving to another state adds a timestamped history entry. You can move a Kanban card by dragging it or by using its state selector, which also works for keyboard and touch interaction.
 
@@ -107,8 +109,8 @@ What you have folded is never saved—it resets each time you open the dialog.
 ### Find the right view
 
 - **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames and a prep notes button appear on cards, and you can move applications by drag-and-drop or the state selector. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.
-- **Table** sorts and column-filters by company, role, source, state, next action, attachments, created date, or last update, and gives each row a prep notes button. Column filters only affect the table and are not saved. Global search, state, and company filters still apply across views.
-- **Next actions** separates overdue, upcoming, and undated work.
+- **Table** sorts and column-filters by company, role, source, state, next action, deadline, urgency, attachments, created date, or last update, and gives each row a prep notes button. Sorting by deadline puts applications without one last. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, and company filters still apply across views.
+- **Focus** answers "what should I do next". Each group heading states its own membership rule, so nothing is hidden behind a mood word: **Overdue or due today**, **Due in 1 to 7 days**, **Due in more than 7 days**, **Action with no date**, **No change in more than 7 days**, **Nothing dated or planned**, and a trailing **Finished, action outstanding** for tasks left on rejected, accepted, or no-openings applications. Placement uses the nearest deadline or next-action date, so a date always decides the group; the urgency score only orders rows within it. Applications with a deadline and no action appear here too. Groups collapse and expand—only the leading non-empty group starts open, and that choice is never saved.
 - **Calendar** places applications only by their next-action date; select an item to edit it.
 - **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved. When the current state has a rejected counterpart, **Move to Rejected** records that outcome and keeps the history.
 - **Statistics** compares current state counts with counts for every state applications have previously reached.

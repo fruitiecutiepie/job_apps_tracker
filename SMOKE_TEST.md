@@ -8,9 +8,10 @@ Run:
 pnpm test:smoke
 ```
 
-This checks the demo-profile journey: 19 first-load examples, navigation through all six views, creating and
-searching for an application, changing its state and recording history, recording stage prep
-notes against it, persistence across an app reload, and confirmed demo-data reset.
+This checks the demo-profile journey: 19 first-load examples, navigation through all six views
+(Kanban, Table, Focus, Calendar, Stale, Statistics), creating and searching for an application,
+changing its state and recording history, recording stage prep notes against it, persistence
+across an app reload, and confirmed demo-data reset.
 
 Importing a calendar invite through the editor, replacing a rescheduled one, and refusing an invite
 with no start time are covered by the app integration tests.
@@ -33,16 +34,24 @@ test cannot judge reliably:
    Confirm cards last updated 14 or more days ago look greyed out and show an untouched-age label.
 3. Confirm the view name and the "N of M applications shown" count each appear exactly
    once, in the context bar, and that no view repeats them as a visible heading.
-   Open Table, Next actions, Calendar, Stale, and Statistics. Confirm each view is
+   Open Table, Focus, Calendar, Stale, and Statistics. Confirm each view is
    readable at both wide and narrow window sizes.
+   On Focus, confirm only the leading non-empty group starts open, that group headers show
+   counts even while collapsed, that expanding and collapsing works with keyboard alone, and
+   that each row's stated reason agrees with the group heading it sits under.
    On Table, confirm a column filter narrows rows without changing Kanban, and that
    Clear column filters restores the table.
+   Sort by Urgency and confirm the most pressing live applications lead, that each row
+   explains itself, and that rejected, accepted, and no-openings rows show an unranked dash.
    On Stale, confirm a live-state row has Move to Rejected and that already-rejected,
    accepted, headhunted, and no-openings rows do not.
 4. Add an application with a next action and date. Drag it to another Kanban column,
    then use its **Move** control to move it again — by mouse, and again by Tab plus the
    arrow keys — confirming the control shows a focus ring and sits on one row beside
    **Prep notes**. Reload the page and confirm it remains.
+   Add a second application with only a deadline and no next action, and confirm the
+   deadline saves, shows in the Table deadline column and in Focus, and does not appear on
+   the Calendar.
 5. Use Tab, Shift+Tab, Enter, and Escape to navigate controls and the application
    dialog. Confirm focus is visible and every form field has a useful label.
 6. Open **More actions**, close it with Escape, reopen it and close it by clicking

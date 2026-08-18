@@ -502,8 +502,7 @@ p {
 }
 
 .view-toolbar,
-.calendar__toolbar,
-.section-heading-row {
+.calendar__toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -526,9 +525,7 @@ p {
 
 .view-heading h2,
 .view-toolbar h2,
-.calendar__toolbar h2,
-.section-heading-row h2,
-.section-heading-row h3 {
+.calendar__toolbar h2 {
   margin: 0;
   color: var(--ink);
   font-size: var(--t4);
@@ -906,6 +903,13 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
+.table-view__urgency {
+  display: block;
+  color: var(--ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .table-state-select {
   max-width: 100%;
   min-height: 28px;
@@ -933,8 +937,49 @@ tbody tr:hover {
   gap: var(--s5);
 }
 
-.action-group .section-heading-row {
+.focus-group__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  cursor: pointer;
+  list-style: none;
+}
+
+.focus-group__summary::-webkit-details-marker {
+  display: none;
+}
+
+.focus-group__summary::before {
+  content: "\25b8";
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+.action-group[open] > .focus-group__summary::before {
+  content: "\25be";
+}
+
+.action-group[open] > .focus-group__summary {
   margin-bottom: var(--s3);
+}
+
+.focus-group__heading {
+  flex: 1;
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t4);
+  font-weight: 600;
+}
+
+.action-list > li {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.action-list .action-card {
+  flex: 1;
+  min-width: 0;
 }
 
 .action-card,

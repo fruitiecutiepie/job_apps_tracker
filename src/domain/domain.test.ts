@@ -103,6 +103,13 @@ describe('state configuration and demo content', () => {
     expect(document.applications.some(({ updated_at }) =>
       now - new Date(updated_at).getTime() >= 14 * 24 * 60 * 60 * 1000,
     )).toBe(true)
+    expect(document.applications.some(({ deadline_at }) =>
+      deadline_at && new Date(deadline_at).getTime() < now,
+    )).toBe(true)
+    expect(document.applications.some(({ deadline_at }) =>
+      deadline_at && new Date(deadline_at).getTime() > now,
+    )).toBe(true)
+    expect(document.applications.some(({ deadline_at }) => deadline_at === null)).toBe(true)
   })
 
   it('keeps the default demo document deterministic across wall-clock dates', () => {
@@ -188,6 +195,42 @@ describe('application mutations', () => {
     expect(edited.next_action_at).toBeNull()
   })
 
+  it('keeps a deadline independent of the next action', () => {
+    const created = createApplication(
+      {
+        company: 'Northwind',
+        next_action: 'Follow up',
+        next_action_at: '2026-08-20T09:00:00+10:00',
+        deadline_at: '2026-08-22T17:00:00+10:00',
+      },
+      REFERENCE,
+    )
+
+    expect(created.deadline_at).toBe(new Date('2026-08-22T17:00:00+10:00').toISOString())
+
+    const cleared = editApplication(created, { next_action: null }, REFERENCE)
+    expect(cleared.next_action_at).toBeNull()
+    expect(cleared.deadline_at).toBe(created.deadline_at)
+
+    const removed = editApplication(created, { deadline_at: null }, REFERENCE)
+    expect(removed.deadline_at).toBeNull()
+    expect(removed.next_action_at).toBe(created.next_action_at)
+
+    const untouched = editApplication(created, { role: 'Staff Engineer' }, REFERENCE)
+    expect(untouched.deadline_at).toBe(created.deadline_at)
+  })
+
+  it('stores a deadline without any next action', () => {
+    const created = createApplication(
+      { company: 'Northwind', deadline_at: '2026-08-22T17:00:00+10:00' },
+      REFERENCE,
+    )
+
+    expect(created.next_action).toBeNull()
+    expect(created.next_action_at).toBeNull()
+    expect(created.deadline_at).toBe(new Date('2026-08-22T17:00:00+10:00').toISOString())
+  })
+
   it('appends state history for moves and makes same-state moves a no-op', () => {
     const original = createApplication({ company: 'Northwind' }, REFERENCE)
     const moveTime = new Date('2026-08-16T12:00:00+10:00')
@@ -221,6 +264,21 @@ describe('indexes', () => {
     expect(indexes.stats_current.applied).toBe(1)
     expect(indexes.stats_ever_reached.applied).toBeGreaterThanOrEqual(1)
     expect(indexesAreStale(document.applications, indexes)).toBe(false)
+  })
+
+  it('indexes only applications with a deadline, in chronological order', () => {
+    const early = createApplication(
+      { company: 'Acme', deadline_at: '2026-08-20T17:00:00+10:00' },
+      REFERENCE,
+    )
+    const late = createApplication(
+      { company: 'Beta', deadline_at: '2026-09-01T17:00:00+10:00' },
+      REFERENCE,
+    )
+    const none = createApplication({ company: 'Cedar' }, REFERENCE)
+    const indexes = rebuildIndexes([late, none, early])
+
+    expect(indexes.by_deadline_at).toEqual([early.id, late.id])
   })
 
   it('orders by created_at and groups by company', () => {
@@ -888,6 +946,49 @@ describe('document validation and persistence', () => {
     expect(parsed.applications[0]?.source).toBeNull()
   })
 
+  it('canonicalizes a missing deadline to null on import', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({
+      schema_version: 1,
+      applications: [{
+        id: '018f24c0-0000-7000-8000-000000000003',
+        company: 'Northwind',
+        role: null,
+        url: null,
+        source: null,
+        state: 'applied',
+        next_action: null,
+        next_action_at: null,
+        notes: null,
+        created_at: REFERENCE.toISOString(),
+        updated_at: REFERENCE.toISOString(),
+      }],
+    }))
+
+    expect(parsed.applications[0]?.deadline_at).toBeNull()
+  })
+
+  it('imports a deadline that has no accompanying next action', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({
+      schema_version: 1,
+      applications: [{
+        id: '018f24c0-0000-7000-8000-000000000004',
+        company: 'Northwind',
+        role: null,
+        url: null,
+        source: null,
+        state: 'applied',
+        next_action: null,
+        next_action_at: null,
+        deadline_at: '2026-08-22T17:00:00+10:00',
+        notes: null,
+        created_at: REFERENCE.toISOString(),
+        updated_at: REFERENCE.toISOString(),
+      }],
+    }))
+
+    expect(parsed.applications[0]?.deadline_at).toBe('2026-08-22T17:00:00+10:00')
+  })
+
   it('accepts the new self-describing database shape', () => {
     const document = createDemoDocument(REFERENCE)
     const parsed = parseTrackerDocument(JSON.stringify(document))
@@ -938,6 +1039,12 @@ describe('document validation and persistence', () => {
         mutate: (document) => {
           document.applications[0]!.next_action = 'Follow up'
           document.applications[0]!.next_action_at = impossible
+        },
+      },
+      {
+        path: 'applications[0].deadline_at',
+        mutate: (document) => {
+          document.applications[0]!.deadline_at = impossible
         },
       },
     ]

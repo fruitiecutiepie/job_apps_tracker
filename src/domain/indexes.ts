@@ -24,6 +24,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
   const by_created_at: string[] = []
   const by_updated_at: string[] = []
   const by_next_action_at: string[] = []
+  const by_deadline_at: string[] = []
   const with_next_action: string[] = []
   const unscheduled: Application[] = []
   const ever_reached = emptyStateArrays()
@@ -47,6 +48,10 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
     for (const state of reachedStates) {
       ever_reached[state].push(application.id)
       stats_ever_reached[state]++
+    }
+
+    if (application.deadline_at) {
+      by_deadline_at.push(application.id)
     }
 
     if (application.next_action?.trim()) {
@@ -94,6 +99,12 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       Date.parse(applications[by_id[rightId]].next_action_at!),
   )
 
+  by_deadline_at.sort(
+    (leftId, rightId) =>
+      Date.parse(applications[by_id[leftId]].deadline_at!) -
+      Date.parse(applications[by_id[rightId]].deadline_at!),
+  )
+
   const unscheduled_next_actions = unscheduled
     .sort((left, right) => left.company.localeCompare(right.company))
     .map((application) => application.id)
@@ -105,6 +116,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
     by_created_at,
     by_updated_at,
     by_next_action_at,
+    by_deadline_at,
     with_next_action,
     unscheduled_next_actions,
     ever_reached,

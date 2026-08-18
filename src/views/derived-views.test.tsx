@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { Application, StateEvent, StateId } from '../domain'
 import { CalendarView } from './CalendarView'
 import { KanbanView } from './KanbanView'
-import { NextActionsView } from './NextActionsView'
+import { FocusView } from './FocusView'
 import { StaleView } from './StaleView'
 import { StatisticsView } from './StatisticsView'
 import { TableView } from './TableView'
@@ -33,6 +33,7 @@ function application(
     state_history: [{ state, at: localDate(-40) }],
     next_action: null,
     next_action_at: null,
+    deadline_at: null,
     notes: null,
     stage_notes: [],
     state_events: [],
@@ -65,58 +66,178 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('NextActionsView', () => {
-  it('groups dated and undated actions and sorts dated actions chronologically', () => {
+describe('FocusView', () => {
+  function groupElement(heading: string): HTMLElement {
+    return screen.getByRole('heading', { name: heading }).closest('details')!
+  }
+
+  function rowsIn(heading: string): string[] {
+    const list = groupElement(heading).querySelector('ol, ul')
+    // Only the row's own button; each row also carries a prep-notes button.
+    return list ? [...list.querySelectorAll('.action-card')].map((row) => row.textContent ?? '') : []
+  }
+
+  it('groups live applications by the pressure that ranks them', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
     const onOpen = vi.fn()
     const applications = [
-      application('Later & Co', {
-        next_action: 'Prepare questions',
-        next_action_at: localDate(4),
-      }),
-      application('Oldest Follow-up', {
-        next_action: 'Email recruiter',
-        next_action_at: localDate(-5),
-      }),
-      application('Recent Follow-up', {
-        next_action: 'Share references',
-        next_action_at: localDate(-1),
-      }),
-      application('Today Labs', {
-        next_action: 'Join interview',
-        next_action_at: localDate(0),
-      }),
+      application('Later & Co', { next_action: 'Prepare questions', next_action_at: localDate(4) }),
+      application('Oldest Follow-up', { next_action: 'Email recruiter', next_action_at: localDate(-5) }),
+      application('Today Labs', { next_action: 'Join interview', next_action_at: localDate(0) }),
       application('No Date Studio', { next_action: 'Review portfolio' }),
-      application('No Action Inc'),
+      application('Gone Quiet', { updated_at: localDate(-25) }),
+      application('Nothing Planned Inc'),
     ]
 
-    render(<NextActionsView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} />)
+    render(
+      <FocusView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} />,
+    )
 
-    const overdue = screen.getByRole('region', { name: 'Overdue' })
-    const upcoming = screen.getByRole('region', { name: 'Upcoming' })
-    const unscheduled = screen.getByRole('region', { name: 'Unscheduled' })
-
-    expect(within(overdue).getAllByRole('button')).toHaveLength(2)
-    expect(within(overdue).getAllByRole('button').map((button) => button.textContent)).toEqual([
+    // Date-driven groups read chronologically, not by score.
+    expect(rowsIn('Overdue or due today')).toEqual([
       expect.stringContaining('Oldest Follow-up'),
-      expect.stringContaining('Recent Follow-up'),
-    ])
-    expect(within(upcoming).getAllByRole('button').map((button) => button.textContent)).toEqual([
       expect.stringContaining('Today Labs'),
-      expect.stringContaining('Later & Co'),
     ])
-    expect(within(unscheduled).getByText(/No Date Studio/)).toBeInTheDocument()
-    expect(screen.queryByText('No Action Inc')).not.toBeInTheDocument()
+    expect(rowsIn('Due in 1 to 7 days')).toEqual([expect.stringContaining('Later & Co')])
+    expect(rowsIn('Action with no date')).toEqual([expect.stringContaining('No Date Studio')])
+    expect(rowsIn('No change in more than 7 days')).toEqual([
+      expect.stringContaining('Gone Quiet'),
+    ])
+    expect(rowsIn('Nothing dated or planned')).toEqual([
+      expect.stringContaining('Nothing Planned Inc'),
+    ])
 
-    fireEvent.click(within(unscheduled).getByRole('button'))
-    expect(onOpen).toHaveBeenCalledWith(applications[4].id)
+    expect(screen.getByText('Action overdue 5 days')).toBeInTheDocument()
+    expect(screen.getByText('No change for 25 days')).toBeInTheDocument()
+
+    // A schedule is an ordered list; an alphabetical group is not.
+    expect(groupElement('Overdue or due today').querySelector('ol')).not.toBeNull()
+    expect(groupElement('Action with no date').querySelector('ul')).not.toBeNull()
+
+    fireEvent.click(
+      within(groupElement('Action with no date')).getByRole('button', {
+        name: /Open No Date Studio/,
+      }),
+    )
+    expect(onOpen).toHaveBeenCalledWith(applications[3].id)
   })
 
-  it('shows a helpful empty state when no application has an action', () => {
-    render(<NextActionsView applications={[application('Quiet Company')]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />)
+  it('offers prep notes on a row, like the Kanban card and the table row', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const onOpenStageNotes = vi.fn()
+    const applications = [
+      application('Prep Co', {
+        next_action: 'Join interview',
+        next_action_at: localDate(0),
+        stage_notes: [
+          {
+            state: 'applied',
+            body: '## Panel\n\n- Design',
+            created_at: localDate(-2),
+            updated_at: localDate(-1),
+          },
+        ],
+      }),
+    ]
 
-    expect(screen.getByRole('heading', { name: 'No next actions yet' })).toBeInTheDocument()
+    render(
+      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={onOpenStageNotes} />,
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Prep notes for Prep Co, 1 stage' }),
+    )
+    expect(onOpenStageNotes).toHaveBeenCalledWith(applications[0].id)
+  })
+
+  it('includes applications with a deadline and no action at all', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    render(
+      <FocusView
+        applications={[application('Closing Soon', { deadline_at: localDate(2) })]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    expect(rowsIn('Due in 1 to 7 days')).toEqual([expect.stringContaining('Closing Soon')])
+    expect(screen.getByText('Deadline in 2 days')).toBeInTheDocument()
+    expect(screen.getByText('No action set')).toBeInTheDocument()
+  })
+
+  it('keeps tasks left on finished applications instead of dropping them', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const applications = [
+      application('Rejected Co', {
+        state: 'interview_1_rejected',
+        state_history: [{ state: 'interview_1_rejected', at: localDate(-4) }],
+        next_action: 'Thank the hiring manager',
+      }),
+      application('Accepted Co', {
+        state: 'accepted',
+        state_history: [{ state: 'accepted', at: localDate(-4) }],
+        next_action: 'Prepare for onboarding',
+      }),
+      application('Rejected And Done', {
+        state: 'auto_rejected',
+        state_history: [{ state: 'auto_rejected', at: localDate(-4) }],
+      }),
+    ]
+
+    render(
+      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />,
+    )
+
+    expect(rowsIn('Finished, action outstanding')).toEqual([
+      expect.stringContaining('Accepted Co'),
+      expect.stringContaining('Rejected Co'),
+    ])
+    expect(screen.queryByText(/Rejected And Done/)).not.toBeInTheDocument()
+  })
+
+  it('expands only the leading non-empty group', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    render(
+      <FocusView
+        applications={[
+          application('Gone Quiet', { updated_at: localDate(-25) }),
+          application('Nothing Planned Inc'),
+        ]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    expect(groupElement('Overdue or due today')).not.toHaveAttribute('open')
+    expect(groupElement('No change in more than 7 days')).toHaveAttribute('open')
+    expect(groupElement('Nothing dated or planned')).not.toHaveAttribute('open')
+    expect(
+      within(groupElement('Overdue or due today')).getByText('Nothing is overdue or due today.'),
+    ).toBeInTheDocument()
+  })
+
+  it('shows a helpful empty state when nothing needs attention', () => {
+    render(
+      <FocusView
+        applications={[
+          application('Rejected Co', {
+            state: 'auto_rejected',
+            state_history: [{ state: 'auto_rejected', at: localDate(-4) }],
+          }),
+        ]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByRole('heading', { name: 'Nothing needs attention' })).toBeInTheDocument()
   })
 })
 
@@ -445,6 +566,119 @@ describe('TableView', () => {
       target: { value: 'cancelled' },
     })
     expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Sooner Panel'])
+  })
+
+  it('sorts by deadline with undated applications last', () => {
+    const applications = [
+      application('Zebra Works', { deadline_at: localDate(9) }),
+      application('Alpha Labs', { deadline_at: null }),
+      application('Middle Studio', { deadline_at: localDate(2) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Deadline' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Middle Studio',
+      'Zebra Works',
+      'Alpha Labs',
+    ])
+    expect(applications.map(({ deadline_at }) => deadline_at)).toEqual([
+      localDate(9),
+      null,
+      localDate(2),
+    ])
+  })
+
+  it('filters the deadline column and ignores applications without one', () => {
+    const applications = [
+      application('Alpha Labs', { deadline_at: new Date(2026, 8, 1, 17).toISOString() }),
+      application('Zebra Works', { deadline_at: null }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Deadline column' }), {
+      target: { value: 'Sep' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+  })
+
+  it('ranks by urgency, showing the reason and leaving finished applications out', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    const applications = [
+      application('Quiet Co'),
+      application('Rejected Co', {
+        state: 'auto_rejected',
+        state_history: [{ state: 'auto_rejected', at: localDate(-2) }],
+        deadline_at: localDate(1),
+      }),
+      application('Deadline Co', { deadline_at: localDate(2) }),
+      application('Overdue Co', { next_action: 'Follow up', next_action_at: localDate(-3) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Overdue Co',
+      'Deadline Co',
+      'Quiet Co',
+      'Rejected Co',
+    ])
+
+    expect(screen.getByText('Action overdue 3 days')).toBeInTheDocument()
+    expect(screen.getByText('Deadline in 2 days')).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('row', { name: /Rejected Co/ })).getByLabelText('Not ranked'),
+    ).toBeInTheDocument()
+  })
+
+  it('filters the urgency column by its reason', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    const applications = [
+      application('Deadline Co', { deadline_at: localDate(2) }),
+      application('Overdue Co', { next_action: 'Follow up', next_action_at: localDate(-3) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Urgency column' }), {
+      target: { value: 'overdue' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Overdue Co'])
   })
 
   it('offers company and source datalist suggestions', () => {

@@ -81,7 +81,7 @@ describe('job applications tracker', () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
-    for (const view of ['Table', 'Next actions', 'Calendar', 'Stale', 'Statistics'] as const) {
+    for (const view of ['Table', 'Focus', 'Calendar', 'Stale', 'Statistics'] as const) {
       await user.click(screen.getByRole('button', { name: view }))
       expect(screen.getByRole('button', { name: view })).toHaveAttribute('aria-current', 'page')
     }
@@ -676,6 +676,31 @@ describe('job applications tracker', () => {
       readSavedDocument().applications.find((application) => application.company === 'Paper Kite')
         ?.state_events,
     ).toEqual([])
+  })
+
+  it('saves a deadline that stands alone from the next action', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add application' }))
+    const dialog = screen.getByRole('dialog', { name: 'Add application' })
+
+    const deadline = within(dialog).getByLabelText('Deadline')
+    expect(deadline).toBeEnabled()
+
+    await user.type(within(dialog).getByLabelText('Company'), 'Quarry Rail')
+    fireEvent.change(deadline, { target: { value: '2026-08-22T17:00' } })
+    await user.click(within(dialog).getByRole('button', { name: 'Add application' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const saved = readSavedDocument().applications.find(({ company }) => company === 'Quarry Rail')
+    expect(saved).toMatchObject({
+      next_action: null,
+      next_action_at: null,
+      deadline_at: new Date('2026-08-22T17:00').toISOString(),
+    })
+    expect(readSavedDocument().indexes.by_deadline_at).toContain(saved!.id)
   })
 
   it('adds and removes an attachment from the application editor', async () => {

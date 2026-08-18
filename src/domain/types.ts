@@ -89,6 +89,7 @@ export interface Application {
   state_history: StateHistoryEntry[]
   next_action: string | null
   next_action_at: string | null
+  deadline_at: string | null
   notes: string | null
   stage_notes: StageNote[]
   state_events: StateEvent[]
@@ -106,6 +107,7 @@ export interface TrackerIndexes {
   by_created_at: string[]
   by_updated_at: string[]
   by_next_action_at: string[]
+  by_deadline_at: string[]
   with_next_action: string[]
   unscheduled_next_actions: string[]
   ever_reached: Record<StateId, string[]>
@@ -136,9 +138,21 @@ export interface ApplicationInput {
   state?: StateId
   next_action?: string | null
   next_action_at?: string | null
+  deadline_at?: string | null
   notes?: string | null
 }
 
 export type ApplicationEdits = Partial<
-  Pick<Application, 'company' | 'role' | 'url' | 'source' | 'next_action' | 'next_action_at' | 'notes' | 'attachments'>
+  Pick<
+    Application,
+    | 'company'
+    | 'role'
+    | 'url'
+    | 'source'
+    | 'next_action'
+    | 'next_action_at'
+    | 'deadline_at'
+    | 'notes'
+    | 'attachments'
+  >
 >

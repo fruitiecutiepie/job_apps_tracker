@@ -4,12 +4,12 @@ import {
   ChartNoAxesColumnIncreasing,
   Download,
   KanbanSquare,
-  ListChecks,
   MoreHorizontal,
   Plus,
   RotateCcw,
   Search,
   Table2,
+  Target,
   Upload,
   X,
 } from 'lucide-react'
@@ -63,19 +63,19 @@ import { StageNotesDialog } from './StageNotesDialog'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import {
   CalendarView,
+  FocusView,
   KanbanView,
-  NextActionsView,
   StaleView,
   StatisticsView,
   TableView,
 } from './views'
 
-type ViewId = 'kanban' | 'table' | 'actions' | 'calendar' | 'stale' | 'statistics'
+type ViewId = 'kanban' | 'table' | 'focus' | 'calendar' | 'stale' | 'statistics'
 
 const VIEW_OPTIONS = [
   { id: 'kanban', label: 'Kanban', icon: KanbanSquare },
   { id: 'table', label: 'Table', icon: Table2 },
-  { id: 'actions', label: 'Next actions', icon: ListChecks },
+  { id: 'focus', label: 'Focus', icon: Target },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
@@ -180,6 +180,7 @@ interface EditorValues {
   state: StateId
   nextAction: string
   nextActionAt: string
+  deadlineAt: string
   notes: string
 }
 
@@ -217,6 +218,7 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
     state: application?.state ?? 'applied',
     nextAction: application?.next_action ?? '',
     nextActionAt: toDateTimeInput(application?.next_action_at ?? null),
+    deadlineAt: toDateTimeInput(application?.deadline_at ?? null),
     notes: application?.notes ?? '',
   }))
   const [invites, setInvites] = useState<InviteRow[]>(() => inviteRowsFor(application))
@@ -367,6 +369,14 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
                   <option key={state.id} value={state.id}>{state.label}</option>
                 ))}
               </select>
+            </label>
+            <label className="field field--wide">
+              <span>Deadline</span>
+              <input
+                onChange={(event) => update('deadlineAt', event.target.value)}
+                type="datetime-local"
+                value={values.deadlineAt}
+              />
             </label>
             <label className="field">
               <span>Next action</span>
@@ -655,8 +665,8 @@ export default function App() {
     switch (activeView) {
       case 'table':
         return <TableView {...shared} onMove={move} />
-      case 'actions':
-        return <NextActionsView {...shared} />
+      case 'focus':
+        return <FocusView {...shared} />
       case 'calendar':
         return <CalendarView {...shared} />
       case 'stale':
@@ -883,6 +893,7 @@ export default function App() {
               state: values.state,
               next_action: values.nextAction || null,
               next_action_at: values.nextAction.trim() ? fromDateTimeInput(values.nextActionAt) : null,
+              deadline_at: fromDateTimeInput(values.deadlineAt),
               notes: values.notes || null,
             }
             const now = new Date()
@@ -904,6 +915,7 @@ export default function App() {
                 source: input.source,
                 next_action: input.next_action,
                 next_action_at: input.next_action_at,
+                deadline_at: input.deadline_at,
                 notes: input.notes,
                 attachments,
               }, now)
