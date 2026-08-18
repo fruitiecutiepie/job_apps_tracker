@@ -19,6 +19,8 @@ interface DemoSeed {
   nextAction?: string
   nextActionDaysFromNow?: number
   deadlineDaysFromNow?: number
+  /** Edits updated_at without moving state, so silence and last-touched diverge. */
+  editedDaysAgo?: number
   notes?: string
   source?: string | null
   stageNotes?: Partial<Record<StateId, string>>
@@ -37,7 +39,7 @@ interface DemoEventSeed {
 }
 
 const DEMO_SEEDS: readonly DemoSeed[] = [
-  { company: 'Northstar Labs', role: 'Staff Product Designer', state: 'headhunted', createdDaysAgo: 4, updatedDaysAgo: 1, nextAction: 'Reply to the talent partner', nextActionDaysFromNow: 2, notes: 'Introduced through a former teammate.', source: 'Referral' },
+  { company: 'Northstar Labs', role: 'Staff Product Designer', state: 'headhunted', createdDaysAgo: 22, updatedDaysAgo: 22, editedDaysAgo: 1, notes: 'Introduced through a former teammate. Tidied these notes yesterday, but the conversation itself has not moved since the first message.', source: 'Referral' },
   { company: 'Juniper Works', role: 'Frontend Engineer', state: 'no_openings', createdDaysAgo: 47, updatedDaysAgo: 31, priorStates: ['headhunted'], nextAction: 'Check the careers page next quarter', notes: 'Hiring is paused, but the team asked to stay in touch.', source: 'Company site' },
   { company: 'Marble & Finch', role: 'Product Manager', state: 'applied', createdDaysAgo: 9, updatedDaysAgo: 9, nextAction: 'Follow up on the application', nextActionDaysFromNow: -2, deadlineDaysFromNow: -1, notes: 'Applied with a tailored portfolio.', source: 'LinkedIn' },
   { company: 'Copperline Health', role: 'Data Analyst', state: 'auto_rejected', createdDaysAgo: 39, updatedDaysAgo: 38, priorStates: ['applied'], notes: 'Automated rejection arrived the following morning.', source: 'Job board' },
@@ -122,7 +124,13 @@ export function createDemoDocument(
   const applications: Application[] = DEMO_SEEDS.map((seed, index) => {
     const history = historyFor(seed, reference)
     const createdAt = history[0].at
-    const updatedAt = history[history.length - 1].at
+    const lastMoveAt = history[history.length - 1].at
+    // An edit refreshes updated_at without moving state, which is why Focus measures
+    // silence from state_history instead.
+    const updatedAt =
+      seed.editedDaysAgo !== undefined
+        ? localDay(reference, -seed.editedDaysAgo, 16).toISOString()
+        : lastMoveAt
     return {
       id: demoId(index),
       company: seed.company,

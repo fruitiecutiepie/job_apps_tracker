@@ -110,6 +110,12 @@ describe('state configuration and demo content', () => {
       deadline_at && new Date(deadline_at).getTime() > now,
     )).toBe(true)
     expect(document.applications.some(({ deadline_at }) => deadline_at === null)).toBe(true)
+
+    // At least one example was edited after it last moved, so silence measured from
+    // state_history and staleness measured from updated_at genuinely disagree.
+    expect(document.applications.some(({ state_history, updated_at }) =>
+      Date.parse(updated_at) > Date.parse(state_history.at(-1)!.at),
+    )).toBe(true)
   })
 
   it('keeps the default demo document deterministic across wall-clock dates', () => {

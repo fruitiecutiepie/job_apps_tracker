@@ -86,6 +86,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 - `pnpm dev:demo` and `pnpm start:demo` first launch, plus confirmed demo reset, must produce the same 19 deterministic fictional records, exactly one ending in each configured state. Demo reset is unavailable on the live profile and must not write demo records into `data/tracker.json`.
 - The examples intentionally include prior history, dated and undated actions, overdue work, past and future deadlines, notes, stage prep notes, calendar invites (including one cancelled), and stale timestamps so every view has useful content.
+- One example (`Northstar Labs`) sets `editedDaysAgo`, so its `updated_at` is newer than its last `state_history` entry. That is the only seed where silence and last-touched disagree: Focus files it under no stage change while the Stale view hides it. Keep a seed with that shape, or the difference between the two measures goes untested in the demo.
 - If states change, update the union, configuration, demo coverage, validation, and tests together. Preserve the runtime assertion that demo data covers every state exactly once.
 
 ### View behavior

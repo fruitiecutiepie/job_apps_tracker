@@ -39,6 +39,8 @@ test cannot judge reliably:
    On Focus, confirm only the leading non-empty group starts open, that group headers show
    counts even while collapsed, that expanding and collapsing works with keyboard alone, and
    that each row's stated reason agrees with the group heading it sits under.
+   Confirm Northstar Labs appears under **No stage change in more than 7 days** and does not
+   appear on Stale at any threshold: it was edited yesterday but has not moved in weeks.
    On Table, confirm a column filter narrows rows without changing Kanban, and that
    Clear column filters restores the table.
    Sort by Urgency and confirm the most pressing live applications lead, that each row
