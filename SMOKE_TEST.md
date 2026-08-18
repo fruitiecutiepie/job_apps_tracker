@@ -21,23 +21,30 @@ These checks cover visual and native-browser behavior that the automated compone
 test cannot judge reliably:
 
 1. Run `pnpm dev` and open the address shown in the terminal. Confirm `data/tracker.json`
-   is created empty on first launch and that **Reset demo data** is not shown.
+   is created empty on first launch and that **More actions** offers Import and Export
+   but not **Reset demo data**.
 2. Run `pnpm dev:demo` and confirm `data/demo/tracker.json` is created. Confirm Kanban
    shows 11 stage columns with a labelled lane for each of the 19 states and one demo
    application in each state.
    Narrow the window and confirm the board scrolls horizontally without clipping cards.
    Confirm cards last updated 14 or more days ago look greyed out and show an untouched-age label.
-3. Open Table, Next actions, Calendar, Stale, and Statistics. Confirm each view is
+3. Confirm the view name and the "N of M applications shown" count each appear exactly
+   once, in the context bar, and that no view repeats them as a visible heading.
+   Open Table, Next actions, Calendar, Stale, and Statistics. Confirm each view is
    readable at both wide and narrow window sizes.
    On Table, confirm a column filter narrows rows without changing Kanban, and that
    Clear column filters restores the table.
    On Stale, confirm a live-state row has Move to Rejected and that already-rejected,
    accepted, headhunted, and no-openings rows do not.
 4. Add an application with a next action and date. Drag it to another Kanban column,
-   then use its state selector to move it again. Reload the page and confirm it remains.
+   then use its **Move** control to move it again — by mouse, and again by Tab plus the
+   arrow keys — confirming the control shows a focus ring and sits on one row beside
+   **Prep notes**. Reload the page and confirm it remains.
 5. Use Tab, Shift+Tab, Enter, and Escape to navigate controls and the application
    dialog. Confirm focus is visible and every form field has a useful label.
-6. Export the data and confirm a timestamped zip file is downloaded. Try an invalid
+6. Open **More actions**, close it with Escape, reopen it and close it by clicking
+   outside; confirm focus returns to the trigger each time. Reopen it and export the
+   data, confirming a timestamped zip file is downloaded. Try an invalid
    import and confirm the saved data is unchanged; try a valid zip or JSON import and
    confirm the replacement prompt appears.
 7. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
@@ -53,7 +60,8 @@ test cannot judge reliably:
    Clear a stage's notes, save, and confirm they are gone.
 8. Add an attachment in the application editor, save, reopen the application, and open
    the file. Remove an attachment and confirm it disappears after save.
-9. Choose Reset demo data, cancel once, then confirm it. Confirm the same 19 examples
+9. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+   and confirm it. Confirm the same 19 examples
    are restored in `data/demo/` and that `data/tracker.json` is unchanged.
 
 The demo-profile steps change only `data/demo/` tracker data. The final reset restores

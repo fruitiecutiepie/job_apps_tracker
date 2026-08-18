@@ -498,10 +498,12 @@ describe('job applications tracker', () => {
     await user.selectOptions(stateFilter, 'applied')
     await user.selectOptions(companyFilter, 'Reset Me Incorporated')
 
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
     await user.click(screen.getByRole('button', { name: 'Reset demo data' }))
     expect(readSavedDocument().applications).toHaveLength(20)
     expect(search).toHaveValue('Reset Me')
 
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
     await user.click(screen.getByRole('button', { name: 'Reset demo data' }))
     expect(readSavedDocument().applications).toHaveLength(19)
     expect(new Set(readSavedDocument().applications.map((application) => application.state)).size).toBe(19)

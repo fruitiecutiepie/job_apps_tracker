@@ -28,10 +28,7 @@ export function StaleView({ applications, onOpen, onMove }: MovableApplicationsV
   return (
     <section aria-labelledby="stale-heading">
       <div className="view-toolbar">
-        <div>
-          <h2 id="stale-heading">Needs attention</h2>
-          <p>Applications that have not changed recently, oldest first.</p>
-        </div>
+        <h2 className="sr-only" id="stale-heading">Needs attention</h2>
         <fieldset className="segmented-control">
           <legend className="sr-only">Stale after</legend>
           {THRESHOLDS.map((days) => (

@@ -81,7 +81,7 @@ export function StageNotesDialog({ application, onClose, onSave }: StageNotesDia
       >
         <div className="dialog__header">
           <div>
-            <p className="eyebrow">{title}</p>
+            <p className="dialog__subject">{title}</p>
             <h2 id="stage-notes-dialog-title">Stage prep notes</h2>
           </div>
           <button aria-label="Close dialog" className="icon-button" onClick={onClose} type="button">

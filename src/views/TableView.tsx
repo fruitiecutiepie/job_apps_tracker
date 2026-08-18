@@ -199,10 +199,7 @@ export function TableView({
   return (
     <section className="table-view" aria-labelledby="table-heading">
       <div className="view-toolbar">
-        <div>
-          <h2 id="table-heading">All applications</h2>
-          <p>{visibleApplications.length} shown</p>
-        </div>
+        <h2 className="sr-only" id="table-heading">All applications</h2>
         {filtersActive ? (
           <button
             className="button button--quiet"

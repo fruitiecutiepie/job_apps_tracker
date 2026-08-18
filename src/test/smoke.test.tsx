@@ -94,6 +94,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   expect(readSavedDocument().applications).toHaveLength(20)
 
   const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+  await reloadedUser.click(screen.getByRole('button', { name: 'More actions' }))
   await reloadedUser.click(screen.getByRole('button', { name: 'Reset demo data' }))
 
   expect(confirm).toHaveBeenCalledOnce()

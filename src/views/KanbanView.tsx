@@ -155,25 +155,35 @@ export function KanbanView({
                               </p>
                             ) : null}
                             <AttachmentFilenames attachments={application.attachments} variant="card" />
-                            <StageNotesButton
-                              application={application}
-                              onOpenStageNotes={onOpenStageNotes}
-                              variant="card"
-                            />
-                            <label className="application-card__move">
-                              <span className="sr-only">Move {application.company} to state</span>
-                              <select
-                                aria-label={`Move ${application.company} to state`}
-                                value={application.state}
-                                onChange={(event) => onMove(application.id, event.target.value as StateId)}
-                              >
-                                {STATE_CONFIG.map((option) => (
-                                  <option key={option.id} value={option.id}>
-                                    {stateLabel(option.id)}
-                                  </option>
-                                ))}
-                              </select>
-                            </label>
+                            {/*
+                              * The card already sits in its state's lane, so the
+                              * select does not repeat that state: it reads "Move".
+                              * The native select stays — it is the accessible and
+                              * touch fallback for drag-and-drop — laid over the
+                              * trigger at zero opacity, so it keeps its role, its
+                              * keyboard behaviour and its accessible name.
+                              */}
+                            <div className="application-card__row">
+                              <span className="application-card__move">
+                                <span aria-hidden="true">Move</span>
+                                <select
+                                  aria-label={`Move ${application.company} to state`}
+                                  value={application.state}
+                                  onChange={(event) => onMove(application.id, event.target.value as StateId)}
+                                >
+                                  {STATE_CONFIG.map((option) => (
+                                    <option key={option.id} value={option.id}>
+                                      {stateLabel(option.id)}
+                                    </option>
+                                  ))}
+                                </select>
+                              </span>
+                              <StageNotesButton
+                                application={application}
+                                onOpenStageNotes={onOpenStageNotes}
+                                variant="card"
+                              />
+                            </div>
                           </article>
                         );
                       })}

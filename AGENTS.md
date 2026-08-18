@@ -10,7 +10,10 @@ This file applies to the entire repository. Keep changes within the app's curren
 - `src/domain/` is the source of truth for types, state configuration, mutations, validation, storage, IDs, and demo data.
 - `src/views/` contains view components and their derived-data helpers.
 - `src/test/` contains app integration and smoke tests; view-focused tests live beside the views.
-- `src/styles.css` contains the responsive visual system.
+- `src/styles.css` contains the responsive visual system. Spacing, radius, type size, colour,
+  control height, shadow, and focus all come from the token scale in its `:root` block; reuse a
+  token instead of adding a one-off value, and keep the media queries at the end of the file so a
+  later base rule cannot outrank them.
 - `SMOKE_TEST.md` records the automated smoke coverage and optional browser-only checks.
 
 Use pnpm for dependency and script commands. Do not introduce a second package manager or regenerate the lockfile with another tool.
@@ -62,6 +65,17 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 ### View behavior
 
+- One context bar under the topbar carries the view title, the filtered count, and the global
+  filters. The active view's name is the page `h1` for document structure only — the nav tab
+  already shows it, so no view repeats it as a visible heading. Table, Stale, and Statistics keep
+  their `h2` as `sr-only`; Calendar's heading stays visible because it names the shown month.
+- Import, export, and demo reset live behind the topbar's **More actions** disclosure. It is a
+  disclosure holding plain buttons, not an ARIA menu, so Tab alone reaches the items; keep Escape,
+  outside-click dismissal, and focus return to the trigger. The import file input must stay mounted
+  outside the panel, which unmounts when it closes.
+- The Kanban card's state `<select>` reads **Move** rather than repeating the lane's state, and is
+  laid over that trigger at zero opacity. It must remain a real focusable `combobox` named
+  `Move {company} to state` — it is the accessible and touch fallback for drag-and-drop.
 - All six views consume the same application collection and respect app-wide search, state, and company filters.
 - Table column filters further narrow only the table. They are display state and must not be persisted.
 - Stage prep notes open in their own dialog from the Kanban card and the table row. It lists the application's current stage first, then every other stage that has notes, so the stage you are interviewing for is on screen first. Global search matches stage note text through `search_text`.

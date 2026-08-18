@@ -17,10 +17,7 @@ export function StatisticsView({ applications }: StatisticsViewProps) {
   return (
     <section className="statistics" aria-labelledby="statistics-heading">
       <header className="view-heading">
-        <div>
-          <h2 id="statistics-heading">Statistics</h2>
-          <p>Current positions and states reached over application history.</p>
-        </div>
+        <h2 className="sr-only" id="statistics-heading">Statistics</h2>
         <div className="statistics__total" aria-label={`${applications.length} total applications`}>
           <strong>{applications.length}</strong>
           <span>Total applications</span>

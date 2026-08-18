@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   CalendarDays,
   ChartNoAxesColumnIncreasing,
   Download,
   KanbanSquare,
   ListChecks,
+  MoreHorizontal,
   Plus,
   RotateCcw,
   Search,
@@ -69,6 +70,68 @@ const VIEW_OPTIONS = [
   { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
 ] as const
+
+/*
+ * Occasional collection-wide actions (import, export, demo reset) live behind
+ * one trigger so they stop competing with the per-session controls beside them.
+ *
+ * This is a disclosure holding plain buttons, not an ARIA menu: a real
+ * role="menu" owes the user arrow-key navigation and typeahead, whereas Tab
+ * already reaches buttons in DOM order. `children` is a render prop so each
+ * item can close the panel after acting.
+ */
+function MoreActionsMenu({ children }: { children: ReactNode }) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.stopPropagation()
+        setOpen(false)
+        triggerRef.current?.focus()
+      }
+    }
+    const onPointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('keydown', onKeyDown)
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => {
+      document.removeEventListener('keydown', onKeyDown)
+      document.removeEventListener('pointerdown', onPointerDown)
+    }
+  }, [open])
+
+  return (
+    <div className="actions-menu" ref={containerRef}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="true"
+        aria-label="More actions"
+        className="icon-button"
+        onClick={() => setOpen((value) => !value)}
+        ref={triggerRef}
+        type="button"
+      >
+        <MoreHorizontal aria-hidden="true" size={18} />
+      </button>
+      {open && (
+        <div
+          className="actions-menu__panel"
+          onClick={() => {
+            setOpen(false)
+            triggerRef.current?.focus()
+          }}
+        >
+          {children}
+        </div>
+      )}
+    </div>
+  )
+}
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
@@ -216,10 +279,7 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
         tabIndex={-1}
       >
         <div className="dialog__header">
-          <div>
-            <p className="eyebrow">{isEditing ? 'Application details' : 'New opportunity'}</p>
-            <h2 id="application-dialog-title">{isEditing ? 'Edit application' : 'Add application'}</h2>
-          </div>
+          <h2 id="application-dialog-title">{isEditing ? 'Edit application' : 'Add application'}</h2>
           <button aria-label="Close dialog" className="icon-button" onClick={onClose} type="button">
             <X aria-hidden="true" size={20} />
           </button>
@@ -509,7 +569,7 @@ export default function App() {
     return (
       <div className="app-shell">
         <main id="main">
-          <p className="workspace-header__summary">Loading tracker data…</p>
+          <p className="empty-state">Loading tracker data…</p>
         </main>
       </div>
     )
@@ -519,10 +579,10 @@ export default function App() {
     return (
       <div className="app-shell">
         <main id="main">
-          <section className="workspace-header">
+          <section className="empty-state">
             <h1>Could not load tracker data</h1>
-            <p className="workspace-header__summary">{loadError ?? 'Tracker data is unavailable.'}</p>
-            <p className="workspace-header__summary">
+            <p>{loadError ?? 'Tracker data is unavailable.'}</p>
+            <p>
               Fix or remove <code>{trackerDatabasePath()}</code>, then reload the page. Your file was not overwritten.
             </p>
           </section>
@@ -616,72 +676,33 @@ export default function App() {
               onClick={() => setActiveView(id)}
               type="button"
             >
-              <Icon aria-hidden="true" size={18} />
+              <Icon aria-hidden="true" size={16} />
               <span>{label}</span>
             </button>
           ))}
         </nav>
 
-        <button
-          className="button button--primary add-button"
-          onClick={(event) => openNewApplication(event.currentTarget)}
-          ref={addButtonRef}
-          type="button"
-        >
-          <Plus aria-hidden="true" size={18} />
-          Add application
-        </button>
-      </header>
+        <div className="topbar__actions">
+          <button
+            className="button button--primary add-button"
+            onClick={(event) => openNewApplication(event.currentTarget)}
+            ref={addButtonRef}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} />
+            Add application
+          </button>
 
-      <main id="main">
-        <section className="workspace-header">
-          <div>
-            <p className="eyebrow">Your search, at a glance</p>
-            <h1>{VIEW_OPTIONS.find((view) => view.id === activeView)?.label}</h1>
-            <p className="workspace-header__summary">
-              {filteredApplications.length} of {tracker.applications.length} applications shown
-            </p>
-          </div>
-
-          <div className="workspace-actions">
-            <button className="button button--quiet" onClick={() => importInputRef.current?.click()} type="button">
-              <Upload aria-hidden="true" size={17} /> Import
-            </button>
-            <input
-              accept="application/json,.json,application/zip,.zip"
-              className="sr-only"
-              onChange={async (event) => {
-                const file = event.target.files?.[0]
-                event.target.value = ''
-                if (!file) return
-                try {
-                  const bytes = await readFileAsUint8Array(file)
-                  if (isZipArchive(bytes)) {
-                    const { document, files } = unpackTrackerArchive(bytes)
-                    if (window.confirm(`Replace your current tracker with ${document.applications.length} imported applications and ${files.length} attachments?`)) {
-                      const saved = await importTrackerArchive(document, files)
-                      setTracker(saved)
-                      setNotice(`Imported ${saved.applications.length} applications.`)
-                    }
-                    return
-                  }
-
-                  const imported = parseTrackerDocument(new TextDecoder().decode(bytes))
-                  if (window.confirm(`Replace your current tracker with ${imported.applications.length} imported applications?`)) {
-                    await importTrackerArchive(imported, [])
-                    const saved = await loadTrackerDatabase()
-                    setTracker(saved)
-                    setNotice(`Imported ${saved.applications.length} applications.`)
-                  }
-                } catch (error) {
-                  setNotice(`Import failed: ${errorMessage(error)}`)
-                }
-              }}
-              ref={importInputRef}
-              type="file"
-            />
+          <MoreActionsMenu>
             <button
-              className="button button--quiet"
+              className="actions-menu__item"
+              onClick={() => importInputRef.current?.click()}
+              type="button"
+            >
+              <Upload aria-hidden="true" size={16} /> Import
+            </button>
+            <button
+              className="actions-menu__item"
               onClick={() => {
                 downloadTrackerArchive(tracker).catch((error) => {
                   setNotice(`Export failed: ${errorMessage(error)}`)
@@ -689,11 +710,11 @@ export default function App() {
               }}
               type="button"
             >
-              <Download aria-hidden="true" size={17} /> Export
+              <Download aria-hidden="true" size={16} /> Export
             </button>
             {isDemoTrackerProfile() && (
               <button
-                className="button button--quiet"
+                className="actions-menu__item"
                 onClick={async () => {
                   if (window.confirm('Reset the tracker to the original 19 demo applications? This replaces your current data.')) {
                     try {
@@ -710,35 +731,75 @@ export default function App() {
                 }}
                 type="button"
               >
-                <RotateCcw aria-hidden="true" size={17} /> Reset demo data
+                <RotateCcw aria-hidden="true" size={16} /> Reset demo data
               </button>
             )}
-          </div>
-        </section>
+          </MoreActionsMenu>
+        </div>
+      </header>
 
-        {notice && (
-          <div className="notice" role="status">
-            <span>{notice}</span>
-            <button aria-label="Dismiss message" className="icon-button" onClick={() => setNotice(null)} type="button">
-              <X aria-hidden="true" size={17} />
-            </button>
-          </div>
-        )}
+      {/*
+        * Kept outside MoreActionsMenu: the panel unmounts when it closes, and
+        * the picker is opened by the Import item after the panel is gone.
+        */}
+      <input
+        accept="application/json,.json,application/zip,.zip"
+        className="sr-only"
+        onChange={async (event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (!file) return
+          try {
+            const bytes = await readFileAsUint8Array(file)
+            if (isZipArchive(bytes)) {
+              const { document, files } = unpackTrackerArchive(bytes)
+              if (window.confirm(`Replace your current tracker with ${document.applications.length} imported applications and ${files.length} attachments?`)) {
+                const saved = await importTrackerArchive(document, files)
+                setTracker(saved)
+                setNotice(`Imported ${saved.applications.length} applications.`)
+              }
+              return
+            }
 
-        <section aria-label="Application filters" className="global-filters">
-          <label className="search-field">
-            <span>Search</span>
-            <Search aria-hidden="true" size={18} />
-            <input
-              aria-label="Search applications"
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search company, role, source, notes or action"
-              type="search"
-              value={search}
-            />
-          </label>
-          <label className="filter-field">
-            <span>State</span>
+            const imported = parseTrackerDocument(new TextDecoder().decode(bytes))
+            if (window.confirm(`Replace your current tracker with ${imported.applications.length} imported applications?`)) {
+              await importTrackerArchive(imported, [])
+              const saved = await loadTrackerDatabase()
+              setTracker(saved)
+              setNotice(`Imported ${saved.applications.length} applications.`)
+            }
+          } catch (error) {
+            setNotice(`Import failed: ${errorMessage(error)}`)
+          }
+        }}
+        ref={importInputRef}
+        type="file"
+      />
+
+      <main id="main">
+        {/*
+          * One row for the whole view context: which view, how much of the
+          * collection is showing, and the filters that decide it. The view name
+          * is not repeated here as a display heading — the nav tab already
+          * carries it — but it stays the page's h1 for document structure.
+          */}
+        <section aria-label="View context and filters" className="context-bar">
+          <h1>{VIEW_OPTIONS.find((view) => view.id === activeView)?.label}</h1>
+          <p className="context-bar__count">
+            {filteredApplications.length} of {tracker.applications.length} applications shown
+          </p>
+
+          <div className="context-bar__filters">
+            <div className="search-field">
+              <Search aria-hidden="true" size={15} />
+              <input
+                aria-label="Search applications"
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search company, role, source, notes or action"
+                type="search"
+                value={search}
+              />
+            </div>
             <select
               aria-label="Filter by state"
               onChange={(event) => setStateFilter(event.target.value as StateId | 'all')}
@@ -747,9 +808,6 @@ export default function App() {
               <option value="all">All states</option>
               {STATE_CONFIG.map((state) => <option key={state.id} value={state.id}>{state.label}</option>)}
             </select>
-          </label>
-          <label className="filter-field">
-            <span>Company</span>
             <select
               aria-label="Filter by company"
               onChange={(event) => setCompanyFilter(event.target.value)}
@@ -760,22 +818,30 @@ export default function App() {
                 <option key={company} value={company}>{company}</option>
               ))}
             </select>
-          </label>
-          {(search || stateFilter !== 'all' || companyFilter !== 'all') && (
-            <button
-              className="button button--quiet"
-              onClick={() => {
-                setSearch('')
-                setStateFilter('all')
-                setCompanyFilter('all')
-              }}
-              type="button"
-            >
-              Clear filters
-            </button>
-          )}
+            {(search || stateFilter !== 'all' || companyFilter !== 'all') && (
+              <button
+                className="button button--quiet"
+                onClick={() => {
+                  setSearch('')
+                  setStateFilter('all')
+                  setCompanyFilter('all')
+                }}
+                type="button"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
         </section>
 
+        {notice && (
+          <div className="notice" role="status">
+            <span>{notice}</span>
+            <button aria-label="Dismiss message" className="icon-button" onClick={() => setNotice(null)} type="button">
+              <X aria-hidden="true" size={16} />
+            </button>
+          </div>
+        )}
         <section className="view-surface">{currentView}</section>
       </main>
 
