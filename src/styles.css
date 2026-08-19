@@ -76,6 +76,62 @@
   text-rendering: optimizeLegibility;
 }
 
+/*
+ * Dark palette. Applies by OS preference, or overrides it when the topbar
+ * toggle has stamped an explicit data-theme on <html>. Every rule in this
+ * file reads colour through the tokens above, so redeclaring them here is
+ * the entire dark mode implementation — no component rule needs to change.
+ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #16181a;
+    --surface: #1e2124;
+    --surface-2: #26292d;
+    --surface-3: #2f3236;
+    --line: #33363a;
+    --line-strong: #47494e;
+
+    --ink: #eceef0;
+    --ink-2: #a8adb3;
+    --ink-3: #7d848b;
+
+    --accent: #2dd4bf;
+    --accent-strong: #5eead4;
+    --accent-weak: #163330;
+
+    --danger: #f2867e;
+    --danger-weak: #3a1c1a;
+
+    --shadow: 0 8px 24px rgb(0 0 0 / 40%);
+    --scrim: rgb(0 0 0 / 60%);
+    --focus: 0 0 0 3px rgb(45 212 191 / 30%);
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #16181a;
+  --surface: #1e2124;
+  --surface-2: #26292d;
+  --surface-3: #2f3236;
+  --line: #33363a;
+  --line-strong: #47494e;
+
+  --ink: #eceef0;
+  --ink-2: #a8adb3;
+  --ink-3: #7d848b;
+
+  --accent: #2dd4bf;
+  --accent-strong: #5eead4;
+  --accent-weak: #163330;
+
+  --danger: #f2867e;
+  --danger-weak: #3a1c1a;
+
+  --shadow: 0 8px 24px rgb(0 0 0 / 40%);
+  --scrim: rgb(0 0 0 / 60%);
+  --focus: 0 0 0 3px rgb(45 212 191 / 30%);
+}
+
 * {
   box-sizing: border-box;
 }
