@@ -1403,6 +1403,16 @@ tbody tr:hover {
   gap: var(--s3);
 }
 
+.rating-field {
+  gap: var(--s3);
+}
+
+.rating-grid {
+  display: grid;
+  gap: var(--s3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .invite-list {
   display: grid;
   gap: var(--s3);
@@ -1834,7 +1844,8 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   }
 
   .invite-item__head,
-  .invite-item__grid {
+  .invite-item__grid,
+  .rating-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 

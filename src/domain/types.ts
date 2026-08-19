@@ -19,6 +19,8 @@ export type StateId =
   | 'offer_rejected'
   | 'accepted'
 
+export type RatingDimensionId = 'work' | 'growth' | 'people' | 'company'
+
 export interface StateHistoryEntry {
   state: StateId
   at: string
@@ -35,6 +37,24 @@ export interface StageNote {
 export interface StageNoteDraft {
   state: StateId
   body: string
+}
+
+/**
+ * One judgement of an application on one dimension. Three states are meaningful and
+ * distinct: no record at all means never assessed, `score: null` means asked and genuinely
+ * cannot tell, and an integer score means a judgement was made.
+ */
+export interface Rating {
+  dimension: RatingDimensionId
+  score: number | null
+  created_at: string
+  updated_at: string
+}
+
+/** A rating as edited in the UI, before timestamps are resolved. */
+export interface RatingDraft {
+  dimension: RatingDimensionId
+  score: number | null
 }
 
 /**
@@ -94,6 +114,7 @@ export interface Application {
   stage_notes: StageNote[]
   state_events: StateEvent[]
   attachments: Attachment[]
+  ratings: Rating[]
   created_at: string
   updated_at: string
 }

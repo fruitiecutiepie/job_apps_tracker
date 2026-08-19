@@ -9,6 +9,7 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 - Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, the next upcoming invite and attachment filenames on cards, a state-selector fallback, and muted styling for applications untouched for 14 days
 - Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first
 - Optional deadline per application, recording an external closing or decision date separately from your own next action
+- Preference ranking from four subjective ratings, discounted for what you have not judged yet, with the weakest dimension named so a healthy average cannot hide a dealbreaker
 - Derived urgency ranking that explains itself, combining stage, scheduled invites, deadline, next-action date, and how long an application has sat in the same state, into one sortable column
 - Sortable and filterable table with invites, deadline, urgency, and attachments columns, where sorting by invite sorts by what is next
 - Focus view grouping live applications by what is most pressing, with collapsible groups and a reason on every row
@@ -106,10 +107,31 @@ A line that simply wraps a bullet stays part of that bullet. To give a point fol
 
 What you have folded is never saved—it resets each time you open the dialog.
 
+### Rate what you think of a role
+
+The editor carries four ratings: **Work** (the day-to-day itself), **Growth** (where it
+leads), **People** (team and manager), and **Company & product**. Each takes 1–5, or
+**Don't know** when you have asked and genuinely cannot tell, and starts at **Not rated**.
+
+Those three states are deliberately different. *Not rated* means you have not looked;
+*Don't know* means you looked and the answer is not available, which is information in its
+own right. Both cost the same in the score, because either way the decision carries a blind
+spot, but the Preference column tells you which it is so you know whether to go ask or just
+think for a moment.
+
+The score is the average of what you have judged, discounted for what you have not, so a
+fully judged 4.00 outranks a 4.00 with a gap in it. It also names the weakest dimension:
+`4.00 · People 1` and a plain `4.00` are the same average, and only one of them has a 1 in
+it. An application you have not rated at all is not ranked last — it shows a dash and stays
+put whichever way you sort.
+
+Compensation is deliberately **not** a rating. Given a number everyone agrees more is
+better, so scoring it 1–5 would throw the number away; it belongs in a field of its own.
+
 ### Find the right view
 
 - **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames and a prep notes button appear on cards, and you can move applications by drag-and-drop or the state selector. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.
-- **Table** sorts and column-filters by company, role, source, state, next action, deadline, urgency, attachments, created date, or last update, and gives each row a prep notes button. Sorting by deadline puts applications without one last. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, and company filters still apply across views.
+- **Table** sorts and column-filters by company, role, source, state, next action, deadline, urgency, preference, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—deadline, invites, preference—keep the rows without one last in either sort direction. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, and company filters still apply across views.
 - **Focus** answers "what should I do next". Each group heading states its own membership rule, so nothing is hidden behind a mood word: **Overdue or due today**, **Due in 1 to 7 days**, **Due in more than 7 days**, **Action with no date**, **No stage change in more than 7 days**, **Nothing dated or planned**, and a trailing **Finished, action outstanding** for tasks left on rejected, accepted, or no-openings applications. Placement uses the nearest of the soonest upcoming invite, the deadline, and the next-action date, so a date always decides the group; the urgency score only orders rows within it. An application with just an invite, or just a deadline, and no action of its own appears here too. Silence is measured from the last actual state change, not from the last edit, so fixing a typo does not make an application look like it moved. Groups collapse and expand—only the leading non-empty group starts open, and that choice is never saved.
 - **Calendar** places applications only by their next-action date; select an item to edit it.
 - **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved. When the current state has a rejected counterpart, **Move to Rejected** records that outcome and keeps the history.

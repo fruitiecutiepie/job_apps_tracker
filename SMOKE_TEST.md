@@ -43,7 +43,7 @@ test cannot judge reliably:
    appear on Stale at any threshold: it was edited yesterday but has not moved in weeks.
    Confirm every group has at least one application, so each heading and row format is visible.
    On Table, confirm a column filter narrows rows without changing Kanban, and that
-   Clear column filters restores the table.
+   Clear column filters restores the table, including when only the Preference filter is set.
    Sort by Urgency and confirm the most pressing live applications lead, that each row
    explains itself, and that rejected, accepted, and no-openings rows show an unranked dash.
    On Stale, confirm a live-state row has Move to Rejected and that already-rejected,
@@ -85,7 +85,13 @@ test cannot judge reliably:
    and that searching its description finds the application. On Table, sort by **Invites** and
    confirm rows with nothing coming sink to the bottom. Tick **Cancelled**, save, and confirm the
    calendar entry and the table cell read as cancelled and the card no longer shows it.
-10. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+10. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
+    Set one to **Don't know** and another back to **Not rated**, save, and confirm the Table
+    Preference cell distinguishes the two. Confirm the demo's Lumen Pantry row reads
+    `4.00 · People 1` while a fully even row reads a plain `4.00`, so an average cannot hide a
+    low judgement. Sort Preference both ways and confirm unrated rows stay at the bottom in
+    each direction.
+11. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
     and confirm it. Confirm the same 19 examples are restored in `data/demo/`, now including
     the demo invites, and that `data/tracker.json` is unchanged.
 

@@ -1,8 +1,10 @@
 import { safeAttachmentFilename } from './attachmentPaths'
+import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
 import { isStateId, stateRank } from './states'
 import type {
   Application,
   Attachment,
+  Rating,
   StageNote,
   StateEvent,
   StateHistoryEntry,
@@ -119,6 +121,61 @@ function historyValue(
     addError(errors, path, "must end in the application's current state")
   }
   return history
+}
+
+function ratingValue(value: unknown, path: string, errors: ValidationError[]): Rating | null {
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object')
+    return null
+  }
+  if (!isRatingDimension(value.dimension)) addError(errors, `${path}.dimension`, 'is invalid')
+  // null is a real judgement here — asked, and genuinely cannot tell.
+  if (value.score !== null && !isRatingScore(value.score)) {
+    addError(errors, `${path}.score`, 'must be null or an integer from 1 to 5')
+  }
+  if (!validTimestamp(value.created_at)) {
+    addError(errors, `${path}.created_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (!validTimestamp(value.updated_at)) {
+    addError(errors, `${path}.updated_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (
+    !isRatingDimension(value.dimension)
+    || (value.score !== null && !isRatingScore(value.score))
+    || !validTimestamp(value.created_at)
+    || !validTimestamp(value.updated_at)
+  ) {
+    return null
+  }
+
+  return {
+    dimension: value.dimension,
+    score: value.score as number | null,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+  }
+}
+
+function ratingsValue(value: unknown, path: string, errors: ValidationError[]): Rating[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) {
+    addError(errors, path, 'must be an array')
+    return []
+  }
+
+  const ratings = value
+    .map((rating, index) => ratingValue(rating, `${path}[${index}]`, errors))
+    .filter((rating): rating is Rating => rating !== null)
+
+  const seen = new Set<string>()
+  ratings.forEach((rating, index) => {
+    if (seen.has(rating.dimension)) {
+      addError(errors, `${path}[${index}].dimension`, 'duplicates another rating')
+    }
+    seen.add(rating.dimension)
+  })
+
+  return ratings.sort((left, right) => ratingRank(left.dimension) - ratingRank(right.dimension))
 }
 
 function stageNoteValue(value: unknown, path: string, errors: ValidationError[]): StageNote | null {
@@ -400,6 +457,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     stage_notes: stageNotesValue(value.stage_notes, `${path}.stage_notes`, errors),
     state_events: stateEventsValue(value.state_events, `${path}.state_events`, errors),
     attachments: attachmentsValue(value.attachments, `${path}.attachments`, errors),
+    ratings: ratingsValue(value.ratings, `${path}.ratings`, errors),
     created_at: value.created_at,
     updated_at: value.updated_at,
   }

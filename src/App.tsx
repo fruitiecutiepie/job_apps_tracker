@@ -37,8 +37,10 @@ import {
   saveTrackerDatabase,
   tryLoadLegacyLocalStorage,
   unpackTrackerArchive,
+  clearApplicationRating,
   updateApplication,
   updateApplicationStageNotes,
+  updateApplicationRatings,
   updateApplicationStateEvents,
   uploadAttachmentFile,
   deleteAttachmentFile,
@@ -51,6 +53,8 @@ import {
   type TrackerDocument,
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
+import { RatingFields } from './RatingFields'
+import { clearedRatingDimensions, ratingDrafts, ratingValuesFor, type RatingValues } from './ratings'
 import { fromDateTimeInput, toDateTimeInput } from './dateInput'
 import { InviteFields } from './InviteFields'
 import {
@@ -182,6 +186,7 @@ interface EditorValues {
   nextActionAt: string
   deadlineAt: string
   notes: string
+  ratings: RatingValues
 }
 
 interface StagedAttachmentFile {
@@ -220,6 +225,7 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
     nextActionAt: toDateTimeInput(application?.next_action_at ?? null),
     deadlineAt: toDateTimeInput(application?.deadline_at ?? null),
     notes: application?.notes ?? '',
+    ratings: ratingValuesFor(application),
   }))
   const [invites, setInvites] = useState<InviteRow[]>(() => inviteRowsFor(application))
   const [keptAttachments] = useState<Attachment[]>(() => application?.attachments ?? [])
@@ -408,6 +414,12 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
               defaultState={values.state}
               onChange={setInvites}
               rows={invites}
+            />
+            <RatingFields
+              onChange={(dimension, value) =>
+                update('ratings', { ...values.ratings, [dimension]: value })
+              }
+              values={values.ratings}
             />
             <div className="field field--wide attachment-field">
               <span>Attachments</span>
@@ -905,6 +917,7 @@ export default function App() {
                 next = updateApplication(next, created.id, { attachments }, now)
               }
               next = updateApplicationStateEvents(next, created.id, invites, now)
+              next = updateApplicationRatings(next, created.id, ratingDrafts(values.ratings), now)
               await commit(next, 'Application added.')
             } else {
               const attachments = await applyAttachmentPlan(editor.id, attachmentPlan, now)
@@ -920,6 +933,11 @@ export default function App() {
                 attachments,
               }, now)
               next = updateApplicationStateEvents(next, editor.id, invites, now)
+              next = updateApplicationRatings(next, editor.id, ratingDrafts(values.ratings), now)
+              // Drafts cannot express "back to never assessed", so blanked ones clear here.
+              for (const dimension of clearedRatingDimensions(editingApplication, values.ratings)) {
+                next = clearApplicationRating(next, editor.id, dimension, now)
+              }
               next = moveApplication(next, editor.id, values.state, now)
               await commit(next, 'Application updated.')
             }

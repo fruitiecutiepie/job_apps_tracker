@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { Application, StateEvent, StateId } from '../domain'
+import type { Application, Rating, RatingDimensionId, StateEvent, StateId } from '../domain'
 import { CalendarView } from './CalendarView'
 import { KanbanView } from './KanbanView'
 import { FocusView } from './FocusView'
@@ -39,6 +39,7 @@ function application(
     stage_notes: [],
     state_events: [],
     attachments: [],
+    ratings: [],
     created_at: localDate(-40),
     updated_at: localDate(-1),
     ...overrides,
@@ -61,6 +62,15 @@ function stateEvent(overrides: Partial<StateEvent> = {}): StateEvent {
     updated_at: localDate(-2),
     ...overrides,
   }
+}
+
+function ratings(scores: Partial<Record<RatingDimensionId, number | null>>): Rating[] {
+  return (Object.keys(scores) as RatingDimensionId[]).map((dimension) => ({
+    dimension,
+    score: scores[dimension] ?? null,
+    created_at: localDate(-2),
+    updated_at: localDate(-2),
+  }))
 }
 
 afterEach(() => {
@@ -145,6 +155,27 @@ describe('FocusView', () => {
     expect(rowsIn('Due in 1 to 7 days')).toEqual([expect.stringContaining('Panel Co')])
     expect(screen.getByText('Invite in 2 days')).toBeInTheDocument()
     expect(screen.getByText(/Research panel/)).toBeInTheDocument()
+  })
+
+  it('is unchanged by ratings, which belong to a different axis', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const base = { deadline_at: localDate(0), next_action: 'Prepare', next_action_at: localDate(0) }
+    const unrated = application('Same Co', base)
+    const loathed = application('Same Co', {
+      ...base,
+      ratings: ratings({ work: 1, growth: 1, people: 1, company: 1 }),
+    })
+
+    const { unmount } = render(
+      <FocusView applications={[unrated]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />,
+    )
+    const before = rowsIn('Overdue or due today')
+    unmount()
+
+    render(<FocusView applications={[loathed]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />)
+
+    expect(rowsIn('Overdue or due today')).toEqual(before)
   })
 
   it('offers prep notes on a row, like the Kanban card and the table row', () => {
@@ -616,6 +647,14 @@ describe('TableView', () => {
       'Zebra Works',
       'Alpha Labs',
     ])
+
+    // Undated is absent rather than late, so it stays last when the order flips too.
+    fireEvent.click(screen.getByRole('button', { name: 'Deadline' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Zebra Works',
+      'Middle Studio',
+      'Alpha Labs',
+    ])
     expect(applications.map(({ deadline_at }) => deadline_at)).toEqual([
       localDate(9),
       null,
@@ -705,6 +744,106 @@ describe('TableView', () => {
       target: { value: 'overdue' },
     })
     expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Overdue Co'])
+  })
+
+  it('shows a preference score with what is missing, and a dash when unrated', () => {
+    const applications = [
+      application('Fully Rated', {
+        ratings: ratings({ work: 4, growth: 4, people: 4, company: 4 }),
+      }),
+      application('Part Rated', { ratings: ratings({ work: 4, growth: 4, people: null }) }),
+      application('Not Rated', {}),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('4.00')).toBeInTheDocument()
+    expect(screen.getByText(/People unknown · 1 not rated/)).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('row', { name: /Not Rated/ })).getByLabelText('Not rated'),
+    ).toBeInTheDocument()
+  })
+
+  it('names the weakest judgement so an even score is distinguishable', () => {
+    const applications = [
+      application('Dealbreaker Co', {
+        ratings: ratings({ work: 5, growth: 5, people: 5, company: 1 }),
+      }),
+      application('Even Co', { ratings: ratings({ work: 4, growth: 4, people: 4, company: 4 }) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    // Both mean 4.00; only one of them has a 1 in it.
+    expect(screen.getByText('4.00 · Company & product 1')).toBeInTheDocument()
+    expect(screen.getByText('4.00')).toBeInTheDocument()
+  })
+
+  it('keeps unrated applications last when sorting preference either way', () => {
+    const applications = [
+      application('Middle Co', { ratings: ratings({ work: 3, growth: 3, people: 3, company: 3 }) }),
+      application('Unrated Co', {}),
+      application('Best Co', { ratings: ratings({ work: 5, growth: 5, people: 5, company: 5 }) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Preference' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Best Co',
+      'Middle Co',
+      'Unrated Co',
+    ])
+
+    // Unrated is absent, not worst, so it stays last when the order flips.
+    fireEvent.click(screen.getByRole('button', { name: 'Preference' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Middle Co',
+      'Best Co',
+      'Unrated Co',
+    ])
+  })
+
+  it('filters the preference column by its text', () => {
+    const applications = [
+      application('Unknown Co', { ratings: ratings({ work: 4, people: null }) }),
+      application('Solid Co', { ratings: ratings({ work: 4, growth: 4, people: 4, company: 4 }) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Preference column' }), {
+      target: { value: 'unknown' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Unknown Co'])
   })
 
   it('offers company and source datalist suggestions', () => {

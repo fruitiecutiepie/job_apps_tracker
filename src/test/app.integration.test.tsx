@@ -678,6 +678,58 @@ describe('job applications tracker', () => {
     ).toEqual([])
   })
 
+  it('saves ratings set while adding an application', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add application' }))
+    const dialog = screen.getByRole('dialog', { name: 'Add application' })
+
+    await user.type(within(dialog).getByLabelText('Company'), 'Rated Rail')
+    await user.selectOptions(within(dialog).getByLabelText('Work'), '5')
+    await user.selectOptions(within(dialog).getByLabelText('Growth'), '4')
+    // "Don't know" is a judgement of its own, not a blank.
+    await user.selectOptions(within(dialog).getByLabelText('People'), 'unknown')
+    await user.click(within(dialog).getByRole('button', { name: 'Add application' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const saved = readSavedDocument().applications.find(({ company }) => company === 'Rated Rail')
+    expect(saved?.ratings.map(({ dimension, score }) => [dimension, score])).toEqual([
+      ['work', 5],
+      ['growth', 4],
+      ['people', null],
+    ])
+  })
+
+  it('saves a rating and a field edit in the same submit, and can clear one', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: /Open Marble & Finch/ }))
+    let dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    const company = within(dialog).getByLabelText('Company')
+    await user.clear(company)
+    await user.type(company, 'Marble and Finch')
+    await user.selectOptions(within(dialog).getByLabelText('Work'), '3')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const edited = () =>
+      readSavedDocument().applications.find(({ company: name }) => name === 'Marble and Finch')
+    expect(edited()?.ratings.map(({ dimension, score }) => [dimension, score])).toEqual([
+      ['work', 3],
+    ])
+
+    // Blanking a select returns the dimension to never assessed, not to a zero.
+    await user.click(screen.getByRole('button', { name: /Open Marble and Finch/ }))
+    dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.selectOptions(within(dialog).getByLabelText('Work'), '')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(edited()?.ratings).toEqual([])
+  })
+
   it('saves a deadline that stands alone from the next action', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

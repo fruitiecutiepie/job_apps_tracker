@@ -1,3 +1,4 @@
+import { MAX_RATING_SCORE, MIN_RATING_SCORE, RATING_IDS } from './ratings'
 import { STATE_IDS } from './states'
 
 export const TRACKER_JSON_SCHEMA = {
@@ -36,6 +37,7 @@ export const TRACKER_JSON_SCHEMA = {
         'stage_notes',
         'state_events',
         'attachments',
+        'ratings',
         'created_at',
         'updated_at',
       ],
@@ -75,6 +77,10 @@ export const TRACKER_JSON_SCHEMA = {
         attachments: {
           type: 'array',
           items: { $ref: '#/$defs/attachment' },
+        },
+        ratings: {
+          type: 'array',
+          items: { $ref: '#/$defs/rating' },
         },
         created_at: { type: 'string' },
         updated_at: { type: 'string' },
@@ -138,6 +144,24 @@ export const TRACKER_JSON_SCHEMA = {
         mime: { type: ['string', 'null'] },
         size: { type: 'integer', minimum: 1 },
         created_at: { type: 'string' },
+      },
+    },
+    rating: {
+      type: 'object',
+      description:
+        'One judgement of an application on one dimension. A null score means the judgement '
+        + 'was attempted and could not be made; an absent record means it was never attempted.',
+      required: ['dimension', 'score', 'created_at', 'updated_at'],
+      additionalProperties: false,
+      properties: {
+        dimension: { type: 'string', enum: [...RATING_IDS] },
+        score: {
+          type: ['integer', 'null'],
+          minimum: MIN_RATING_SCORE,
+          maximum: MAX_RATING_SCORE,
+        },
+        created_at: { type: 'string' },
+        updated_at: { type: 'string' },
       },
     },
     indexes: {

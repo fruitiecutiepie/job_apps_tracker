@@ -1,10 +1,11 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain";
+import { RATING_LABELS, SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain";
 import type { Application, StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import { InviteSummaries, inviteFilterText } from "./InviteSummaries";
 import { StageNotesButton } from "./StageNotesButton";
 import type { MovableApplicationsViewProps } from "./types";
+import { preferenceFor, type PreferenceScore } from "./preference";
 import { rankByUrgency, type UrgencyRanking } from "./urgency";
 import { formatShortDate, parseTimestamp, upcomingStateEvent } from "./viewUtils";
 
@@ -17,6 +18,7 @@ type SortField =
   | "invites"
   | "deadline_at"
   | "urgency"
+  | "preference"
   | "created_at"
   | "updated_at";
 type SortDirection = "ascending" | "descending";
@@ -31,6 +33,7 @@ interface ColumnFilters {
   invites: string;
   deadline_at: string;
   urgency: string;
+  preference: string;
   attachments: string;
   created_at: string;
   updated_at: string;
@@ -45,6 +48,7 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
   invites: "",
   deadline_at: "",
   urgency: "",
+  preference: "",
   attachments: "",
   created_at: "",
   updated_at: "",
@@ -53,29 +57,61 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
 const stateOrder = new Map(STATE_CONFIG.map((state, index) => [state.id, index]));
 
 type UrgencyLookup = ReadonlyMap<string, UrgencyRanking>;
+type PreferenceLookup = ReadonlyMap<string, PreferenceScore>;
 
 const UNRANKED_SCORE = -1;
 
+/**
+ * `null` means the row has no value for this column. It is deliberately not a sentinel
+ * number: a sentinel has to be smaller or larger than every real value, and whichever you
+ * pick it sorts to the wrong end as soon as the direction flips. The comparator keeps these
+ * rows last in both directions instead.
+ */
 function comparableValue(
   application: Application,
   field: SortField,
   urgency: UrgencyLookup,
-): string | number {
+  preference: PreferenceLookup,
+): string | number | null {
   if (field === "state") return stateOrder.get(application.state) ?? Number.MAX_SAFE_INTEGER;
   // Sorting by invite means sorting by what is next, so rows with nothing ahead sink.
   if (field === "invites") {
     const next = upcomingStateEvent(application);
-    return next ? Date.parse(next.starts_at) : Number.MAX_SAFE_INTEGER;
+    return next ? Date.parse(next.starts_at) : null;
   }
   if (field === "urgency") return urgency.get(application.id)?.score ?? UNRANKED_SCORE;
+  if (field === "preference") return preference.get(application.id)?.score ?? null;
   if (field === "deadline_at") {
-    return application.deadline_at
-      ? parseTimestamp(application.deadline_at)?.getTime() ?? Number.MAX_SAFE_INTEGER
-      : Number.MAX_SAFE_INTEGER;
+    return application.deadline_at ? parseTimestamp(application.deadline_at)?.getTime() ?? null : null;
   }
   if (field === "created_at") return parseTimestamp(application.created_at)?.getTime() ?? 0;
   if (field === "updated_at") return parseTimestamp(application.updated_at)?.getTime() ?? 0;
   return (application[field] ?? "").toLocaleLowerCase();
+}
+
+/** At or below this, a judgement is worth naming even when the mean looks healthy. */
+const DEALBREAKER_SCORE = 2;
+
+/**
+ * A score alone hides too much: 5,5,5,1 and 4,4,4,4 both average 4.00, and a high mean over
+ * one rated dimension is not the same as a high mean over four. So the cell names the weakest
+ * judgement and what is still missing, the same way the urgency column states its reason.
+ */
+function preferenceText(preference: PreferenceScore | null): string {
+  if (!preference) return "";
+
+  const { score, lowest, unknown, unrated } = preference;
+  const parts = [score.toFixed(2)];
+
+  if (lowest && lowest.score <= DEALBREAKER_SCORE) {
+    parts.push(`${RATING_LABELS[lowest.dimension]} ${lowest.score}`);
+  }
+  if (unknown.length > 0) {
+    parts.push(`${unknown.map((dimension) => RATING_LABELS[dimension]).join(", ")} unknown`);
+  }
+  if (unrated.length > 0) parts.push(`${unrated.length} not rated`);
+
+  return parts.join(" · ");
 }
 
 function includesQuery(value: string, query: string): boolean {
@@ -88,6 +124,7 @@ function matchesColumnFilters(
   application: Application,
   filters: ColumnFilters,
   urgency: UrgencyLookup,
+  preference: PreferenceLookup,
 ): boolean {
   if (filters.state !== "all" && application.state !== filters.state) return false;
   if (!includesQuery(application.company, filters.company)) return false;
@@ -102,6 +139,9 @@ function matchesColumnFilters(
   const deadlineText = application.deadline_at ? formatShortDate(application.deadline_at) : "";
   if (!includesQuery(deadlineText, filters.deadline_at)) return false;
   if (!includesQuery(urgency.get(application.id)?.reason ?? "", filters.urgency)) return false;
+  if (!includesQuery(preferenceText(preference.get(application.id) ?? null), filters.preference)) {
+    return false;
+  }
   if (!includesQuery(application.attachments.map((attachment) => attachment.filename).join(" "), filters.attachments)) {
     return false;
   }
@@ -137,6 +177,7 @@ function columnFiltersAreActive(filters: ColumnFilters): boolean {
         filters.invites.trim() ||
         filters.deadline_at.trim() ||
         filters.urgency.trim() ||
+        filters.preference.trim() ||
         filters.attachments.trim() ||
         filters.created_at.trim() ||
         filters.updated_at.trim(),
@@ -175,12 +216,30 @@ export function TableView({
     return lookup;
   }, [applications]);
 
+  const preferenceById = useMemo(() => {
+    const lookup = new Map<string, PreferenceScore>();
+    for (const application of applications) {
+      const preference = preferenceFor(application);
+      if (preference) lookup.set(application.id, preference);
+    }
+    return lookup;
+  }, [applications]);
+
   const visibleApplications = useMemo(() => {
     return applications
-      .filter((application) => matchesColumnFilters(application, filters, urgencyById))
+      .filter((application) => matchesColumnFilters(application, filters, urgencyById, preferenceById))
       .sort((left, right) => {
-        const leftValue = comparableValue(left, sortField, urgencyById);
-        const rightValue = comparableValue(right, sortField, urgencyById);
+        const leftValue = comparableValue(left, sortField, urgencyById, preferenceById);
+        const rightValue = comparableValue(right, sortField, urgencyById, preferenceById);
+
+        // Presence first, and outside the direction flip: a row with nothing to compare is
+        // not the smallest value, it is absent, so it stays last whichever way the column
+        // is sorted.
+        if (leftValue === null || rightValue === null) {
+          if (leftValue === rightValue) return 0;
+          return leftValue === null ? 1 : -1;
+        }
+
         const result =
           typeof leftValue === "number" && typeof rightValue === "number"
             ? leftValue - rightValue
@@ -190,7 +249,7 @@ export function TableView({
               });
         return sortDirection === "ascending" ? result : -result;
       });
-  }, [applications, filters, sortDirection, sortField, urgencyById]);
+  }, [applications, filters, preferenceById, sortDirection, sortField, urgencyById]);
 
   const setSort = (field: SortField) => {
     if (field === sortField) {
@@ -198,7 +257,10 @@ export function TableView({
     } else {
       setSortField(field);
       setSortDirection(
-        field === "created_at" || field === "updated_at" || field === "urgency"
+        field === "created_at"
+        || field === "updated_at"
+        || field === "urgency"
+        || field === "preference"
           ? "descending"
           : "ascending",
       );
@@ -303,6 +365,7 @@ export function TableView({
               {headerCell("Invites", textFilter("invites", "Invites"), "invites")}
               {headerCell("Deadline", textFilter("deadline_at", "Deadline"), "deadline_at")}
               {headerCell("Urgency", textFilter("urgency", "Urgency"), "urgency")}
+              {headerCell("Preference", textFilter("preference", "Preference"), "preference")}
               {headerCell("Attachments", textFilter("attachments", "Attachments"))}
               {headerCell("Prep notes", null)}
               {headerCell("Created", textFilter("created_at", "Created"), "created_at")}
@@ -370,6 +433,15 @@ export function TableView({
                     </span>
                   ) : (
                     <span aria-label="Not ranked">—</span>
+                  )}
+                </td>
+                <td>
+                  {preferenceById.has(application.id) ? (
+                    <span className="table-view__urgency">
+                      {preferenceText(preferenceById.get(application.id)!)}
+                    </span>
+                  ) : (
+                    <span aria-label="Not rated">—</span>
                   )}
                 </td>
                 <td>

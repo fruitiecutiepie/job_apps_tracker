@@ -1,4 +1,5 @@
 import { createUuidV7 } from './id'
+import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
 import { isStateId, stateRank } from './states'
 import { safeAttachmentFilename } from './attachmentPaths'
 import type {
@@ -6,6 +7,9 @@ import type {
   ApplicationEdits,
   ApplicationInput,
   Attachment,
+  Rating,
+  RatingDimensionId,
+  RatingDraft,
   StageNote,
   StageNoteDraft,
   StateEvent,
@@ -92,6 +96,7 @@ export function createApplication(
     stage_notes: [],
     state_events: [],
     attachments: [],
+    ratings: [],
     created_at: createdAt,
     updated_at: createdAt,
   }
@@ -188,6 +193,77 @@ export function setStageNote(
   at: Date | string = new Date(),
 ): Application {
   return applyStageNotes(application, [{ state, body }], at)
+}
+
+/** The judgement recorded for one dimension of an application, when there is one. */
+export function ratingFor(application: Application, dimension: RatingDimensionId): Rating | null {
+  return application.ratings.find((rating) => rating.dimension === dimension) ?? null
+}
+
+function sortedRatings(ratings: Rating[]): Rating[] {
+  return [...ratings].sort((left, right) => ratingRank(left.dimension) - ratingRank(right.dimension))
+}
+
+/**
+ * Records the supplied judgements, leaving every dimension not named in the drafts alone.
+ * Unlike a stage prep note, a rating has no blank form that could mean "remove this", so
+ * removal is an explicit `clearRating` and an absent draft is simply untouched. A draft with
+ * `score: null` is a real judgement of a different kind: asked, and genuinely cannot tell.
+ */
+export function applyRatings(
+  application: Application,
+  drafts: RatingDraft[],
+  at: Date | string = new Date(),
+): Application {
+  const seen = new Set<RatingDimensionId>()
+  const updatedAt = timestamp(at)
+  const ratings: Rating[] = []
+
+  for (const draft of drafts) {
+    if (!isRatingDimension(draft.dimension)) throw new TypeError('Rating dimension is invalid')
+    if (seen.has(draft.dimension)) throw new TypeError('Each dimension may hold only one rating')
+    if (draft.score !== null && !isRatingScore(draft.score)) {
+      throw new TypeError('Rating score must be null or an integer from 1 to 5')
+    }
+    seen.add(draft.dimension)
+
+    const existing = ratingFor(application, draft.dimension)
+    if (existing && existing.score === draft.score) {
+      ratings.push(existing)
+      continue
+    }
+    ratings.push({
+      dimension: draft.dimension,
+      score: draft.score,
+      created_at: existing?.created_at ?? updatedAt,
+      updated_at: updatedAt,
+    })
+  }
+
+  const kept = application.ratings.filter((rating) => !seen.has(rating.dimension))
+  const next = sortedRatings([...kept, ...ratings])
+  const unchanged =
+    next.length === application.ratings.length
+    && next.every((rating, index) => rating === application.ratings[index])
+  if (unchanged) return application
+
+  return { ...application, ratings: next, updated_at: updatedAt }
+}
+
+/** Removes the judgement for one dimension, returning it to never-assessed. */
+export function clearRating(
+  application: Application,
+  dimension: RatingDimensionId,
+  at: Date | string = new Date(),
+): Application {
+  if (!isRatingDimension(dimension)) throw new TypeError('Rating dimension is invalid')
+  if (!ratingFor(application, dimension)) return application
+
+  return {
+    ...application,
+    ratings: application.ratings.filter((rating) => rating.dimension !== dimension),
+    updated_at: timestamp(at),
+  }
 }
 
 /** The invites filed against one state of an application, soonest first. */
@@ -424,6 +500,42 @@ export function updateApplicationStageNotes(
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
   const updated = applyStageNotes(application, drafts, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+/** Records judgements on one application, leaving the rest of the document alone. */
+export function updateApplicationRatings(
+  document: TrackerDocument,
+  id: string,
+  drafts: RatingDraft[],
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = applyRatings(application, drafts, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+/** Returns one dimension of one application to never-assessed. */
+export function clearApplicationRating(
+  document: TrackerDocument,
+  id: string,
+  dimension: RatingDimensionId,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = clearRating(application, dimension, at)
   if (updated === application) return document
 
   return {

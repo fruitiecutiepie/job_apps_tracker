@@ -10,7 +10,7 @@ This file applies to the entire repository. Keep changes within the app's curren
 - `src/calendar/` reads the iCalendar subset that recruiter invites arrive in; `src/invites.ts` turns those
   events into editor rows and mutation drafts, and `src/InviteFields.tsx` is the editor's invite section.
 - `src/dateInput.ts` is the only place `datetime-local` wall time is converted to and from stored timestamps.
-- `src/domain/` is the source of truth for types, state configuration, mutations, validation, storage, IDs, and demo data.
+- `src/domain/` is the source of truth for types, state and rating configuration, mutations, validation, storage, IDs, and demo data.
 - `src/views/` contains view components and their derived-data helpers.
 - `src/test/` contains app integration and smoke tests; view-focused tests live beside the views.
 - `src/styles.css` contains the responsive visual system. Spacing, radius, type size, colour,
@@ -61,11 +61,16 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   invite whose `sequence` is behind the stored one. Two invites on one application may not share a UID.
 - An invite must have a summary and a start; `ends_at` may be absent but may not precede `starts_at`.
 - A next action may have no date. A date may not survive without a non-blank action.
+- `ratings` holds at most one judgement per dimension, in `RATING_CONFIG` order. Three states are distinct and all meaningful: no record means never assessed, `score: null` means asked and genuinely cannot tell, and an integer 1-5 is a judgement. New applications start with no records.
+- Route rating changes through `applyRatings`, `clearRating`, `updateApplicationRatings` and `clearApplicationRating`; `ratings` is deliberately absent from `ApplicationEdits`, like `stage_notes` and `state_events`, because a second write path would destroy per-record `created_at`. An unchanged draft returns the same object, a rewritten score keeps `created_at` and refreshes both `updated_at`s, and ratings never append state history.
+- Unlike a stage prep note, a rating has no blank form that could mean "remove this" — `score: null` is a real judgement. So a draft absent from the array leaves its dimension untouched and removal is an explicit `clearRating`.
+- `RATING_CONFIG` in `src/domain/ratings.ts` is the only source of dimension ids, labels and order. A dimension belongs there only if two reasonable people could rate the same fact differently, which is why compensation is not one: given a number, more is always better, so it is a measurement and belongs in its own field.
 - `deadline_at` is an external fact (a posting closing, an offer decision date), not a planning date. It is independent of `next_action`: it may be set with no next action, and clearing the next action must not clear it.
 - Application timestamps and history timestamps are timezone-qualified ISO-8601 strings.
 
 ### Persistence, import, and export
 
+- Missing `ratings` canonicalizes to `[]` on import. Reject an unknown dimension, two ratings for one dimension, and any score that is not `null` or an integer from 1 to 5.
 - Persist one self-describing JSON database file with shape `{ schema, applications, indexes }`. The live app uses `data/tracker.json`; the demo profile uses `data/demo/tracker.json`. The embedded `schema` object is the current JSON Schema; update it when the shape evolves instead of running migrations.
 - `applications` is the source of truth. Rebuild `indexes` on every successful load or save when they are missing or stale. Do not hand-edit indexes; edit `applications` or go through mutations.
 - Seed an empty live document when `data/tracker.json` is absent. Seed demo data only for `data/demo/tracker.json` when that file is absent, via `pnpm dev:demo` or `pnpm start:demo`. A valid saved document—even an empty one—must not be reseeded on reload.
@@ -85,7 +90,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 ### Demo data
 
 - `pnpm dev:demo` and `pnpm start:demo` first launch, plus confirmed demo reset, must produce the same 19 deterministic fictional records, exactly one ending in each configured state. Demo reset is unavailable on the live profile and must not write demo records into `data/tracker.json`.
-- The examples intentionally include prior history, dated and undated actions, overdue work, past and future deadlines, notes, stage prep notes, calendar invites (including one cancelled), and stale timestamps so every view has useful content.
+- The examples intentionally include prior history, dated and undated actions, overdue work, past and future deadlines, notes, stage prep notes, calendar invites (including one cancelled), ratings in all three states (including one whose 4.00 mean hides a 1), and stale timestamps so every view has useful content.
 - The demo populates every Focus group, so no heading or empty message goes unexercised. A test in `src/views/focusGroups.test.ts` asserts it; if you retune a seed's dates, check that no group empties out.
 - One example (`Northstar Labs`) sets `editedDaysAgo`, so its `updated_at` is newer than its last `state_history` entry. That is the only seed where silence and last-touched disagree: Focus files it under no stage change while the Stale view hides it. Keep a seed with that shape, or the difference between the two measures goes untested in the demo.
 - If states change, update the union, configuration, demo coverage, validation, and tests together. Preserve the runtime assertion that demo data covers every state exactly once.
@@ -130,8 +135,15 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - A Focus group whose row position carries meaning (a schedule, or oldest first) renders as `<ol>`; alphabetical groups render as `<ul>`. The `ordered` flag on each group drives this, so the markup states whether order is information.
 - Focus group disclosure is display state and must not be persisted. Only the leading non-empty group starts open, derived on each render rather than remembered.
 - Deadlines are deliberately not placed on the calendar, which carries dated next actions and invites only. A deadline surfaces in the table and in Focus.
-- The table's deadline column sorts applications without a deadline last, in either direction.
+- A table column whose value can be absent returns `null` from `comparableValue`, and the comparator settles presence before it applies the sort direction. A sentinel number cannot do this: whichever end you pick it sorts to the wrong one as soon as the direction flips, which is exactly how the deadline and invite columns used to put undated rows first when sorted descending. Deadline, invites, and preference all rely on this, and each has a both-directions test.
 - Urgency is derived in `src/views/urgency.ts` and must never be persisted: it depends on browser-local "today", and a score without the weights that produced it is meaningless. Keep the weights in that module, not in the tracker document or `indexes`.
+- Preference is derived in `src/views/preference.ts` and never persisted, for the same reason as urgency: a score without the weights that produced it is meaningless. `DEFAULT_RATING_WEIGHTS` lives in that module, and there is nowhere to persist a different policy — the document shape is closed and discards any extra top-level key.
+- The preference score is `mean(rated) - MAX_UNKNOWN_DISCOUNT * (missingWeight / totalWeight)`, so the bound is `mean - MAX_UNKNOWN_DISCOUNT < score <= mean`. That bound is independent of how many dimensions exist. It does **not** mean a rating difference always wins: a mean gap smaller than the discount can be overturned, and `5,-,-,-` losing to `5,5,4,4` is intended and asserted. Only a gap of the full discount is guaranteed safe.
+- The discount uses weight share, not count share, so a dimension weighted zero costs nothing whether it is judged or not, and it is excluded from `lowest` too. Weights are clamped to zero at the low end; a negative weight would push the discount past its bound.
+- Nothing judged returns `null`, which sorts last in either direction rather than as the worst score. Unrated is not bad, and a fresh tracker must not read as a wall of rejects.
+- `lowest` exists because a mean hides dealbreakers: `5,5,5,1` and `4,4,4,4` both score 4.00. `preference.ts` reports it without a threshold; the view decides when to name it.
+- Preference is never multiplied or added into the urgency score and never affects Focus placement. Urgency already carries a stage factor, so a second factor compounds and a deadline today on a poorly rated application loses to one ten days out that happens to be rated well. Regression tests assert `urgencyFor`, `rankByUrgency` and `focusGroups` are unchanged by ratings.
+- Ratings are deliberately absent from `search_text`. They are numbers, not prose: indexing them would make a search for `work` match every rated application and `4` match anything holding a 4. `indexesAreStale` cannot detect `search_text` content drift either, so existing documents would under-match forever. The Preference column filters its own rendered text instead.
 - Only live applications are ranked. `classifyLifecycle` treats every `rejectedStateFor` counterpart as rejected and `accepted`/`no_openings` as closed; both are omitted from the ranking rather than scored low. This is view grouping only and must not restrict moves.
 - Stage weight comes from position among the live states, not the raw `STATE_CONFIG` index, because the configured order interleaves live and rejected states.
 - The highest single pressure sets both the score and the displayed reason; the others stack only into the headroom above it.

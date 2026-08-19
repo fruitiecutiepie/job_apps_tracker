@@ -5,8 +5,10 @@ import {
   STATE_IDS,
   addAttachment,
   addStateEvent,
+  applyRatings,
   applyStageNotes,
   applyStateEvents,
+  clearRating,
   createApplication,
   createAttachmentMetadata,
   createDemoDocument,
@@ -20,6 +22,8 @@ import {
   moveApplicationState,
   packTrackerArchive,
   parseTrackerDocument,
+  ratingFor,
+  RATING_IDS,
   rebuildIndexes,
   rejectedStateFor,
   removeAttachment,
@@ -31,11 +35,12 @@ import {
   stateEventsFor,
   trackerDatabasePath,
   unpackTrackerArchive,
+  updateApplicationRatings,
   updateApplicationStageNotes,
   updateApplicationStateEvents,
   validateTrackerDocument,
 } from './index'
-import type { TrackerDocument } from './index'
+import type { Application, RatingDimensionId, RatingDraft, TrackerDocument } from './index'
 import { MemoryTrackerStore } from './storage'
 
 const REFERENCE = new Date('2026-08-14T12:00:00+10:00')
@@ -560,6 +565,222 @@ describe('stage prep notes', () => {
     expect(
       document.applications.some((application) => application.stage_notes.length > 0),
     ).toBe(true)
+  })
+})
+
+describe('preference ratings', () => {
+  const RATED = new Date('2026-08-16T02:00:00.000Z')
+
+  function rated(overrides: RatingDraft[] = []): Application {
+    return applyRatings(createApplication({ company: 'Northwind' }, REFERENCE), overrides, RATED)
+  }
+
+  it('records a judgement with its own timestamps and no state history', () => {
+    const application = rated([{ dimension: 'work', score: 4 }])
+    const [rating] = application.ratings
+
+    expect(rating).toEqual({
+      dimension: 'work',
+      score: 4,
+      created_at: RATED.toISOString(),
+      updated_at: RATED.toISOString(),
+    })
+    expect(application.updated_at).toBe(RATED.toISOString())
+    expect(application.state_history).toHaveLength(1)
+    expect(application.state).toBe('applied')
+  })
+
+  it('keeps an explicit unknown distinct from never having been assessed', () => {
+    const unknown = rated([{ dimension: 'people', score: null }])
+    const absent = rated()
+
+    expect(unknown.ratings).toHaveLength(1)
+    expect(unknown.ratings[0]!.score).toBeNull()
+    expect(absent.ratings).toHaveLength(0)
+    expect(ratingFor(unknown, 'people')?.score).toBeNull()
+    expect(ratingFor(absent, 'people')).toBeNull()
+  })
+
+  it('keeps created_at when a score is rewritten and refreshes updated_at', () => {
+    const first = rated([{ dimension: 'work', score: 3 }])
+    const later = new Date('2026-08-18T02:00:00.000Z')
+    const second = applyRatings(first, [{ dimension: 'work', score: 5 }], later)
+
+    expect(second.ratings[0]).toEqual({
+      dimension: 'work',
+      score: 5,
+      created_at: RATED.toISOString(),
+      updated_at: later.toISOString(),
+    })
+    expect(second.updated_at).toBe(later.toISOString())
+  })
+
+  it('treats an unchanged score as a no-op', () => {
+    const application = rated([{ dimension: 'work', score: 4 }])
+
+    expect(applyRatings(application, [{ dimension: 'work', score: 4 }], new Date())).toBe(application)
+  })
+
+  it('leaves dimensions absent from the drafts untouched', () => {
+    const application = rated([
+      { dimension: 'work', score: 4 },
+      { dimension: 'people', score: 2 },
+    ])
+    const updated = applyRatings(application, [{ dimension: 'work', score: 5 }], RATED)
+
+    expect(updated.ratings.map(({ dimension, score }) => [dimension, score])).toEqual([
+      ['work', 5],
+      ['people', 2],
+    ])
+  })
+
+  it('clears one judgement back to never-assessed and is a no-op when absent', () => {
+    const application = rated([
+      { dimension: 'work', score: 4 },
+      { dimension: 'growth', score: 3 },
+    ])
+    const cleared = clearRating(application, 'work', RATED)
+
+    expect(cleared.ratings.map(({ dimension }) => dimension)).toEqual(['growth'])
+    expect(clearRating(cleared, 'work', new Date())).toBe(cleared)
+  })
+
+  it('keeps ratings in configured order and rejects duplicate dimensions', () => {
+    const application = rated([
+      { dimension: 'company', score: 3 },
+      { dimension: 'work', score: 4 },
+    ])
+
+    expect(application.ratings.map(({ dimension }) => dimension)).toEqual(['work', 'company'])
+    expect(() =>
+      applyRatings(application, [
+        { dimension: 'work', score: 1 },
+        { dimension: 'work', score: 2 },
+      ]),
+    ).toThrow(/only one rating/)
+  })
+
+  it('rejects a score that is not null or an integer from 1 to 5', () => {
+    for (const score of [0, 6, 2.5, Number.NaN]) {
+      expect(() => rated([{ dimension: 'work', score }])).toThrow(/integer from 1 to 5/)
+    }
+    expect(() => rated([{ dimension: 'work', score: '3' as unknown as number }])).toThrow(
+      /integer from 1 to 5/,
+    )
+    expect(() =>
+      rated([{ dimension: 'salary' as unknown as RatingDimensionId, score: 3 }]),
+    ).toThrow(/dimension is invalid/)
+  })
+
+  it('records ratings through the document without touching other applications', () => {
+    const document = createDemoDocument(REFERENCE)
+    const target = document.applications[2]!
+    const updated = updateApplicationRatings(
+      document,
+      target.id,
+      [{ dimension: 'work', score: 5 }],
+      RATED,
+    )
+
+    expect(ratingFor(updated.applications[2]!, 'work')?.score).toBe(5)
+    expect(updated.applications.filter((_, index) => index !== 2)).toEqual(
+      document.applications.filter((_, index) => index !== 2),
+    )
+    expect(updateApplicationRatings(document, 'missing', [], RATED)).toBe(document)
+  })
+
+  it('canonicalizes missing ratings to an empty array and sorts supplied ones', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({
+      schema_version: 1,
+      applications: [
+        {
+          id: '018f24c0-0000-7000-8000-000000000010',
+          company: 'Northwind',
+          state: 'applied',
+          created_at: REFERENCE.toISOString(),
+          updated_at: REFERENCE.toISOString(),
+        },
+        {
+          id: '018f24c0-0000-7000-8000-000000000011',
+          company: 'Southwind',
+          state: 'applied',
+          created_at: REFERENCE.toISOString(),
+          updated_at: REFERENCE.toISOString(),
+          ratings: [
+            { dimension: 'company', score: null, created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+            { dimension: 'work', score: 4, created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+          ],
+        },
+      ],
+    }))
+
+    expect(parsed.applications[0]?.ratings).toEqual([])
+    expect(parsed.applications[1]?.ratings.map(({ dimension }) => dimension)).toEqual([
+      'work',
+      'company',
+    ])
+    expect(parsed.applications[1]?.ratings[1]?.score).toBeNull()
+  })
+
+  it('rejects invalid dimensions, duplicates, and out-of-range scores on import', () => {
+    function withRatings(ratings: unknown): unknown {
+      return {
+        schema_version: 1,
+        applications: [{
+          id: '018f24c0-0000-7000-8000-000000000012',
+          company: 'Northwind',
+          state: 'applied',
+          created_at: REFERENCE.toISOString(),
+          updated_at: REFERENCE.toISOString(),
+          ratings,
+        }],
+      }
+    }
+    const stamps = { created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() }
+
+    const cases: { path: string; ratings: unknown }[] = [
+      { path: 'applications[0].ratings[0].dimension', ratings: [{ dimension: 'salary', score: 3, ...stamps }] },
+      { path: 'applications[0].ratings[0].score', ratings: [{ dimension: 'work', score: 9, ...stamps }] },
+      { path: 'applications[0].ratings[0].score', ratings: [{ dimension: 'work', score: 2.5, ...stamps }] },
+      { path: 'applications[0].ratings[1].dimension', ratings: [
+        { dimension: 'work', score: 3, ...stamps },
+        { dimension: 'work', score: 4, ...stamps },
+      ] },
+      { path: 'applications[0].ratings', ratings: 'nope' },
+    ]
+
+    cases.forEach(({ path, ratings }) => {
+      const result = validateTrackerDocument(withRatings(ratings))
+      expect(result.ok, path).toBe(false)
+      if (!result.ok) expect(result.errors.some((error) => error.path === path), path).toBe(true)
+    })
+  })
+
+  it('round-trips ratings through export and import', () => {
+    const document = createDemoDocument(REFERENCE)
+    const roundTrip = parseTrackerDocument(serializeTrackerDocument(document))
+
+    expect(roundTrip.applications.map((application) => application.ratings)).toEqual(
+      document.applications.map((application) => application.ratings),
+    )
+    expect(document.applications.some((application) => application.ratings.length > 0)).toBe(true)
+  })
+
+  it('keeps ratings out of the search index', () => {
+    // Ratings are numbers, not prose: indexing them would make "work" match every rated
+    // application and "4" match any application holding a 4 anywhere. Comparing the index
+    // before and after states that directly, without depending on demo vocabulary.
+    const plain = createApplication({ company: 'Northwind', notes: 'Nothing yet' }, REFERENCE)
+    const scored = applyRatings(
+      plain,
+      RATING_IDS.map((dimension) => ({ dimension, score: 4 })),
+      RATED,
+    )
+
+    expect(scored.ratings).toHaveLength(RATING_IDS.length)
+    expect(rebuildIndexes([scored]).search_text[plain.id]).toBe(
+      rebuildIndexes([plain]).search_text[plain.id],
+    )
   })
 })
 
