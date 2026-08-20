@@ -1642,7 +1642,23 @@ tbody tr:hover {
   line-height: 1.6;
 }
 
+.stage-note__external {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0;
+  padding: var(--s3) var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: var(--surface-2);
+  color: var(--ink-2);
+  font-size: var(--t2);
+  line-height: 1.5;
+}
+
 .stage-note__hint code,
+.stage-note__external code,
 .markdown code {
   padding: 0 var(--s2);
   border-radius: var(--r1);

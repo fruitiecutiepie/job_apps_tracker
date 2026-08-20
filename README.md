@@ -107,6 +107,34 @@ A line that simply wraps a bullet stays part of that bullet. To give a point fol
 
 What you have folded is never saved—it resets each time you open the dialog.
 
+### Write notes in your own editor
+
+Select **Editor** on a stage note to open it in a real editor. The current draft is written to `data/editing/{applicationId}/{state}.md`, that file is handed to your editor, and anything you save there is pulled back and stored automatically—an editor has no Save button to press, so the app does it for you. The stage's in-app textarea steps aside while the session is live; **Stop** ends it, and closing the dialog ends every session and deletes the scratch files.
+
+Which editor opens is taken from `VISUAL`, then `EDITOR`, then your platform's default handler for `.md`:
+
+```sh
+VISUAL="code --wait" pnpm dev
+```
+
+Terminal editors such as vim will not work here. The editor is launched detached from the dev server, which owns the only terminal, so a program that needs a TTY has nowhere to draw. Use a GUI command (`code`, `zed`, `subl`) or leave both variables unset and let the platform opener pick.
+
+#### When the app runs on another machine
+
+A spawned editor always opens on the machine running the dev server. If you reach the app over an SSH tunnel or port forward, that is not the machine you are looking at, and the app cannot detect this reliably—a web page has no way to launch anything locally except through a URL scheme an installed app has registered.
+
+Set `TRACKER_EDITOR_URL` and the app hands the browser a URL instead of spawning anything, so your local editor opens it. `{path}` is replaced with the file's absolute path on the server:
+
+```sh
+TRACKER_EDITOR_URL='cursor://vscode-remote/ssh-remote+myhost{path}' pnpm dev
+```
+
+Use `vscode://vscode-remote/ssh-remote+myhost{path}` for VS Code, where `myhost` is the SSH host alias your editor already uses. Because the URL points at the remote file, your editor opens it over its own remote connection and the app keeps reading changes back—the round-trip still works. For a local checkout, `vscode://file{path}` or `zed://file{path}` is enough.
+
+When nothing is configured and the server looks like it is on a remote host, the banner names the hostname it opened on rather than leaving you wondering why no window appeared. It also shows the absolute path, so you can always open the file yourself.
+
+`tracker.json` remains the source of truth; the files under `data/editing/` are disposable scratch copies and are gitignored. The route is only served by `pnpm dev` and `pnpm start`, and it refuses cross-origin requests since it both writes a file and starts a process.
+
 ### Rate what you think of a role
 
 The editor carries four ratings: **Work** (the day-to-day itself), **Growth** (where it

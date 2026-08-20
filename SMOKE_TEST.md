@@ -73,9 +73,17 @@ test cannot judge reliably:
    confirm the formatting rendered. Save, reopen, and confirm the notes persist. Add notes for a stage
    further down the pipeline and confirm searching for that text finds the application.
    Clear a stage's notes, save, and confirm they are gone.
-8. Add an attachment in the application editor, save, reopen the application, and open
+8. With `VISUAL` or `EDITOR` set to a GUI editor, select **Editor** on a stage note. Confirm the file
+   opens, that `data/editing/` holds it, and that the banner names the editor and path. Save a change
+   in the editor and confirm it appears in the app within a second or two and is stored without
+   pressing Save. Select **Stop**, then reopen and close the dialog, and confirm `data/editing/` is
+   empty again. Repeat with both variables unset to check the platform opener path.
+   If you reach the app over a tunnel, set `TRACKER_EDITOR_URL` to your editor's scheme and confirm
+   the banner offers it as a link, that your local editor opens the remote file, and that saves there
+   still come back into the app.
+9. Add an attachment in the application editor, save, reopen the application, and open
    the file. Remove an attachment and confirm it disappears after save.
-9. In the application editor, confirm the two invite buttons read **Import .ics file** and
+10. In the application editor, confirm the two invite buttons read **Import .ics file** and
    **Add invite manually**, and that the difference between them is clear before reading the hint.
    Choose **Import .ics file** and select an `.ics` file saved from a real calendar invite. Confirm
    the description, times, place, and any joining link are filled in, and that the stage defaults to
@@ -85,13 +93,13 @@ test cannot judge reliably:
    and that searching its description finds the application. On Table, sort by **Invites** and
    confirm rows with nothing coming sink to the bottom. Tick **Cancelled**, save, and confirm the
    calendar entry and the table cell read as cancelled and the card no longer shows it.
-10. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
+11. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
     Set one to **Don't know** and another back to **Not rated**, save, and confirm the Table
     Preference cell distinguishes the two. Confirm the demo's Lumen Pantry row reads
     `4.00 · People 1` while a fully even row reads a plain `4.00`, so an average cannot hide a
     low judgement. Sort Preference both ways and confirm unrated rows stay at the bottom in
     each direction.
-11. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+12. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
     and confirm it. Confirm the same 19 examples are restored in `data/demo/`, now including
     the demo invites, and that `data/tracker.json` is unchanged.
 

@@ -5,6 +5,12 @@ import { describe, expect, it, vi } from 'vitest'
 import { loadTrackerDocument } from '../domain/storage'
 import App from '../App'
 import { testTrackerStore } from './trackerStore'
+import {
+  readTestEditorNote,
+  setTestEditorLaunchResponse,
+  testEditorSessionCount,
+  writeTestEditorNote,
+} from './noteEditStore'
 
 const states = [
   'Headhunted',
@@ -458,6 +464,110 @@ describe('job applications tracker', () => {
     window.getSelection()?.removeAllRanges()
     fireEvent.click(text)
     expect(shows('Salary band is listed')).toBe(false)
+  })
+
+  it('hands a stage note to an external editor and stores what comes back', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    const target = readSavedDocument().applications.find(
+      (application) => application.company === 'Marble & Finch',
+    )!
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    await user.click(within(dialog).getByLabelText('Applied prep notes'))
+    await user.paste('Draft from the app')
+    await user.click(within(dialog).getByRole('button', { name: 'Open Applied in an editor' }))
+
+    // The current draft is what gets handed over, not the last saved value.
+    expect(readTestEditorNote(target.id, 'applied')).toBe('Draft from the app')
+    expect(within(dialog).getByRole('status')).toHaveTextContent('test-editor')
+    expect(within(dialog).getByText('data/editing/', { exact: false })).toBeInTheDocument()
+
+    // While the editor owns the stage, the in-app textarea steps aside.
+    expect(within(dialog).queryByLabelText('Applied prep notes')).not.toBeInTheDocument()
+
+    // Stand in for saving the file in the editor.
+    writeTestEditorNote(target.id, 'applied', '## Rewritten\n\n- In my editor')
+
+    await waitFor(
+      () => {
+        expect(
+          readSavedDocument().applications.find((application) => application.id === target.id)
+            ?.stage_notes[0]?.body,
+        ).toBe('## Rewritten\n\n- In my editor')
+      },
+      { timeout: 4000 },
+    )
+
+    // External saves commit on their own; there is no Save button in an editor.
+    expect(screen.getByText('Prep notes saved from your editor.')).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Rewritten' })).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Stop editing Applied externally' }))
+    expect(testEditorSessionCount()).toBe(0)
+    expect(within(dialog).getByRole('button', { name: 'Edit Applied' })).toBeInTheDocument()
+  })
+
+  it('ends every editing session when the prep notes dialog closes', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Open Interview 2 in an editor' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Open Offer in an editor' }))
+    expect(testEditorSessionCount()).toBe(2)
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await waitFor(() => expect(testEditorSessionCount()).toBe(0))
+  })
+
+  it('hands the file to this machine when the server returns an editor URL', async () => {
+    const user = userEvent.setup()
+    setTestEditorLaunchResponse({
+      path: 'data/editing/x/applied.md',
+      absolute_path: '/remote/repo/data/editing/x/applied.md',
+      editor: 'cursor',
+      source: 'url',
+      open_url: 'cursor://vscode-remote/ssh-remote+box/remote/repo/data/editing/x/applied.md',
+    })
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Open Applied in an editor' }))
+
+    // The browser is the one that opens it, so the URL is offered as a link too.
+    const link = within(dialog).getByRole('link', { name: 'cursor' })
+    expect(link).toHaveAttribute(
+      'href',
+      'cursor://vscode-remote/ssh-remote+box/remote/repo/data/editing/x/applied.md',
+    )
+    expect(within(dialog).getByRole('status')).toHaveTextContent('on this machine')
+  })
+
+  it('says which host it opened on when the editor ran somewhere else', async () => {
+    const user = userEvent.setup()
+    setTestEditorLaunchResponse({
+      path: 'data/editing/x/applied.md',
+      absolute_path: '/remote/repo/data/editing/x/applied.md',
+      editor: 'xdg-open',
+      source: 'os',
+      host: 'devbox',
+    })
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Open Applied in an editor' }))
+
+    const banner = within(dialog).getByRole('status')
+    expect(banner).toHaveTextContent('on devbox')
+    expect(banner).toHaveTextContent('TRACKER_EDITOR_URL')
   })
 
   it('honors deletion cancellation before deleting and saving an application', async () => {

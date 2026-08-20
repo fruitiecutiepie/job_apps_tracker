@@ -5,6 +5,7 @@ import { cleanup } from '@testing-library/react'
 import { createDemoDocument } from '../domain/demo'
 import { loadTrackerDocument, resetTrackerDocument, saveTrackerDocument } from '../domain/storage'
 import { handleTestAttachmentFetch, wipeTestAttachments } from './attachmentStore'
+import { handleTestNoteEditFetch, wipeTestEditorSessions } from './noteEditStore'
 import { testTrackerStore } from './trackerStore'
 
 afterEach(() => {
@@ -16,6 +17,7 @@ beforeEach(() => {
   window.localStorage.clear()
   testTrackerStore.clear()
   wipeTestAttachments()
+  wipeTestEditorSessions()
   saveTrackerDocument(createDemoDocument(), testTrackerStore)
 
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -23,6 +25,10 @@ beforeEach(() => {
 
     if (url.startsWith('/__attachments')) {
       return handleTestAttachmentFetch(url, init)
+    }
+
+    if (url.startsWith('/__note-edit')) {
+      return handleTestNoteEditFetch(url, init)
     }
 
     if (url !== '/__db') {

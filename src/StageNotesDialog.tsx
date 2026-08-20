@@ -1,16 +1,34 @@
-import { useMemo, useRef, useState } from 'react'
-import { X } from 'lucide-react'
-import { STATE_CONFIG, stateLabel, stateRank } from './domain'
-import type { Application, StageNoteDraft, StateId } from './domain'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { ExternalLink, X } from 'lucide-react'
+import {
+  closeStageNoteEditor,
+  openStageNoteInEditor,
+  readStageNoteFromEditor,
+  STATE_CONFIG,
+  stateLabel,
+  stateRank,
+  type Application,
+  type StageNoteDraft,
+  type StageNoteEditSession,
+  type StateId,
+} from './domain'
 import { formatShortDate } from './views/viewUtils'
 import { MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
 import { useDialogKeyboard } from './useDialogKeyboard'
 
+/**
+ * How often the scratch file is re-read while a stage is open in an external editor. The
+ * server writes nothing on its own, so this is the only way changes come back.
+ */
+const EDITOR_POLL_MS = 1000
+
 interface StageNotesDialogProps {
   application: Application
   onClose: () => void
   onSave: (drafts: StageNoteDraft[]) => Promise<void>
+  /** Commits a change that arrived from an external editor, which has no Save button. */
+  onExternalChange: (state: StateId, body: string) => Promise<void>
 }
 
 function errorMessage(error: unknown): string {
@@ -28,20 +46,108 @@ function visibleStages(current: StateId, noted: StateId[]): StateId[] {
   return [current, ...rest]
 }
 
-export function StageNotesDialog({ application, onClose, onSave }: StageNotesDialogProps) {
+export function StageNotesDialog({
+  application,
+  onClose,
+  onSave,
+  onExternalChange,
+}: StageNotesDialogProps) {
   const dialogRef = useRef<HTMLElement>(null)
   const [drafts, setDrafts] = useState<Partial<Record<StateId, string>>>(() =>
     Object.fromEntries(application.stage_notes.map((note) => [note.state, note.body])),
   )
+  // The poll loop reads drafts outside of React's render cycle, so it needs a live copy.
+  const draftsRef = useRef(drafts)
   const [addedStages, setAddedStages] = useState<StateId[]>([])
   // Stages that already hold notes open as readable outlines; empty ones open ready to type.
   const [editing, setEditing] = useState<StateId[]>(() =>
     application.stage_notes.length > 0 ? [] : [application.state],
   )
+  const [sessions, setSessions] = useState<Partial<Record<StateId, StageNoteEditSession>>>({})
+  const sessionsRef = useRef(sessions)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
 
+  // Held in a ref so the poll interval below is not torn down and restarted on every
+  // render: the parent recreates this callback each time, and a commit causes a render.
+  const externalChangeRef = useRef(onExternalChange)
+  useEffect(() => {
+    externalChangeRef.current = onExternalChange
+  }, [onExternalChange])
+
   useDialogKeyboard(dialogRef, onClose)
+
+  const setDraft = (state: StateId, value: string) => {
+    draftsRef.current = { ...draftsRef.current, [state]: value }
+    setDrafts(draftsRef.current)
+  }
+
+  const openInEditor = async (state: StateId) => {
+    setFormError(null)
+    try {
+      const session = await openStageNoteInEditor(application.id, state, draftsRef.current[state] ?? '')
+      sessionsRef.current = { ...sessionsRef.current, [state]: session }
+      setSessions(sessionsRef.current)
+      // The external editor owns this stage while the session lasts.
+      setEditing((current) => current.filter((entry) => entry !== state))
+      // A scheme URL has to be opened by this browser: the server cannot reach an editor
+      // on the machine looking at the page. The banner repeats it as a clickable fallback
+      // in case the browser declines to follow a programmatic navigation.
+      if (session.open_url) window.location.assign(session.open_url)
+    } catch (error) {
+      setFormError(errorMessage(error))
+    }
+  }
+
+  const stopEditingExternally = async (state: StateId) => {
+    const remaining = { ...sessionsRef.current }
+    delete remaining[state]
+    sessionsRef.current = remaining
+    setSessions(remaining)
+    try {
+      await closeStageNoteEditor(application.id, state)
+    } catch (error) {
+      setFormError(errorMessage(error))
+    }
+  }
+
+  const activeSessionKey = Object.keys(sessions).sort().join(',')
+
+  useEffect(() => {
+    const states = activeSessionKey ? (activeSessionKey.split(',') as StateId[]) : []
+    if (states.length === 0) return
+
+    let cancelled = false
+    const pull = async () => {
+      for (const state of states) {
+        try {
+          const contents = await readStageNoteFromEditor(application.id, state)
+          if (cancelled || !contents) continue
+          if ((draftsRef.current[state] ?? '') === contents.body) continue
+          setDraft(state, contents.body)
+          await externalChangeRef.current(state, contents.body)
+        } catch {
+          // A transient read failure should not end the session; the next tick retries.
+        }
+      }
+    }
+
+    const timer = window.setInterval(pull, EDITOR_POLL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(timer)
+    }
+  }, [activeSessionKey, application.id])
+
+  // Closing the dialog ends every session it started, so no scratch files are left behind.
+  useEffect(() => {
+    const applicationId = application.id
+    return () => {
+      for (const state of Object.keys(sessionsRef.current)) {
+        void closeStageNoteEditor(applicationId, state as StateId)
+      }
+    }
+  }, [application.id])
 
   const stages = useMemo(
     () =>
@@ -108,8 +214,10 @@ export function StageNotesDialog({ application, onClose, onSave }: StageNotesDia
             {stages.map((state) => {
               const isCurrent = state === application.state
               const saved = noteByState.get(state)
-              const isEditing = editing.includes(state)
+              const session = sessions[state]
+              const isEditing = editing.includes(state) && !session
               const body = drafts[state] ?? ''
+              const label = stateLabel(state)
               return (
                 <section
                   className={['stage-note', isCurrent ? 'stage-note--current' : '']
@@ -118,31 +226,73 @@ export function StageNotesDialog({ application, onClose, onSave }: StageNotesDia
                   key={state}
                 >
                   <header className="stage-note__header">
-                    <h3>{stateLabel(state)}</h3>
+                    <h3>{label}</h3>
                     {isCurrent ? <span className="stage-note__badge">Current stage</span> : null}
                     {saved ? (
                       <small className="stage-note__meta">
                         Updated <time dateTime={saved.updated_at}>{formatShortDate(saved.updated_at)}</time>
                       </small>
                     ) : null}
-                    <button
-                      aria-label={`${isEditing ? 'Read' : 'Edit'} ${stateLabel(state)}`}
-                      className="button button--quiet stage-note__mode"
-                      onClick={() => toggleEditing(state)}
-                      type="button"
-                    >
-                      {isEditing ? 'Read' : 'Edit'}
-                    </button>
+                    {session ? (
+                      <button
+                        aria-label={`Stop editing ${label} externally`}
+                        className="button button--quiet stage-note__mode"
+                        onClick={() => stopEditingExternally(state)}
+                        type="button"
+                      >
+                        Stop
+                      </button>
+                    ) : (
+                      <>
+                        <button
+                          aria-label={`Open ${label} in an editor`}
+                          className="button button--quiet stage-note__mode"
+                          onClick={() => openInEditor(state)}
+                          type="button"
+                        >
+                          <ExternalLink aria-hidden="true" size={14} />
+                          Editor
+                        </button>
+                        <button
+                          aria-label={`${isEditing ? 'Read' : 'Edit'} ${label}`}
+                          className="button button--quiet stage-note__mode"
+                          onClick={() => toggleEditing(state)}
+                          type="button"
+                        >
+                          {isEditing ? 'Read' : 'Edit'}
+                        </button>
+                      </>
+                    )}
                   </header>
+
+                  {session ? (
+                    <p className="stage-note__external" role="status">
+                      {session.open_url ? (
+                        <>
+                          Handed to <a href={session.open_url}>{session.editor}</a> on this machine.
+                        </>
+                      ) : session.host ? (
+                        <>
+                          Opened <strong>on {session.host}</strong>, not on this machine. Set
+                          {' '}<code>TRACKER_EDITOR_URL</code> to open it here instead.
+                        </>
+                      ) : (
+                        <>Open in <strong>{session.editor}</strong>.</>
+                      )}
+                      {' '}Saves land here and are stored automatically.
+                      {' '}<code>{session.absolute_path}</code>
+                    </p>
+                  ) : null}
+
                   {isEditing ? (
                     <StageNoteEditor
                       autoFocus={isCurrent}
-                      label={stateLabel(state)}
-                      onChange={(value) => setDrafts((current) => ({ ...current, [state]: value }))}
+                      label={label}
+                      onChange={(value) => setDraft(state, value)}
                       value={body}
                     />
                   ) : body.trim() ? (
-                    <MarkdownNotes label={stateLabel(state)} source={body} />
+                    <MarkdownNotes label={label} source={body} />
                   ) : (
                     <p className="stage-note__empty">No notes for this stage yet.</p>
                   )}

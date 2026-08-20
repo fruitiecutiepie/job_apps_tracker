@@ -27,10 +27,16 @@ import {
   rebuildIndexes,
   rejectedStateFor,
   removeAttachment,
+  editorUrlFor,
+  looksLikeRemoteHost,
   removeStateEvent,
+  resolveEditorCommand,
+  resolveEditorTarget,
   saveTrackerDocument,
   serializeTrackerDocument,
   setStageNote,
+  stageNoteEditFilename,
+  stageNoteEditUrl,
   stageNoteFor,
   stateEventsFor,
   trackerDatabasePath,
@@ -1090,6 +1096,77 @@ describe('calendar invites', () => {
     expect(
       document.applications.some((application) => application.state_events.length > 0),
     ).toBe(true)
+  })
+})
+
+describe('external note editing', () => {
+  it('prefers VISUAL over EDITOR so a windowed editor wins', () => {
+    expect(resolveEditorCommand({ VISUAL: 'zed', EDITOR: 'vi' }, 'darwin')).toEqual({
+      command: 'zed',
+      args: [],
+      source: 'env',
+    })
+  })
+
+  it('keeps arguments supplied with the configured editor', () => {
+    expect(resolveEditorCommand({ EDITOR: 'code --wait --new-window' }, 'linux')).toEqual({
+      command: 'code',
+      args: ['--wait', '--new-window'],
+      source: 'env',
+    })
+  })
+
+  it('falls back to the platform opener when nothing is configured', () => {
+    expect(resolveEditorCommand({}, 'darwin').command).toBe('open')
+    expect(resolveEditorCommand({}, 'linux').command).toBe('xdg-open')
+    expect(resolveEditorCommand({ EDITOR: '   ' }, 'win32')).toEqual({
+      command: 'cmd',
+      args: ['/c', 'start', ''],
+      source: 'os',
+    })
+  })
+
+  it('prefers a URL target so the browser can open an editor on its own machine', () => {
+    expect(
+      resolveEditorTarget(
+        { TRACKER_EDITOR_URL: 'cursor://vscode-remote/ssh-remote+box{path}', EDITOR: 'code' },
+        'linux',
+      ),
+    ).toEqual({ kind: 'url', template: 'cursor://vscode-remote/ssh-remote+box{path}' })
+  })
+
+  it('falls back to spawning a command when no URL is configured', () => {
+    expect(resolveEditorTarget({ EDITOR: 'zed' }, 'linux')).toEqual({
+      kind: 'command',
+      command: 'zed',
+      args: [],
+      source: 'env',
+    })
+  })
+
+  it('keeps path separators when filling a URL template', () => {
+    expect(
+      editorUrlFor('cursor://vscode-remote/ssh-remote+box{path}', '/home/me/notes/my note.md'),
+    ).toBe('cursor://vscode-remote/ssh-remote+box/home/me/notes/my%20note.md')
+  })
+
+  it('appends the path when the template has no placeholder', () => {
+    expect(editorUrlFor('vscode://file', '/repo/a.md')).toBe('vscode://file/repo/a.md')
+  })
+
+  it('recognizes environments where the server is not on the viewing machine', () => {
+    expect(looksLikeRemoteHost({ SSH_CONNECTION: '10.0.0.1 22 10.0.0.2 22' })).toBe(true)
+    expect(looksLikeRemoteHost({ CODESPACES: 'true' })).toBe(true)
+    expect(looksLikeRemoteHost({ SSH_CONNECTION: '  ' })).toBe(false)
+    expect(looksLikeRemoteHost({})).toBe(false)
+  })
+
+  it('names the scratch file after the stage and rejects an invalid one', () => {
+    expect(stageNoteEditFilename('interview_2')).toBe('interview_2.md')
+    expect(stageNoteEditUrl('018f0000-0000-7000-8000-000000000015', 'offer')).toBe(
+      '/__note-edit/018f0000-0000-7000-8000-000000000015/offer',
+    )
+    expect(() => stageNoteEditFilename('nope' as never)).toThrow(/State is invalid/)
   })
 })
 

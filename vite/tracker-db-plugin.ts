@@ -4,6 +4,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Plugin, PreviewServer, ViteDevServer } from 'vite'
 
 import { MAX_ATTACHMENT_BYTES } from '../src/domain/attachmentPaths'
+import { MAX_STAGE_NOTE_BYTES, NOTE_EDIT_ROUTE } from '../src/domain/noteEditingPaths'
 import { createEmptyDocument, refreshTrackerDatabase } from '../src/domain/database'
 import { createDemoDocument } from '../src/domain/demo'
 import type { TrackerDatabase } from '../src/domain/types'
@@ -13,6 +14,7 @@ import {
   resolveApplicationAttachmentsDir,
   resolveAttachmentFilePath,
 } from './attachment-fs'
+import { launchEditor, removeEditingRoot, resolveStageNoteEditPath } from './note-edit-fs'
 import { resolveTrackerProfile, trackerFilePaths, type TrackerProfile } from './tracker-paths'
 
 const DB_ROUTE = '/__db'
@@ -229,6 +231,113 @@ function handleAttachments(root: string, profile: TrackerProfile, req: IncomingM
   sendText(res, 405, 'Method not allowed')
 }
 
+/**
+ * Blocks drive-by requests from other origins. The editing route both writes a file and
+ * starts a process, so an unrelated page in the same browser must not be able to reach it.
+ * A missing header means a non-browser caller such as curl, which is the local user.
+ */
+function isSameOriginRequest(req: IncomingMessage): boolean {
+  const site = req.headers['sec-fetch-site']
+  if (typeof site !== 'string') return true
+  return site === 'same-origin' || site === 'same-site'
+}
+
+function parseNoteEditRoute(req: IncomingMessage): { applicationId?: string; state?: string } {
+  const segments = parseUrl(req).pathname.split('/').filter(Boolean)
+  if (segments.length < 1 || segments[0] !== '__note-edit') return {}
+  return { applicationId: segments[1], state: segments[2] }
+}
+
+function handleNoteEdit(root: string, profile: TrackerProfile, req: IncomingMessage, res: ServerResponse): void {
+  const { dataDir } = trackerFilePaths(root, profile)
+
+  if (!isSameOriginRequest(req)) {
+    sendText(res, 403, 'Cross-origin requests are not allowed on this route')
+    return
+  }
+
+  const { applicationId, state } = parseNoteEditRoute(req)
+
+  if (req.method === 'DELETE' && !applicationId) {
+    removeEditingRoot(dataDir)
+    sendText(res, 200, 'OK')
+    return
+  }
+
+  if (!applicationId || !state) {
+    sendText(res, 400, 'An application id and stage are required')
+    return
+  }
+
+  const filePath = resolveStageNoteEditPath(dataDir, applicationId, state)
+  if (!filePath) {
+    sendText(res, 400, 'Application id or stage is invalid')
+    return
+  }
+
+  if (req.method === 'GET') {
+    if (!fs.existsSync(filePath)) {
+      sendText(res, 404, 'No editing session for this stage')
+      return
+    }
+    const stats = fs.statSync(filePath)
+    sendJson(res, 200, {
+      body: fs.readFileSync(filePath, 'utf8'),
+      modified_at: stats.mtimeMs,
+      path: path.relative(root, filePath),
+    })
+    return
+  }
+
+  if (req.method === 'POST') {
+    const chunks: Buffer[] = []
+    let total = 0
+    let tooLarge = false
+    req.on('data', (chunk: Buffer) => {
+      if (tooLarge) return
+      total += chunk.length
+      if (total > MAX_STAGE_NOTE_BYTES) {
+        // Answer before dropping the body: destroying the request first loses the response.
+        tooLarge = true
+        chunks.length = 0
+        sendText(res, 413, `Stage note exceeds the ${MAX_STAGE_NOTE_BYTES} byte limit`)
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => {
+      if (tooLarge) return
+      try {
+        fs.mkdirSync(path.dirname(filePath), { recursive: true })
+        fs.writeFileSync(filePath, Buffer.concat(chunks).toString('utf8'), 'utf8')
+        const launched = launchEditor(filePath)
+        sendJson(res, 200, {
+          path: path.relative(root, filePath),
+          absolute_path: filePath,
+          editor: launched.editor,
+          source: launched.source,
+          open_url: launched.openUrl,
+          host: launched.host,
+        })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error)
+        sendText(res, 500, message)
+      }
+    })
+    return
+  }
+
+  if (req.method === 'DELETE') {
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+    const dirPath = path.dirname(filePath)
+    if (fs.existsSync(dirPath) && fs.readdirSync(dirPath).length === 0) fs.rmdirSync(dirPath)
+    sendText(res, 200, 'OK')
+    return
+  }
+
+  sendText(res, 405, 'Method not allowed')
+}
+
 function registerTrackerMiddleware(server: ViteDevServer | PreviewServer): void {
   const root = server.config.root
   const profile = resolveTrackerProfile()
@@ -241,6 +350,10 @@ function registerTrackerMiddleware(server: ViteDevServer | PreviewServer): void 
     }
     if (pathname === ATTACHMENTS_ROUTE || pathname.startsWith(`${ATTACHMENTS_ROUTE}/`)) {
       handleAttachments(root, profile, req, res)
+      return
+    }
+    if (pathname === NOTE_EDIT_ROUTE || pathname.startsWith(`${NOTE_EDIT_ROUTE}/`)) {
+      handleNoteEdit(root, profile, req, res)
       return
     }
     next()

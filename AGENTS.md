@@ -10,6 +10,7 @@ This file applies to the entire repository. Keep changes within the app's curren
 - `src/calendar/` reads the iCalendar subset that recruiter invites arrive in; `src/invites.ts` turns those
   events into editor rows and mutation drafts, and `src/InviteFields.tsx` is the editor's invite section.
 - `src/dateInput.ts` is the only place `datetime-local` wall time is converted to and from stored timestamps.
+- `src/domain/noteEditing.ts` and `noteEditingPaths.ts` hold the client and pure halves of external note editing; `vite/note-edit-fs.ts` holds the filesystem and process side.
 - `src/domain/` is the source of truth for types, state and rating configuration, mutations, validation, storage, IDs, and demo data.
 - `src/views/` contains view components and their derived-data helpers.
 - `src/test/` contains app integration and smoke tests; view-focused tests live beside the views.
@@ -178,10 +179,16 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Submitting the editor currently refreshes `updated_at` even when no editable value changed. An explicit same-state move is the only exact timestamp-preserving no-op. Change this only deliberately and update its tests with the behavior.
 - Import validation rebuilds canonical objects, which is how unknown fields are ignored. Avoid retaining the raw imported object.
 - Invalid `data/tracker.json` or `data/demo/tracker.json` files are not overwritten on startup. The app shows an error and leaves the file untouched. Invalid file imports are also non-destructive.
+- The Vite dev and preview servers also expose `/__note-edit/{applicationId}/{state}`: `POST` writes the note to `{dataDir}/editing/{applicationId}/{state}.md` and launches an editor, `GET` reads that file back, and `DELETE` removes it. Scratch files are disposable; `tracker.json` stays the source of truth and `data/editing/` is gitignored.
+- `TRACKER_EDITOR_URL` takes precedence over any command: the response carries `open_url` and nothing is spawned, so the browser opens it and an editor on the machine viewing the page handles the file. This is the only arrangement that works when the app is reached over a tunnel, because a spawned process always lands on the server's host. Fill the template with `{path}`, and keep using `encodeURI` so path separators survive schemes like `vscode://vscode-remote/ssh-remote+host/abs/path`.
+- Otherwise the launched command comes only from `VISUAL`, then `EDITOR`, then the platform opener. Never take a command, arguments, or path from the request. The route also refuses requests whose `Sec-Fetch-Site` is cross-origin, because it both writes a file and starts a process.
+- When a command is spawned and the environment looks remote (`SSH_CONNECTION`, `CODESPACES`, and similar), the response reports the server's hostname so the UI can say where the file actually opened rather than appearing to do nothing.
+- The editor is spawned detached with ignored stdio, so terminal editors cannot work: the dev server owns the only TTY. Document GUI commands such as `code`, `zed`, or the platform default.
+- While a stage is open externally the external file owns it: the in-app editor for that stage is withdrawn, the client polls the scratch file, and changes commit on their own because an editor has no Save button to press. Ending the session or closing the dialog deletes the scratch file.
 - The Vite dev and preview servers expose `GET`/`PUT`/`DELETE` on `/__db` to read and write the active profile's database file. `pnpm dev` and `pnpm start` use `data/tracker.json`. `pnpm dev:demo` and `pnpm start:demo` use `data/demo/tracker.json`. `DELETE` reseeds demo data only on the demo profile.
 - Global filtering can intentionally hide Kanban columns and affects the collection shown by statistics.
 - Tests that depend on dates should control the clock and account for browser timezone boundaries rather than assuming UTC display days.
-- Test setup mocks `/__db` with an in-memory store, seeds demo data, and supplies a `ResizeObserver` stub. Add new browser API stubs centrally so component tests remain consistent.
+- Test setup mocks `/__db`, `/__attachments`, and `/__note-edit` with in-memory stores, seeds demo data, and supplies a `ResizeObserver` stub. `src/test/noteEditStore.ts` lets a test stand in for the external editor by writing the scratch file directly. Add new browser API stubs centrally so component tests remain consistent.
 
 ## Working on a change
 

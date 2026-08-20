@@ -537,6 +537,9 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
 
 export default function App() {
   const [tracker, setTracker] = useState<TrackerDocument | null>(null)
+  // External editor saves arrive asynchronously, so they must read the newest document
+  // rather than whichever one was current when their handler was created.
+  const trackerRef = useRef<TrackerDocument | null>(null)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<ViewId>('kanban')
@@ -569,6 +572,7 @@ export default function App() {
 
         const loaded = await loadTrackerDatabase()
         if (!cancelled) {
+          trackerRef.current = loaded
           setTracker(loaded)
           setLoadError(null)
         }
@@ -606,6 +610,7 @@ export default function App() {
   const commit = async (next: TrackerDocument, message?: string) => {
     try {
       const saved = await saveTrackerDatabase(next)
+      trackerRef.current = saved
       setTracker(saved)
       if (message) setNotice(message)
     } catch (error) {
@@ -984,9 +989,22 @@ export default function App() {
         <StageNotesDialog
           application={stageNotesApplication}
           onClose={() => setStageNotesId(null)}
-          onSave={async (drafts: StageNoteDraft[]) => {
+          onExternalChange={async (state: StateId, body: string) => {
+            const current = trackerRef.current ?? tracker
             await commit(
-              updateApplicationStageNotes(tracker, stageNotesApplication.id, drafts, new Date()),
+              updateApplicationStageNotes(
+                current,
+                stageNotesApplication.id,
+                [{ state, body }],
+                new Date(),
+              ),
+              `Prep notes saved from your editor.`,
+            )
+          }}
+          onSave={async (drafts: StageNoteDraft[]) => {
+            const current = trackerRef.current ?? tracker
+            await commit(
+              updateApplicationStageNotes(current, stageNotesApplication.id, drafts, new Date()),
               'Prep notes saved.',
             )
             setStageNotesId(null)
