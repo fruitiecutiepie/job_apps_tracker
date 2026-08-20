@@ -233,36 +233,38 @@ export function StageNotesDialog({
                         Updated <time dateTime={saved.updated_at}>{formatShortDate(saved.updated_at)}</time>
                       </small>
                     ) : null}
-                    {session ? (
-                      <button
-                        aria-label={`Stop editing ${label} externally`}
-                        className="button button--quiet stage-note__mode"
-                        onClick={() => stopEditingExternally(state)}
-                        type="button"
-                      >
-                        Stop
-                      </button>
-                    ) : (
-                      <>
+                    <span className="stage-note__actions">
+                      {session ? (
                         <button
-                          aria-label={`Open ${label} in an editor`}
+                          aria-label={`Stop editing ${label} externally`}
                           className="button button--quiet stage-note__mode"
-                          onClick={() => openInEditor(state)}
+                          onClick={() => stopEditingExternally(state)}
                           type="button"
                         >
-                          <ExternalLink aria-hidden="true" size={14} />
-                          Editor
+                          Stop
                         </button>
-                        <button
-                          aria-label={`${isEditing ? 'Read' : 'Edit'} ${label}`}
-                          className="button button--quiet stage-note__mode"
-                          onClick={() => toggleEditing(state)}
-                          type="button"
-                        >
-                          {isEditing ? 'Read' : 'Edit'}
-                        </button>
-                      </>
-                    )}
+                      ) : (
+                        <>
+                          <button
+                            aria-label={`Open ${label} in an editor`}
+                            className="button button--quiet stage-note__mode"
+                            onClick={() => openInEditor(state)}
+                            type="button"
+                          >
+                            <ExternalLink aria-hidden="true" size={14} />
+                            Open in Editor
+                          </button>
+                          <button
+                            aria-label={`${isEditing ? 'Read' : 'Edit'} ${label}`}
+                            className="button button--quiet stage-note__mode"
+                            onClick={() => toggleEditing(state)}
+                            type="button"
+                          >
+                            {isEditing ? 'Read' : 'Edit'}
+                          </button>
+                        </>
+                      )}
+                    </span>
                   </header>
 
                   {session ? (

@@ -1563,6 +1563,13 @@ tbody tr:hover {
   border-radius: var(--r2);
 }
 
+.stage-note > * {
+  /* A grid item's automatic min-width defaults to its own content, so one long
+     line anywhere in the note (a path, a heading) can force this shared track
+     wider than the dialog. Letting every child shrink keeps that local. */
+  min-width: 0;
+}
+
 .stage-note--current {
   border-color: var(--accent);
   background: var(--accent-weak);
@@ -1609,15 +1616,18 @@ tbody tr:hover {
   font-size: var(--t2);
 }
 
-.stage-note__mode {
+.stage-note__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
   margin-left: auto;
+}
+
+.stage-note__mode {
   min-height: 28px;
   padding: 0 var(--s3);
   font-size: var(--t2);
-}
-
-.stage-note__meta + .stage-note__mode {
-  margin-left: 0;
+  white-space: nowrap;
 }
 
 .stage-note__editor {
