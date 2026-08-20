@@ -169,23 +169,27 @@ function handleAttachments(root: string, profile: TrackerProfile, req: IncomingM
       return
     }
 
-    const chunks: Buffer[] = []
+    let chunks: Buffer[] = []
     let total = 0
+    let tooLarge = false
     req.on('data', (chunk: Buffer) => {
       total += chunk.length
       if (total > MAX_ATTACHMENT_BYTES) {
-        req.destroy()
-        sendText(res, 413, `Attachment exceeds the ${MAX_ATTACHMENT_BYTES} byte limit`)
+        if (!tooLarge) {
+          tooLarge = true
+          chunks = []
+          sendText(res, 413, `Attachment exceeds the ${MAX_ATTACHMENT_BYTES} byte limit`)
+        }
         return
       }
       chunks.push(chunk)
     })
     req.on('end', () => {
+      if (tooLarge) return
       if (total === 0) {
         sendText(res, 400, 'Attachment file must not be empty')
         return
       }
-      if (total > MAX_ATTACHMENT_BYTES) return
 
       fs.mkdirSync(path.dirname(filePath), { recursive: true })
       fs.writeFileSync(filePath, Buffer.concat(chunks))
