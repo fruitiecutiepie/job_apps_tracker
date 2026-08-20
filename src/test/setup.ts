@@ -59,3 +59,20 @@ class ResizeObserverMock implements ResizeObserver {
 }
 
 vi.stubGlobal('ResizeObserver', ResizeObserverMock)
+
+// jsdom has no matchMedia, and the theme hook reads it on first render. Report light so
+// tests start from a known theme; a test that wants dark can stub this itself.
+function matchMediaMock(query: string): MediaQueryList {
+  return {
+    matches: false,
+    media: query,
+    onchange: null,
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(() => false),
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+  }
+}
+
+vi.stubGlobal('matchMedia', matchMediaMock)
