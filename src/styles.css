@@ -526,6 +526,7 @@ p {
 .field select,
 .field textarea {
   width: 100%;
+  min-width: 0;
   min-height: var(--control-form);
   padding: 0 var(--s3);
   border: 1px solid var(--line-strong);
@@ -1302,6 +1303,7 @@ tbody tr:hover {
   width: min(42rem, 100%);
   max-height: calc(100vh - 2rem);
   padding: var(--s5);
+  overflow-x: hidden;
   overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: var(--r3);
