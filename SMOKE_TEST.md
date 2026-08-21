@@ -13,6 +13,10 @@ This checks the demo-profile journey: 19 first-load examples, navigation through
 changing its state and recording history, recording stage prep notes against it, persistence
 across an app reload, and confirmed demo-data reset.
 
+Reading an application's state history back in the editor — one row per move, oldest first, and
+none at all on a new application — is covered by the app integration tests, and the spans it shows
+by `src/stateTimeline.test.ts`.
+
 Recording compensation through the editor, reading a stored record back into its boxes, and
 refusing an amount with no currency are covered by the app integration tests.
 
@@ -152,7 +156,12 @@ test cannot judge reliably:
     Marble & Finch claims no gap because it has no target. Sort Compensation both ways and
     confirm Northstar Labs — which has only an expectation — stays at the bottom in each
     direction along with the rows that have nothing at all.
-14. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+14. Open the demo's Saffron Systems application and confirm the **History** list reads down from
+    **Applied** to **Accepted**, each move showing its date and how long that state held, with the
+    last one still running. Move it to another state, save, reopen, and confirm one entry was
+    appended. Reopen and change nothing but the notes, save, and confirm the list is unchanged.
+    Open **Add application** and confirm no History list appears.
+15. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
     and confirm it. Confirm the same 19 examples are restored in `data/demo/`, now including
     the demo invites, and that `data/tracker.json` is unchanged.
 

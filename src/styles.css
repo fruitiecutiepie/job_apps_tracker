@@ -1428,6 +1428,50 @@ tbody tr:hover {
   gap: var(--s2);
 }
 
+/* ------------------------------------------------------- state history --- */
+
+.state-history {
+  gap: var(--s3);
+}
+
+.state-history__list {
+  display: grid;
+  gap: var(--s1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.state-history__entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  padding: var(--s1) var(--s3);
+  /* One rail down the left reads as a timeline without drawing a box per move. */
+  border-left: 2px solid var(--line-strong);
+  font-size: var(--t2);
+  line-height: 1.4;
+}
+
+.state-history__entry--current {
+  border-left-color: var(--accent);
+}
+
+.state-history__state {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.state-history__date,
+.state-history__span {
+  color: var(--ink-3);
+}
+
+.state-history__span {
+  margin-left: auto;
+}
+
 /* ------------------------------------------------------------- invites --- */
 
 .invite-summaries {

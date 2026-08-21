@@ -56,6 +56,7 @@ import {
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
 import { RatingFields } from './RatingFields'
+import { StateHistory } from './StateHistory'
 import { CompensationFields } from './CompensationFields'
 import {
   compensationFromValues,
@@ -414,6 +415,8 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
                 ))}
               </select>
             </label>
+            {/* The saved record, so a state picked but not yet saved is deliberately absent. */}
+            {application && <StateHistory history={application.state_history} />}
             <label className="field field--wide">
               <span>Deadline</span>
               <input

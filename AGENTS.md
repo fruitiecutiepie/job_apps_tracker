@@ -9,6 +9,7 @@ This file applies to the entire repository. Keep changes within the app's curren
 - `src/markdown/` parses the supported Markdown subset into an AST and renders it as a foldable outline. `sections.ts` holds the section tree, the fold-key scheme, and the heading walks the outline and breadcrumbs read; `searchNote.ts` finds text in it.
 - `src/calendar/` reads the iCalendar subset that recruiter invites arrive in; `src/invites.ts` turns those
   events into editor rows and mutation drafts, and `src/InviteFields.tsx` is the editor's invite section.
+- `src/StateHistory.tsx` renders the editor's read-only state history, with the spans it shows derived in `src/stateTimeline.ts`.
 - `src/dateInput.ts` is the only place `datetime-local` wall time is converted to and from stored timestamps.
 - `src/domain/noteEditing.ts` and `noteEditingPaths.ts` hold the client and pure halves of external note editing; `vite/note-edit-fs.ts` holds the filesystem and process side.
 - `src/domain/` is the source of truth for types, state, rating and compensation configuration, mutations, validation, storage, IDs, and demo data.
@@ -123,6 +124,8 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   in words as well as struck through. Its filter matches summary, location, date, and the word "cancelled" —
   so it reaches past invites the column shows but the Kanban card does not. Sorting the column sorts by the
   next invite still ahead, which sinks rows with nothing coming to the bottom ascending.
+- The application editor shows `state_history` as a read-only **History** list, oldest first, so the order tells the story and the current state sits beside the State select that changes it. It renders only when editing: a new application has no history, and a state picked but not yet saved is deliberately absent because the list is the saved record.
+- Each entry shows how long that state held — the gap to the next move, or to now for the last one. Spans are derived on render in `stateTimeline`, never persisted, and counted in browser-local days like staleness, so two moves on one day read as `Same day` rather than a rounded fraction.
 - Stage prep notes open in a full-viewport panel from the Kanban card and the table row. Stages are chosen from a tab bar that lists the application's current stage first and then every other stage with notes, so the stage you are interviewing for is the one you land on. Global search matches stage note text through `search_text`.
 - The notes area is one or two panes. Splitting reads two stages against each other; each pane scrolls on its own so a long note does not drag the note beside it along. A stage may be in at most one pane: `showStage` moves focus to a pane that already holds it rather than opening it twice, which also keeps every rendered `data-match-id` unique — two copies of a note would give one match two ids and the find would step onto whichever the DOM happened to return first.
 - The focused pane is the one the outline, breadcrumbs, status bar, and find act on, and it is the only one whose editor may take the caret. Clicking or focusing anywhere in a pane focuses it.

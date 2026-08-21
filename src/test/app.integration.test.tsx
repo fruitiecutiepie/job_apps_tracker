@@ -196,6 +196,34 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
+  it('shows the state history of an application it is editing, and none for a new one', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Open Saffron Systems, Product Operations Manager',
+      }),
+    )
+
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const history = within(dialog).getByRole('list', { name: 'History' })
+    const rows = within(history).getAllByRole('listitem')
+    const saved = readSavedDocument().applications.find(
+      (application) => application.company === 'Saffron Systems',
+    )!
+    expect(rows).toHaveLength(saved.state_history.length)
+    expect(rows[0]).toHaveTextContent('Applied')
+    expect(rows.at(-1)).toHaveTextContent('Accepted')
+    // The last move is still running, so its span reads as unfinished.
+    expect(rows.at(-1)).toHaveTextContent(/so far|Today/)
+
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await user.click(screen.getByRole('button', { name: 'Add application' }))
+    const adding = screen.getByRole('dialog', { name: 'Add application' })
+    expect(within(adding).queryByRole('list', { name: 'History' })).not.toBeInTheDocument()
+  })
+
   it('records stage prep notes from the board and finds them again with search', async () => {
     const user = userEvent.setup()
     const { unmount } = await renderLoadedApp()
