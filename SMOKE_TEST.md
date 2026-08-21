@@ -22,6 +22,13 @@ with no start time are covered by the app integration tests.
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
 
+Finding text in the prep notes panel — counting matches across every stage, stepping through them
+into tabs that are not rendered and wrapping, opening a fold to show a hit and closing it again
+afterwards, and Escape closing the find bar before the panel — is covered by the app integration
+tests, along with the tab bar, its arrow keys, the outline and its hierarchy, quick open, and
+splitting into two panes. The sticky headers,
+the breadcrumb trail, and the scroll to each hit need real layout, so they stay manual below.
+
 ## Manual browser-only checks
 
 These checks cover visual and native-browser behavior that the automated component
@@ -76,7 +83,40 @@ test cannot judge reliably:
    confirm the formatting rendered. Save, reopen, and confirm the notes persist. Add notes for a stage
    further down the pipeline and confirm searching for that text finds the application.
    Clear a stage's notes, save, and confirm they are gone.
-8. With `VISUAL` or `EDITOR` set to a GUI editor, select **Editor** on a stage note. Confirm the file
+   Confirm the notes fill the screen: the title bar, tab bar, breadcrumbs, outline, and Save row
+   stay put while only the notes column scrolls, and a stage's header sticks to the top of that
+   column as its note runs past, with the headings inside it sticking below the header.
+   Move between stages with the tabs and with the arrow keys, confirming focus follows the tab.
+   Scroll a long note and confirm the breadcrumbs name the heading you are inside, that the
+   matching outline row is marked, that the rows above it on the trail are marked more quietly
+   with their indent guide picked out, and that selecting an outline row scrolls to that heading.
+   In a note with headings three levels deep, confirm the outline indents each level with its own
+   guide, that deeper rows read more quietly than the top level, and that a third-level row is
+   still clearly marked when it is the one you are inside.
+   Press `Ctrl`/`Cmd+P`, type part of a stage name, and confirm the picker filters loosely, marks
+   the stages already open, opens the one you pick as a tab ready to type into, and that the
+   browser's print dialog never appears.
+   Select **Split** (or `Ctrl`/`Cmd+\`) and confirm a second pane opens on another stage, that
+   each pane scrolls and sticks its own header independently, that the focused pane is marked and
+   follows a click into either one, and that the outline and breadcrumbs describe the focused pane.
+   Select a tab whose stage is already in the other pane and confirm focus moves there rather than
+   the note opening twice. Close one pane, then **Unsplit**, and confirm the other note is untouched.
+   Press `Ctrl`/`Cmd+B` and confirm the outline collapses away, the notes take the width, and it
+   comes back. On a narrow window, confirm a split panel stacks its panes instead of squeezing them.
+8. In the prep notes panel, press `Ctrl`/`Cmd+F` and confirm the browser's own find does not open.
+   Search for text that appears in more than one stage, and confirm the count reads `1 of N`, every
+   hit is highlighted, the current one stands out, and each tab shows a count of the matches in
+   that stage's note. Step with the up and down buttons and with Enter and Shift+Enter, confirming the
+   panel scrolls to each hit, that stepping across a stage boundary switches tab, and that
+   stepping past either end wraps.
+   Search for text that only appears in a stage you are not looking at, and confirm the panel
+   switches to that tab and scrolls to the hit. With the panel split, confirm the match lands in
+   the focused pane and leaves the other one alone.
+   Fold a heading, then search for text inside it: the fold must open to show the hit, and close
+   again when the find closes. Search for something absent and confirm it reads No results.
+   Press `Ctrl`/`Cmd+F` again while the bar is open and confirm the existing query is selected.
+   Press Escape once to close the find and again to close the panel.
+9. With `VISUAL` or `EDITOR` set to a GUI editor, select **Editor** on a stage note. Confirm the file
    opens, that `data/editing/` holds it, and that the banner names the editor and path. Save a change
    in the editor and confirm it appears in the app within a second or two and is stored without
    pressing Save. Select **Stop**, then reopen and close the dialog, and confirm `data/editing/` is
@@ -84,9 +124,9 @@ test cannot judge reliably:
    If you reach the app over a tunnel, set `TRACKER_EDITOR_URL` to your editor's scheme and confirm
    the banner offers it as a link, that your local editor opens the remote file, and that saves there
    still come back into the app.
-9. Add an attachment in the application editor, save, reopen the application, and open
+10. Add an attachment in the application editor, save, reopen the application, and open
    the file. Remove an attachment and confirm it disappears after save.
-10. In the application editor, confirm the two invite buttons read **Import .ics file** and
+11. In the application editor, confirm the two invite buttons read **Import .ics file** and
    **Add invite manually**, and that the difference between them is clear before reading the hint.
    Choose **Import .ics file** and select an `.ics` file saved from a real calendar invite. Confirm
    the description, times, place, and any joining link are filled in, and that the stage defaults to
@@ -96,13 +136,13 @@ test cannot judge reliably:
    and that searching its description finds the application. On Table, sort by **Invites** and
    confirm rows with nothing coming sink to the bottom. Tick **Cancelled**, save, and confirm the
    calendar entry and the table cell read as cancelled and the card no longer shows it.
-11. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
+12. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
     Set one to **Don't know** and another back to **Not rated**, save, and confirm the Table
     Preference cell distinguishes the two. Confirm the demo's Lumen Pantry row reads
     `4.00 · People 1` while a fully even row reads a plain `4.00`, so an average cannot hide a
     low judgement. Sort Preference both ways and confirm unrated rows stay at the bottom in
     each direction.
-12. In the application editor, set a currency, an **Advertised** band, and an **Expected**
+13. In the application editor, set a currency, an **Advertised** band, and an **Expected**
     single figure, save, reopen, and confirm the band reads back in both boxes while the
     single figure leaves its **to** box empty. Type an amount with no currency and confirm
     the save is refused with a readable message, then clear every amount and confirm the
@@ -112,7 +152,7 @@ test cannot judge reliably:
     Marble & Finch claims no gap because it has no target. Sort Compensation both ways and
     confirm Northstar Labs — which has only an expectation — stays at the bottom in each
     direction along with the rows that have nothing at all.
-13. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+14. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
     and confirm it. Confirm the same 19 examples are restored in `data/demo/`, now including
     the demo invites, and that `data/tracker.json` is unchanged.
 

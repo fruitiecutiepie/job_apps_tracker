@@ -1,106 +1,31 @@
 import { useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
+import { inlineText, parseMarkdown, type BlockNode, type InlineNode, type ListBlock, type QuoteBlock } from './parseMarkdown'
 import {
-  inlineText,
-  parseMarkdown,
-  type BlockNode,
-  type InlineNode,
-  type ListBlock,
-  type QuoteBlock,
-} from './parseMarkdown'
+  blockKey,
+  blockText,
+  buildSections,
+  collectFoldableKeys,
+  itemKey,
+  type Section,
+} from './sections'
+import { headingKey, searchNote, splitMatches } from './searchNote'
 
-interface Section {
-  key: string
-  heading: { level: number; content: InlineNode[] } | null
-  blocks: BlockNode[]
-  children: Section[]
+/**
+ * What the renderer needs to highlight a find. `base` shifts this note's ordinals into
+ * the panel's list, which runs across every note on screen, so a highlight can be named
+ * `data-match-id` and scrolled to from outside.
+ */
+interface Marks {
+  query: string
+  base: number
+  current: number | null
+  bases: Map<string, number>
 }
 
-/** One key scheme, used by both the renderer and the fold-all collector so they cannot drift. */
-const blockKey = (path: string, index: number) => `${path}.b${index}`
-const itemKey = (path: string, index: number) => `${path}.i${index}`
-
-/** Groups blocks under their heading so a heading can fold everything beneath it. */
-function buildSections(blocks: BlockNode[]): Section {
-  const root: Section = { key: 'root', heading: null, blocks: [], children: [] }
-  const stack: Section[] = [root]
-  let counter = 0
-
-  for (const block of blocks) {
-    if (block.type === 'heading') {
-      while (stack.length > 1 && (stack[stack.length - 1].heading?.level ?? 0) >= block.level) {
-        stack.pop()
-      }
-      counter += 1
-      const parent = stack[stack.length - 1]
-      const section: Section = {
-        key: `${parent.key}.h${counter}`,
-        heading: { level: block.level, content: block.content },
-        blocks: [],
-        children: [],
-      }
-      parent.children.push(section)
-      stack.push(section)
-      continue
-    }
-    stack[stack.length - 1].blocks.push(block)
-  }
-
-  return root
-}
-
-function collectBlockKeys(blocks: BlockNode[], path: string, keys: string[]): void {
-  blocks.forEach((block, index) => {
-    const key = blockKey(path, index)
-    if (block.type === 'code') {
-      keys.push(key)
-      return
-    }
-    if (block.type === 'quote') {
-      keys.push(key)
-      collectBlockKeys(block.children, key, keys)
-      return
-    }
-    if (block.type === 'list') {
-      block.items.forEach((item, itemIndex) => {
-        if (item.children.length === 0) return
-        const key2 = itemKey(key, itemIndex)
-        keys.push(key2)
-        collectBlockKeys(item.children, key2, keys)
-      })
-    }
-  })
-}
-
-/** Every key that can fold, in render order, for Collapse all. */
-function collectFoldableKeys(section: Section): string[] {
-  const keys: string[] = []
-  const walk = (current: Section) => {
-    if (current.heading) keys.push(current.key)
-    collectBlockKeys(current.blocks, current.key, keys)
-    current.children.forEach(walk)
-  }
-  walk(section)
-  return keys
-}
-
-function blockText(blocks: BlockNode[]): string {
-  return blocks
-    .map((block) => {
-      switch (block.type) {
-        case 'paragraph':
-        case 'heading':
-          return inlineText(block.content)
-        case 'code':
-          return block.value
-        case 'quote':
-          return blockText(block.children)
-        case 'list':
-          return block.items.map((item) => inlineText(item.content)).join(' ')
-      }
-    })
-    .join(' ')
-    .trim()
+/** A running ordinal, shared by every inline node inside one text container. */
+interface Cursor {
+  next: number
 }
 
 function preview(text: string, limit = 48): string {
@@ -108,23 +33,65 @@ function preview(text: string, limit = 48): string {
   return collapsed.length > limit ? `${collapsed.slice(0, limit).trimEnd()}…` : collapsed
 }
 
-function Inline({ nodes }: { nodes: InlineNode[] }): ReactNode {
+/** Seeds a container's cursor from the ordinal the search assigned it. */
+function cursorFor(marks: Marks | null, key: string): Cursor {
+  return { next: marks?.bases.get(key) ?? 0 }
+}
+
+/**
+ * Wraps the matching runs of one string. Highlighting is numbered from `cursor`, which
+ * the caller seeded from the search: rendering never decides the numbers itself, so a
+ * re-render cannot renumber the matches under the find widget.
+ */
+function highlight(text: string, marks: Marks, cursor: Cursor, keyPrefix: string): ReactNode {
+  const segments = splitMatches(text, marks.query)
+  if (segments.length === 1 && !segments[0].isMatch) return text
+
+  return segments.map((segment, index) => {
+    if (!segment.isMatch) return <span key={`${keyPrefix}s${index}`}>{segment.text}</span>
+    const id = marks.base + cursor.next
+    cursor.next += 1
+    return (
+      <mark
+        className={`markdown__match${id === marks.current ? ' markdown__match--current' : ''}`}
+        data-match-id={id}
+        key={`${keyPrefix}m${index}`}
+      >
+        {segment.text}
+      </mark>
+    )
+  })
+}
+
+/**
+ * Renders inline content. This is a plain function rather than a component so that a
+ * container and everything nested inside it share one cursor in document order.
+ */
+function inline(nodes: InlineNode[], marks: Marks | null, cursor: Cursor): ReactNode {
   return nodes.map((node, index) => {
     switch (node.type) {
       case 'text':
-        return <span key={index}>{node.value}</span>
+        return (
+          <span key={index}>
+            {marks ? highlight(node.value, marks, cursor, `${index}.`) : node.value}
+          </span>
+        )
       case 'break':
         return <br key={index} />
       case 'code':
-        return <code key={index}>{node.value}</code>
+        return (
+          <code key={index}>
+            {marks ? highlight(node.value, marks, cursor, `${index}.`) : node.value}
+          </code>
+        )
       case 'strong':
-        return <strong key={index}><Inline nodes={node.children} /></strong>
+        return <strong key={index}>{inline(node.children, marks, cursor)}</strong>
       case 'emphasis':
-        return <em key={index}><Inline nodes={node.children} /></em>
+        return <em key={index}>{inline(node.children, marks, cursor)}</em>
       case 'link':
         return (
           <a key={index} href={node.href} rel="noreferrer noopener" target="_blank">
-            <Inline nodes={node.children} />
+            {inline(node.children, marks, cursor)}
           </a>
         )
     }
@@ -134,6 +101,7 @@ function Inline({ nodes }: { nodes: InlineNode[] }): ReactNode {
 interface FoldProps {
   collapsed: Set<string>
   onToggle: (key: string) => void
+  marks: Marks | null
 }
 
 /**
@@ -180,7 +148,7 @@ function FoldRow({
   )
 }
 
-function MarkdownList({ list, path, collapsed, onToggle }: FoldProps & { list: ListBlock; path: string }) {
+function MarkdownList({ list, path, collapsed, onToggle, marks }: FoldProps & { list: ListBlock; path: string }) {
   const Tag = list.ordered ? 'ol' : 'ul'
   return (
     <Tag className="markdown__list">
@@ -188,6 +156,7 @@ function MarkdownList({ list, path, collapsed, onToggle }: FoldProps & { list: L
         const key = itemKey(path, index)
         const foldable = item.children.length > 0
         const isCollapsed = collapsed.has(key)
+        const content = inline(item.content, marks, cursorFor(marks, key))
         return (
           <li className="markdown__item" key={key}>
             {foldable ? (
@@ -197,20 +166,19 @@ function MarkdownList({ list, path, collapsed, onToggle }: FoldProps & { list: L
                 label={`${inlineText(item.content)} sub-points`}
                 onToggle={() => onToggle(key)}
               >
-                <Inline nodes={item.content} />
+                {content}
               </FoldRow>
             ) : (
               <span className="markdown__item-line">
                 <span aria-hidden="true" className="markdown__bullet-spacer" />
-                <span className="markdown__item-content">
-                  <Inline nodes={item.content} />
-                </span>
+                <span className="markdown__item-content">{content}</span>
               </span>
             )}
             {foldable && !isCollapsed ? (
               <MarkdownBlocks
                 blocks={item.children}
                 collapsed={collapsed}
+                marks={marks}
                 onToggle={onToggle}
                 path={key}
               />
@@ -222,7 +190,7 @@ function MarkdownList({ list, path, collapsed, onToggle }: FoldProps & { list: L
   )
 }
 
-function MarkdownQuote({ quote, path, collapsed, onToggle }: FoldProps & { quote: QuoteBlock; path: string }) {
+function MarkdownQuote({ quote, path, collapsed, onToggle, marks }: FoldProps & { quote: QuoteBlock; path: string }) {
   const isCollapsed = collapsed.has(path)
   return (
     <blockquote className="markdown__quote">
@@ -238,6 +206,7 @@ function MarkdownQuote({ quote, path, collapsed, onToggle }: FoldProps & { quote
         <MarkdownBlocks
           blocks={quote.children}
           collapsed={collapsed}
+          marks={marks}
           onToggle={onToggle}
           path={path}
         />
@@ -246,14 +215,14 @@ function MarkdownQuote({ quote, path, collapsed, onToggle }: FoldProps & { quote
   )
 }
 
-function MarkdownBlocks({ blocks, path, collapsed, onToggle }: FoldProps & { blocks: BlockNode[]; path: string }) {
+function MarkdownBlocks({ blocks, path, collapsed, onToggle, marks }: FoldProps & { blocks: BlockNode[]; path: string }) {
   return blocks.map((block, index) => {
     const key = blockKey(path, index)
     switch (block.type) {
       case 'paragraph':
         return (
           <p className="markdown__paragraph" key={key}>
-            <Inline nodes={block.content} />
+            {inline(block.content, marks, cursorFor(marks, key))}
           </p>
         )
       case 'code': {
@@ -270,7 +239,13 @@ function MarkdownBlocks({ blocks, path, collapsed, onToggle }: FoldProps & { blo
               {block.language ?? 'Code'} · {lines} {lines === 1 ? 'line' : 'lines'}
             </FoldRow>
             {!isCollapsed ? (
-              <pre className="markdown__code"><code>{block.value}</code></pre>
+              <pre className="markdown__code">
+                <code>
+                  {marks
+                    ? highlight(block.value, marks, cursorFor(marks, key), 'c')
+                    : block.value}
+                </code>
+              </pre>
             ) : null}
           </div>
         )
@@ -280,6 +255,7 @@ function MarkdownBlocks({ blocks, path, collapsed, onToggle }: FoldProps & { blo
           <MarkdownQuote
             collapsed={collapsed}
             key={key}
+            marks={marks}
             onToggle={onToggle}
             path={key}
             quote={block}
@@ -291,6 +267,7 @@ function MarkdownBlocks({ blocks, path, collapsed, onToggle }: FoldProps & { blo
             collapsed={collapsed}
             key={key}
             list={block}
+            marks={marks}
             onToggle={onToggle}
             path={key}
           />
@@ -301,20 +278,23 @@ function MarkdownBlocks({ blocks, path, collapsed, onToggle }: FoldProps & { blo
   })
 }
 
-function MarkdownSection({ section, collapsed, onToggle }: FoldProps & { section: Section }) {
+function MarkdownSection({ section, collapsed, onToggle, marks }: FoldProps & { section: Section }) {
   const isCollapsed = section.heading ? collapsed.has(section.key) : false
   const Heading = `h${Math.min((section.heading?.level ?? 1) + 3, 6)}` as 'h4'
 
   return (
     <section className="markdown__section">
       {section.heading ? (
-        <Heading className={`markdown__heading markdown__heading--${section.heading.level}`}>
+        <Heading
+          className={`markdown__heading markdown__heading--${section.heading.level}`}
+          data-section-key={section.key}
+        >
           <FoldRow
             collapsed={isCollapsed}
             label={inlineText(section.heading.content)}
             onToggle={() => onToggle(section.key)}
           >
-            <Inline nodes={section.heading.content} />
+            {inline(section.heading.content, marks, cursorFor(marks, headingKey(section.key)))}
           </FoldRow>
         </Heading>
       ) : null}
@@ -323,6 +303,7 @@ function MarkdownSection({ section, collapsed, onToggle }: FoldProps & { section
           <MarkdownBlocks
             blocks={section.blocks}
             collapsed={collapsed}
+            marks={marks}
             onToggle={onToggle}
             path={section.key}
           />
@@ -330,6 +311,7 @@ function MarkdownSection({ section, collapsed, onToggle }: FoldProps & { section
             <MarkdownSection
               collapsed={collapsed}
               key={child.key}
+              marks={marks}
               onToggle={onToggle}
               section={child}
             />
@@ -344,12 +326,43 @@ interface MarkdownNotesProps {
   source: string
   /** Names the fold-all control when several notes are on screen at once. */
   label: string
+  /** The find widget's query. Matches are highlighted and folds holding one open. */
+  query?: string
+  /** Where this note's matches start in the panel's list across every note on screen. */
+  matchBase?: number
+  /** The ordinal of the match the find widget is sitting on, in that same list. */
+  currentMatch?: number | null
 }
 
-export function MarkdownNotes({ source, label }: MarkdownNotesProps) {
+export function MarkdownNotes({
+  source,
+  label,
+  query = '',
+  matchBase = 0,
+  currentMatch = null,
+}: MarkdownNotesProps) {
   const section = useMemo(() => buildSections(parseMarkdown(source)), [source])
   const keys = useMemo(() => collectFoldableKeys(section), [section])
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+
+  const search = useMemo(() => searchNote(section, query), [section, query])
+
+  const marks = useMemo<Marks | null>(
+    () => (query && search.count > 0 ? { query, base: matchBase, current: currentMatch, bases: search.bases } : null),
+    [currentMatch, matchBase, query, search],
+  )
+
+  /**
+   * A fold holding a match opens for as long as the search runs, then goes back to
+   * however the reader had left it: finding something must not quietly rearrange the
+   * outline they were working through.
+   */
+  const effectiveCollapsed = useMemo(() => {
+    if (search.reveal.size === 0) return collapsed
+    const next = new Set(collapsed)
+    for (const key of search.reveal) next.delete(key)
+    return next
+  }, [collapsed, search])
 
   const toggle = (key: string) => {
     setCollapsed((current) => {
@@ -373,7 +386,12 @@ export function MarkdownNotes({ source, label }: MarkdownNotesProps) {
           {allCollapsed ? 'Expand all' : 'Collapse all'}
         </button>
       ) : null}
-      <MarkdownSection collapsed={collapsed} onToggle={toggle} section={section} />
+      <MarkdownSection
+        collapsed={effectiveCollapsed}
+        marks={marks}
+        onToggle={toggle}
+        section={section}
+      />
     </div>
   )
 }

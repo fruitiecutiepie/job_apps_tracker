@@ -1,0 +1,153 @@
+/**
+ * The section tree a parsed note folds along, and the key scheme that names every
+ * foldable place in it. The renderer and the note search both walk this tree, so the
+ * keys live here rather than in either of them: a key that meant one thing to the
+ * renderer and another to the search would fold the wrong rows.
+ */
+
+import { inlineText, type BlockNode, type InlineNode } from './parseMarkdown'
+
+export interface Section {
+  key: string
+  heading: { level: number; content: InlineNode[] } | null
+  blocks: BlockNode[]
+  children: Section[]
+}
+
+/** One key scheme, used by the renderer, the fold-all collector, and the search. */
+export const blockKey = (path: string, index: number) => `${path}.b${index}`
+export const itemKey = (path: string, index: number) => `${path}.i${index}`
+
+/** Groups blocks under their heading so a heading can fold everything beneath it. */
+export function buildSections(blocks: BlockNode[]): Section {
+  const root: Section = { key: 'root', heading: null, blocks: [], children: [] }
+  const stack: Section[] = [root]
+  let counter = 0
+
+  for (const block of blocks) {
+    if (block.type === 'heading') {
+      while (stack.length > 1 && (stack[stack.length - 1].heading?.level ?? 0) >= block.level) {
+        stack.pop()
+      }
+      counter += 1
+      const parent = stack[stack.length - 1]
+      const section: Section = {
+        key: `${parent.key}.h${counter}`,
+        heading: { level: block.level, content: block.content },
+        blocks: [],
+        children: [],
+      }
+      parent.children.push(section)
+      stack.push(section)
+      continue
+    }
+    stack[stack.length - 1].blocks.push(block)
+  }
+
+  return root
+}
+
+function collectBlockKeys(blocks: BlockNode[], path: string, keys: string[]): void {
+  blocks.forEach((block, index) => {
+    const key = blockKey(path, index)
+    if (block.type === 'code') {
+      keys.push(key)
+      return
+    }
+    if (block.type === 'quote') {
+      keys.push(key)
+      collectBlockKeys(block.children, key, keys)
+      return
+    }
+    if (block.type === 'list') {
+      block.items.forEach((item, itemIndex) => {
+        if (item.children.length === 0) return
+        const key2 = itemKey(key, itemIndex)
+        keys.push(key2)
+        collectBlockKeys(item.children, key2, keys)
+      })
+    }
+  })
+}
+
+/** Every key that can fold, in render order, for Collapse all. */
+export function collectFoldableKeys(section: Section): string[] {
+  const keys: string[] = []
+  const walk = (current: Section) => {
+    if (current.heading) keys.push(current.key)
+    collectBlockKeys(current.blocks, current.key, keys)
+    current.children.forEach(walk)
+  }
+  walk(section)
+  return keys
+}
+
+export interface OutlineEntry {
+  key: string
+  text: string
+}
+
+/** One heading in the outline, holding the headings nested under it. */
+export interface OutlineNode extends OutlineEntry {
+  /** Heading level as written, which is not the same as nesting depth. */
+  level: number
+  children: OutlineNode[]
+}
+
+/**
+ * The note's headings as a tree, for the outline beside it. Nesting comes from the
+ * section tree rather than from comparing levels, so a note that starts at `###` and
+ * later uses `##` still outlines the way it reads.
+ */
+export function outlineTree(root: Section): OutlineNode[] {
+  const nodeFor = (section: Section): OutlineNode => ({
+    key: section.key,
+    level: section.heading?.level ?? 1,
+    text: inlineText(section.heading?.content ?? []),
+    children: section.children.map(nodeFor),
+  })
+
+  return root.children.map(nodeFor)
+}
+
+/**
+ * The headings above a section, itself last, for the breadcrumb trail and for marking
+ * the outline path. Empty when the key names no section, which is what a note with no
+ * headings at all reports.
+ */
+export function sectionPath(root: Section, key: string | null): OutlineEntry[] {
+  if (!key) return []
+
+  const find = (section: Section, trail: OutlineEntry[]): OutlineEntry[] | null => {
+    const here = section.heading
+      ? [...trail, { key: section.key, text: inlineText(section.heading.content) }]
+      : trail
+    if (section.key === key) return here
+    for (const child of section.children) {
+      const found = find(child, here)
+      if (found) return found
+    }
+    return null
+  }
+
+  return find(root, []) ?? []
+}
+
+export function blockText(blocks: BlockNode[]): string {
+  return blocks
+    .map((block) => {
+      switch (block.type) {
+        case 'paragraph':
+        case 'heading':
+          return inlineText(block.content)
+        case 'code':
+          return block.value
+        case 'quote':
+          return blockText(block.children)
+        case 'list':
+          return block.items.map((item) => inlineText(item.content)).join(' ')
+      }
+    })
+    .join(' ')
+    .trim()
+}
