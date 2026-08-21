@@ -13,6 +13,9 @@ This checks the demo-profile journey: 19 first-load examples, navigation through
 changing its state and recording history, recording stage prep notes against it, persistence
 across an app reload, and confirmed demo-data reset.
 
+Recording compensation through the editor, reading a stored record back into its boxes, and
+refusing an amount with no currency are covered by the app integration tests.
+
 Importing a calendar invite through the editor, replacing a rescheduled one, and refusing an invite
 with no start time are covered by the app integration tests.
 
@@ -99,7 +102,17 @@ test cannot judge reliably:
     `4.00 · People 1` while a fully even row reads a plain `4.00`, so an average cannot hide a
     low judgement. Sort Preference both ways and confirm unrated rows stay at the bottom in
     each direction.
-12. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+12. In the application editor, set a currency, an **Advertised** band, and an **Expected**
+    single figure, save, reopen, and confirm the band reads back in both boxes while the
+    single figure leaves its **to** box empty. Type an amount with no currency and confirm
+    the save is refused with a readable message, then clear every amount and confirm the
+    currency is dropped rather than kept alone. Confirm the demo's Halcyon Maps row reads
+    `AUD · Advertised 180,000–210,000 · Expected 200,000 · Offered 215,000 · 8% above target`,
+    that Orbit & Oak reads `within target` because its band reaches the target, and that
+    Marble & Finch claims no gap because it has no target. Sort Compensation both ways and
+    confirm Northstar Labs — which has only an expectation — stays at the bottom in each
+    direction along with the rows that have nothing at all.
+13. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
     and confirm it. Confirm the same 19 examples are restored in `data/demo/`, now including
     the demo invites, and that `data/tracker.json` is unchanged.
 

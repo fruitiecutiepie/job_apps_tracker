@@ -1,3 +1,4 @@
+import { COMPENSATION_STAGE_IDS } from './compensation'
 import { MAX_RATING_SCORE, MIN_RATING_SCORE, RATING_IDS } from './ratings'
 import { STATE_IDS } from './states'
 
@@ -38,6 +39,7 @@ export const TRACKER_JSON_SCHEMA = {
         'state_events',
         'attachments',
         'ratings',
+        'compensation',
         'created_at',
         'updated_at',
       ],
@@ -82,6 +84,7 @@ export const TRACKER_JSON_SCHEMA = {
           type: 'array',
           items: { $ref: '#/$defs/rating' },
         },
+        compensation: { $ref: '#/$defs/compensation' },
         created_at: { type: 'string' },
         updated_at: { type: 'string' },
       },
@@ -162,6 +165,47 @@ export const TRACKER_JSON_SCHEMA = {
         },
         created_at: { type: 'string' },
         updated_at: { type: 'string' },
+      },
+    },
+    compensation_band: {
+      type: 'object',
+      description:
+        'One pay figure as a band of annual gross base pay, in whole units of the '
+        + "record's currency. A point value is a band whose ends match.",
+      required: ['min', 'max'],
+      additionalProperties: false,
+      properties: {
+        min: { type: 'integer', minimum: 1 },
+        max: { type: 'integer', minimum: 1 },
+      },
+    },
+    compensation: {
+      type: 'object',
+      description:
+        'What an application pays, as a measurement rather than a judgement. The stages are '
+        + 'kept side by side because compensation moves and the progression is the point; '
+        + '`expected` is also the target the others are measured against. `currency` is '
+        + 'non-null exactly when some stage holds a figure, and no conversion is attempted.',
+      required: ['currency', ...COMPENSATION_STAGE_IDS],
+      additionalProperties: false,
+      properties: {
+        currency: {
+          type: ['string', 'null'],
+          description: 'An ISO-4217-shaped three-letter code, upper case.',
+          pattern: '^[A-Z]{3}$',
+        },
+        advertised: {
+          description: 'What the posting or recruiter said.',
+          oneOf: [{ $ref: '#/$defs/compensation_band' }, { type: 'null' }],
+        },
+        expected: {
+          description: 'What you are aiming for here, and the target the others measure against.',
+          oneOf: [{ $ref: '#/$defs/compensation_band' }, { type: 'null' }],
+        },
+        offered: {
+          description: 'What arrived in writing.',
+          oneOf: [{ $ref: '#/$defs/compensation_band' }, { type: 'null' }],
+        },
       },
     },
     indexes: {

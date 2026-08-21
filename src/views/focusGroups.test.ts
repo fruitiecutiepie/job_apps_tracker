@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { createDemoDocument } from '../domain'
+import { createDemoDocument, emptyCompensation } from '../domain'
 import type { Application, StateEvent, StateId } from '../domain'
 import { DUE_SOON_DAYS, focusGroups, type FocusGroupId } from './focusGroups'
 
@@ -32,6 +32,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
     state_events: [],
     attachments: [],
     ratings: [],
+    compensation: emptyCompensation(),
     updated_at: at(-1),
     created_at: at(-40),
     ...overrides,

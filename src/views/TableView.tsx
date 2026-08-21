@@ -4,6 +4,7 @@ import type { Application, StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import { InviteSummaries, inviteFilterText } from "./InviteSummaries";
 import { StageNotesButton } from "./StageNotesButton";
+import { compensationSortValue, compensationText } from "./compensation";
 import type { MovableApplicationsViewProps } from "./types";
 import { preferenceFor, type PreferenceScore } from "./preference";
 import { rankByUrgency, type UrgencyRanking } from "./urgency";
@@ -19,6 +20,7 @@ type SortField =
   | "deadline_at"
   | "urgency"
   | "preference"
+  | "compensation"
   | "created_at"
   | "updated_at";
 type SortDirection = "ascending" | "descending";
@@ -34,6 +36,7 @@ interface ColumnFilters {
   deadline_at: string;
   urgency: string;
   preference: string;
+  compensation: string;
   attachments: string;
   created_at: string;
   updated_at: string;
@@ -49,6 +52,7 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
   deadline_at: "",
   urgency: "",
   preference: "",
+  compensation: "",
   attachments: "",
   created_at: "",
   updated_at: "",
@@ -58,6 +62,8 @@ const stateOrder = new Map(STATE_CONFIG.map((state, index) => [state.id, index])
 
 type UrgencyLookup = ReadonlyMap<string, UrgencyRanking>;
 type PreferenceLookup = ReadonlyMap<string, PreferenceScore>;
+/** Rendered compensation text, absent for the rows that have none. */
+type CompensationLookup = ReadonlyMap<string, string>;
 
 const UNRANKED_SCORE = -1;
 
@@ -81,6 +87,9 @@ function comparableValue(
   }
   if (field === "urgency") return urgency.get(application.id)?.score ?? UNRANKED_SCORE;
   if (field === "preference") return preference.get(application.id)?.score ?? null;
+  // Null, not zero: an application nobody has quoted a number for is absent from this
+  // column, not the worst-paid one, and a target of your own is not a figure anyone offered.
+  if (field === "compensation") return compensationSortValue(application);
   if (field === "deadline_at") {
     return application.deadline_at ? parseTimestamp(application.deadline_at)?.getTime() ?? null : null;
   }
@@ -125,6 +134,7 @@ function matchesColumnFilters(
   filters: ColumnFilters,
   urgency: UrgencyLookup,
   preference: PreferenceLookup,
+  compensation: CompensationLookup,
 ): boolean {
   if (filters.state !== "all" && application.state !== filters.state) return false;
   if (!includesQuery(application.company, filters.company)) return false;
@@ -142,6 +152,7 @@ function matchesColumnFilters(
   if (!includesQuery(preferenceText(preference.get(application.id) ?? null), filters.preference)) {
     return false;
   }
+  if (!includesQuery(compensation.get(application.id) ?? "", filters.compensation)) return false;
   if (!includesQuery(application.attachments.map((attachment) => attachment.filename).join(" "), filters.attachments)) {
     return false;
   }
@@ -178,6 +189,7 @@ function columnFiltersAreActive(filters: ColumnFilters): boolean {
         filters.deadline_at.trim() ||
         filters.urgency.trim() ||
         filters.preference.trim() ||
+        filters.compensation.trim() ||
         filters.attachments.trim() ||
         filters.created_at.trim() ||
         filters.updated_at.trim(),
@@ -225,9 +237,20 @@ export function TableView({
     return lookup;
   }, [applications]);
 
+  const compensationById = useMemo(() => {
+    const lookup = new Map<string, string>();
+    for (const application of applications) {
+      const text = compensationText(application);
+      if (text) lookup.set(application.id, text);
+    }
+    return lookup;
+  }, [applications]);
+
   const visibleApplications = useMemo(() => {
     return applications
-      .filter((application) => matchesColumnFilters(application, filters, urgencyById, preferenceById))
+      .filter((application) =>
+        matchesColumnFilters(application, filters, urgencyById, preferenceById, compensationById),
+      )
       .sort((left, right) => {
         const leftValue = comparableValue(left, sortField, urgencyById, preferenceById);
         const rightValue = comparableValue(right, sortField, urgencyById, preferenceById);
@@ -249,7 +272,7 @@ export function TableView({
               });
         return sortDirection === "ascending" ? result : -result;
       });
-  }, [applications, filters, preferenceById, sortDirection, sortField, urgencyById]);
+  }, [applications, compensationById, filters, preferenceById, sortDirection, sortField, urgencyById]);
 
   const setSort = (field: SortField) => {
     if (field === sortField) {
@@ -261,6 +284,8 @@ export function TableView({
         || field === "updated_at"
         || field === "urgency"
         || field === "preference"
+        // More pay is better, so the interesting end leads, the way it does for preference.
+        || field === "compensation"
           ? "descending"
           : "ascending",
       );
@@ -366,6 +391,11 @@ export function TableView({
               {headerCell("Deadline", textFilter("deadline_at", "Deadline"), "deadline_at")}
               {headerCell("Urgency", textFilter("urgency", "Urgency"), "urgency")}
               {headerCell("Preference", textFilter("preference", "Preference"), "preference")}
+              {headerCell(
+                "Compensation",
+                textFilter("compensation", "Compensation"),
+                "compensation",
+              )}
               {headerCell("Attachments", textFilter("attachments", "Attachments"))}
               {headerCell("Prep notes", null)}
               {headerCell("Created", textFilter("created_at", "Created"), "created_at")}
@@ -442,6 +472,15 @@ export function TableView({
                     </span>
                   ) : (
                     <span aria-label="Not rated">—</span>
+                  )}
+                </td>
+                <td>
+                  {compensationById.has(application.id) ? (
+                    <span className="table-view__urgency">
+                      {compensationById.get(application.id)}
+                    </span>
+                  ) : (
+                    <span aria-label="Not recorded">—</span>
                   )}
                 </td>
                 <td>

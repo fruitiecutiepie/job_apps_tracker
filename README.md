@@ -10,8 +10,9 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 - Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first
 - Optional deadline per application, recording an external closing or decision date separately from your own next action
 - Preference ranking from four subjective ratings, discounted for what you have not judged yet, with the weakest dimension named so a healthy average cannot hide a dealbreaker
+- Compensation as a measurement rather than a rating: what was advertised, what you expect, and what was offered, kept side by side and compared against your target
 - Derived urgency ranking that explains itself, combining stage, scheduled invites, deadline, next-action date, and how long an application has sat in the same state, into one sortable column
-- Sortable and filterable table with invites, deadline, urgency, and attachments columns, where sorting by invite sorts by what is next
+- Sortable and filterable table with invites, deadline, urgency, preference, compensation, and attachments columns, where sorting by invite sorts by what is next
 - Focus view grouping live applications by what is most pressing, with collapsible groups and a reason on every row
 - Calendar invites imported from the `.ics` a recruiter sends, filed against a stage, with a rescheduled invite replacing the one it supersedes
 - Calendar showing next-action dates and invites together, day by day
@@ -156,10 +157,41 @@ put whichever way you sort.
 Compensation is deliberately **not** a rating. Given a number everyone agrees more is
 better, so scoring it 1–5 would throw the number away; it belongs in a field of its own.
 
+### Record what a role pays
+
+The editor carries three compensation figures per application — **Advertised** (what the
+posting or recruiter said), **Expected** (what you are aiming for here), and **Offered**
+(what arrived in writing) — plus one currency for all three. All three are kept rather than
+one current number, because compensation moves and the progression is the point: an offer
+that came in under the advertised band is worth seeing.
+
+Every figure is a band, because that is what a posting gives you (`130–150k`). Leave the
+**to** box empty for a single number and it reads back the way you typed it. Amounts are
+annual base pay in whole units; thousands separators are accepted. An amount needs a
+currency to be read in, so saving one without a currency is refused — but a currency with
+no amount behind it is simply dropped, the way a next-action date is dropped when the action
+goes away.
+
+**Expected** doubles as the target. There is no global salary target because there is
+nowhere honest to keep one: the saved document has a closed shape and discards any extra
+top-level key, and a single number could not be compared against a per-application currency
+anyway. What you would accept genuinely differs by role, level, and country, so it lives on
+the application.
+
+The Compensation column states the currency once, then the progression, then how far off
+target it lands: `AUD · Advertised 180,000–210,000 · Expected 200,000 · Offered 215,000 ·
+8% above target`. The gap is measured between the nearest ends of the two bands, so it only
+ever claims what the bands guarantee — `120,000–140,000` against a `135,000` target reads
+`within target` rather than being called short from a midpoint nobody quoted. Sorting the
+column sorts by the offered figure, or the advertised one when there is no offer; an
+application holding only your own expectation has no quoted figure and stays at the bottom
+in either direction. That sort compares raw numbers and ignores currency, since there are no
+exchange rates to keep, which is why every cell names its currency first.
+
 ### Find the right view
 
 - **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames and a prep notes button appear on cards, and you can move applications by drag-and-drop or the state selector. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.
-- **Table** sorts and column-filters by company, role, source, state, next action, deadline, urgency, preference, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—deadline, invites, preference—keep the rows without one last in either sort direction. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, and company filters still apply across views.
+- **Table** sorts and column-filters by company, role, source, state, next action, deadline, urgency, preference, compensation, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—deadline, invites, preference, compensation—keep the rows without one last in either sort direction. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, and company filters still apply across views.
 - **Focus** answers "what should I do next". Each group heading states its own membership rule, so nothing is hidden behind a mood word: **Overdue or due today**, **Due in 1 to 7 days**, **Due in more than 7 days**, **Action with no date**, **No stage change in more than 7 days**, **Nothing dated or planned**, and a trailing **Finished, action outstanding** for tasks left on rejected, accepted, or no-openings applications. Placement uses the nearest of the soonest upcoming invite, the deadline, and the next-action date, so a date always decides the group; the urgency score only orders rows within it. An application with just an invite, or just a deadline, and no action of its own appears here too. Silence is measured from the last actual state change, not from the last edit, so fixing a typo does not make an application look like it moved. Groups collapse and expand—only the leading non-empty group starts open, and that choice is never saved.
 - **Calendar** places applications only by their next-action date; select an item to edit it.
 - **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved. When the current state has a rejected counterpart, **Move to Rejected** records that outcome and keeps the history.

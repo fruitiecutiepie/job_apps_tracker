@@ -1471,6 +1471,28 @@ tbody tr:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.compensation-field {
+  gap: var(--s3);
+}
+
+.compensation-field__hint {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 400;
+}
+
+.compensation-grid {
+  display: grid;
+  gap: var(--s3);
+}
+
+.compensation-row {
+  display: grid;
+  gap: var(--s3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
 .invite-list {
   display: grid;
   gap: var(--s3);
@@ -1929,7 +1951,8 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .invite-item__head,
   .invite-item__grid,
-  .rating-grid {
+  .rating-grid,
+  .compensation-row {
     grid-template-columns: minmax(0, 1fr);
   }
 

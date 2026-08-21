@@ -21,6 +21,8 @@ export type StateId =
 
 export type RatingDimensionId = 'work' | 'growth' | 'people' | 'company'
 
+export type CompensationStageId = 'advertised' | 'expected' | 'offered'
+
 export interface StateHistoryEntry {
   state: StateId
   at: string
@@ -55,6 +57,40 @@ export interface Rating {
 export interface RatingDraft {
   dimension: RatingDimensionId
   score: number | null
+}
+
+/**
+ * One pay figure, always stored as a band because that is what a posting gives you
+ * ("130-150k"). A point value is a band whose ends match, which keeps one representation
+ * instead of two and spares every reader an `if (max === null)`. Both ends are annual gross
+ * base pay in whole units of the compensation record's currency.
+ */
+export interface CompensationBand {
+  min: number
+  max: number
+}
+
+/**
+ * What an application pays, as a measurement rather than a judgement. The three stages are
+ * kept side by side because compensation moves and the progression is the point: `advertised`
+ * is what the posting or recruiter said, `offered` is what arrived in writing, and `expected`
+ * is what you are aiming for at this employer.
+ *
+ * `expected` doubles as the target the other two are measured against. There is deliberately
+ * no global target: the document shape is closed and discards any extra top-level key, so
+ * there is nowhere honest to persist one — and a single number could not be compared against
+ * a per-application currency anyway. What you would accept genuinely differs by role, level,
+ * and country, so it belongs on the application.
+ *
+ * `currency` covers the whole record rather than each band: one application is one employer
+ * discussing one salary, and letting the stages disagree would make the progression
+ * meaningless. It is non-null exactly when some stage holds a figure.
+ */
+export interface Compensation {
+  currency: string | null
+  advertised: CompensationBand | null
+  expected: CompensationBand | null
+  offered: CompensationBand | null
 }
 
 /**
@@ -115,6 +151,7 @@ export interface Application {
   state_events: StateEvent[]
   attachments: Attachment[]
   ratings: Rating[]
+  compensation: Compensation
   created_at: string
   updated_at: string
 }
@@ -161,6 +198,9 @@ export interface ApplicationInput {
   next_action_at?: string | null
   deadline_at?: string | null
   notes?: string | null
+  // No `| null` here, unlike the text fields: "no compensation recorded" is a whole empty
+  // record, not an absent one, so there is no second way to say it.
+  compensation?: Compensation
 }
 
 export type ApplicationEdits = Partial<
@@ -175,5 +215,9 @@ export type ApplicationEdits = Partial<
     | 'deadline_at'
     | 'notes'
     | 'attachments'
+    // Unlike `ratings`, `stage_notes`, and `state_events`, compensation carries no
+    // per-record timestamps, so there is nothing a second write path could destroy: the
+    // whole record is replaced at once, exactly the way `deadline_at` is.
+    | 'compensation'
   >
 >

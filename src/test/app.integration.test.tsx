@@ -840,6 +840,78 @@ describe('job applications tracker', () => {
     expect(edited()?.ratings).toEqual([])
   })
 
+  it('saves a compensation band and point value while adding an application', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add application' }))
+    const dialog = screen.getByRole('dialog', { name: 'Add application' })
+
+    await user.type(within(dialog).getByLabelText('Company'), 'Paid Pier')
+    await user.type(within(dialog).getByLabelText('Currency'), 'aud')
+    // Thousands separators are how people write salaries, so they are accepted.
+    await user.type(within(dialog).getByLabelText('Advertised from'), '130,000')
+    await user.type(within(dialog).getByLabelText('Advertised to'), '150,000')
+    // A blank "to" is the point value, not a missing half of a band.
+    await user.type(within(dialog).getByLabelText('Expected from'), '145000')
+    await user.click(within(dialog).getByRole('button', { name: 'Add application' }))
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    const saved = readSavedDocument().applications.find(({ company }) => company === 'Paid Pier')
+    expect(saved?.compensation).toEqual({
+      currency: 'AUD',
+      advertised: { min: 130_000, max: 150_000 },
+      expected: { min: 145_000, max: 145_000 },
+      offered: null,
+    })
+  })
+
+  it('reads a stored record back into the boxes it was typed in and records an offer', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Halcyon Maps ships with all three stages, so this is a genuine round trip.
+    await user.click(screen.getByRole('button', { name: /Open Halcyon Maps/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    expect(within(dialog).getByLabelText('Currency')).toHaveValue('AUD')
+    expect(within(dialog).getByLabelText('Advertised from')).toHaveValue('180000')
+    expect(within(dialog).getByLabelText('Advertised to')).toHaveValue('210000')
+    expect(within(dialog).getByLabelText('Expected from')).toHaveValue('200000')
+    // A point value reads back with an empty "to", the way it was entered.
+    expect(within(dialog).getByLabelText('Expected to')).toHaveValue('')
+    expect(within(dialog).getByLabelText('Offered from')).toHaveValue('215000')
+
+    const offered = within(dialog).getByLabelText('Offered from')
+    await user.clear(offered)
+    await user.type(offered, '225000')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const saved = readSavedDocument().applications.find(({ company }) => company === 'Halcyon Maps')
+    expect(saved?.compensation.offered).toEqual({ min: 225_000, max: 225_000 })
+    // The stages it did not touch are untouched, not rebuilt as blanks.
+    expect(saved?.compensation.advertised).toEqual({ min: 180_000, max: 210_000 })
+  })
+
+  it('refuses to save an amount with no currency to read it in', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: /Open Echo Robotics/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.type(within(dialog).getByLabelText('Offered from'), '200000')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Compensation needs a currency, so the amounts can be read.',
+    )
+    expect(
+      readSavedDocument().applications.find(({ company }) => company === 'Echo Robotics')
+        ?.compensation.offered,
+    ).toBeNull()
+  })
+
   it('saves a deadline that stands alone from the next action', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

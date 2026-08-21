@@ -1,7 +1,16 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { Application, Rating, RatingDimensionId, StateEvent, StateId } from '../domain'
+import { COMPENSATION_STAGE_IDS, emptyCompensation } from '../domain'
+import type {
+  Application,
+  Compensation,
+  CompensationStageId,
+  Rating,
+  RatingDimensionId,
+  StateEvent,
+  StateId,
+} from '../domain'
 import { CalendarView } from './CalendarView'
 import { KanbanView } from './KanbanView'
 import { FocusView } from './FocusView'
@@ -40,6 +49,7 @@ function application(
     state_events: [],
     attachments: [],
     ratings: [],
+    compensation: emptyCompensation(),
     created_at: localDate(-40),
     updated_at: localDate(-1),
     ...overrides,
@@ -71,6 +81,22 @@ function ratings(scores: Partial<Record<RatingDimensionId, number | null>>): Rat
     created_at: localDate(-2),
     updated_at: localDate(-2),
   }))
+}
+
+/** Amounts in whole units; a single number is a point value, a pair is a band. */
+function compensation(
+  currency: string,
+  stages: Partial<Record<CompensationStageId, number | readonly [number, number]>>,
+): Compensation {
+  const record = emptyCompensation()
+  for (const stage of COMPENSATION_STAGE_IDS) {
+    const amount = stages[stage]
+    if (amount === undefined) continue
+    record[stage] =
+      typeof amount === 'number' ? { min: amount, max: amount } : { min: amount[0], max: amount[1] }
+  }
+  record.currency = currency
+  return record
 }
 
 afterEach(() => {
@@ -844,6 +870,101 @@ describe('TableView', () => {
       target: { value: 'unknown' },
     })
     expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Unknown Co'])
+  })
+
+  it('shows the progression and how far off target it lands', () => {
+    const applications = [
+      application('Offer Co', {
+        compensation: compensation('AUD', {
+          advertised: [180_000, 210_000],
+          expected: 200_000,
+          offered: 215_000,
+        }),
+      }),
+      application('Posting Co', { compensation: compensation('USD', { advertised: [90_000, 110_000] }) }),
+      application('Nothing Co'),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByText('AUD · Advertised 180,000–210,000 · Expected 200,000 · Offered 215,000 · 8% above target'),
+    ).toBeInTheDocument()
+    // No target recorded, so no gap is claimed — and the currency still leads the cell.
+    expect(screen.getByText('USD · Advertised 90,000–110,000')).toBeInTheDocument()
+    expect(
+      within(screen.getByRole('row', { name: /Nothing Co/ })).getByLabelText('Not recorded'),
+    ).toBeInTheDocument()
+  })
+
+  it('keeps applications with no quoted figure last when sorting compensation either way', () => {
+    const applications = [
+      application('Middle Co', { compensation: compensation('AUD', { advertised: [130_000, 150_000] }) }),
+      // A target of your own is not a figure anyone quoted, so this row is absent from the
+      // column even though it holds a number.
+      application('Target Only Co', { compensation: compensation('AUD', { expected: 400_000 }) }),
+      application('Best Co', { compensation: compensation('AUD', { offered: 220_000 }) }),
+      application('Nothing Co'),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Compensation' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Best Co',
+      'Middle Co',
+      'Target Only Co',
+      'Nothing Co',
+    ])
+
+    // Absent is not the lowest pay, so both rows without a figure stay last when the order
+    // flips. A sentinel number could not do this: it would sort to the wrong end here.
+    fireEvent.click(screen.getByRole('button', { name: 'Compensation' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Middle Co',
+      'Best Co',
+      'Target Only Co',
+      'Nothing Co',
+    ])
+  })
+
+  it('filters the compensation column by its text', () => {
+    const applications = [
+      application('Short Co', {
+        compensation: compensation('AUD', { advertised: [100_000, 115_000], expected: 130_000 }),
+      }),
+      application('Ample Co', {
+        compensation: compensation('AUD', { expected: 150_000, offered: 170_000 }),
+      }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Compensation column' }), {
+      target: { value: 'below target' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Short Co'])
   })
 
   it('offers company and source datalist suggestions', () => {

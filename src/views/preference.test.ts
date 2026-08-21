@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { RATING_IDS } from '../domain'
+import { emptyCompensation, RATING_IDS } from '../domain'
 import type { Application, Rating, RatingDimensionId, StateId } from '../domain'
 import { focusGroups } from './focusGroups'
 import {
@@ -42,6 +42,7 @@ function application(scores: Scores): Application {
     state_events: [],
     attachments: [],
     ratings: ratings(scores),
+    compensation: emptyCompensation(),
     created_at: at,
     updated_at: at,
   }

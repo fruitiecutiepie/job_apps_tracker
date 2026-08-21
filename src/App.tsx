@@ -56,6 +56,13 @@ import {
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
 import { RatingFields } from './RatingFields'
+import { CompensationFields } from './CompensationFields'
+import {
+  compensationFromValues,
+  compensationValuesFor,
+  firstCompensationProblem,
+  type CompensationValues,
+} from './compensation'
 import { clearedRatingDimensions, ratingDrafts, ratingValuesFor, type RatingValues } from './ratings'
 import { fromDateTimeInput, toDateTimeInput } from './dateInput'
 import { InviteFields } from './InviteFields'
@@ -211,6 +218,7 @@ interface EditorValues {
   deadlineAt: string
   notes: string
   ratings: RatingValues
+  compensation: CompensationValues
 }
 
 interface StagedAttachmentFile {
@@ -250,6 +258,7 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
     deadlineAt: toDateTimeInput(application?.deadline_at ?? null),
     notes: application?.notes ?? '',
     ratings: ratingValuesFor(application),
+    compensation: compensationValuesFor(application),
   }))
   const [invites, setInvites] = useState<InviteRow[]>(() => inviteRowsFor(application))
   const [keptAttachments] = useState<Attachment[]>(() => application?.attachments ?? [])
@@ -329,6 +338,11 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
             const inviteProblem = firstInviteProblem(invites)
             if (inviteProblem) {
               setFormError(inviteProblem)
+              return
+            }
+            const compensationProblem = firstCompensationProblem(values.compensation)
+            if (compensationProblem) {
+              setFormError(compensationProblem)
               return
             }
             setSaving(true)
@@ -444,6 +458,21 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
                 update('ratings', { ...values.ratings, [dimension]: value })
               }
               values={values.ratings}
+            />
+            <CompensationFields
+              onAmountChange={(stage, bound, value) =>
+                update('compensation', {
+                  ...values.compensation,
+                  stages: {
+                    ...values.compensation.stages,
+                    [stage]: { ...values.compensation.stages[stage], [bound]: value },
+                  },
+                })
+              }
+              onCurrencyChange={(currency) =>
+                update('compensation', { ...values.compensation, currency })
+              }
+              values={values.compensation}
             />
             <div className="field field--wide attachment-field">
               <span>Attachments</span>
@@ -946,6 +975,7 @@ export default function App() {
               next_action_at: values.nextAction.trim() ? fromDateTimeInput(values.nextActionAt) : null,
               deadline_at: fromDateTimeInput(values.deadlineAt),
               notes: values.notes || null,
+              compensation: compensationFromValues(values.compensation),
             }
             const now = new Date()
             if (editor.mode === 'add') {
@@ -970,6 +1000,7 @@ export default function App() {
                 deadline_at: input.deadline_at,
                 notes: input.notes,
                 attachments,
+                compensation: input.compensation,
               }, now)
               next = updateApplicationStateEvents(next, editor.id, invites, now)
               next = updateApplicationRatings(next, editor.id, ratingDrafts(values.ratings), now)

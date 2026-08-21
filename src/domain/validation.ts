@@ -1,9 +1,17 @@
 import { safeAttachmentFilename } from './attachmentPaths'
+import {
+  COMPENSATION_CONFIG,
+  emptyCompensation,
+  isCompensationAmount,
+  isCurrencyCode,
+} from './compensation'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
 import { isStateId, stateRank } from './states'
 import type {
   Application,
   Attachment,
+  Compensation,
+  CompensationBand,
   Rating,
   StageNote,
   StateEvent,
@@ -121,6 +129,71 @@ function historyValue(
     addError(errors, path, "must end in the application's current state")
   }
   return history
+}
+
+function compensationBandValue(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+): CompensationBand | null {
+  if (value === undefined || value === null) return null
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object or null')
+    return null
+  }
+
+  const { min, max } = value
+  const minOk = isCompensationAmount(min)
+  const maxOk = isCompensationAmount(max)
+  if (!minOk) addError(errors, `${path}.min`, 'must be a whole positive amount')
+  if (!maxOk) addError(errors, `${path}.max`, 'must be a whole positive amount')
+  if (!minOk || !maxOk) return null
+  if (max < min) {
+    addError(errors, `${path}.max`, 'must not be below min')
+    return null
+  }
+
+  return { min, max }
+}
+
+/**
+ * Canonicalizes the compensation record. Missing canonicalizes to an empty record the way a
+ * missing `ratings` canonicalizes to `[]`; a currency with no amount behind it is dropped,
+ * because a bare code says nothing; and an amount with no currency is an error, because a
+ * number whose unit is unknown cannot be read at all.
+ */
+function compensationValue(value: unknown, path: string, errors: ValidationError[]): Compensation {
+  const record = emptyCompensation()
+  if (value === undefined || value === null) return record
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object')
+    return record
+  }
+
+  let currency: string | null = null
+  let currencyReported = false
+  if (value.currency !== undefined && value.currency !== null && value.currency !== '') {
+    if (isCurrencyCode(value.currency)) {
+      currency = value.currency.trim().toUpperCase()
+    } else {
+      addError(errors, `${path}.currency`, 'must be a three-letter code')
+      currencyReported = true
+    }
+  }
+
+  for (const { id } of COMPENSATION_CONFIG) {
+    record[id] = compensationBandValue(value[id], `${path}.${id}`, errors)
+  }
+
+  const hasAmount = COMPENSATION_CONFIG.some(({ id }) => record[id] !== null)
+  if (hasAmount && currency === null) {
+    // Already reported once as malformed; saying it twice about one value is noise.
+    if (!currencyReported) addError(errors, `${path}.currency`, 'is required when an amount is set')
+    return record
+  }
+
+  record.currency = hasAmount ? currency : null
+  return record
 }
 
 function ratingValue(value: unknown, path: string, errors: ValidationError[]): Rating | null {
@@ -458,6 +531,10 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     state_events: stateEventsValue(value.state_events, `${path}.state_events`, errors),
     attachments: attachmentsValue(value.attachments, `${path}.attachments`, errors),
     ratings: ratingsValue(value.ratings, `${path}.ratings`, errors),
+    // This validator runs on load, save, AND export, and it rebuilds the object from
+    // scratch. Leaving a field out of this literal type-checks and passes every mutation
+    // test, then silently deletes the data on the next save. Nothing may be omitted here.
+    compensation: compensationValue(value.compensation, `${path}.compensation`, errors),
     created_at: value.created_at,
     updated_at: value.updated_at,
   }

@@ -15,6 +15,8 @@ import {
   createEmptyDocument,
   createUuidV7,
   editApplication,
+  emptyCompensation,
+  hasCompensationAmount,
   indexesAreStale,
   isSafeArchiveAttachmentPath,
   loadTrackerDocument,
@@ -45,8 +47,15 @@ import {
   updateApplicationStageNotes,
   updateApplicationStateEvents,
   validateTrackerDocument,
+  COMPENSATION_STAGE_IDS,
 } from './index'
-import type { Application, RatingDimensionId, RatingDraft, TrackerDocument } from './index'
+import type {
+  Application,
+  Compensation,
+  RatingDimensionId,
+  RatingDraft,
+  TrackerDocument,
+} from './index'
 import { MemoryTrackerStore } from './storage'
 
 const REFERENCE = new Date('2026-08-14T12:00:00+10:00')
@@ -785,6 +794,239 @@ describe('preference ratings', () => {
 
     expect(scored.ratings).toHaveLength(RATING_IDS.length)
     expect(rebuildIndexes([scored]).search_text[plain.id]).toBe(
+      rebuildIndexes([plain]).search_text[plain.id],
+    )
+  })
+})
+
+describe('compensation', () => {
+  const PAID = new Date('2026-08-16T02:00:00.000Z')
+
+  function paid(compensation: Partial<Compensation> = {}): Application {
+    return createApplication(
+      { company: 'Northwind', compensation: { ...emptyCompensation(), ...compensation } },
+      PAID,
+    )
+  }
+
+  /**
+   * First test written for this field, and the one that matters most. `applicationValue`
+   * rebuilds a canonical object from scratch and runs on load, save, and export, so omitting
+   * compensation there type-checks, lints, builds, and passes every mutation test while
+   * silently deleting the data on the next save. Only a round trip catches that.
+   */
+  it('round-trips compensation through export and import', () => {
+    const document = createDemoDocument(REFERENCE)
+    const roundTrip = parseTrackerDocument(serializeTrackerDocument(document))
+
+    expect(roundTrip.applications.map((application) => application.compensation)).toEqual(
+      document.applications.map((application) => application.compensation),
+    )
+    expect(
+      document.applications.some((application) => hasCompensationAmount(application.compensation)),
+    ).toBe(true)
+    // A band, a point value, and a full three-stage progression all have to survive, not
+    // just the shape: a reader that dropped `max` would still pass a shape-only assertion.
+    const bands = document.applications.flatMap((application) =>
+      COMPENSATION_STAGE_IDS.flatMap((stage) => {
+        const band = application.compensation[stage]
+        return band ? [band] : []
+      }),
+    )
+    expect(bands.some((band) => band.min !== band.max)).toBe(true)
+    expect(bands.some((band) => band.min === band.max)).toBe(true)
+    expect(
+      document.applications.some((application) =>
+        COMPENSATION_STAGE_IDS.every((stage) => application.compensation[stage] !== null),
+      ),
+    ).toBe(true)
+  })
+
+  it('starts a new application with an empty record rather than a missing one', () => {
+    expect(createApplication({ company: 'Northwind' }, PAID).compensation).toEqual({
+      currency: null,
+      advertised: null,
+      expected: null,
+      offered: null,
+    })
+  })
+
+  it('stores a band and a point value side by side and upper-cases the currency', () => {
+    const application = paid({
+      currency: 'aud',
+      advertised: { min: 130_000, max: 150_000 },
+      offered: { min: 152_000, max: 152_000 },
+    })
+
+    expect(application.compensation).toEqual({
+      currency: 'AUD',
+      advertised: { min: 130_000, max: 150_000 },
+      expected: null,
+      offered: { min: 152_000, max: 152_000 },
+    })
+  })
+
+  it('drops a currency with no amount to stand on', () => {
+    // The same rule as a next-action date: a qualifier may not survive the thing it
+    // qualifies, because a bare "AUD" says nothing at all.
+    expect(paid({ currency: 'AUD' }).compensation.currency).toBeNull()
+    expect(hasCompensationAmount(paid({ currency: 'AUD' }).compensation)).toBe(false)
+  })
+
+  it('requires a currency once any amount is set', () => {
+    for (const stage of COMPENSATION_STAGE_IDS) {
+      expect(() => paid({ [stage]: { min: 100_000, max: 100_000 } })).toThrow(/currency is required/)
+    }
+  })
+
+  it('rejects an amount that is not a whole positive number', () => {
+    for (const min of [0, -1, 1000.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => paid({ currency: 'AUD', expected: { min, max: 200_000 } })).toThrow(
+        /whole positive amounts/,
+      )
+    }
+    expect(() =>
+      paid({ currency: 'AUD', expected: { min: '100000' as unknown as number, max: 200_000 } }),
+    ).toThrow(/whole positive amounts/)
+  })
+
+  it('rejects a band that ends below where it starts', () => {
+    expect(() => paid({ currency: 'AUD', advertised: { min: 150_000, max: 130_000 } })).toThrow(
+      /below its start/,
+    )
+    // Equal ends are the point value, not an error.
+    expect(paid({ currency: 'AUD', advertised: { min: 150_000, max: 150_000 } })).toBeTruthy()
+  })
+
+  it('rejects a currency that is not a three-letter code', () => {
+    for (const currency of ['A$', 'DOLLARS', 'AU', 'A1D']) {
+      expect(() => paid({ currency, offered: { min: 1, max: 1 } })).toThrow(
+        /three-letter code/,
+      )
+    }
+  })
+
+  it('replaces the whole record through an edit and leaves the rest of the application alone', () => {
+    const application = paid({ currency: 'AUD', advertised: { min: 130_000, max: 150_000 } })
+    const later = new Date('2026-08-18T02:00:00.000Z')
+    const edited = editApplication(
+      application,
+      {
+        compensation: {
+          currency: 'AUD',
+          advertised: { min: 130_000, max: 150_000 },
+          expected: { min: 145_000, max: 145_000 },
+          offered: { min: 152_000, max: 152_000 },
+        },
+      },
+      later,
+    )
+
+    expect(edited.compensation.offered).toEqual({ min: 152_000, max: 152_000 })
+    expect(edited.updated_at).toBe(later.toISOString())
+    // No history is appended: this is an ordinary field edit, not a state change.
+    expect(edited.state_history).toEqual(application.state_history)
+    // An edit that does not mention compensation leaves it exactly as it was.
+    expect(editApplication(edited, { notes: 'Called back' }, later).compensation).toBe(
+      edited.compensation,
+    )
+  })
+
+  it('clears the record back to empty when an edit supplies an empty one', () => {
+    const application = paid({ currency: 'AUD', offered: { min: 152_000, max: 152_000 } })
+    const cleared = editApplication(application, { compensation: emptyCompensation() }, PAID)
+
+    expect(cleared.compensation).toEqual(emptyCompensation())
+  })
+
+  it('canonicalizes a missing compensation record on import', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({
+      schema_version: 1,
+      applications: [
+        {
+          id: '018f0000-0000-7000-8000-000000000001',
+          company: 'Northwind',
+          state: 'applied',
+          created_at: '2026-08-01T00:00:00.000Z',
+          updated_at: '2026-08-01T00:00:00.000Z',
+        },
+      ],
+    }))
+
+    expect(parsed.applications[0]!.compensation).toEqual(emptyCompensation())
+  })
+
+  it('reports the path of each invalid imported compensation value', () => {
+    const result = validateTrackerDocument({
+      applications: [
+        {
+          id: '018f0000-0000-7000-8000-000000000001',
+          company: 'Northwind',
+          state: 'applied',
+          created_at: '2026-08-01T00:00:00.000Z',
+          updated_at: '2026-08-01T00:00:00.000Z',
+          compensation: {
+            currency: 'dollars',
+            advertised: { min: 150_000, max: 130_000 },
+            expected: { min: 0, max: 10 },
+            offered: 'lots',
+          },
+        },
+      ],
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.ok ? [] : result.errors.map(({ path }) => path)).toEqual([
+      'applications[0].compensation.currency',
+      'applications[0].compensation.advertised.max',
+      'applications[0].compensation.expected.min',
+      'applications[0].compensation.offered',
+    ])
+  })
+
+  it('rejects an imported amount with no currency to read it in', () => {
+    const result = validateTrackerDocument({
+      applications: [
+        {
+          id: '018f0000-0000-7000-8000-000000000001',
+          company: 'Northwind',
+          state: 'applied',
+          created_at: '2026-08-01T00:00:00.000Z',
+          updated_at: '2026-08-01T00:00:00.000Z',
+          compensation: { currency: null, offered: { min: 152_000, max: 152_000 } },
+        },
+      ],
+    })
+
+    expect(result.ok).toBe(false)
+    expect(result.ok ? [] : result.errors).toEqual([
+      {
+        path: 'applications[0].compensation.currency',
+        message: 'is required when an amount is set',
+      },
+    ])
+  })
+
+  it('keeps compensation out of the search index', () => {
+    // Same reasoning as ratings: these are numbers, not prose. Indexing them would make a
+    // search for "offered" match every application that has one, and "150" match any
+    // application holding 150 anywhere in a band.
+    const plain = createApplication({ company: 'Northwind', notes: 'Nothing yet' }, PAID)
+    const priced = editApplication(
+      plain,
+      {
+        compensation: {
+          currency: 'AUD',
+          advertised: { min: 130_000, max: 150_000 },
+          expected: null,
+          offered: null,
+        },
+      },
+      PAID,
+    )
+
+    expect(hasCompensationAmount(priced.compensation)).toBe(true)
+    expect(rebuildIndexes([priced]).search_text[plain.id]).toBe(
       rebuildIndexes([plain]).search_text[plain.id],
     )
   })

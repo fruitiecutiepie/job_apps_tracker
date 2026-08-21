@@ -1,3 +1,9 @@
+import {
+  COMPENSATION_CONFIG,
+  currencyCode,
+  emptyCompensation,
+  isCompensationAmount,
+} from './compensation'
 import { createUuidV7 } from './id'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
 import { isStateId, stateRank } from './states'
@@ -7,6 +13,8 @@ import type {
   ApplicationEdits,
   ApplicationInput,
   Attachment,
+  Compensation,
+  CompensationBand,
   Rating,
   RatingDimensionId,
   RatingDraft,
@@ -53,6 +61,41 @@ function optionalTimestamp(value: string | null | undefined): string | null {
   return timestamp(candidate)
 }
 
+function compensationBand(
+  value: CompensationBand | null | undefined,
+  label: string,
+): CompensationBand | null {
+  if (value === null || value === undefined) return null
+  if (!isCompensationAmount(value.min) || !isCompensationAmount(value.max)) {
+    throw new TypeError(`${label} pay must be whole positive amounts`)
+  }
+  if (value.max < value.min) throw new TypeError(`${label} pay must not end below its start`)
+  return { min: value.min, max: value.max }
+}
+
+/**
+ * Canonicalizes a whole compensation record. Unlike ratings and prep notes there are no
+ * per-record timestamps to preserve, so the record is simply rebuilt: that is what makes it
+ * safe in `ApplicationEdits` where those are not.
+ *
+ * A currency may not survive without an amount, the same rule as a next-action date and a
+ * blank action: a bare "AUD" says nothing. The reverse is an error rather than a silent drop,
+ * because a number whose unit is unknown is worse than no number at all.
+ */
+export function canonicalCompensation(value: Compensation | null | undefined): Compensation {
+  const record = emptyCompensation()
+  for (const { id, label } of COMPENSATION_CONFIG) {
+    record[id] = compensationBand(value?.[id], label)
+  }
+  const currency = currencyCode(value?.currency)
+  const hasAmount = COMPENSATION_CONFIG.some(({ id }) => record[id] !== null)
+  if (hasAmount && !currency) {
+    throw new TypeError('A currency is required when an amount is set')
+  }
+  record.currency = hasAmount ? currency : null
+  return record
+}
+
 export function createAttachmentMetadata(
   filename: string,
   mime: string | null,
@@ -97,6 +140,7 @@ export function createApplication(
     state_events: [],
     attachments: [],
     ratings: [],
+    compensation: canonicalCompensation(input.compensation),
     created_at: createdAt,
     updated_at: createdAt,
   }
@@ -127,6 +171,10 @@ export function editApplication(
       'deadline_at' in edits ? optionalTimestamp(edits.deadline_at) : application.deadline_at,
     notes: 'notes' in edits ? optionalText(edits.notes) : application.notes,
     attachments: 'attachments' in edits ? edits.attachments ?? [] : application.attachments,
+    compensation:
+      'compensation' in edits
+        ? canonicalCompensation(edits.compensation)
+        : application.compensation,
     updated_at: timestamp(at),
   }
 }

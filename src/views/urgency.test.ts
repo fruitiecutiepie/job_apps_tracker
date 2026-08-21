@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { emptyCompensation } from '../domain'
 import type { Application, StateEvent, StateId } from '../domain'
 import {
   ACTION_HORIZON_DAYS,
@@ -40,6 +41,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
     state_events: [],
     attachments: [],
     ratings: [],
+    compensation: emptyCompensation(),
     // Inside the staleness grace period, so fixtures start with no pressure at all.
     updated_at: at(-1),
     created_at: at(-40),
