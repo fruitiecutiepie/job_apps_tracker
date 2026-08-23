@@ -1,6 +1,7 @@
-import { ExternalLink, X } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { CornerDownLeft, ExternalLink, X } from 'lucide-react'
 import type { RefCallback } from 'react'
-import { MarkdownNotes } from './markdown'
+import { CAPTURE_SECTION, MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
 import type { StageNote, StageNoteEditSession, StateId } from './domain'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
@@ -21,8 +22,18 @@ interface StageNotePaneProps {
   onClose: (() => void) | null
   query: string
   matchBase: number
+  /** Where the captured lines' matches start, after this stage's written note. */
+  heardMatchBase: number
   currentMatch: number | null
+  /**
+   * The lines captured during this stage, as Markdown to read. Derived from what is stored
+   * rather than from a draft: a capture is written the moment it is entered, so there is no
+   * version of it here that Save could still change.
+   */
+  captured: string
   onChange: (value: string) => void
+  /** Files one line under the note's capture section and stores it there and then. */
+  onCapture: (line: string) => Promise<void>
   onToggleEditing: () => void
   onOpenInEditor: () => void
   onStopExternal: () => void
@@ -47,14 +58,49 @@ export function StageNotePane({
   onClose,
   query,
   matchBase,
+  heardMatchBase,
   currentMatch,
+  captured,
   onChange,
+  onCapture,
   onToggleEditing,
   onOpenInEditor,
   onStopExternal,
   paneRef,
   formatDate,
 }: StageNotePaneProps) {
+  const [line, setLine] = useState('')
+  const [capturing, setCapturing] = useState(false)
+  const logRef = useRef<HTMLDivElement>(null)
+
+  /**
+   * Holds the newest line in view as captures arrive. The log is short by design, so
+   * without this a conversation would scroll its own latest answer out of sight.
+   */
+  useEffect(() => {
+    const log = logRef.current
+    // Guarded: jsdom has no layout, so scrollHeight is 0 and there is nothing to hold.
+    if (log) log.scrollTop = log.scrollHeight
+  }, [captured])
+
+  /**
+   * The line is cleared once the capture has been committed rather than optimistically,
+   * so a slow write cannot be typed over halfway through. A failed write surfaces as the
+   * app's own notice and leaves the line in the note, which is where it can be recovered
+   * from — losing what an interviewer just said is the one outcome worth ruling out.
+   */
+  const capture = async () => {
+    const text = line.trim()
+    if (!text || capturing) return
+    setCapturing(true)
+    try {
+      await onCapture(text)
+      setLine('')
+    } finally {
+      setCapturing(false)
+    }
+  }
+
   return (
     <div
       className={`panel__pane${isFocused ? ' panel__pane--focused' : ''}`}
@@ -156,8 +202,70 @@ export function StageNotePane({
             source={body}
           />
         ) : (
-          <p className="stage-note__empty">No notes for this stage yet.</p>
+          <p className="stage-note__empty">
+            {captured
+              ? 'Nothing was written for this stage before the conversation.'
+              : 'No notes for this stage yet.'}
+          </p>
         )}
+
+        {/*
+          What you were told is pinned below what you prepared, and stays on screen however
+          far the note above it scrolls: it is the part of a stage you are still adding to.
+          It shows in every mode, including while the note is being written or is out with
+          an external editor, because captures are a field of their own now — there is no
+          write for a second caret here to race.
+        */}
+        <div className="stage-note__dock">
+          {captured ? (
+            <div
+              aria-label={`${CAPTURE_SECTION} in ${label}`}
+              className="stage-note__log"
+              ref={logRef}
+              role="log"
+            >
+              <MarkdownNotes
+                currentMatch={currentMatch}
+                foldAll={false}
+                label={`${label} captures`}
+                matchBase={heardMatchBase}
+                query={query}
+                source={captured}
+              />
+            </div>
+          ) : null}
+          <div className="stage-note__capture">
+            <label className="field">
+              <span className="sr-only">Capture a line in {label}</span>
+              <input
+                data-capture-focus={isFocused ? 'true' : undefined}
+                // Never disabled, not even mid-write: taking the caret away from someone
+                // typing what they are being told is worse than a write it has to wait for.
+                onChange={(event) => setLine(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key !== 'Enter') return
+                  // The panel is one form around every stage, so Enter would otherwise
+                  // save the lot and close it in the middle of a conversation.
+                  event.preventDefault()
+                  void capture()
+                }}
+                placeholder={`What did they say? Enter files it under ${CAPTURE_SECTION}`}
+                type="text"
+                value={line}
+              />
+            </label>
+            <button
+              aria-label={`Capture this line in ${label}`}
+              className="button button--quiet stage-note__mode"
+              disabled={capturing || !line.trim()}
+              onClick={() => void capture()}
+              type="button"
+            >
+              <CornerDownLeft aria-hidden="true" size={14} />
+              Capture
+            </button>
+          </div>
+        </div>
       </section>
     </div>
   )

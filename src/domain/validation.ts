@@ -12,6 +12,7 @@ import type {
   Attachment,
   Compensation,
   CompensationBand,
+  HeardEntry,
   Rating,
   StageNote,
   StateEvent,
@@ -251,13 +252,55 @@ function ratingsValue(value: unknown, path: string, errors: ValidationError[]): 
   return ratings.sort((left, right) => ratingRank(left.dimension) - ratingRank(right.dimension))
 }
 
+function heardEntryValue(value: unknown, path: string, errors: ValidationError[]): HeardEntry | null {
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object')
+    return null
+  }
+  if (!nonBlank(value.id)) addError(errors, `${path}.id`, 'is required')
+  if (!nonBlank(value.body)) addError(errors, `${path}.body`, 'is required')
+  if (!validTimestamp(value.at)) {
+    addError(errors, `${path}.at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (!nonBlank(value.id) || !nonBlank(value.body) || !validTimestamp(value.at)) return null
+
+  return { id: value.id.trim(), body: value.body.trim(), at: value.at }
+}
+
+/**
+ * Captured lines, oldest first. Absent is empty rather than an error: a document written
+ * before captures existed is a valid document with none, not a broken one.
+ */
+function heardValue(value: unknown, path: string, errors: ValidationError[]): HeardEntry[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) {
+    addError(errors, path, 'must be an array')
+    return []
+  }
+
+  const entries = value
+    .map((entry, index) => heardEntryValue(entry, `${path}[${index}]`, errors))
+    .filter((entry): entry is HeardEntry => entry !== null)
+
+  const seen = new Set<string>()
+  entries.forEach((entry, index) => {
+    if (seen.has(entry.id)) addError(errors, `${path}[${index}].id`, 'duplicates another captured line')
+    seen.add(entry.id)
+  })
+
+  return entries.sort((left, right) => left.at.localeCompare(right.at))
+}
+
 function stageNoteValue(value: unknown, path: string, errors: ValidationError[]): StageNote | null {
   if (!isRecord(value)) {
     addError(errors, path, 'must be an object')
     return null
   }
   if (!isStateId(value.state)) addError(errors, `${path}.state`, 'is invalid')
-  if (!nonBlank(value.body)) addError(errors, `${path}.body`, 'is required')
+  const heard = heardValue(value.heard, `${path}.heard`, errors)
+  // A note carrying captured lines is a real note with nothing prepared in it, so a blank
+  // body is only missing when there is nothing else in the note either.
+  if (heard.length === 0 && !nonBlank(value.body)) addError(errors, `${path}.body`, 'is required')
   if (!validTimestamp(value.created_at)) {
     addError(errors, `${path}.created_at`, 'must be a timezone-qualified ISO-8601 timestamp')
   }
@@ -266,7 +309,7 @@ function stageNoteValue(value: unknown, path: string, errors: ValidationError[])
   }
   if (
     !isStateId(value.state)
-    || !nonBlank(value.body)
+    || (heard.length === 0 && !nonBlank(value.body))
     || !validTimestamp(value.created_at)
     || !validTimestamp(value.updated_at)
   ) {
@@ -275,7 +318,8 @@ function stageNoteValue(value: unknown, path: string, errors: ValidationError[])
 
   return {
     state: value.state,
-    body: value.body.trim(),
+    body: typeof value.body === 'string' ? value.body.trim() : '',
+    heard,
     created_at: value.created_at,
     updated_at: value.updated_at,
   }

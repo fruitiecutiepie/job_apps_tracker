@@ -70,7 +70,11 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       application.notes,
       application.next_action,
       STATE_LABELS[application.state],
-      ...application.stage_notes.map((note) => `${STATE_LABELS[note.state]} ${note.body}`),
+      ...application.stage_notes.map((note) =>
+        [STATE_LABELS[note.state], note.body, ...note.heard.map((entry) => entry.body)]
+          .filter(Boolean)
+          .join(' '),
+      ),
       ...application.state_events.map((event) =>
         [STATE_LABELS[event.state], event.summary, event.location].filter(Boolean).join(' '),
       ),

@@ -30,7 +30,14 @@ Finding text in the prep notes panel — counting matches across every stage, st
 into tabs that are not rendered and wrapping, opening a fold to show a hit and closing it again
 afterwards, and Escape closing the find bar before the panel — is covered by the app integration
 tests, along with the tab bar, its arrow keys, the outline and its hierarchy, quick open, and
-splitting into two panes. The sticky headers,
+splitting into two panes.
+
+Capturing what you were told — Enter storing a line without Save and without submitting the panel,
+the line reading in the docked log and not in the prep note above it, the log and its capture box
+staying writable while the prep note is being edited, captures surviving the prep note being
+cleared, and Ctrl+K reaching the focused pane's box — is covered by the app integration tests.
+Reading captured records back as a note, a heading per day, and the order they were said in are
+covered by `src/markdown/capture.test.ts`. The sticky headers,
 the breadcrumb trail, and the scroll to each hit need real layout, so they stay manual below.
 
 ## Manual browser-only checks
@@ -107,6 +114,15 @@ test cannot judge reliably:
    the note opening twice. Close one pane, then **Unsplit**, and confirm the other note is untouched.
    Press `Ctrl`/`Cmd+B` and confirm the outline collapses away, the notes take the width, and it
    comes back. On a narrow window, confirm a split panel stacks its panes instead of squeezing them.
+   Scroll a long note and confirm the **Heard** dock stays pinned to the bottom of its own pane
+   with the note scrolling under it, opaque against both a plain stage and the tinted current one.
+   Type a line, press Enter, and confirm it appears at the end of the log under today's date, that
+   the notice reports it, and that closing the panel with Escape and reopening it shows the line
+   still there. Capture a second line and confirm it joins the same day rather than repeating the
+   date. Capture enough lines to fill the log and confirm it scrolls within its own cap, holding
+   the newest line in view, with the day heading sticking to the top of it and the prep note above
+   still readable. Select **Edit** on that stage and confirm the log and its box stay put and
+   still work while the prep note is in the editor.
 8. In the prep notes panel, press `Ctrl`/`Cmd+F` and confirm the browser's own find does not open.
    Search for text that appears in more than one stage, and confirm the count reads `1 of N`, every
    hit is highlighted, the current one stands out, and each tab shows a count of the matches in

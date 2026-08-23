@@ -41,6 +41,7 @@ import {
   unpackTrackerArchive,
   clearApplicationRating,
   updateApplication,
+  updateApplicationStageCapture,
   updateApplicationStageNotes,
   updateApplicationRatings,
   updateApplicationStateEvents,
@@ -701,6 +702,20 @@ export default function App() {
     ? tracker.applications.find((application) => application.id === stageNotesId) ?? null
     : null
 
+  /**
+   * Stores one stage's note on its own, for the two writes that do not go through Save:
+   * a file coming back from an external editor, and a line captured while reading. Only
+   * the stage named is touched, so the other stages' drafts are left to Save.
+   */
+  const commitStageNote = async (state: StateId, body: string, message: string) => {
+    if (!stageNotesApplication) return
+    const current = trackerRef.current ?? tracker
+    await commit(
+      updateApplicationStageNotes(current, stageNotesApplication.id, [{ state, body }], new Date()),
+      message,
+    )
+  }
+
   const rememberDialogOpener = (opener?: HTMLElement) => {
     const activeElement = document.activeElement
     dialogOpenerRef.current = opener
@@ -1023,18 +1038,21 @@ export default function App() {
         <StageNotesDialog
           application={stageNotesApplication}
           onClose={() => setStageNotesId(null)}
-          onExternalChange={async (state: StateId, body: string) => {
+          onCapture={async (state: StateId, line: string) => {
             const current = trackerRef.current ?? tracker
             await commit(
-              updateApplicationStageNotes(
+              updateApplicationStageCapture(
                 current,
                 stageNotesApplication.id,
-                [{ state, body }],
+                state,
+                line,
                 new Date(),
               ),
-              `Prep notes saved from your editor.`,
+              'Note captured.',
             )
           }}
+          onExternalChange={(state: StateId, body: string) =>
+            commitStageNote(state, body, 'Prep notes saved from your editor.')}
           onSave={async (drafts: StageNoteDraft[]) => {
             const current = trackerRef.current ?? tracker
             await commit(

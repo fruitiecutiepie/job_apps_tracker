@@ -15,6 +15,7 @@ import {
 import { QuickOpen, type QuickOpenEntry } from './QuickOpen'
 import { formatShortDate } from './views/viewUtils'
 import {
+  capturedMarkdown,
   buildSections,
   outlineTree,
   parseMarkdown,
@@ -45,6 +46,12 @@ interface StageNotesDialogProps {
   onSave: (drafts: StageNoteDraft[]) => Promise<void>
   /** Commits a change that arrived from an external editor, which has no Save button. */
   onExternalChange: (state: StateId, body: string) => Promise<void>
+  /**
+   * Stores one captured line against a stage. Unlike the drafts Save writes, a captured
+   * line is stored the moment it is entered: it is typed mid-conversation, where Escape
+   * and a closed tab are likelier than a deliberate Save.
+   */
+  onCapture: (state: StateId, line: string) => Promise<void>
 }
 
 function errorMessage(error: unknown): string {
@@ -131,6 +138,7 @@ export function StageNotesDialog({
   onClose,
   onSave,
   onExternalChange,
+  onCapture,
 }: StageNotesDialogProps) {
   const dialogRef = useRef<HTMLElement>(null)
   const [drafts, setDrafts] = useState<Partial<Record<StateId, string>>>(() =>
@@ -266,6 +274,22 @@ export function StageNotesDialog({
     [application.stage_notes],
   )
 
+  /**
+   * Each stage's captured lines, read as one note. Derived from what is stored rather than
+   * from `drafts`, because a capture is written as it is typed: there is no unsaved version
+   * of it, and Save must not be able to put one back the way it was.
+   */
+  const capturedByState = useMemo(
+    () =>
+      new Map(
+        application.stage_notes.map((note) => [
+          note.state,
+          capturedMarkdown(note.heard, formatShortDate),
+        ]),
+      ),
+    [application.stage_notes],
+  )
+
   const toggleEditing = (state: StateId) => {
     setEditing((current) =>
       current.includes(state) ? current.filter((entry) => entry !== state) : [...current, state],
@@ -278,29 +302,36 @@ export function StageNotesDialog({
    * Where each stage's matches sit in one list running through the panel, in tab order,
    * so stepping through the find crosses from one stage's note into the next. Every
    * stage is searched, not only the one on screen: a match in a tab you are not looking
-   * at is the main thing a find is for. A stage open in the Markdown editor sits it out,
-   * because a textarea holds source and has no highlights to step onto.
+   * at is the main thing a find is for. A stage open in the Markdown editor sits its
+   * written note out, because a textarea holds source and has no highlights to step onto
+   * — but its captured lines are read the whole time and stay in the list.
+   *
+   * A stage is counted as it renders: the written note first, then the captures below it,
+   * with `written` recording where the second starts. Two separate notes on screen, and
+   * the panel numbers them the way the reader's eye runs down them.
    */
   const findMatches = useCallback(
     (value: string) => {
-      const perStage = new Map<StateId, { base: number; count: number }>()
+      const perStage = new Map<StateId, { base: number; count: number; written: number }>()
       const order: StateId[] = []
       let total = 0
       if (!value.trim()) return { perStage, order, total }
 
+      const countIn = (source: string) =>
+        source.trim() ? searchNote(buildSections(parseMarkdown(source)), value).count : 0
+
       for (const state of stages) {
-        if (editing.includes(state) && !sessions[state]) continue
-        const body = drafts[state] ?? ''
-        if (!body.trim()) continue
-        const { count } = searchNote(buildSections(parseMarkdown(body)), value)
+        const inEditor = editing.includes(state) && !sessions[state]
+        const written = inEditor ? 0 : countIn(drafts[state] ?? '')
+        const count = written + countIn(capturedByState.get(state) ?? '')
         if (count === 0) continue
-        perStage.set(state, { base: total, count })
+        perStage.set(state, { base: total, count, written })
         order.push(state)
         total += count
       }
       return { perStage, order, total }
     },
-    [drafts, editing, sessions, stages],
+    [capturedByState, drafts, editing, sessions, stages],
   )
 
   const matches = useMemo(() => findMatches(query), [findMatches, query])
@@ -420,6 +451,13 @@ export function StageNotesDialog({
       if (key === 'b') {
         event.preventDefault()
         setSidebarOpen((current) => !current)
+        return
+      }
+      if (key === 'k') {
+        event.preventDefault()
+        // Found in the DOM rather than by index, so this listener does not have to be
+        // rebound every time the focus moves from one pane to the other.
+        notesRef.current?.querySelector<HTMLInputElement>('[data-capture-focus]')?.focus()
       }
     }
     document.addEventListener('keydown', onKeyDown)
@@ -691,17 +729,21 @@ export function StageNotesDialog({
             >
               {openPanes.map((state, index) => {
                 const session = sessions[state]
+                const found = matches.perStage.get(state)
                 return (
                   <StageNotePane
                     body={drafts[state] ?? ''}
+                    captured={capturedByState.get(state) ?? ''}
                     currentMatch={currentMatch}
                     formatDate={formatShortDate}
+                    heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
                     isCurrentState={state === application.state}
                     isEditing={editing.includes(state) && !session}
                     isFocused={index === paneIndex}
                     key={state}
                     label={stateLabel(state)}
-                    matchBase={matches.perStage.get(state)?.base ?? 0}
+                    matchBase={found?.base ?? 0}
+                    onCapture={(line) => onCapture(state, line)}
                     onChange={(value) => setDraft(state, value)}
                     onClose={isSplit ? () => closePane(index) : null}
                     onFocus={() => setFocused(index)}

@@ -332,6 +332,12 @@ interface MarkdownNotesProps {
   matchBase?: number
   /** The ordinal of the match the find widget is sitting on, in that same list. */
   currentMatch?: number | null
+  /**
+   * Whether to offer the fold-all control. Off where the note is a pinned strip rather
+   * than a column to read: a permanent button costs a row that the note itself wants,
+   * and every point in it still folds on its own.
+   */
+  foldAll?: boolean
 }
 
 export function MarkdownNotes({
@@ -340,6 +346,7 @@ export function MarkdownNotes({
   query = '',
   matchBase = 0,
   currentMatch = null,
+  foldAll = true,
 }: MarkdownNotesProps) {
   const section = useMemo(() => buildSections(parseMarkdown(source)), [source])
   const keys = useMemo(() => collectFoldableKeys(section), [section])
@@ -376,7 +383,7 @@ export function MarkdownNotes({
 
   return (
     <div className="markdown">
-      {keys.length > 0 ? (
+      {foldAll && keys.length > 0 ? (
         <button
           aria-label={`${allCollapsed ? 'Expand' : 'Collapse'} all points in ${label}`}
           className="button button--quiet markdown__fold-all"

@@ -15,6 +15,7 @@ import type {
   Attachment,
   Compensation,
   CompensationBand,
+  HeardEntry,
   Rating,
   RatingDimensionId,
   RatingDraft,
@@ -189,9 +190,11 @@ function sortedStageNotes(notes: StageNote[]): StageNote[] {
 }
 
 /**
- * Replaces the whole set of stage prep notes with the supplied drafts. Blank bodies drop
- * their note, unchanged bodies keep their timestamps, and the application is returned
- * untouched when nothing changed.
+ * Replaces the prepared body of every stage named in the drafts. A blank body drops its
+ * note unless the note holds captured lines, which are never a draft and survive being
+ * saved over: clearing what you wrote for a stage does not unsay what you were told in it.
+ * Unchanged bodies keep their timestamps, and the application is returned untouched when
+ * nothing changed.
  */
 export function applyStageNotes(
   application: Application,
@@ -208,9 +211,10 @@ export function applyStageNotes(
     seen.add(draft.state)
 
     const body = draft.body.trim()
-    if (!body) continue
-
     const existing = stageNoteFor(application, draft.state)
+    const heard = existing?.heard ?? []
+    if (!body && heard.length === 0) continue
+
     if (existing && existing.body === body) {
       stageNotes.push(existing)
       continue
@@ -218,6 +222,7 @@ export function applyStageNotes(
     stageNotes.push({
       state: draft.state,
       body,
+      heard,
       created_at: existing?.created_at ?? updatedAt,
       updated_at: updatedAt,
     })
@@ -241,6 +246,43 @@ export function setStageNote(
   at: Date | string = new Date(),
 ): Application {
   return applyStageNotes(application, [{ state, body }], at)
+}
+
+/**
+ * Files one captured line against a stage, opening a note for that stage if it has none.
+ * Append-only: a captured line is a record of what was said at a moment, so there is no
+ * edit and no draft it could be rolled back from, and the id and `at` are minted here
+ * rather than supplied so two lines can never claim the same identity.
+ *
+ * A blank line is not a capture and returns the application untouched.
+ */
+export function captureStageNote(
+  application: Application,
+  state: StateId,
+  line: string,
+  at: Date | string = new Date(),
+): Application {
+  if (!isStateId(state)) throw new TypeError('State is invalid')
+  const body = line.trim()
+  if (!body) return application
+
+  const updatedAt = timestamp(at)
+  const entry: HeardEntry = { id: createUuidV7(new Date(updatedAt)), body, at: updatedAt }
+  const existing = stageNoteFor(application, state)
+  const note: StageNote = {
+    state,
+    body: existing?.body ?? '',
+    heard: [...(existing?.heard ?? []), entry],
+    created_at: existing?.created_at ?? updatedAt,
+    updated_at: updatedAt,
+  }
+
+  const kept = application.stage_notes.filter((current) => current.state !== state)
+  return {
+    ...application,
+    stage_notes: sortedStageNotes([...kept, note]),
+    updated_at: updatedAt,
+  }
 }
 
 /** The judgement recorded for one dimension of an application, when there is one. */
@@ -548,6 +590,25 @@ export function updateApplicationStageNotes(
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
   const updated = applyStageNotes(application, drafts, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+/** Files a captured line against one stage of one application. */
+export function updateApplicationStageCapture(
+  document: TrackerDocument,
+  id: string,
+  state: StateId,
+  line: string,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = captureStageNote(application, state, line, at)
   if (updated === application) return document
 
   return {

@@ -69,6 +69,9 @@
      (a --control row, --s3 above and below it, and a 1px bottom border) */
   --sidebar: 208px;
   --note-header: 49px;
+  /* How much of a pane the captured lines may take before they scroll on their own.
+     In rem so it holds the same number of lines as the text scales. */
+  --capture-log: 11rem;
 
   /* Page gutter */
   --gutter: clamp(var(--s4), 2vw, var(--s6));
@@ -1739,6 +1742,42 @@ tbody tr:hover {
   line-height: 1.5;
 }
 
+/*
+ * What was captured, and the line that captures more, docked together under the note.
+ * The log takes what it needs up to a cap and then scrolls itself, so a long
+ * conversation cannot push the note above it off the screen.
+ */
+.stage-note__dock {
+  display: grid;
+  gap: var(--s3);
+}
+
+.stage-note__log {
+  max-height: var(--capture-log);
+  overflow-y: auto;
+}
+
+/*
+ * The capture row: one line in, filed into the note being read. It reads as a dense
+ * toolbar rather than a form field, because it is answered mid-conversation and sits
+ * under a note rather than in a dialog full of inputs.
+ */
+.stage-note__capture {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.stage-note__capture .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.stage-note__capture .field input {
+  min-height: var(--control);
+  font-size: var(--t3);
+}
+
 .stage-note__hint code,
 .stage-note__external code,
 .markdown code {
@@ -2008,6 +2047,44 @@ tbody tr:hover {
 
 .panel__notes .stage-note > *:last-child {
   padding-bottom: var(--s4);
+}
+
+/*
+ * The dock pins to the bottom of its own scrolling pane, so what you were told stays on
+ * screen however far the note above it is scrolled, and can be added to from where the
+ * reading left off. Written as a child selector to outrank the padding above it, and
+ * opaque because the note scrolls underneath.
+ */
+.panel__notes .stage-note > .stage-note__dock {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.panel__notes .stage-note--current > .stage-note__dock {
+  background: var(--accent-weak);
+}
+
+/*
+ * The log scrolls inside the dock, so its own headings stick to the top of it rather
+ * than to the stage header they are nowhere near.
+ */
+.panel__notes .stage-note__log .markdown__heading--1,
+.panel__notes .stage-note__log .markdown__heading--2,
+.panel__notes .stage-note__log .markdown__heading--3 {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: var(--surface-2);
+}
+
+.panel__notes .stage-note--current .stage-note__log .markdown__heading--1,
+.panel__notes .stage-note--current .stage-note__log .markdown__heading--2,
+.panel__notes .stage-note--current .stage-note__log .markdown__heading--3 {
+  background: var(--accent-weak);
 }
 
 /*

@@ -257,6 +257,120 @@ describe('job applications tracker', () => {
     expect(screen.getByRole('button', { name: /Open Marble & Finch/ })).toBeInTheDocument()
   })
 
+  it('captures a line into the note being read and stores it without Save', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // Reading the prep note for the current stage, not editing it.
+    const notes = within(dialog).getByRole('tabpanel')
+    expect(within(notes).getByText('Cutting cycle time')).toBeInTheDocument()
+
+    await user.type(
+      within(notes).getByLabelText('Capture a line in Interview 2'),
+      'Two more rounds after this{Enter}',
+    )
+
+    // Enter files the line rather than submitting the panel around it, so the note is
+    // still open to be read from and captured into again.
+    expect(within(dialog).getByRole('tabpanel')).toBeInTheDocument()
+    expect(within(notes).getByLabelText('Capture a line in Interview 2')).toHaveValue('')
+    expect(screen.getByRole('status')).toHaveTextContent('Note captured.')
+
+    // It reads in the docked log, under today, and only there: the prep note above is
+    // a different field and does not gain a copy of it.
+    const log = within(notes).getByRole('log', { name: 'Heard in Interview 2' })
+    expect(within(log).getByText('Two more rounds after this')).toBeInTheDocument()
+    expect(within(notes).getAllByText('Two more rounds after this')).toHaveLength(1)
+
+    // Stored on capture: the panel was never saved and is still open.
+    const stored = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    const captured = stored.stage_notes.find((note) => note.state === 'interview_2')!
+    expect(captured.heard.map((entry) => entry.body)).toEqual([
+      'Team is 40 engineers across four squads',
+      'Platform work gets a fixed 20% of each quarter',
+      'Decision comes back by the end of next week',
+      'Two more rounds after this',
+    ])
+    // The prepared body it was captured against is untouched, and so are the other stages.
+    expect(captured.body).toContain('Cutting cycle time')
+    expect(captured.body).not.toContain('Two more rounds after this')
+    expect(stored.stage_notes.map((note) => note.state)).toEqual([
+      'interview_1',
+      'interview_2',
+      'offer',
+    ])
+  })
+
+  it('keeps captures on screen and writable while the prep note is being edited', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // Captures are their own field, so writing the prep note cannot race them: the log
+    // and its capture line stay put rather than being replaced by the editor.
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    expect(within(dialog).getByLabelText('Interview 2 prep notes')).toBeInTheDocument()
+
+    const log = within(dialog).getByRole('log', { name: 'Heard in Interview 2' })
+    expect(within(log).getByText('Team is 40 engineers across four squads')).toBeInTheDocument()
+
+    await user.type(
+      within(dialog).getByLabelText('Capture a line in Interview 2'),
+      'Offer decision sits with the VP{Enter}',
+    )
+
+    const stored = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    const captured = stored.stage_notes.find((note) => note.state === 'interview_2')!
+    expect(captured.heard.at(-1)?.body).toBe('Offer decision sits with the VP')
+  })
+
+  it('keeps what you were told when the prep note for that stage is cleared', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    await user.clear(within(dialog).getByLabelText('Interview 2 prep notes'))
+    await user.click(within(dialog).getByRole('button', { name: 'Save notes' }))
+
+    // A blank body drops a note that holds nothing else. This one was told things.
+    const stored = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    const captured = stored.stage_notes.find((note) => note.state === 'interview_2')!
+    expect(captured.body).toBe('')
+    expect(captured.heard).toHaveLength(3)
+  })
+
+  it('reaches the capture line of whichever pane is focused from the keyboard', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    await user.keyboard('{Control>}k{/Control}')
+    expect(within(dialog).getByLabelText('Capture a line in Interview 2')).toHaveFocus()
+
+    // Split, then read the second pane: capture follows the pane being read rather than
+    // the one that was open first.
+    await user.keyboard('{Control>}\\{/Control}')
+    await user.click(within(dialog).getByRole('heading', { name: 'Interview 1' }))
+    await user.keyboard('{Control>}k{/Control}')
+    expect(within(dialog).getByLabelText('Capture a line in Interview 1')).toHaveFocus()
+  })
+
   it('opens a tab per stage with the current one first, and can clear a stage', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

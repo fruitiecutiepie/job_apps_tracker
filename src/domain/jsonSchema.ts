@@ -91,14 +91,32 @@ export const TRACKER_JSON_SCHEMA = {
     },
     stage_note: {
       type: 'object',
-      description: 'Preparation notes recorded for one stage of an application.',
-      required: ['state', 'body', 'created_at', 'updated_at'],
+      description:
+        'Notes for one stage of an application: what was prepared, and what was captured'
+        + ' during it.',
+      required: ['state', 'body', 'heard', 'created_at', 'updated_at'],
       additionalProperties: false,
       properties: {
         state: { type: 'string', enum: [...STATE_IDS] },
-        body: { type: 'string', minLength: 1 },
+        // Blank when the stage holds captured lines and nothing was prepared for it.
+        body: { type: 'string' },
+        heard: {
+          type: 'array',
+          items: { $ref: '#/$defs/heard_entry' },
+        },
         created_at: { type: 'string' },
         updated_at: { type: 'string' },
+      },
+    },
+    heard_entry: {
+      type: 'object',
+      description: 'One line captured while a stage was being read.',
+      required: ['id', 'body', 'at'],
+      additionalProperties: false,
+      properties: {
+        id: { type: 'string', minLength: 1 },
+        body: { type: 'string', minLength: 1 },
+        at: { type: 'string' },
       },
     },
     state_event: {

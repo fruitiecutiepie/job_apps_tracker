@@ -399,6 +399,7 @@ describe('stage prep notes', () => {
       {
         state: 'interview_1',
         body: 'Ask about the panel',
+        heard: [],
         created_at: REFERENCE.toISOString(),
         updated_at: REFERENCE.toISOString(),
       },
@@ -427,6 +428,7 @@ describe('stage prep notes', () => {
     expect(stageNoteFor(rewritten, 'interview_1')).toEqual({
       state: 'interview_1',
       body: 'Second draft',
+      heard: [],
       created_at: REFERENCE.toISOString(),
       updated_at: LATER.toISOString(),
     })

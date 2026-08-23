@@ -216,6 +216,7 @@ describe('FocusView', () => {
           {
             state: 'applied',
             body: '## Panel\n\n- Design',
+            heard: [],
             created_at: localDate(-2),
             updated_at: localDate(-1),
           },
