@@ -4,6 +4,8 @@ export interface ApplicationsViewProps {
   applications: Application[];
   onOpen: (id: string) => void;
   onOpenStageNotes: (id: string) => void;
+  /** Clears the next action and logs it in the notes. Views without a task row ignore it. */
+  onCompleteAction: (id: string) => void;
 }
 
 export interface MovableApplicationsViewProps extends ApplicationsViewProps {

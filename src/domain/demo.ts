@@ -166,7 +166,12 @@ function demoEventId(index: number, order: number): string {
   return `018f0000-0000-7000-9000-${String(index + 1).padStart(9, '0')}${String(order + 1).padStart(3, '0')}`
 }
 
-const DEFAULT_DEMO_REFERENCE = '2026-08-14T02:00:00.000Z'
+/**
+ * The instant every demo timestamp is measured from. Exported so tests can pin the wall clock
+ * to it: the seeds are deterministic, but a view's notion of "today" is not, and the two drift
+ * apart until stale, overdue and calendar expectations quietly change meaning.
+ */
+export const DEFAULT_DEMO_REFERENCE = '2026-08-14T02:00:00.000Z'
 
 export function createDemoDocument(
   reference: Date = new Date(DEFAULT_DEMO_REFERENCE),

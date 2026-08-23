@@ -1,12 +1,13 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { RATING_LABELS, SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain";
+import { SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain";
 import type { Application, StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
+import { CompleteActionButton } from "./CompleteActionButton";
 import { InviteSummaries, inviteFilterText } from "./InviteSummaries";
 import { StageNotesButton } from "./StageNotesButton";
 import { compensationSortValue, compensationText } from "./compensation";
 import type { MovableApplicationsViewProps } from "./types";
-import { preferenceFor, type PreferenceScore } from "./preference";
+import { describePreference, preferenceFor, type PreferenceScore } from "./preference";
 import { rankByUrgency, type UrgencyRanking } from "./urgency";
 import { formatShortDate, parseTimestamp, upcomingStateEvent } from "./viewUtils";
 
@@ -98,31 +99,6 @@ function comparableValue(
   return (application[field] ?? "").toLocaleLowerCase();
 }
 
-/** At or below this, a judgement is worth naming even when the mean looks healthy. */
-const DEALBREAKER_SCORE = 2;
-
-/**
- * A score alone hides too much: 5,5,5,1 and 4,4,4,4 both average 4.00, and a high mean over
- * one rated dimension is not the same as a high mean over four. So the cell names the weakest
- * judgement and what is still missing, the same way the urgency column states its reason.
- */
-function preferenceText(preference: PreferenceScore | null): string {
-  if (!preference) return "";
-
-  const { score, lowest, unknown, unrated } = preference;
-  const parts = [score.toFixed(2)];
-
-  if (lowest && lowest.score <= DEALBREAKER_SCORE) {
-    parts.push(`${RATING_LABELS[lowest.dimension]} ${lowest.score}`);
-  }
-  if (unknown.length > 0) {
-    parts.push(`${unknown.map((dimension) => RATING_LABELS[dimension]).join(", ")} unknown`);
-  }
-  if (unrated.length > 0) parts.push(`${unrated.length} not rated`);
-
-  return parts.join(" · ");
-}
-
 function includesQuery(value: string, query: string): boolean {
   const needle = query.trim().toLocaleLowerCase();
   if (!needle) return true;
@@ -149,7 +125,7 @@ function matchesColumnFilters(
   const deadlineText = application.deadline_at ? formatShortDate(application.deadline_at) : "";
   if (!includesQuery(deadlineText, filters.deadline_at)) return false;
   if (!includesQuery(urgency.get(application.id)?.reason ?? "", filters.urgency)) return false;
-  if (!includesQuery(preferenceText(preference.get(application.id) ?? null), filters.preference)) {
+  if (!includesQuery(describePreference(preference.get(application.id) ?? null), filters.preference)) {
     return false;
   }
   if (!includesQuery(compensation.get(application.id) ?? "", filters.compensation)) return false;
@@ -201,6 +177,7 @@ export function TableView({
   applications,
   onOpen,
   onOpenStageNotes,
+  onCompleteAction,
   onMove,
 }: MovableApplicationsViewProps) {
   const [sortField, setSortField] = useState<SortField>("updated_at");
@@ -435,6 +412,11 @@ export function TableView({
                           {formatShortDate(application.next_action_at)}
                         </time>
                       ) : null}
+                      <CompleteActionButton
+                        application={application}
+                        onCompleteAction={onCompleteAction}
+                        variant="table"
+                      />
                     </>
                   ) : (
                     <span aria-label="Not set">—</span>
@@ -468,7 +450,7 @@ export function TableView({
                 <td>
                   {preferenceById.has(application.id) ? (
                     <span className="table-view__urgency">
-                      {preferenceText(preferenceById.get(application.id)!)}
+                      {describePreference(preferenceById.get(application.id)!)}
                     </span>
                   ) : (
                     <span aria-label="Not rated">—</span>

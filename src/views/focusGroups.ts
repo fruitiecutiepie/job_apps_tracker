@@ -1,6 +1,8 @@
 import { STATE_LABELS } from "../domain";
 import type { Application } from "../domain";
+import { preferenceFor } from "./preference";
 import {
+  SCORE_EPSILON,
   STALE_GRACE_DAYS,
   daysSinceLastMove,
   daysUntil,
@@ -134,9 +136,62 @@ function byCompany(left: FocusRow, right: FocusRow): number {
 }
 
 /**
+ * What the group has already decided about a row, so the comparator below reads as one
+ * chain rather than three passes over the same list.
+ */
+interface Entry {
+  row: FocusRow;
+  /** Days to the driving date; only a chronological group reads it. */
+  days: number;
+  /** The urgency score, or 0 for a finished application that was never ranked. */
+  score: number;
+  /** Derived here and used only for order — never folded into `score`. */
+  preference: number | null;
+}
+
+/**
+ * Higher preference first, with unjudged last among otherwise tied rows: the same treatment
+ * the table's Preference column gives a null, because never rated is not the same as rated
+ * badly. Total and transitive on purpose — returning 0 against a null would make the order
+ * depend on which pairs the sort happened to compare.
+ */
+function byPreference(left: Entry, right: Entry): number {
+  if (left.preference === right.preference) return 0;
+  if (left.preference === null) return 1;
+  if (right.preference === null) return -1;
+  return right.preference - left.preference;
+}
+
+/**
+ * The within-group order, with preference appended to the end of the chain it already had.
+ *
+ * The group's own rule comes first, so a schedule stays a schedule and an alphabetical group
+ * stays alphabetical. Then the urgency score, unchanged — preference is never added to or
+ * multiplied into it, and cannot overturn it. Only where the score is already tied, where
+ * the ranking would otherwise fall back to a deadline timestamp, an age or an id, does
+ * preference get to speak. So its effect is invisible until enough rows are rated to tie.
+ */
+function compareWithin(label: Omit<FocusGroup, "rows">, chronological: boolean) {
+  return (left: Entry, right: Entry): number => {
+    // No group is both chronological and alphabetical, and `nudge` is neither: its rule *is*
+    // ranked order, so it falls straight through to the score below.
+    if (chronological) {
+      if (left.days !== right.days) return left.days - right.days;
+    } else if (!label.ordered) {
+      const byName = byCompany(left.row, right.row);
+      if (byName !== 0) return byName;
+    }
+
+    if (Math.abs(left.score - right.score) > SCORE_EPSILON) return right.score - left.score;
+    return byPreference(left, right);
+  };
+}
+
+/**
  * Groups live applications by an explicit rule per group, so each heading states its own
  * membership test. Ordering within a group still comes from the urgency ranking, except
- * where a date makes chronological order the honest reading.
+ * where a date makes chronological order the honest reading, with preference appended to the
+ * end of that chain as a tiebreak.
  *
  * Finished applications are never ranked, but a task left on one is still a task, so they
  * get a trailing group instead of disappearing.
@@ -145,9 +200,7 @@ export function focusGroups(applications: Application[], today: Date = new Date(
   const ranked = rankByUrgency(applications, today);
   const rankedIds = new Set(ranked.map(({ application }) => application.id));
 
-  const grouped = new Map<FocusGroupId, { row: FocusRow; days: number }[]>(
-    GROUP_LABELS.map(({ id }) => [id, []]),
-  );
+  const grouped = new Map<FocusGroupId, Entry[]>(GROUP_LABELS.map(({ id }) => [id, []]));
 
   for (const ranking of ranked) {
     const driving = drivingDate(ranking.application, today);
@@ -158,6 +211,8 @@ export function focusGroups(applications: Application[], today: Date = new Date(
         reason: driving ? describeDue(driving.kind, driving.days) : ranking.reason,
       },
       days: driving?.days ?? 0,
+      score: ranking.score,
+      preference: preferenceFor(ranking.application)?.score ?? null,
     });
   }
 
@@ -166,6 +221,10 @@ export function focusGroups(applications: Application[], today: Date = new Date(
     grouped.get("wrapping_up")!.push({
       row: { application, reason: STATE_LABELS[application.state] },
       days: 0,
+      // Finished applications are never ranked, so they all tie and the group's own rule
+      // decides, with preference behind it as everywhere else.
+      score: 0,
+      preference: preferenceFor(application)?.score ?? null,
     });
   }
 
@@ -173,13 +232,8 @@ export function focusGroups(applications: Application[], today: Date = new Date(
     const entries = grouped.get(label.id)!;
     const chronological = label.id === "due_now" || label.id === "due_week" || label.id === "due_later";
 
-    if (chronological) {
-      entries.sort((left, right) => left.days - right.days);
-    }
+    entries.sort(compareWithin(label, chronological));
 
-    const rows = entries.map(({ row }) => row);
-    if (!label.ordered) rows.sort(byCompany);
-
-    return { ...label, rows };
+    return { ...label, rows: entries.map(({ row }) => row) };
   });
 }

@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import { DEFAULT_DEMO_REFERENCE } from '../domain/demo'
 import { loadTrackerDocument } from '../domain/storage'
+import { formatShortDate } from '../views/viewUtils'
 import App from '../App'
 import { testTrackerStore } from './trackerStore'
 import {
@@ -60,6 +62,33 @@ function icsFile(...lines: string[]) {
 }
 
 describe('job applications tracker', () => {
+  /*
+   * Pin the wall clock to the instant the demo seeds are measured from. The seeds are
+   * deterministic but a view's "today" is not, so without this the two drift apart until a
+   * seed crosses a stale, overdue or calendar boundary and assertions here start failing on
+   * a date rather than on a change — which is exactly what happened to the Kanban card names
+   * below once Saffron Systems aged past DEFAULT_STALE_THRESHOLD_DAYS.
+   *
+   * Only Date is faked. Faking the timers as well would hang every waitFor in this file:
+   * Testing Library's fake-timer support is gated on a global `jest`, which vitest does not
+   * define, so its polling would sit on a setInterval that nothing ever advances.
+   */
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'] })
+    vi.setSystemTime(new Date(DEFAULT_DEMO_REFERENCE))
+  })
+
+  afterEach(() => {
+    vi.useRealTimers()
+  })
+
+  it('runs at the demo reference date, so every date-driven assertion here is deterministic', () => {
+    // A guard for the whole file rather than a behaviour test: if the pinning above is ever
+    // removed, this fails with the reason instead of leaving a later assertion to fail months
+    // later on an accessible name that gained a stale suffix.
+    expect(new Date().toISOString()).toBe(DEFAULT_DEMO_REFERENCE)
+  })
+
   it('starts with every configured state represented in the Kanban', async () => {
     await renderLoadedApp()
 
@@ -193,6 +222,46 @@ describe('job applications tracker', () => {
       'Saffron Systems International',
     )
     expect(screen.getByRole('button', { name: /Open Saffron Systems International/ })).toBeInTheDocument()
+    expect(readSavedDocument().applications).toHaveLength(19)
+  })
+
+  it('marks a next action done from the board, logging it in the notes and persisting it', async () => {
+    const user = userEvent.setup()
+    const { unmount } = await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Saffron Systems',
+    )!
+    expect(before.next_action).toBe('Prepare questions for onboarding')
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Mark done for Saffron Systems: Prepare questions for onboarding',
+      }),
+    )
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.next_action).toBeNull()
+    expect(after.next_action_at).toBeNull()
+    // The plan is gone but what was done is on the record. Exact, because the clock is pinned
+    // — but built from the app's own formatter rather than one locale's rendering of it, since
+    // the day the date reads as is the reader's locale, not this app's contract.
+    expect(after.notes).toBe(
+      `${before.notes}\n${formatShortDate(DEFAULT_DEMO_REFERENCE)} — Prepare questions for onboarding`,
+    )
+    // Resolving a task is not a stage change.
+    expect(after.state_history).toEqual(before.state_history)
+    expect(after.deadline_at).toBe(before.deadline_at)
+
+    // The control goes away with the action it resolved, and the change survives a reload.
+    expect(
+      screen.queryByRole('button', { name: /^Mark done for Saffron Systems/ }),
+    ).not.toBeInTheDocument()
+
+    unmount()
+    await renderLoadedApp()
+    expect(
+      screen.queryByRole('button', { name: /^Mark done for Saffron Systems/ }),
+    ).not.toBeInTheDocument()
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 

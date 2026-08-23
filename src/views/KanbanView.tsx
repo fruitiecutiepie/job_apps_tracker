@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { STATE_CONFIG, stateLabel } from "../domain";
 import type { StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
+import { CompleteActionButton } from "./CompleteActionButton";
+import { describePreference, preferenceFor } from "./preference";
 import { StageNotesButton } from "./StageNotesButton";
 import type { MovableApplicationsViewProps } from "./types";
 import {
@@ -16,6 +18,7 @@ export function KanbanView({
   applications,
   onOpen,
   onOpenStageNotes,
+  onCompleteAction,
   onMove,
   visibleStates,
 }: MovableApplicationsViewProps) {
@@ -105,6 +108,10 @@ export function KanbanView({
                         const ageInDays = applicationAgeInDays(application.updated_at);
                         const stale = ageInDays >= DEFAULT_STALE_THRESHOLD_DAYS;
                         const invite = upcomingStateEvent(application);
+                        // The board's one non-derivable fact about the role itself: how you
+                        // judged it. Shown with the weakest judgement and what is missing,
+                        // because a bare number would read as more certain than it is.
+                        const preference = preferenceFor(application);
                         const openLabel = [
                           `Open ${application.company}`,
                           application.role,
@@ -165,6 +172,11 @@ export function KanbanView({
                                 </time>
                               </p>
                             ) : null}
+                            {preference ? (
+                              <p className="application-card__preference">
+                                <span>Preference</span> {describePreference(preference)}
+                              </p>
+                            ) : null}
                             <AttachmentFilenames attachments={application.attachments} variant="card" />
                             {/*
                               * The card already sits in its state's lane, so the
@@ -192,6 +204,11 @@ export function KanbanView({
                               <StageNotesButton
                                 application={application}
                                 onOpenStageNotes={onOpenStageNotes}
+                                variant="card"
+                              />
+                              <CompleteActionButton
+                                application={application}
+                                onCompleteAction={onCompleteAction}
                                 variant="card"
                               />
                             </div>

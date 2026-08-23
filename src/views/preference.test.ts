@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { emptyCompensation, RATING_IDS } from '../domain'
 import type { Application, Rating, RatingDimensionId, StateId } from '../domain'
-import { focusGroups } from './focusGroups'
+import { focusGroups, type FocusGroupId } from './focusGroups'
 import {
   DEFAULT_RATING_WEIGHTS,
   MAX_UNKNOWN_DISCOUNT,
@@ -275,5 +275,87 @@ describe('separation from urgency', () => {
     ])
 
     expect(after).toEqual(before)
+  })
+})
+
+describe('focus ordering', () => {
+  // Preference is appended to the end of the within-group chain, so it decides only where a
+  // group's own rule and the urgency score have already tied. Everything here is built to
+  // tie deliberately, because in real data the tiebreak is invisible until enough
+  // applications are rated.
+  const today = new Date(2026, 7, 14, 12)
+
+  function at(daysFromToday: number, hour = 9): string {
+    const date = new Date(today)
+    date.setHours(hour, 0, 0, 0)
+    date.setDate(date.getDate() + daysFromToday)
+    return date.toISOString()
+  }
+
+  /** Distinct ids that sort in company order, so the id fallback is visible when it wins. */
+  function row(company: string, id: string, scores: Scores, deadline: string): Application {
+    return {
+      ...application(scores),
+      id: `00000000-0000-7000-8000-00000000000${id}`,
+      company,
+      state_history: [{ state: 'applied', at: at(-1) }],
+      updated_at: at(-1),
+      deadline_at: deadline,
+    }
+  }
+
+  function companiesIn(applications: Application[], id: FocusGroupId): string[] {
+    const group = focusGroups(applications, today).find((candidate) => candidate.id === id)!
+    return group.rows.map(({ application: item }) => item.company)
+  }
+
+  const loved: Scores = { work: 5, growth: 5, people: 5, company: 5 }
+  const loathed: Scores = { work: 2, growth: 2, people: 2, company: 2 }
+
+  it('breaks an exact tie by preference, and by id when nothing is rated', () => {
+    const deadline = at(3, 17)
+    const rated = [
+      row('Aardvark', '1', loathed, deadline),
+      row('Zebra', '2', loved, deadline),
+    ]
+    const unrated = [row('Aardvark', '1', {}, deadline), row('Zebra', '2', {}, deadline)]
+
+    // Same state, same silence, the same deadline timestamp: the urgency score is identical
+    // and the ranking would otherwise fall through to the id.
+    expect(companiesIn(unrated, 'due_week')).toEqual(['Aardvark', 'Zebra'])
+    expect(companiesIn(rated, 'due_week')).toEqual(['Zebra', 'Aardvark'])
+  })
+
+  it('keeps an unrated application above nothing but below a judged tie', () => {
+    // Unrated is not the same as rated badly, so a null sorts last among tied rows rather
+    // than below the worst score — the treatment the table's Preference column gives it.
+    const deadline = at(3, 17)
+    const applications = [
+      row('Aardvark', '1', {}, deadline),
+      row('Zebra', '2', loathed, deadline),
+    ]
+
+    expect(companiesIn(applications, 'due_week')).toEqual(['Zebra', 'Aardvark'])
+  })
+
+  it('never lets preference reorder a schedule', () => {
+    // The group's own rule comes first: a date always beats a rating.
+    const applications = [
+      row('Loathed Sooner', '1', loathed, at(1, 17)),
+      row('Loved Later', '2', loved, at(5, 17)),
+    ]
+
+    expect(companiesIn(applications, 'due_week')).toEqual(['Loathed Sooner', 'Loved Later'])
+  })
+
+  it('keeps an alphabetical group alphabetical', () => {
+    const undated = (company: string, id: string, scores: Scores): Application => ({
+      ...row(company, id, scores, at(3, 17)),
+      deadline_at: null,
+      next_action: 'Review the posting',
+    })
+
+    expect(companiesIn([undated('Zebra', '2', loved), undated('Aardvark', '1', loathed)], 'no_date'))
+      .toEqual(['Aardvark', 'Zebra'])
   })
 })

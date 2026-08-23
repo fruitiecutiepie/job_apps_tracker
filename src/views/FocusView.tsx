@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { CompleteActionButton } from "./CompleteActionButton";
 import { focusGroups } from "./focusGroups";
 import { StageNotesButton } from "./StageNotesButton";
 import type { ApplicationsViewProps } from "./types";
@@ -17,7 +18,12 @@ function RowList({ ordered, children }: { ordered: boolean; children: ReactNode 
   );
 }
 
-export function FocusView({ applications, onOpen, onOpenStageNotes }: ApplicationsViewProps) {
+export function FocusView({
+  applications,
+  onOpen,
+  onOpenStageNotes,
+  onCompleteAction,
+}: ApplicationsViewProps) {
   const groups = focusGroups(applications);
   const total = groups.reduce((sum, group) => sum + group.rows.length, 0);
   // Derived, never remembered: disclosure is display state like the stale threshold.
@@ -75,6 +81,11 @@ export function FocusView({ applications, onOpen, onOpenStageNotes }: Applicatio
                           .join(" · ")}
                       </span>
                     </button>
+                    <CompleteActionButton
+                      application={application}
+                      onCompleteAction={onCompleteAction}
+                      variant="card"
+                    />
                     <StageNotesButton
                       application={application}
                       onOpenStageNotes={onOpenStageNotes}

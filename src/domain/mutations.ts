@@ -179,6 +179,42 @@ export function editApplication(
   }
 }
 
+/**
+ * Records a next action as done: the plan is cleared and what you did is appended to the
+ * application's notes as one dated line, so finishing a task leaves a trail rather than
+ * silently deleting the only record that it was ever planned.
+ *
+ * `completedOn` is display text supplied by the caller, because the domain has no locale and
+ * `formatShortDate` is the one place this app formats a date for reading. Lines stack with a
+ * single newline: `notes` is plain text, so the log reads as a list without a Markdown pass.
+ *
+ * A blank action returns the same object — there is nothing to resolve. `deadline_at` is an
+ * external fact and is left alone, and finishing a task is not a stage change, so no state
+ * history is appended.
+ */
+export function completeNextAction(
+  application: Application,
+  completedOn: string,
+  at: Date | string = new Date(),
+): Application {
+  const action = optionalText(application.next_action)
+  if (!action) return application
+
+  const on = optionalText(completedOn)
+  if (!on) throw new TypeError('A completion date is required')
+
+  const entry = `${on} — ${action}`
+  const notes = optionalText(application.notes)
+
+  return {
+    ...application,
+    next_action: null,
+    next_action_at: null,
+    notes: notes ? `${notes}\n${entry}` : entry,
+    updated_at: timestamp(at),
+  }
+}
+
 /** The prep note recorded for one stage of an application, when there is one. */
 export function stageNoteFor(application: Application, state: StateId): StageNote | null {
   return application.stage_notes.find((note) => note.state === state) ?? null
@@ -548,6 +584,24 @@ export function updateApplicationStageNotes(
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
   const updated = applyStageNotes(application, drafts, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+/** Marks one application's next action done, leaving the rest of the document alone. */
+export function completeApplicationNextAction(
+  document: TrackerDocument,
+  id: string,
+  completedOn: string,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = completeNextAction(application, completedOn, at)
   if (updated === application) return document
 
   return {

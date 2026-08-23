@@ -56,9 +56,10 @@ const STACKING_WEIGHT = 0.15;
 const STAGE_FLOOR = 0.5;
 /**
  * Equal scores can be reached by different arithmetic paths and land a float bit apart,
- * which would silently decide the order instead of the tiebreak below.
+ * which would silently decide the order instead of the tiebreak below. Focus reads it too,
+ * so a group orders rows by the same notion of "tied" the ranking uses.
  */
-const SCORE_EPSILON = 1e-9;
+export const SCORE_EPSILON = 1e-9;
 
 /** Which pressure won, so callers can group without parsing the reason text. */
 export type UrgencyKind = "invite" | "deadline" | "action" | "staleness" | "none";

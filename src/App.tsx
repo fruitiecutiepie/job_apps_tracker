@@ -21,6 +21,7 @@ import {
   STATE_LABELS,
   addApplication,
   clearLegacyLocalStorage,
+  completeApplicationNextAction,
   createAttachmentMetadata,
   createUuidV7,
   deleteApplication,
@@ -65,6 +66,7 @@ import {
 } from './compensation'
 import { clearedRatingDimensions, ratingDrafts, ratingValuesFor, type RatingValues } from './ratings'
 import { fromDateTimeInput, toDateTimeInput } from './dateInput'
+import { formatShortDate } from './views/viewUtils'
 import { InviteFields } from './InviteFields'
 import {
   firstInviteProblem,
@@ -727,11 +729,29 @@ export default function App() {
     if (next !== tracker) commit(next, `${current?.company ?? 'Application'} moved to ${STATE_LABELS[state]}.`)
   }
 
+  /*
+   * The date is formatted here rather than in the mutation: the note line is prose the reader
+   * sees, and `formatShortDate` is the one place this app turns a date into something to read,
+   * so a logged action is dated the same way every other date on screen is.
+   */
+  const completeAction = (id: string) => {
+    const current = tracker.applications.find((application) => application.id === id)
+    const next = completeApplicationNextAction(
+      tracker,
+      id,
+      formatShortDate(new Date().toISOString()),
+    )
+    if (next !== tracker) {
+      commit(next, `Action marked done for ${current?.company ?? 'the application'} and logged in its notes.`)
+    }
+  }
+
   const currentView = (() => {
     const shared = {
       applications: filteredApplications,
       onOpen: openApplication,
       onOpenStageNotes: openStageNotes,
+      onCompleteAction: completeAction,
     }
     switch (activeView) {
       case 'table':

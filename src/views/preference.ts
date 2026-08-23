@@ -1,4 +1,4 @@
-import { RATING_IDS } from "../domain";
+import { RATING_IDS, RATING_LABELS } from "../domain";
 import type { Application, RatingDimensionId } from "../domain";
 
 /**
@@ -98,4 +98,109 @@ export function preferenceFor(
   const discount = MAX_UNKNOWN_DISCOUNT * ((totalWeight - ratedWeight) / totalWeight);
 
   return { score: mean - discount, lowest, unknown, unrated };
+}
+
+/** At or below this, a judgement is worth naming even when the mean looks healthy. */
+export const DEALBREAKER_SCORE = 2;
+
+/**
+ * The one place preference phrasing is built, the way `describeDue` is the one place date
+ * phrasing is built, so the table column and the Kanban card cannot describe the same
+ * ratings differently. The score itself stays free of any threshold: this is where the
+ * decision to name a weak judgement lives.
+ *
+ * A bare number hides too much. 5,5,5,1 and 4,4,4,4 both average 4.00, and a high mean over
+ * one rated dimension is not a high mean over four, so the text names the weakest judgement
+ * and what is still missing.
+ */
+export function describePreference(preference: PreferenceScore | null): string {
+  if (!preference) return "";
+
+  const { score, lowest, unknown, unrated } = preference;
+  const parts = [score.toFixed(2)];
+
+  if (lowest && lowest.score <= DEALBREAKER_SCORE) {
+    parts.push(`${RATING_LABELS[lowest.dimension]} ${lowest.score}`);
+  }
+  if (unknown.length > 0) {
+    parts.push(`${unknown.map((dimension) => RATING_LABELS[dimension]).join(", ")} unknown`);
+  }
+  if (unrated.length > 0) parts.push(`${unrated.length} not rated`);
+
+  return parts.join(" · ");
+}
+
+export interface PreferenceDimensionSummary {
+  dimension: RatingDimensionId;
+  /** Judged 1-5. */
+  judged: number;
+  /** Asked, and could not tell. */
+  unknown: number;
+  /** Never assessed. */
+  unassessed: number;
+  /** Plain mean of the judged scores, or null when this dimension holds none. */
+  mean: number | null;
+}
+
+export interface PreferenceSummary {
+  /** Applications in the collection, so `rated` reads as a share rather than a bare count. */
+  total: number;
+  /** Applications carrying at least one judgement the score could count. */
+  rated: number;
+  /** Mean preference across the rated applications, or null when none are rated. */
+  mean: number | null;
+  /** One row per configured dimension, in `RATING_CONFIG` order. */
+  dimensions: PreferenceDimensionSummary[];
+}
+
+/**
+ * How a whole collection was judged, which is the one thing a per-row score cannot say:
+ * whether a dimension reads low because you keep rating it low, or because you have never
+ * assessed it. Derived like every other statistic, and never persisted.
+ *
+ * The per-dimension rows count what was recorded, so a dimension weighted zero still reports
+ * its judgements even though no score counted them. Only `rated` and `mean` follow the
+ * weights, because those come from `preferenceFor`.
+ */
+export function preferenceSummary(
+  applications: Application[],
+  weights: RatingWeights = DEFAULT_RATING_WEIGHTS,
+): PreferenceSummary {
+  const dimensions = RATING_IDS.map((dimension) => {
+    const summary: PreferenceDimensionSummary = {
+      dimension,
+      judged: 0,
+      unknown: 0,
+      unassessed: 0,
+      mean: null,
+    };
+    let judgedSum = 0;
+
+    for (const application of applications) {
+      const rating = application.ratings.find((item) => item.dimension === dimension) ?? null;
+      if (rating === null) {
+        summary.unassessed += 1;
+      } else if (rating.score === null) {
+        summary.unknown += 1;
+      } else {
+        summary.judged += 1;
+        judgedSum += rating.score;
+      }
+    }
+
+    if (summary.judged > 0) summary.mean = judgedSum / summary.judged;
+    return summary;
+  });
+
+  const scores = applications
+    .map((application) => preferenceFor(application, weights))
+    .filter((preference): preference is PreferenceScore => preference !== null)
+    .map(({ score }) => score);
+
+  return {
+    total: applications.length,
+    rated: scores.length,
+    mean: scores.length > 0 ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null,
+    dimensions,
+  };
 }

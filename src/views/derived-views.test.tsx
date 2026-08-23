@@ -130,7 +130,7 @@ describe('FocusView', () => {
     ]
 
     render(
-      <FocusView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} />,
+      <FocusView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />,
     )
 
     // Date-driven groups read chronologically, not by score.
@@ -174,7 +174,7 @@ describe('FocusView', () => {
     ]
 
     render(
-      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />,
+      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />,
     )
 
     // Without invites this row read as "Nothing dated or planned".
@@ -194,12 +194,12 @@ describe('FocusView', () => {
     })
 
     const { unmount } = render(
-      <FocusView applications={[unrated]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />,
+      <FocusView applications={[unrated]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />,
     )
     const before = rowsIn('Overdue or due today')
     unmount()
 
-    render(<FocusView applications={[loathed]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />)
+    render(<FocusView applications={[loathed]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
 
     expect(rowsIn('Overdue or due today')).toEqual(before)
   })
@@ -224,13 +224,42 @@ describe('FocusView', () => {
     ]
 
     render(
-      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={onOpenStageNotes} />,
+      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={onOpenStageNotes} onCompleteAction={vi.fn()} />,
     )
 
     fireEvent.click(
       screen.getByRole('button', { name: 'Prep notes for Prep Co, 1 stage' }),
     )
     expect(onOpenStageNotes).toHaveBeenCalledWith(applications[0].id)
+  })
+
+  it('offers Done on a row that has an action, and not on one that does not', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const onCompleteAction = vi.fn()
+    const applications = [
+      application('Task Co', { next_action: 'Email the recruiter', next_action_at: localDate(0) }),
+      application('Deadline Only Co', { deadline_at: localDate(0) }),
+    ]
+
+    render(
+      <FocusView
+        applications={applications}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={onCompleteAction}
+      />,
+    )
+
+    // Named after the task, so a screen reader hears which one is being closed.
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Mark done for Task Co: Email the recruiter' }),
+    )
+    expect(onCompleteAction).toHaveBeenCalledWith(applications[0].id)
+
+    // Nothing to resolve on a row driven by a deadline, so no control at all.
+    expect(screen.queryByRole('button', { name: /^Mark done for Deadline Only Co/ }))
+      .not.toBeInTheDocument()
   })
 
   it('includes applications with a deadline and no action at all', () => {
@@ -242,6 +271,7 @@ describe('FocusView', () => {
         applications={[application('Closing Soon', { deadline_at: localDate(2) })]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -271,7 +301,7 @@ describe('FocusView', () => {
     ]
 
     render(
-      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />,
+      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />,
     )
 
     expect(rowsIn('Finished, action outstanding')).toEqual([
@@ -295,6 +325,7 @@ describe('FocusView', () => {
         ]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -317,6 +348,7 @@ describe('FocusView', () => {
         ]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -334,7 +366,7 @@ describe('StaleView', () => {
       application('Thirty-one Days', { updated_at: localDate(-31) }),
     ]
 
-    render(<StaleView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={vi.fn()} />)
+    render(<StaleView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByRole('radio', { name: '14 days' })).toBeChecked()
     expect(screen.queryByText('Eight Days')).not.toBeInTheDocument()
@@ -358,7 +390,7 @@ describe('StaleView', () => {
     const live = application('Live Loop', { state: 'interview_1', updated_at: localDate(-14) })
     const closed = application('Already Closed', { state: 'interview_1_rejected', updated_at: localDate(-20) })
 
-    render(<StaleView applications={[live, closed]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={onMove} />)
+    render(<StaleView applications={[live, closed]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
 
     const shortcut = screen.getByRole('button', { name: 'Move Live Loop to Interview 1 — Rejected' })
     expect(shortcut).toHaveTextContent('Move to Rejected')
@@ -375,7 +407,7 @@ describe('StaleView', () => {
     const onMove = vi.fn()
     const record = application('Applied Co', { updated_at: localDate(-14) })
 
-    render(<StaleView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={onMove} />)
+    render(<StaleView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Move Applied Co to Auto-rejected' }))
     expect(onMove).toHaveBeenCalledWith(record.id, 'auto_rejected')
@@ -390,6 +422,7 @@ describe('StaleView', () => {
         applications={[application('Offer Taken', { state: 'accepted', updated_at: localDate(-14) })]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
         onMove={vi.fn()}
       />,
     )
@@ -403,7 +436,7 @@ describe('CalendarView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
 
-    render(<CalendarView applications={[]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />)
+    render(<CalendarView applications={[]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
 
     const rows = within(screen.getByRole('grid')).getAllByRole('row')
     expect(rows).toHaveLength(7)
@@ -429,7 +462,7 @@ describe('CalendarView', () => {
           application('Undated Company', { next_action: 'Send a note' }),
           application('Orphaned Date', { next_action_at: new Date(2026, 7, 22, 9).toISOString() }),
         ]}
-        onOpen={onOpen} onOpenStageNotes={vi.fn()}
+        onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()}
       />,
     )
 
@@ -456,7 +489,7 @@ describe('CalendarView', () => {
       ],
     })
 
-    render(<CalendarView applications={[scheduled]} onOpen={onOpen} onOpenStageNotes={vi.fn()} />)
+    render(<CalendarView applications={[scheduled]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
 
     const day = screen.getByRole('gridcell', {
       name: formatLongDate(new Date(2026, 7, 21)),
@@ -488,6 +521,7 @@ describe('CalendarView', () => {
         ]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -500,7 +534,7 @@ describe('CalendarView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
 
-    render(<CalendarView applications={[]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} />)
+    render(<CalendarView applications={[]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
 
     fireEvent.click(screen.getByRole('button', { name: 'Next month' }))
     expect(screen.getByRole('heading', { name: 'September 2026' })).toBeInTheDocument()
@@ -530,7 +564,7 @@ describe('TableView', () => {
     ]
 
     render(
-      <TableView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} onMove={onMove} />,
+      <TableView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />,
     )
 
     expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
@@ -581,7 +615,7 @@ describe('TableView', () => {
       application('Zebra Works', { source: 'Referral', role: 'Designer' }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter Company column' }), {
       target: { value: 'Alpha' },
@@ -620,7 +654,7 @@ describe('TableView', () => {
       }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     const sooner = screen.getByRole('row', { name: /Sooner Panel/ })
     expect(within(sooner).getByText('Called off round')).toBeInTheDocument()
@@ -664,6 +698,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -688,6 +723,27 @@ describe('TableView', () => {
     ])
   })
 
+  it('offers Done in the next action cell, and only where there is an action', () => {
+    const onCompleteAction = vi.fn()
+    const tasked = application('Task Co', { next_action: 'Chase the recruiter' })
+
+    render(
+      <TableView
+        applications={[tasked, application('Idle Co')]}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={onCompleteAction}
+      />,
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Mark done for Task Co: Chase the recruiter' }),
+    )
+    expect(onCompleteAction).toHaveBeenCalledWith(tasked.id)
+    expect(screen.queryByRole('button', { name: /^Mark done for Idle Co/ })).not.toBeInTheDocument()
+  })
+
   it('filters the deadline column and ignores applications without one', () => {
     const applications = [
       application('Alpha Labs', { deadline_at: new Date(2026, 8, 1, 17).toISOString() }),
@@ -700,6 +756,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -730,6 +787,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -763,6 +821,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -787,6 +846,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -811,6 +871,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -832,6 +893,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -863,6 +925,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -891,6 +954,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -920,6 +984,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -958,6 +1023,7 @@ describe('TableView', () => {
         onOpen={vi.fn()}
         onMove={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
       />,
     )
 
@@ -973,7 +1039,7 @@ describe('TableView', () => {
       application('Zebra Works', { source: 'LinkedIn' }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByRole('combobox', { name: 'Filter Company column' })).toHaveAttribute(
       'list',
@@ -1001,13 +1067,25 @@ describe('TableView', () => {
       application('Plain Record'),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByText('resume.pdf')).toBeInTheDocument()
   })
 })
 
 describe('StatisticsView', () => {
+  function stateTable(): HTMLElement {
+    return screen.getByRole('table', {
+      name: 'Current and ever-reached application counts by state',
+    })
+  }
+
+  function ratingsTable(): HTMLElement {
+    return screen.getByRole('table', {
+      name: 'Judgement counts and mean judged score by rating dimension',
+    })
+  }
+
   it('distinguishes current-state counts from states ever reached', () => {
     const applications = [
       application('Completed Journey', {
@@ -1040,7 +1118,45 @@ describe('StatisticsView', () => {
         cell.textContent,
       ),
     ).toEqual(['1', '1'])
-    expect(screen.getAllByRole('row')).toHaveLength(20)
+    // Scoped to the state table, so the ratings table below is free to grow.
+    expect(within(stateTable()).getAllByRole('row')).toHaveLength(20)
+  })
+
+  it('summarises how the collection was rated, per dimension', () => {
+    const applications = [
+      application('Even Co', { ratings: ratings({ work: 4, growth: 4, people: 4, company: 4 }) }),
+      application('Hidden One Co', {
+        ratings: ratings({ work: 5, growth: 5, people: 1, company: 5 }),
+      }),
+      application('Partly Judged Co', { ratings: ratings({ work: 3, growth: null }) }),
+      application('Unrated Co'),
+    ]
+
+    render(<StatisticsView applications={applications} />)
+
+    // Three of four carry a judgement; the mean is of their discounted scores.
+    expect(screen.getByLabelText('3 of 4 applications rated')).toBeInTheDocument()
+    expect(screen.getByLabelText('Mean preference 3.48')).toBeInTheDocument()
+
+    function ratingRow(dimension: string): string[] {
+      const row = within(ratingsTable()).getByRole('rowheader', { name: dimension }).closest('tr')!
+      return within(row).getAllByRole('cell').map((cell) => cell.textContent ?? '')
+    }
+
+    // Rated, Don't know, Not rated, Mean of the judged scores.
+    expect(ratingRow('Work')).toEqual(['3', '0', '1', '4.00'])
+    expect(ratingRow('Growth')).toEqual(['2', '1', '1', '4.50'])
+    // People reads low because it was judged low, not because it went unassessed.
+    expect(ratingRow('People')).toEqual(['2', '0', '2', '2.50'])
+    expect(ratingRow('Company & product')).toEqual(['2', '0', '2', '4.50'])
+  })
+
+  it('says so plainly when nothing has been rated', () => {
+    render(<StatisticsView applications={[application('Unrated Co')]} />)
+
+    expect(screen.getByText('No application has been rated yet.')).toBeInTheDocument()
+    expect(screen.getByLabelText('0 of 1 applications rated')).toBeInTheDocument()
+    expect(screen.queryByLabelText(/^Mean preference /)).not.toBeInTheDocument()
   })
 })
 
@@ -1064,7 +1180,7 @@ describe('KanbanView', () => {
     const onMove = vi.fn()
     const record = application('Keyboard Movers')
 
-    render(<KanbanView applications={[record]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onMove={onMove} />)
+    render(<KanbanView applications={[record]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
 
     expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(19)
     fireEvent.click(screen.getByRole('button', { name: /Open Keyboard Movers/ }))
@@ -1091,7 +1207,7 @@ describe('KanbanView', () => {
       ],
     })
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={vi.fn()} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     const card = screen.getByText('Invite Board').closest('article')
     expect(within(card!).getByText(/Research panel/)).toBeInTheDocument()
@@ -1111,7 +1227,7 @@ describe('KanbanView', () => {
       getData: (type: string) => values.get(type) ?? '',
     }
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={onMove} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
 
     const card = screen.getByText('Drag & Drop Co').closest('article')
     const destination = screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section')
@@ -1136,7 +1252,7 @@ describe('KanbanView', () => {
       getData: (type: string) => values.get(type) ?? '',
     }
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={onMove} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
 
     const card = screen.getByText('Nested Drop Co').closest('article')
     const destination = screen
@@ -1163,15 +1279,67 @@ describe('KanbanView', () => {
       }],
     })
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={vi.fn()} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByLabelText('Attachments')).toHaveTextContent('resume.pdf')
   })
 
   it('omits attachment filenames when there are no attachments', () => {
-    render(<KanbanView applications={[application('No Files Co')]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onMove={vi.fn()} />)
+    render(<KanbanView applications={[application('No Files Co')]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.queryByLabelText('Attachments')).not.toBeInTheDocument()
+  })
+
+  it('shows the preference score with its dealbreaker, and nothing when unrated', () => {
+    render(
+      <KanbanView
+        applications={[
+          application('Even Co', { ratings: ratings({ work: 4, growth: 4, people: 4, company: 4 }) }),
+          application('Hidden One Co', {
+            ratings: ratings({ work: 5, growth: 5, people: 1, company: 5 }),
+          }),
+          application('Half Judged Co', { ratings: ratings({ work: 4, growth: null }) }),
+          application('Unrated Co'),
+        ]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+        onMove={vi.fn()}
+      />,
+    )
+
+    function card(company: string): HTMLElement {
+      return screen.getByText(company).closest('article')!
+    }
+
+    // Both average 4.00, and only one of them has a 1 in it.
+    expect(within(card('Even Co')).getByText('4.00')).toBeInTheDocument()
+    expect(within(card('Hidden One Co')).getByText('4.00 · People 1')).toBeInTheDocument()
+    // The card says the same thing the table's column says, from the same helper.
+    expect(within(card('Half Judged Co')).getByText('3.44 · Growth unknown · 2 not rated'))
+      .toBeInTheDocument()
+    expect(within(card('Unrated Co')).queryByText('Preference')).not.toBeInTheDocument()
+  })
+
+  it('offers Done on a card carrying an action', () => {
+    const onCompleteAction = vi.fn()
+    const tasked = application('Task Co', { next_action: 'Send the portfolio' })
+
+    render(
+      <KanbanView
+        applications={[tasked, application('Idle Co')]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={onCompleteAction}
+        onMove={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Mark done for Task Co: Send the portfolio' }),
+    )
+    expect(onCompleteAction).toHaveBeenCalledWith(tasked.id)
+    expect(screen.queryByRole('button', { name: /^Mark done for Idle Co/ })).not.toBeInTheDocument()
   })
 
   it('greys out cards last updated 14 or more days ago', () => {
@@ -1186,6 +1354,7 @@ describe('KanbanView', () => {
         ]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
         onMove={vi.fn()}
       />,
     )

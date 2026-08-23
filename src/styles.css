@@ -726,10 +726,12 @@ p {
 .application-card--stale .application-card__open span,
 .application-card--stale .application-card__action,
 .application-card--stale .application-card__invite,
+.application-card--stale .application-card__preference,
 .application-card--stale .application-card__attachments,
 .application-card--stale .application-card__attachments-icon,
 .application-card--stale .application-card__age,
-.application-card--stale .stage-notes-button--card {
+.application-card--stale .stage-notes-button--card,
+.application-card--stale .complete-action-button--card {
   color: var(--ink-2);
 }
 
@@ -737,6 +739,7 @@ p {
 .application-card__age,
 .application-card__action,
 .application-card__invite,
+.application-card__preference,
 .application-card__attachments {
   margin: 0;
   padding: 0;
@@ -770,7 +773,8 @@ p {
 }
 
 .application-card__action,
-.application-card__invite {
+.application-card__invite,
+.application-card__preference {
   display: flex;
   flex-direction: column;
   gap: var(--s1);
@@ -780,7 +784,8 @@ p {
 }
 
 .application-card__action span,
-.application-card__invite span {
+.application-card__invite span,
+.application-card__preference span {
   color: var(--ink-3);
   font-size: var(--t1);
   font-weight: 500;
@@ -1266,6 +1271,14 @@ tbody tr:hover {
 
 /* ---------------------------------------------------------- statistics --- */
 
+/* Headline figures sit on one baseline and wrap rather than shrink. */
+.statistics__totals {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s6);
+}
+
 .statistics__total {
   display: flex;
   align-items: baseline;
@@ -1284,6 +1297,17 @@ tbody tr:hover {
 
 .statistics__table {
   min-width: 30rem;
+}
+
+/*
+ * The view's own h2 is sr-only, so this is the only visible heading on the page.
+ * It reads at the same weight as a view heading elsewhere.
+ */
+.statistics__section {
+  margin: var(--s5) 0 var(--s3);
+  color: var(--ink);
+  font-size: var(--t4);
+  font-weight: 600;
 }
 
 /* ------------------------------------------------------------- dialogs --- */
@@ -1556,20 +1580,31 @@ tbody tr:hover {
 
 /* --------------------------------------------------------- stage notes --- */
 
-.stage-notes-button {
+.stage-notes-button,
+.complete-action-button {
   gap: var(--s2);
   padding: 0 var(--s3);
   font-size: var(--t2);
 }
 
-.stage-notes-button--card {
+.stage-notes-button--card,
+.complete-action-button--card {
   min-height: 30px;
   color: var(--ink-2);
 }
 
-.stage-notes-button--table {
+.stage-notes-button--table,
+.complete-action-button--table {
   min-height: 28px;
   white-space: nowrap;
+}
+
+/*
+ * In the table the button sits under the action text inside its own cell, so it needs the
+ * gap the surrounding cell layout does not provide.
+ */
+.complete-action-button--table {
+  margin-top: var(--s2);
 }
 
 .stage-notes {
@@ -1922,12 +1957,14 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .table-state-select,
   .stale-row__reject,
   .stage-notes-button--table,
+  .complete-action-button--table,
   .stage-note__mode {
     min-height: 40px;
   }
 
   .application-card__move,
-  .stage-notes-button--card {
+  .stage-notes-button--card,
+  .complete-action-button--card {
     min-height: 40px;
   }
 
@@ -1974,6 +2011,18 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .stale-row {
     flex-wrap: wrap;
+  }
+
+  /*
+   * A Focus row now carries two controls beside the card. Let them drop below it the way the
+   * stale row's do, rather than crushing the card to make space.
+   */
+  .action-list > li {
+    flex-wrap: wrap;
+  }
+
+  .action-list .action-card {
+    flex: 1 1 12rem;
   }
 
   .stale-row__open {

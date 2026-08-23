@@ -9,6 +9,8 @@ import {
   applyStageNotes,
   applyStateEvents,
   clearRating,
+  completeApplicationNextAction,
+  completeNextAction,
   createApplication,
   createAttachmentMetadata,
   createDemoDocument,
@@ -277,6 +279,103 @@ describe('application mutations', () => {
     expect(
       moveApplication(document, target.id, target.state, new Date('2026-08-20T12:00:00+10:00')),
     ).toBe(document)
+  })
+})
+
+describe('completing a next action', () => {
+  const LATER = new Date('2026-08-20T09:00:00+10:00')
+
+  function planned(overrides: Partial<Parameters<typeof createApplication>[0]> = {}) {
+    return createApplication(
+      {
+        company: 'Northwind',
+        state: 'applied',
+        next_action: 'Email the recruiter',
+        next_action_at: '2026-08-18T09:00:00+10:00',
+        deadline_at: '2026-08-30T17:00:00+10:00',
+        ...overrides,
+      },
+      REFERENCE,
+    )
+  }
+
+  it('clears the plan and logs what was done in the notes', () => {
+    const done = completeNextAction(planned({ notes: 'Referred by Dana.' }), '20 Aug 2026', LATER)
+
+    expect(done.next_action).toBeNull()
+    expect(done.next_action_at).toBeNull()
+    expect(done.notes).toBe('Referred by Dana.\n20 Aug 2026 — Email the recruiter')
+    expect(done.updated_at).toBe(LATER.toISOString())
+  })
+
+  it('starts the notes with the log line when there were no notes', () => {
+    const done = completeNextAction(planned({ notes: null }), '20 Aug 2026', LATER)
+
+    expect(done.notes).toBe('20 Aug 2026 — Email the recruiter')
+  })
+
+  it('stacks one line per completed action, oldest first', () => {
+    const first = completeNextAction(planned({ notes: null }), '20 Aug 2026', LATER)
+    const second = completeNextAction(
+      { ...first, next_action: 'Send the portfolio', next_action_at: null },
+      '21 Aug 2026',
+      LATER,
+    )
+
+    expect(second.notes).toBe(
+      '20 Aug 2026 — Email the recruiter\n21 Aug 2026 — Send the portfolio',
+    )
+  })
+
+  it('leaves the deadline alone: it is an external fact, not the task', () => {
+    const application = planned()
+    const done = completeNextAction(application, '20 Aug 2026', LATER)
+
+    expect(done.deadline_at).toBe(application.deadline_at)
+  })
+
+  it('never appends state history, because finishing a task is not a stage change', () => {
+    const application = planned()
+    const done = completeNextAction(application, '20 Aug 2026', LATER)
+
+    expect(done.state).toBe(application.state)
+    expect(done.state_history).toEqual(application.state_history)
+  })
+
+  it('is a no-op when there is no action to resolve', () => {
+    const idle = planned({ next_action: null, next_action_at: null })
+
+    // Returning the same object keeps a pointless save from refreshing updated_at.
+    expect(completeNextAction(idle, '20 Aug 2026', LATER)).toBe(idle)
+    expect(completeNextAction({ ...idle, next_action: '   ' }, '20 Aug 2026', LATER).notes)
+      .toBe(idle.notes)
+  })
+
+  it('refuses a blank completion date rather than logging a dangling dash', () => {
+    expect(() => completeNextAction(planned(), '  ', LATER)).toThrow(/date/i)
+  })
+
+  it('touches only the named application in the document', () => {
+    const document = createDemoDocument(REFERENCE)
+    const target = document.applications.find((item) => item.next_action?.trim())!
+    const next = completeApplicationNextAction(document, target.id, '20 Aug 2026', LATER)
+
+    expect(next).not.toBe(document)
+    expect(next.applications).toHaveLength(document.applications.length)
+    expect(next.applications.find((item) => item.id === target.id)!.next_action).toBeNull()
+    for (const application of next.applications) {
+      if (application.id !== target.id) {
+        expect(application).toBe(document.applications.find((item) => item.id === application.id))
+      }
+    }
+  })
+
+  it('returns the same document for an unknown id or an application with no action', () => {
+    const document = createDemoDocument(REFERENCE)
+    const idle = document.applications.find((item) => !item.next_action?.trim())!
+
+    expect(completeApplicationNextAction(document, 'missing', '20 Aug 2026', LATER)).toBe(document)
+    expect(completeApplicationNextAction(document, idle.id, '20 Aug 2026', LATER)).toBe(document)
   })
 })
 
