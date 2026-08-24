@@ -188,6 +188,17 @@ export function StageNotesDialog({
 
   useDialogKeyboard(dialogRef, onClose)
 
+  // The panel covers the viewport and scrolls its own notes column, but the page behind
+  // it can still be taller than the viewport. Without this the body keeps its own
+  // scrollbar, doing nothing since the fixed panel blocks it, right beside the pane's.
+  useEffect(() => {
+    const previous = document.body.style.overflow
+    document.body.style.overflow = 'hidden'
+    return () => {
+      document.body.style.overflow = previous
+    }
+  }, [])
+
   const setDraft = (state: StateId, value: string) => {
     draftsRef.current = { ...draftsRef.current, [state]: value }
     setDrafts(draftsRef.current)
