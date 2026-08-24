@@ -27,6 +27,8 @@
   --accent: #0f766e;
   --accent-strong: #0b5c55;
   --accent-weak: #e6f2f0;
+  /* Text on a solid accent fill: the current find match, sidebar match counts */
+  --on-accent: #fff;
 
   /* Danger */
   --danger: #b3261e;
@@ -63,6 +65,19 @@
   --control: 32px;
   --control-form: 40px;
 
+  /* A folded outline's chevron column, and the indent that lines content up with the
+     text beside it rather than with the chevron */
+  --fold-gutter: 1rem;
+  --fold-indent: calc(var(--fold-gutter) + var(--s2));
+
+  /* Prep notes panel: sidebar width, and the height of one stage's sticky header
+     (a --control row, --s3 above and below it, and a 1px bottom border) */
+  --sidebar: 208px;
+  --note-header: 49px;
+  /* How much of a pane the captured lines may take before they scroll on their own.
+     In rem so it holds the same number of lines as the text scales. */
+  --capture-log: 11rem;
+
   /* Page gutter */
   --gutter: clamp(var(--s4), 2vw, var(--s6));
 
@@ -98,6 +113,7 @@
     --accent: #2dd4bf;
     --accent-strong: #5eead4;
     --accent-weak: #163330;
+    --on-accent: #16181a;
 
     --danger: #f2867e;
     --danger-weak: #3a1c1a;
@@ -123,6 +139,7 @@
   --accent: #2dd4bf;
   --accent-strong: #5eead4;
   --accent-weak: #163330;
+  --on-accent: #16181a;
 
   --danger: #f2867e;
   --danger-weak: #3a1c1a;
@@ -1443,6 +1460,50 @@ tbody tr:hover {
   gap: var(--s2);
 }
 
+/* ------------------------------------------------------- state history --- */
+
+.state-history {
+  gap: var(--s3);
+}
+
+.state-history__list {
+  display: grid;
+  gap: var(--s1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.state-history__entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--s2);
+  padding: var(--s1) var(--s3);
+  /* One rail down the left reads as a timeline without drawing a box per move. */
+  border-left: 2px solid var(--line-strong);
+  font-size: var(--t2);
+  line-height: 1.4;
+}
+
+.state-history__entry--current {
+  border-left-color: var(--accent);
+}
+
+.state-history__state {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.state-history__date,
+.state-history__span {
+  color: var(--ink-3);
+}
+
+.state-history__span {
+  margin-left: auto;
+}
+
 /* ------------------------------------------------------------- invites --- */
 
 .invite-summaries {
@@ -1607,11 +1668,6 @@ tbody tr:hover {
   margin-top: var(--s2);
 }
 
-.stage-notes {
-  display: grid;
-  gap: var(--s4);
-}
-
 .stage-note {
   display: grid;
   gap: var(--s3);
@@ -1726,6 +1782,42 @@ tbody tr:hover {
   line-height: 1.5;
 }
 
+/*
+ * What was captured, and the line that captures more, docked together under the note.
+ * The log takes what it needs up to a cap and then scrolls itself, so a long
+ * conversation cannot push the note above it off the screen.
+ */
+.stage-note__dock {
+  display: grid;
+  gap: var(--s3);
+}
+
+.stage-note__log {
+  max-height: var(--capture-log);
+  overflow-y: auto;
+}
+
+/*
+ * The capture row: one line in, filed into the note being read. It reads as a dense
+ * toolbar rather than a form field, because it is answered mid-conversation and sits
+ * under a note rather than in a dialog full of inputs.
+ */
+.stage-note__capture {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.stage-note__capture .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.stage-note__capture .field input {
+  min-height: var(--control);
+  font-size: var(--t3);
+}
+
 .stage-note__hint code,
 .stage-note__external code,
 .markdown code {
@@ -1733,6 +1825,535 @@ tbody tr:hover {
   border-radius: var(--r1);
   background: var(--surface-3);
   font-size: 0.92em;
+}
+
+/* ------------------------------------------------------ notes panel --- */
+
+/*
+ * Stage prep notes open as a full-viewport panel rather than a centred dialog: a note
+ * is read while an interview is happening, so it gets the whole screen. The chrome is
+ * pinned and only the notes column scrolls, which keeps the stage list, the find bar,
+ * and Save in place however long the notes run.
+ */
+
+.dialog-backdrop--panel {
+  padding: 0;
+  overflow: hidden;
+  place-items: stretch;
+}
+
+.dialog--panel {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  width: 100%;
+  max-width: none;
+  height: 100dvh;
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 0;
+}
+
+.panel__titlebar {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s5);
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.panel__title {
+  flex: 1;
+  min-width: 0;
+}
+
+.panel__title h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t5);
+  font-weight: 600;
+}
+
+.panel__title .dialog__subject {
+  margin: 0;
+}
+
+/* Dense controls in the chrome: .dialog .button sizes buttons for forms, which is
+   taller than a title bar or a stage header wants. */
+.panel__titlebar .button,
+.panel__notes .stage-note__mode {
+  min-height: var(--control);
+}
+
+.panel__chrome-button {
+  gap: var(--s2);
+}
+
+.panel__body {
+  display: grid;
+  grid-template-columns: var(--sidebar) minmax(0, 1fr);
+  min-height: 0;
+}
+
+.panel__body--no-sidebar {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.panel__sidebar {
+  display: grid;
+  align-content: start;
+  gap: var(--s5);
+  padding: var(--s4);
+  overflow-y: auto;
+  border-right: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.panel__sidebar-title {
+  margin: 0 0 var(--s2);
+  color: var(--ink-3);
+  font-size: var(--t1);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/*
+ * The outline is a tree, and it earns its place only if its shape can be taken in at a
+ * glance. Three things carry the hierarchy: an indent guide per level, a type ramp that
+ * quietens deeper rows, and the path down to the section being read marked the whole
+ * way, so the reader can see where they are without tracing indentation.
+ */
+.panel__outline {
+  display: grid;
+  gap: var(--s1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.panel__outline--nested {
+  margin-left: var(--s3);
+  padding-left: var(--s3);
+  border-left: 1px solid var(--line);
+}
+
+/* The guide brightens along the branch holding the section being read. */
+.panel__outline-branch--on-path > .panel__outline--nested {
+  border-left-color: var(--accent);
+}
+
+/*
+ * The top level reads loudest: it is the note's spine. Rows wrap rather than clip,
+ * because the sidebar is navigation but it is also the only place a note's headings are
+ * written out together.
+ */
+.panel__outline-entry {
+  width: 100%;
+  min-height: var(--control);
+  padding: var(--s1) var(--s2);
+  border: 0;
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: none;
+  font-size: var(--t3);
+  font-weight: 600;
+  text-align: left;
+}
+
+/* Each level down steps once through the ink and weight scales, so depth is legible
+   without having to count indents. */
+.panel__outline-entry[data-depth="1"] {
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+.panel__outline-entry[data-depth="2"],
+.panel__outline-entry[data-depth="3"] {
+  color: var(--ink-3);
+  font-size: var(--t2);
+  font-weight: 400;
+}
+
+.panel__outline-entry:hover {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+
+/*
+ * An ancestor of the section being read is on the trail but is not the destination, and
+ * the section itself is marked outright. Both carry [data-depth] so they outrank the
+ * ramp above at any depth — without it a third-level row would keep its quiet ink and
+ * the mark would be invisible exactly where the outline is deepest.
+ */
+.panel__outline-entry--ancestor[data-depth] {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.panel__outline-entry--current[data-depth] {
+  color: var(--accent-strong);
+  background: var(--accent-weak);
+  font-weight: 600;
+}
+
+.panel__main {
+  position: relative;
+  display: grid;
+  /* Tab bar, breadcrumbs, the scrolling notes column, then the status bar. */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+/*
+ * The notes area is a row of panes. Each pane scrolls on its own, so a long note in a
+ * split panel does not drag the note beside it along, and each pane's stage header
+ * sticks to the top of its own column.
+ */
+.panel__notes {
+  display: flex;
+  min-height: 0;
+}
+
+.panel__pane {
+  flex: 1;
+  min-width: 0;
+  padding: var(--s5);
+  /* Transparent until focused, so marking a pane never shifts what is inside it. */
+  border-top: 2px solid transparent;
+  overflow-y: auto;
+}
+
+.panel__pane + .panel__pane {
+  border-left: 1px solid var(--line);
+}
+
+/* Which pane the outline, breadcrumbs, and status bar are describing. Only worth
+   saying when there is more than one pane to choose between. */
+.panel__notes--split .panel__pane--focused {
+  border-top-color: var(--accent);
+}
+
+.panel__statusbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s3) var(--s5);
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.panel__status {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+.panel__statusbar .dialog__actions {
+  flex: 0 0 auto;
+}
+
+/*
+ * In the panel a stage's own padding moves onto its children, so the header can sit
+ * flush and stick to the top of the scrolling column as its note runs past.
+ */
+.panel__notes .stage-note {
+  padding: 0;
+}
+
+.panel__notes .stage-note__header {
+  position: sticky;
+  z-index: 2;
+  top: 0;
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+  border-radius: var(--r2) var(--r2) 0 0;
+  background: var(--surface-2);
+}
+
+.panel__notes .stage-note--current .stage-note__header {
+  background: var(--accent-weak);
+}
+
+.panel__notes .stage-note > *:not(.stage-note__header) {
+  padding: 0 var(--s4);
+}
+
+.panel__notes .stage-note > *:last-child {
+  padding-bottom: var(--s4);
+}
+
+/*
+ * The dock pins to the bottom of its own scrolling pane, so what you were told stays on
+ * screen however far the note above it is scrolled, and can be added to from where the
+ * reading left off. Written as a child selector to outrank the padding above it, and
+ * opaque because the note scrolls underneath.
+ */
+.panel__notes .stage-note > .stage-note__dock {
+  position: sticky;
+  z-index: 2;
+  bottom: 0;
+  padding: var(--s3) var(--s4);
+  border-top: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.panel__notes .stage-note--current > .stage-note__dock {
+  background: var(--accent-weak);
+}
+
+/*
+ * The log scrolls inside the dock, so its own headings stick to the top of it rather
+ * than to the stage header they are nowhere near.
+ */
+.panel__notes .stage-note__log .markdown__heading--1,
+.panel__notes .stage-note__log .markdown__heading--2,
+.panel__notes .stage-note__log .markdown__heading--3 {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  background: var(--surface-2);
+}
+
+.panel__notes .stage-note--current .stage-note__log .markdown__heading--1,
+.panel__notes .stage-note--current .stage-note__log .markdown__heading--2,
+.panel__notes .stage-note--current .stage-note__log .markdown__heading--3 {
+  background: var(--accent-weak);
+}
+
+/*
+ * Sticky scroll: a top-level heading stays visible while its own section scrolls past,
+ * so a long outline never leaves you wondering which part you are reading. It sits
+ * below the stage header, so --note-header has to match that header's height:
+ * one --control tall row, --s3 of padding above and below, and its bottom border.
+ * The header wraps to two rows when it runs out of width, so the narrow breakpoint
+ * turns this off rather than sticking headings at the wrong offset.
+ */
+.panel__notes .markdown__heading--1,
+.panel__notes .markdown__heading--2 {
+  position: sticky;
+  z-index: 1;
+  top: var(--note-header);
+  padding: var(--s1) 0;
+  background: var(--surface);
+}
+
+.panel__notes .stage-note--current .markdown__heading--1,
+.panel__notes .stage-note--current .markdown__heading--2 {
+  background: var(--accent-weak);
+}
+
+/* --------------------------------------------------- panel tab bar --- */
+
+.panel__tabs {
+  display: flex;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface-2);
+}
+
+.panel__tab {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-height: var(--control-form);
+  padding: 0 var(--s4);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--ink-2);
+  background: none;
+  font-size: var(--t3);
+  white-space: nowrap;
+}
+
+.panel__tab:hover {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+
+/* A tab whose stage is in a pane reads as lifted out of the bar. */
+.panel__tab--open {
+  color: var(--ink);
+  background: var(--surface);
+  font-weight: 600;
+}
+
+/* The focused pane's tab is underlined: with a split panel two tabs are open, and only
+   one of them is the pane the sidebar and status bar are talking about. */
+.panel__tab--active {
+  border-bottom-color: var(--accent);
+}
+
+.panel__tab-badge {
+  padding: 0 var(--s2);
+  border-radius: var(--pill);
+  color: var(--accent-strong);
+  background: var(--accent-weak);
+  font-size: var(--t1);
+  font-weight: 500;
+}
+
+.panel__tab-count {
+  padding: 0 var(--s2);
+  border-radius: var(--pill);
+  color: var(--on-accent);
+  background: var(--accent);
+  font-size: var(--t1);
+  font-variant-numeric: tabular-nums;
+}
+
+.panel__breadcrumbs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  margin: 0;
+  padding: var(--s2) var(--s5);
+  border-bottom: 1px solid var(--line);
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+.panel__crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+/* ---------------------------------------------------- stage picker --- */
+
+.quick-open {
+  position: absolute;
+  z-index: 4;
+  top: var(--s4);
+  left: 50%;
+  display: grid;
+  gap: var(--s2);
+  width: min(24rem, calc(100% - var(--s6)));
+  padding: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r2);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  translate: -50% 0;
+}
+
+.quick-open__input {
+  min-height: var(--control);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--surface);
+  font-size: var(--t3);
+}
+
+.quick-open__list {
+  display: grid;
+  gap: var(--s1);
+  max-height: 16rem;
+  margin: 0;
+  padding: 0;
+  overflow-y: auto;
+  list-style: none;
+}
+
+.quick-open__entry {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  width: 100%;
+  min-height: var(--control);
+  padding: 0 var(--s3);
+  border: 0;
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: none;
+  font-size: var(--t3);
+  text-align: left;
+}
+
+.quick-open__entry:hover,
+.quick-open__entry--active {
+  background: var(--surface-3);
+}
+
+.quick-open__label {
+  flex: 1;
+  min-width: 0;
+}
+
+.quick-open__badge {
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
+.quick-open__empty {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+/* ------------------------------------------------------ find widget --- */
+
+.find-widget {
+  position: absolute;
+  z-index: 3;
+  top: var(--s4);
+  right: var(--s6);
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r2);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.find-widget__input {
+  width: 12rem;
+  min-height: var(--control);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--surface);
+  font-size: var(--t3);
+}
+
+.find-widget__count {
+  min-width: 5rem;
+  color: var(--ink-3);
+  font-size: var(--t2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.find-widget__step:disabled {
+  color: var(--ink-3);
+  background: var(--surface-2);
+}
+
+/* Every hit is tinted; the one the find is sitting on is filled, so stepping through
+   is legible without a second hue entering the interface. */
+.markdown__match {
+  border-radius: var(--r1);
+  color: var(--accent-strong);
+  background: var(--accent-weak);
+  font-weight: 600;
+}
+
+.markdown__match--current {
+  color: var(--on-accent);
+  background: var(--accent);
 }
 
 /* --------------------------------------------------- markdown outline --- */
@@ -1748,10 +2369,6 @@ tbody tr:hover {
 .markdown__section {
   display: grid;
   gap: var(--s2);
-}
-
-.markdown__section .markdown__section {
-  padding-left: var(--s4);
 }
 
 .markdown__fold-all {
@@ -1842,8 +2459,8 @@ tbody tr:hover {
 
 .markdown__fold-row > .markdown__fold {
   align-self: center;
-  min-width: 1rem;
-  min-height: 1rem;
+  min-width: var(--fold-gutter);
+  min-height: var(--fold-gutter);
 }
 
 /* Foldable points keep the bullet marker their non-folding siblings get. */
@@ -1859,17 +2476,13 @@ ol.markdown__list > .markdown__item > .markdown__item-line.markdown__fold-row > 
 
 .markdown__bullet-spacer {
   flex: none;
-  width: 1rem;
+  width: var(--fold-gutter);
 }
 
 .markdown__item-content::before {
   margin-right: var(--s2);
   color: var(--accent);
   content: "•";
-}
-
-.markdown__list .markdown__list {
-  padding-left: var(--s5);
 }
 
 ol.markdown__list {
@@ -1918,6 +2531,36 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
 .markdown a {
   color: var(--accent);
+}
+
+/*
+ * Whatever a fold holds is indented past the chevron, so it lines up with the text of
+ * the row that folds it instead of with the chevron itself. Without this a note reads
+ * as one flat column and the only clue to what belongs where is the chevron's own
+ * state, which is exactly what a reader loses track of. One step is one --fold-indent,
+ * at every kind of fold, so depth stays comparable across headings, points, and quotes.
+ *
+ * A section is only titled once it has a heading of its own — the root section wraps the
+ * whole note and has nothing to indent under.
+ *
+ * Two things here are load-bearing.
+ *
+ * The indent is a margin, not padding. Padding would take over the padding these
+ * elements set for themselves: a quote would keep its border-left at the parent's edge
+ * and push only its text across — reading as not indented at all — and a code slab
+ * would fatten instead of moving. A margin moves the whole box, border and background
+ * with it, and leaves their own padding alone.
+ *
+ * And it comes last, after every rule it has to beat. A paragraph, a list, a quote, a
+ * code block and a code slab each reset `margin` for themselves; this is more specific
+ * than all of them, so it would win from anywhere, but a reader should not have to count
+ * class selectors to see that. Source order agrees with specificity here.
+ */
+.markdown__section--titled > *:not(.markdown__heading),
+.markdown__item > *:not(.markdown__item-line),
+.markdown__quote > *:not(.markdown__fold-row),
+.markdown__code-block > *:not(.markdown__fold-row) {
+  margin-left: var(--fold-indent);
 }
 
 /* =========================================================================
@@ -2044,6 +2687,63 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     width: 100%;
     max-height: calc(100vh - 1rem);
     border-radius: var(--r3) var(--r3) 0 0;
+  }
+
+  /* The panel already fills the viewport; the sheet treatment above must not
+     reintroduce a height cap or rounded corners on it. */
+  .dialog--panel {
+    max-height: none;
+    border-radius: 0;
+  }
+
+  /* Too narrow for a sidebar column, so the outline becomes a strip above the notes
+     rather than disappearing: it is the only place the headings are listed together. */
+  .panel__body {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .panel__sidebar {
+    gap: var(--s3);
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* A strip rather than a column, so it is capped and scrolls instead of pushing the
+     notes off screen. The tree stays a tree: flattening it would lose the hierarchy. */
+  .panel__sidebar {
+    max-height: 30dvh;
+  }
+
+  /* No room for two columns, so a split panel stacks instead. */
+  .panel__notes {
+    flex-direction: column;
+  }
+
+  .panel__pane {
+    padding: var(--s4);
+  }
+
+  .panel__pane + .panel__pane {
+    border-top: 1px solid var(--line);
+    border-left: 0;
+  }
+
+  /* The stage header wraps at this width, so it is no longer --note-header tall and
+     a heading stuck below it would sit in the wrong place. */
+  .panel__notes .markdown__heading--1,
+  .panel__notes .markdown__heading--2 {
+    position: static;
+  }
+
+  .find-widget {
+    right: var(--s4);
+    left: var(--s4);
+  }
+
+  .find-widget__input {
+    flex: 1;
+    width: auto;
   }
 }
 

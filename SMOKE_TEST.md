@@ -14,6 +14,10 @@ changing its state and recording history, marking a next action done and logging
 notes, recording stage prep notes against it, persistence across an app reload, and confirmed
 demo-data reset.
 
+Reading an application's state history back in the editor — one row per move, oldest first, and
+none at all on a new application — is covered by the app integration tests, and the spans it shows
+by `src/stateTimeline.test.ts`.
+
 Recording compensation through the editor, reading a stored record back into its boxes, and
 refusing an amount with no currency are covered by the app integration tests.
 
@@ -22,6 +26,20 @@ with no start time are covered by the app integration tests.
 
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
+
+Finding text in the prep notes panel — counting matches across every stage, stepping through them
+into tabs that are not rendered and wrapping, opening a fold to show a hit and closing it again
+afterwards, and Escape closing the find bar before the panel — is covered by the app integration
+tests, along with the tab bar, its arrow keys, the outline and its hierarchy, quick open, and
+splitting into two panes.
+
+Capturing what you were told — Enter storing a line without Save and without submitting the panel,
+the line reading in the docked log and not in the prep note above it, the log and its capture box
+staying writable while the prep note is being edited, captures surviving the prep note being
+cleared, and Ctrl+K reaching the focused pane's box — is covered by the app integration tests.
+Reading captured records back as a note, a heading per day, and the order they were said in are
+covered by `src/markdown/capture.test.ts`. The sticky headers,
+the breadcrumb trail, and the scroll to each hit need real layout, so they stay manual below.
 
 ## Manual browser-only checks
 
@@ -90,6 +108,48 @@ test cannot judge reliably:
    confirm the formatting rendered. Save, reopen, and confirm the notes persist. Add notes for a stage
    further down the pipeline and confirm searching for that text finds the application.
    Clear a stage's notes, save, and confirm they are gone.
+   Confirm the notes fill the screen: the title bar, tab bar, breadcrumbs, outline, and Save row
+   stay put while only the notes column scrolls, and a stage's header sticks to the top of that
+   column as its note runs past, with the headings inside it sticking below the header.
+   Move between stages with the tabs and with the arrow keys, confirming focus follows the tab.
+   Scroll a long note and confirm the breadcrumbs name the heading you are inside, that the
+   matching outline row is marked, that the rows above it on the trail are marked more quietly
+   with their indent guide picked out, and that selecting an outline row scrolls to that heading.
+   In a note with headings three levels deep, confirm the outline indents each level with its own
+   guide, that deeper rows read more quietly than the top level, and that a third-level row is
+   still clearly marked when it is the one you are inside.
+   Press `Ctrl`/`Cmd+P`, type part of a stage name, and confirm the picker filters loosely, marks
+   the stages already open, opens the one you pick as a tab ready to type into, and that the
+   browser's print dialog never appears.
+   Select **Split** (or `Ctrl`/`Cmd+\`) and confirm a second pane opens on another stage, that
+   each pane scrolls and sticks its own header independently, that the focused pane is marked and
+   follows a click into either one, and that the outline and breadcrumbs describe the focused pane.
+   Select a tab whose stage is already in the other pane and confirm focus moves there rather than
+   the note opening twice. Close one pane, then **Unsplit**, and confirm the other note is untouched.
+   Press `Ctrl`/`Cmd+B` and confirm the outline collapses away, the notes take the width, and it
+   comes back. On a narrow window, confirm a split panel stacks its panes instead of squeezing them.
+   Scroll a long note and confirm the **Heard** dock stays pinned to the bottom of its own pane
+   with the note scrolling under it, opaque against both a plain stage and the tinted current one.
+   Type a line, press Enter, and confirm it appears at the end of the log under today's date, that
+   the notice reports it, and that closing the panel with Escape and reopening it shows the line
+   still there. Capture a second line and confirm it joins the same day rather than repeating the
+   date. Capture enough lines to fill the log and confirm it scrolls within its own cap, holding
+   the newest line in view, with the day heading sticking to the top of it and the prep note above
+   still readable. Select **Edit** on that stage and confirm the log and its box stay put and
+   still work while the prep note is in the editor.
+8. In the prep notes panel, press `Ctrl`/`Cmd+F` and confirm the browser's own find does not open.
+   Search for text that appears in more than one stage, and confirm the count reads `1 of N`, every
+   hit is highlighted, the current one stands out, and each tab shows a count of the matches in
+   that stage's note. Step with the up and down buttons and with Enter and Shift+Enter, confirming the
+   panel scrolls to each hit, that stepping across a stage boundary switches tab, and that
+   stepping past either end wraps.
+   Search for text that only appears in a stage you are not looking at, and confirm the panel
+   switches to that tab and scrolls to the hit. With the panel split, confirm the match lands in
+   the focused pane and leaves the other one alone.
+   Fold a heading, then search for text inside it: the fold must open to show the hit, and close
+   again when the find closes. Search for something absent and confirm it reads No results.
+   Press `Ctrl`/`Cmd+F` again while the bar is open and confirm the existing query is selected.
+   Press Escape once to close the find and again to close the panel.
 9. With `VISUAL` or `EDITOR` set to a GUI editor, select **Editor** on a stage note. Confirm the file
    opens, that `data/editing/` holds it, and that the banner names the editor and path. Save a change
    in the editor and confirm it appears in the app within a second or two and is stored without
@@ -131,7 +191,12 @@ test cannot judge reliably:
     Marble & Finch claims no gap because it has no target. Sort Compensation both ways and
     confirm Northstar Labs — which has only an expectation — stays at the bottom in each
     direction along with the rows that have nothing at all.
-14. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+14. Open the demo's Saffron Systems application and confirm the **History** list reads down from
+    **Applied** to **Accepted**, each move showing its date and how long that state held, with the
+    last one still running. Move it to another state, save, reopen, and confirm one entry was
+    appended. Reopen and change nothing but the notes, save, and confirm the list is unchanged.
+    Open **Add application** and confirm no History list appears.
+15. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
     and confirm it. Confirm the same 19 examples are restored in `data/demo/`, now including
     the demo invites, and that `data/tracker.json` is unchanged.
 

@@ -33,6 +33,8 @@ interface DemoSeed {
   ratings?: Partial<Record<RatingDimensionId, number | null>>
   compensation?: DemoCompensationSeed
   stageNotes?: Partial<Record<StateId, string>>
+  /** Lines captured during a stage, in the order they were said. */
+  stageHeard?: Partial<Record<StateId, readonly string[]>>
   stateEvents?: readonly DemoEventSeed[]
 }
 
@@ -73,7 +75,7 @@ const DEMO_SEEDS: readonly DemoSeed[] = [
   { company: 'Willow Finance', role: 'Risk Product Manager', state: 'take_home_assessment_rejected', createdDaysAgo: 51, updatedDaysAgo: 24, priorStates: ['applied', 'recruiter_interview', 'take_home_assessment'], notes: 'Good feedback on structure; domain depth was the deciding factor.', source: 'Job board' },
   { company: 'Echo Robotics', role: 'Human Factors Researcher', state: 'interview_1', createdDaysAgo: 21, updatedDaysAgo: 4, priorStates: ['applied', 'recruiter_interview'], notes: 'The panel went ahead four days ago. Waiting on feedback with nothing booked in.', source: 'Referral', stageNotes: { interview_1: '## Panel\n\n- Design\n- Engineering\n- Research\n\n## Case study\n\n- The teleoperation study\n  - 12 participants across two rounds\n  - Shipped three safety changes\n  - Task completion rose from **61% to 88%**\n\n## Questions to ask\n\n- Ask each panellist what they would want researched first' } },
   { company: 'Mosslight Energy', role: 'Senior Data Scientist', state: 'interview_1_rejected', createdDaysAgo: 62, updatedDaysAgo: 34, priorStates: ['applied', 'online_assessment', 'recruiter_interview', 'interview_1'], notes: 'Technical discussion went well; another candidate had energy-market experience.', source: 'LinkedIn' },
-  { company: 'Halcyon Maps', role: 'Engineering Manager', state: 'interview_2', createdDaysAgo: 25, updatedDaysAgo: 1, compensation: { currency: 'AUD', advertised: [180_000, 210_000], expected: 200_000, offered: 215_000 }, ratings: { work: 5, growth: 4, people: 4, company: 4 }, priorStates: ['applied', 'recruiter_interview', 'interview_1'], nextAction: 'Join the leadership interview', nextActionDaysFromNow: 0, notes: 'Final conversation with the VP of Engineering.', source: 'Recruiter', stateEvents: [{ state: 'interview_1', summary: 'Interview 1 — hiring manager', daysFromNow: -6, hour: 10, minutes: 60, cancelled: true }, { state: 'interview_2', summary: 'Leadership interview with the VP of Engineering', daysFromNow: 0, hour: 15, minutes: 45, url: 'https://example.com/meet/halcyon-maps' }], stageNotes: { interview_1: 'Went well. They pushed hard on incident response — reuse the on-call rotation rebuild story.', interview_2: 'Final conversation with the VP of Engineering.\n\n## Leadership themes\n\n- Growing seniors into leads\n  - The two promotions I sponsored last year\n- Cutting cycle time\n  - Trunk-based release change, two weeks to two days\n- Where I hold the hiring bar\n\n## Questions to ask\n\n- How is platform work prioritised against roadmap commitments?\n- What does the first 90 days look like?', offer: 'Before answering, confirm:\n\n- The level\n  - They hinted at Staff, the ad said Senior\n- The equity refresh policy\n- Remote expectations\n\n> From the ad: "occasional travel to the London office" — pin down what occasional means.' } },
+  { company: 'Halcyon Maps', role: 'Engineering Manager', state: 'interview_2', createdDaysAgo: 25, updatedDaysAgo: 1, compensation: { currency: 'AUD', advertised: [180_000, 210_000], expected: 200_000, offered: 215_000 }, ratings: { work: 5, growth: 4, people: 4, company: 4 }, priorStates: ['applied', 'recruiter_interview', 'interview_1'], nextAction: 'Join the leadership interview', nextActionDaysFromNow: 0, notes: 'Final conversation with the VP of Engineering.', source: 'Recruiter', stateEvents: [{ state: 'interview_1', summary: 'Interview 1 — hiring manager', daysFromNow: -6, hour: 10, minutes: 60, cancelled: true }, { state: 'interview_2', summary: 'Leadership interview with the VP of Engineering', daysFromNow: 0, hour: 15, minutes: 45, url: 'https://example.com/meet/halcyon-maps' }], stageNotes: { interview_1: 'Went well. They pushed hard on incident response — reuse the on-call rotation rebuild story.', interview_2: 'Final conversation with the VP of Engineering.\n\n## Leadership themes\n\n- Growing seniors into leads\n  - The two promotions I sponsored last year\n- Cutting cycle time\n  - Trunk-based release change, two weeks to two days\n- Where I hold the hiring bar\n\n## Questions to ask\n\n- How is platform work prioritised against roadmap commitments?\n- What does the first 90 days look like?', offer: 'Before answering, confirm:\n\n- The level\n  - They hinted at Staff, the ad said Senior\n- The equity refresh policy\n- Remote expectations\n\n> From the ad: "occasional travel to the London office" — pin down what occasional means.' }, stageHeard: { interview_2: ['Team is 40 engineers across four squads', 'Platform work gets a fixed 20% of each quarter', 'Decision comes back by the end of next week'] } },
   { company: 'Fern & Field', role: 'Brand Director', state: 'interview_2_rejected', createdDaysAgo: 73, updatedDaysAgo: 41, priorStates: ['headhunted', 'recruiter_interview', 'interview_1', 'interview_2'], nextAction: 'Thank the hiring manager and stay connected', notes: 'A thoughtful process and useful portfolio feedback.', source: 'Referral' },
   { company: 'Lumen Pantry', role: 'Head of Growth', state: 'offer', createdDaysAgo: 33, updatedDaysAgo: 1, compensation: { currency: 'AUD', advertised: [230_000, 260_000], expected: 250_000, offered: 230_000 }, ratings: { work: 5, growth: 5, people: 1, company: 5 }, priorStates: ['applied', 'recruiter_interview', 'interview_1', 'interview_2'], nextAction: 'Review compensation and equity terms', notes: 'Written offer received. No decision date given yet, so the review is not booked in.', source: 'Company site', stageNotes: { offer: '## Where the offer stands\n\n- Base is **8% below** target\n- Equity is above target\n- Ask for the base to move first\n\n## Confirm before accepting\n\n- Review cycle\n- Start date flexibility\n- Learning budget' } },
   { company: 'Redwood Relay', role: 'Principal Engineer', state: 'offer_rejected', createdDaysAgo: 88, updatedDaysAgo: 46, priorStates: ['headhunted', 'recruiter_interview', 'interview_1', 'interview_2', 'offer'], notes: 'Declined after the location policy changed.', source: 'Recruiter' },
@@ -128,13 +130,25 @@ function compensationFor(seed: DemoSeed): Compensation {
   return record
 }
 
-function stageNotesFor(seed: DemoSeed, history: StateHistoryEntry[], updatedAt: string): StageNote[] {
+function stageNotesFor(
+  seed: DemoSeed,
+  index: number,
+  history: StateHistoryEntry[],
+  updatedAt: string,
+): StageNote[] {
   const reachedAt = new Map(history.map((entry) => [entry.state, entry.at]))
   return STATE_IDS.flatMap((state) => {
     const body = seed.stageNotes?.[state]
-    if (!body) return []
+    const said = seed.stageHeard?.[state] ?? []
+    if (!body && said.length === 0) return []
     const at = reachedAt.get(state) ?? updatedAt
-    return [{ state, body, created_at: at, updated_at: at }]
+    // Captured a minute apart, so the examples read in the order they were said.
+    const heard = said.map((line, order) => ({
+      id: demoHeardId(index, STATE_IDS.indexOf(state), order),
+      body: line,
+      at: new Date(Date.parse(at) + order * 60_000).toISOString(),
+    }))
+    return [{ state, body: body ?? '', heard, created_at: at, updated_at: at }]
   })
 }
 
@@ -160,6 +174,10 @@ function demoStateEvents(seed: DemoSeed, index: number, reference: Date, updated
 
 function demoId(index: number): string {
   return `018f0000-0000-7000-8000-${String(index + 1).padStart(12, '0')}`
+}
+
+function demoHeardId(index: number, state: number, order: number): string {
+  return `018f0000-0000-7000-a000-${String(index + 1).padStart(6, '0')}${String(state + 1).padStart(3, '0')}${String(order + 1).padStart(3, '0')}`
 }
 
 function demoEventId(index: number, order: number): string {
@@ -204,7 +222,7 @@ export function createDemoDocument(
           ? localDay(reference, seed.deadlineDaysFromNow, 17).toISOString()
           : null,
       notes: seed.notes ?? null,
-      stage_notes: stageNotesFor(seed, history, updatedAt),
+      stage_notes: stageNotesFor(seed, index, history, updatedAt),
       state_events: demoStateEvents(seed, index, reference, updatedAt),
       attachments: [],
       ratings: ratingsFor(seed, updatedAt),

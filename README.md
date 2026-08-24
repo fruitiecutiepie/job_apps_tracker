@@ -8,6 +8,7 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 
 - Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, the next upcoming invite and attachment filenames on cards, a state-selector fallback, and muted styling for applications untouched for 14 days
 - Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first
+- Captured lines per stage, recording what an interviewer tells you as you are told it, stored the moment they are entered and pinned on screen under the prep note however far it scrolls
 - Optional deadline per application, recording an external closing or decision date separately from your own next action
 - Preference ranking from four subjective ratings, discounted for what you have not judged yet, with the weakest dimension named so a healthy average cannot hide a dealbreaker, shown on the table row and the Kanban card, summarised across the collection on Statistics, and used to break ties within a Focus group
 - Compensation as a measurement rather than a rating: what was advertised, what you expect, and what was offered, kept side by side and compared against your target
@@ -95,6 +96,18 @@ Select **Prep notes** on a Kanban card or table row to record what you need for 
 Add notes for a stage you have not reached yet with **Add notes for another stage**—useful for drafting offer questions while you are still interviewing. Clearing a stage's notes removes them when you save. Prep notes are searchable from the global search box.
 
 Notes are written in Markdown. A stage that already has notes opens as a rendered outline, ready to read; select **Edit** on it to change the text, and **Read** to go back. Empty stages open straight in the editor, which has a toolbar for bold, italic, heading, and bullet point.
+
+### Capture what you are told
+
+Every stage has a **Heard** log docked beneath its prep note, holding what you were told during that stage. Type a line in the capture box and press Enter: it is stored immediately—there is no Save to remember mid-conversation, and nothing to lose by closing the panel. `Ctrl`/`Cmd+K` puts the caret in the box from anywhere in the panel, and in a split panel it lands in the pane you are reading.
+
+The dock stays on screen however far the prep note above it scrolls, so what you have been told and the box you add to are both always in view. The log takes what it needs and then scrolls on its own, holding the newest line in sight. Lines are grouped under the day they were captured on, so a second answer the same day costs one line. Each line is Markdown, so `**bold**` and links work in it.
+
+Captures are stored separately from what you prepared, which has three consequences worth knowing:
+
+- Clearing a stage's prep notes does not unsay what you were told in it. The note stays, with a blank body and its captures intact.
+- Captures stay on screen and writable while you are editing the prep note, or while that note is open in an external editor. There is no shared text for the two to race over.
+- Saving the panel never rewrites a capture, and Cancel never rolls one back. A captured line is a record of a moment, so there is no editing it—if it is wrong, say so in the next line.
 
 Supported syntax is a practical subset: `#` through `######` headings, `-` or `1.` lists that nest when you indent them, `**bold**`, `_italic_`, `` `code` ``, `>` block quotes, fenced code blocks, and `[links](https://example.com)`. Links open only for `http`, `https`, and `mailto` targets.
 

@@ -28,14 +28,38 @@ export interface StateHistoryEntry {
   at: string
 }
 
+/**
+ * One line captured while a stage was being read: what you were told, and when. Stored as
+ * a record rather than as text inside the note's `body` because the two are written at
+ * different moments by different hands — `body` is prepared and saved deliberately, a
+ * captured line is typed mid-conversation and stored the instant it is entered — and
+ * because the day a line belongs to is then a reading of `at` rather than something to be
+ * parsed back out of a heading.
+ *
+ * There is no author field. A stage note already says which conversation this is, and
+ * asking who was speaking is a question to answer mid-interview that is not worth the
+ * keystrokes; a name that matters goes in the line.
+ */
+export interface HeardEntry {
+  id: string
+  body: string
+  at: string
+}
+
 export interface StageNote {
   state: StateId
   body: string
+  /** Lines captured during this stage, oldest first. */
+  heard: HeardEntry[]
   created_at: string
   updated_at: string
 }
 
-/** A stage prep note as edited in the UI, before timestamps are resolved. */
+/**
+ * A stage prep note as edited in the UI, before timestamps are resolved. It carries no
+ * captured lines: those are stored as they are typed and never pass through a draft, so
+ * saving the notes panel cannot roll one back or write one twice.
+ */
 export interface StageNoteDraft {
   state: StateId
   body: string
