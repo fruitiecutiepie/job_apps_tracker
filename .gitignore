@@ -10,3 +10,4 @@ data/backups/
 data/attachments/
 data/editing/
 data/demo/
+.claude/settings.local.json

@@ -261,20 +261,23 @@ export function StageNotePane({
           <div className="stage-note__capture">
             <label className="field">
               <span className="sr-only">Capture a line in {label}</span>
-              <input
+              <textarea
                 data-capture-focus={isFocused ? 'true' : undefined}
                 // Never disabled, not even mid-write: taking the caret away from someone
                 // typing what they are being told is worse than a write it has to wait for.
                 onChange={(event) => setLine(event.target.value)}
                 onKeyDown={(event) => {
                   if (event.key !== 'Enter') return
+                  // Shift+Enter is the way to a second line, so Enter stays the fast path:
+                  // the box is answered mid-conversation, and reaching for a button to file
+                  // what was just said is the thing this dock exists to avoid.
+                  if (event.shiftKey) return
                   // The panel is one form around every stage, so Enter would otherwise
                   // save the lot and close it in the middle of a conversation.
                   event.preventDefault()
                   void capture()
                 }}
-                placeholder={`What did they say? Enter files it under ${CAPTURE_SECTION}`}
-                type="text"
+                placeholder={`What did they say? Enter files it under ${CAPTURE_SECTION}, Shift+Enter starts a line`}
                 value={line}
               />
             </label>

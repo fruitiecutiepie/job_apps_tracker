@@ -62,9 +62,18 @@ it('completes the primary tracker journey and persists it across reloads', async
   await user.click(screen.getByRole('button', { name: 'Add prep notes for Smoke Test Co' }))
   const prepDialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
   await user.type(within(prepDialog).getByLabelText('Offer prep notes'), 'Confirm the review cycle')
-  await user.click(within(prepDialog).getByRole('button', { name: 'Save notes' }))
 
-  expect(screen.getByRole('status')).toHaveTextContent('Prep notes saved.')
+  // Prep notes write themselves once the typing pauses; there is nothing to submit.
+  await waitFor(
+    () =>
+      expect(
+        readSavedDocument()
+          .applications.find((application) => application.company === 'Smoke Test Co')
+          ?.stage_notes,
+      ).toHaveLength(1),
+    { timeout: 4000 },
+  )
+  await user.click(within(prepDialog).getByRole('button', { name: 'Close dialog' }))
 
   const savedAfterEdit = readSavedDocument()
   const smokeApplication = savedAfterEdit.applications.find(

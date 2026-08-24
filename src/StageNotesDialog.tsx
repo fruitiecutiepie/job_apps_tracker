@@ -13,7 +13,7 @@ import {
   type StateId,
 } from './domain'
 import { QuickOpen, type QuickOpenEntry } from './QuickOpen'
-import { formatShortDate } from './views/viewUtils'
+import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
 import {
   capturedMarkdown,
   buildSections,
@@ -35,6 +35,13 @@ import { useDialogKeyboard } from './useDialogKeyboard'
 const EDITOR_POLL_MS = 1000
 
 /**
+ * How long typing pauses before the drafts that changed are written. Long enough that a
+ * sentence is one write rather than one per key, short enough that closing the panel
+ * straight after a thought is rare — and the flush on close catches it when it is not.
+ */
+const AUTOSAVE_MS = 800
+
+/**
  * The height of a stage's sticky header, matching --note-header. The breadcrumbs read it
  * to decide which heading has been scrolled past, since a heading sticks under it.
  */
@@ -43,13 +50,19 @@ const NOTE_HEADER_PX = 49
 interface StageNotesDialogProps {
   application: Application
   onClose: () => void
-  onSave: (drafts: StageNoteDraft[]) => Promise<void>
-  /** Commits a change that arrived from an external editor, which has no Save button. */
+  /**
+   * Stores the stages whose drafts have changed since the last write. The panel writes
+   * as it is typed into, so this commits without closing it and without a notice.
+   * Resolves false when the write failed, which leaves those drafts pending for the next
+   * pause in typing, or for the flush as the panel closes, to try again.
+   */
+  onSaveDrafts: (drafts: StageNoteDraft[]) => Promise<boolean>
+  /** Commits a change that arrived from an external editor, which writes on its own. */
   onExternalChange: (state: StateId, body: string) => Promise<void>
   /**
-   * Stores one captured line against a stage. Unlike the drafts Save writes, a captured
-   * line is stored the moment it is entered: it is typed mid-conversation, where Escape
-   * and a closed tab are likelier than a deliberate Save.
+   * Stores one captured line against a stage, the moment it is entered rather than at the
+   * next pause in typing: it is answered mid-conversation, where Escape and a closed tab
+   * are likelier than a lull the autosave could ride on.
    */
   onCapture: (state: StateId, line: string) => Promise<void>
 }
@@ -136,7 +149,7 @@ function wordCount(text: string): number {
 export function StageNotesDialog({
   application,
   onClose,
-  onSave,
+  onSaveDrafts,
   onExternalChange,
   onCapture,
 }: StageNotesDialogProps) {
@@ -146,7 +159,20 @@ export function StageNotesDialog({
   )
   // The poll loop reads drafts outside of React's render cycle, so it needs a live copy.
   const draftsRef = useRef(drafts)
+  /**
+   * The text last written for each stage, so a draft counts as pending only against what
+   * actually reached the document. Compared against the draft rather than against the
+   * stored note because `applyStageNotes` trims a body: a draft ending in a space would
+   * otherwise never look written and would be re-sent at every pause in typing.
+   *
+   * State as well as a ref, the way the drafts themselves are: the write loop reads it
+   * outside a render, and the status bar reads it during one.
+   */
+  const [stored, setStored] = useState<Partial<Record<StateId, string>>>(() => ({ ...drafts }))
+  const storedRef = useRef(stored)
   const [addedStages, setAddedStages] = useState<StateId[]>([])
+  /** Stages taken off the tab bar for this sitting. Their notes are left where they are. */
+  const [closedStages, setClosedStages] = useState<StateId[]>([])
   // Stages that already hold notes open as readable outlines; empty ones open ready to type.
   const [editing, setEditing] = useState<StateId[]>(() =>
     application.stage_notes.length > 0 ? [] : [application.state],
@@ -155,6 +181,9 @@ export function StageNotesDialog({
   const sessionsRef = useRef(sessions)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [savedAt, setSavedAt] = useState<Date | null>(null)
+  const savingRef = useRef(false)
+  const mountedRef = useRef(true)
 
   /**
    * The stages on screen, one per pane. A single pane gets the whole width; splitting
@@ -186,6 +215,11 @@ export function StageNotesDialog({
     externalChangeRef.current = onExternalChange
   }, [onExternalChange])
 
+  const saveDraftsRef = useRef(onSaveDrafts)
+  useEffect(() => {
+    saveDraftsRef.current = onSaveDrafts
+  }, [onSaveDrafts])
+
   useDialogKeyboard(dialogRef, onClose)
 
   // The panel covers the viewport and scrolls its own notes column, but the page behind
@@ -203,6 +237,81 @@ export function StageNotesDialog({
     draftsRef.current = { ...draftsRef.current, [state]: value }
     setDrafts(draftsRef.current)
   }
+
+  /**
+   * A draft the reader typed. Unlike one arriving from an external editor, the stage joins
+   * the tab bar for the life of the panel: emptying a note removes it from the document a
+   * moment later, and the pane must not disappear from under the caret that cleared it.
+   */
+  const editDraft = (state: StateId, value: string) => {
+    setDraft(state, value)
+    setAddedStages((current) => (current.includes(state) ? current : [...current, state]))
+  }
+
+  const markStored = (state: StateId, body: string) => {
+    storedRef.current = { ...storedRef.current, [state]: body }
+    if (mountedRef.current) setStored(storedRef.current)
+  }
+
+  const pendingDrafts = (): StageNoteDraft[] =>
+    (Object.keys(draftsRef.current) as StateId[])
+      .filter((state) => draftsRef.current[state] !== storedRef.current[state])
+      .map((state) => ({ state, body: draftsRef.current[state] ?? '' }))
+
+  /**
+   * Writes the stages that have changed, one write at a time. Every save PUTs the whole
+   * document read from the parent's copy, so an overlapping one would be built on a
+   * document the first has already replaced. Typing during a write is not lost: it is
+   * still pending, so the loop picks it up before it lets go of the flag.
+   *
+   * Reads only refs, so it never changes identity and never restarts the debounce below.
+   */
+  const flushDrafts = useCallback(async () => {
+    if (savingRef.current || pendingDrafts().length === 0) return
+    savingRef.current = true
+    if (mountedRef.current) setSaving(true)
+    try {
+      for (let batch = pendingDrafts(); batch.length > 0; batch = pendingDrafts()) {
+        const written = await saveDraftsRef.current(batch)
+        // Left pending on failure, so the next pause in typing tries it again. The parent
+        // raises the failure itself; a second notice here would say it twice.
+        if (!written) break
+        for (const draft of batch) markStored(draft.state, draft.body)
+        if (mountedRef.current) setSavedAt(new Date())
+      }
+    } finally {
+      savingRef.current = false
+      if (mountedRef.current) setSaving(false)
+    }
+  }, [])
+
+  // Hung off `drafts` and nothing else: its identity changes only when a draft is edited,
+  // never on a re-render, and every write re-renders the parent — anything else in the
+  // dependencies would restart the wait on the panel's own writes and it would never fire.
+  useEffect(() => {
+    if (pendingDrafts().length === 0) return
+    const timer = window.setTimeout(() => void flushDrafts(), AUTOSAVE_MS)
+    return () => window.clearTimeout(timer)
+  }, [drafts, flushDrafts])
+
+  const flushRef = useRef(flushDrafts)
+  useEffect(() => {
+    flushRef.current = flushDrafts
+  }, [flushDrafts])
+
+  /**
+   * The keystrokes just before the panel closes are the ones most worth keeping, since the
+   * wait has not run out on them yet. Every way out unmounts the panel — the close button,
+   * Escape, the parent — so this one cleanup covers all of them. It writes after unmount,
+   * which is safe: the callback is the parent's, and only this panel's state is skipped.
+   */
+  useEffect(() => {
+    mountedRef.current = true
+    return () => {
+      mountedRef.current = false
+      void flushRef.current()
+    }
+  }, [])
 
   const openInEditor = async (state: StateId) => {
     setFormError(null)
@@ -248,6 +357,9 @@ export function StageNotesDialog({
           if ((draftsRef.current[state] ?? '') === contents.body) continue
           setDraft(state, contents.body)
           await externalChangeRef.current(state, contents.body)
+          // Stored by the line above, so the autosave has nothing left to write for this
+          // stage and the file coming back does not turn into a second write of itself.
+          markStored(state, contents.body)
         } catch {
           // A transient read failure should not end the session; the next tick retries.
         }
@@ -273,11 +385,13 @@ export function StageNotesDialog({
 
   const stages = useMemo(
     () =>
-      visibleStages(application.state, [
-        ...application.stage_notes.map((note) => note.state),
-        ...addedStages,
-      ]),
-    [addedStages, application.state, application.stage_notes],
+      visibleStages(
+        application.state,
+        [...application.stage_notes.map((note) => note.state), ...addedStages].filter(
+          (state) => !closedStages.includes(state),
+        ),
+      ),
+    [addedStages, application.state, application.stage_notes, closedStages],
   )
 
   const noteByState = useMemo(
@@ -295,7 +409,7 @@ export function StageNotesDialog({
       new Map(
         application.stage_notes.map((note) => [
           note.state,
-          capturedMarkdown(note.heard, formatShortDate),
+          capturedMarkdown(note.heard, formatShortDate, formatTimeOfDay),
         ]),
       ),
     [application.stage_notes],
@@ -475,11 +589,22 @@ export function StageNotesDialog({
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [openFind, toggleSplit])
 
+  /**
+   * Takes a stage off the tab bar. It means off screen, not deleted: the note stays where
+   * it is and the stage is listed again the next time the panel opens. The application's
+   * own stage has no close control, so it is always somewhere to land.
+   */
+  const closeStage = (state: StateId) => {
+    setClosedStages((current) => (current.includes(state) ? current : [...current, state]))
+  }
+
   const openStage = (state: StateId) => {
+    setClosedStages((current) => current.filter((entry) => entry !== state))
     if (!stages.includes(state)) {
-      setAddedStages((current) => [...current, state])
-      // A stage reached this way has nothing in it yet, so it opens ready to type.
-      setEditing((current) => [...current, state])
+      setAddedStages((current) => (current.includes(state) ? current : [...current, state]))
+      // A stage reached this way with nothing in it opens ready to type. One that was
+      // closed and picked again still has its note, so it opens to be read like the rest.
+      if (!(drafts[state] ?? '').trim()) setEditing((current) => [...current, state])
     }
     showStage(state)
     setQuickOpen(false)
@@ -548,6 +673,20 @@ export function StageNotesDialog({
 
   const words = wordCount(activeBody)
 
+  /**
+   * What the writing is doing, in the corner the writing is already being watched from.
+   * `Waiting to save` is what makes a failed write visible: the drafts stay pending and
+   * are tried again, and until one lands the panel should not claim to have stored them.
+   */
+  const pending = (Object.keys(drafts) as StateId[]).some((state) => drafts[state] !== stored[state])
+  const saveLabel = saving
+    ? 'Saving…'
+    : pending
+      ? 'Waiting to save'
+      : savedAt
+        ? `Saved ${formatTimeOfDay(savedAt.toISOString())}`
+        : 'Saved'
+
   return (
     <div className="dialog-backdrop dialog-backdrop--panel">
       {/* A panel fills the viewport, so there is no backdrop left to click away on. */}
@@ -607,18 +746,10 @@ export function StageNotesDialog({
 
         <form
           className={`panel__body${sidebarOpen ? '' : ' panel__body--no-sidebar'}`}
-          onSubmit={async (event) => {
-            event.preventDefault()
-            setFormError(null)
-            setSaving(true)
-            try {
-              await onSave(stages.map((state) => ({ state, body: drafts[state] ?? '' })))
-            } catch (error) {
-              setFormError(errorMessage(error))
-            } finally {
-              setSaving(false)
-            }
-          }}
+          // There is nothing to submit — the notes write themselves. The form element
+          // stays because it carries the panel's layout, and because the capture box's
+          // Enter guard is written against the panel being one form around every stage.
+          onSubmit={(event) => event.preventDefault()}
         >
           {sidebarOpen ? (
           <aside className="panel__sidebar">
@@ -642,7 +773,8 @@ export function StageNotesDialog({
             </div>
 
             <p className="stage-notes__hint">
-              Clearing a stage’s notes removes them when you save.
+              Notes save as you type. Clearing a stage’s removes its note, but not what you
+              were told in it.
             </p>
           </aside>
           ) : null}
@@ -659,7 +791,13 @@ export function StageNotesDialog({
                 const found = matches.perStage.get(state)
                 const onScreen = openPanes.includes(state)
                 const isActive = state === activeStage
+                // The application's own stage is always listed, so it carries no close
+                // control: the panel must have somewhere to land whatever else is shut.
+                const closable = state !== application.state
                 return (
+                  // Presentational, so the tablist still owns the tabs themselves: a close
+                  // control cannot sit inside a button, and it belongs beside its own tab.
+                  <div className="panel__tab-slot" key={state} role="presentation">
                   <button
                     aria-controls={onScreen ? stageNotePanelId(state) : undefined}
                     aria-selected={onScreen}
@@ -671,7 +809,6 @@ export function StageNotesDialog({
                       .filter(Boolean)
                       .join(' ')}
                     id={stageTabId(state)}
-                    key={state}
                     onClick={() => showStage(state)}
                     onKeyDown={(event) => {
                       if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
@@ -696,6 +833,18 @@ export function StageNotesDialog({
                     ) : null}
                     {found ? <span className="panel__tab-count">{found.count}</span> : null}
                   </button>
+                  {closable ? (
+                    <button
+                      aria-label={`Close the ${label} tab`}
+                      className="icon-button panel__tab-close"
+                      onClick={() => closeStage(state)}
+                      title={`Close the ${label} tab. Its notes are kept.`}
+                      type="button"
+                    >
+                      <X aria-hidden="true" size={12} />
+                    </button>
+                  ) : null}
+                  </div>
                 )
               })}
             </div>
@@ -755,7 +904,7 @@ export function StageNotesDialog({
                     label={stateLabel(state)}
                     matchBase={found?.base ?? 0}
                     onCapture={(line) => onCapture(state, line)}
-                    onChange={(value) => setDraft(state, value)}
+                    onChange={(value) => editDraft(state, value)}
                     onClose={isSplit ? () => closePane(index) : null}
                     onFocus={() => setFocused(index)}
                     onOpenInEditor={() => openInEditor(state)}
@@ -779,13 +928,10 @@ export function StageNotesDialog({
                 {stages.length === 1 ? 'stage' : 'stages'} open
               </p>
               {formError && <p className="form-error" role="alert">{formError}</p>}
-              <div className="dialog__actions">
-                <span className="dialog__actions-spacer" />
-                <button className="button button--quiet" onClick={onClose} type="button">Cancel</button>
-                <button className="button button--primary" disabled={saving} type="submit">
-                  Save notes
-                </button>
-              </div>
+              {/* Not a live region. It changes every few seconds while a note is being
+                  written, and a screen reader reading each pause out would talk over the
+                  note being dictated into it — which is what the panel is open for. */}
+              <p className="panel__status panel__status--save">{saveLabel}</p>
             </div>
           </div>
         </form>

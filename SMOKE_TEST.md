@@ -111,10 +111,15 @@ test cannot judge reliably:
    text inside itself rather than growing, with no resize handle to drag, and that the toolbar, the
    hint, and the dock below all stay where they are. Write every kind of block the hint names — a
    quote, a nested quote, and a fenced block — and confirm each renders, folds, and is indented
-   under whatever it hangs from. Save, reopen, and confirm the notes persist. Add notes for a stage
+   under whatever it hangs from. Stop typing and confirm the status bar goes from
+   **Waiting to save** to **Saved** with a time, that no toast appears for it, and that reopening
+   the panel shows the notes. Type a last few words and close the panel immediately, then reopen it
+   and confirm those words are there too. Add notes for a stage
    further down the pipeline and confirm searching for that text finds the application.
-   Clear a stage's notes, save, and confirm they are gone.
-   Confirm the notes fill the screen: the title bar, tab bar, breadcrumbs, outline, and Save row
+   Clear a stage's notes and confirm they go on their own, while the stage keeps its tab and pane
+   until the panel is closed. Close another stage's tab with its **X** and confirm the tab goes but
+   the note is back the next time the panel opens.
+   Confirm the notes fill the screen: the title bar, tab bar, breadcrumbs, outline, and status row
    stay put while only the notes column scrolls, and a stage's header sticks to the top of that
    column as its note runs past, with the headings inside it sticking below the header.
    Move between stages with the tabs and with the arrow keys, confirming focus follows the tab.
@@ -136,10 +141,10 @@ test cannot judge reliably:
    comes back. On a narrow window, confirm a split panel stacks its panes instead of squeezing them.
    Scroll a long note and confirm the **Heard** dock stays pinned to the bottom of its own pane
    with the note scrolling under it, opaque against both a plain stage and the tinted current one.
-   Type a line, press Enter, and confirm it appears at the end of the log under today's date, that
-   the notice reports it, and that closing the panel with Escape and reopening it shows the line
-   still there. Capture a second line and confirm it joins the same day rather than repeating the
-   date. Capture enough lines to fill the log and confirm it scrolls within its own cap, holding
+   Type a line, press Enter, and confirm it appears at the end of the log under today's date and
+   stamped with the time it was captured, that the notice reports it, and that closing the panel with Escape and reopening it shows the line
+   still there. Capture a second line and confirm it joins the same day under its own
+   time stamp, rather than repeating the date. Capture enough lines to fill the log and confirm it scrolls within its own cap, holding
    the newest line in view, with the day heading sticking to the top of it and the prep note above
    still readable. Select **Edit** on that stage and confirm the log and its box stay put and
    still work while the prep note is in the editor.

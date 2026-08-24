@@ -77,6 +77,10 @@
   --fold-gutter: 1rem;
   --fold-indent: calc(var(--fold-gutter) + var(--s2));
 
+  /* The capture box: a few lines to write in, fixed so the dock cannot grow into the
+     note it is pinned over */
+  --capture-box: 4.5rem;
+
   /* Prep notes panel: sidebar width, and the height of one stage's sticky header
      (a --control row, --s3 above and below it, and a 1px bottom border) */
   --sidebar: 208px;
@@ -1384,6 +1388,13 @@ tbody tr:hover {
   font-weight: 600;
 }
 
+.dialog__header-title {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+
 /* The stage notes dialog puts the company and role here — it is content. */
 .dialog__subject {
   margin: 0 0 var(--s1);
@@ -1821,7 +1832,7 @@ tbody tr:hover {
  */
 .stage-note__capture {
   display: flex;
-  align-items: center;
+  align-items: start;
   gap: var(--s3);
 }
 
@@ -1830,9 +1841,18 @@ tbody tr:hover {
   min-width: 0;
 }
 
-.stage-note__capture .field input {
-  min-height: var(--control);
+/*
+ * A fixed box that scrolls its own text, like the note editor above it: a capture can run
+ * to a few lines, but the dock is pinned over the note and must not grow downwards into
+ * it as someone types. --capture-box is that height; the text scrolls once it is full.
+ */
+.stage-note__capture .field textarea {
+  height: var(--capture-box);
+  min-height: 0;
+  padding: var(--s2) var(--s3);
+  overflow-y: auto;
   font-size: var(--t3);
+  resize: none;
 }
 
 .stage-note__hint code,
@@ -2079,8 +2099,13 @@ tbody tr:hover {
   font-size: var(--t2);
 }
 
-.panel__statusbar .dialog__actions {
+/* The write state sits at the far end of the bar, where the actions that used to say
+   whether the notes were stored were. It sizes to its own text so the word count keeps
+   the room, and reserves none: it is a handful of words that change every few seconds. */
+.panel__status--save {
   flex: 0 0 auto;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 /*
@@ -2221,6 +2246,33 @@ tbody tr:hover {
   overflow-x: auto;
   border-bottom: 1px solid var(--line);
   background: var(--surface-2);
+}
+
+/* A tab and its close control read as one tab, so the pair shares the tab's background
+   and the control only appears once the pair is being pointed at or keyed into. */
+.panel__tab-slot {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.panel__tab-slot:hover .panel__tab,
+.panel__tab-slot:focus-within .panel__tab {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+
+.panel__tab-close {
+  align-self: center;
+  margin-inline-start: calc(var(--s3) * -1);
+  padding: var(--s1);
+  opacity: 0;
+  color: var(--ink-3);
+}
+
+.panel__tab-slot:hover .panel__tab-close,
+.panel__tab-slot:focus-within .panel__tab-close {
+  opacity: 1;
 }
 
 .panel__tab {

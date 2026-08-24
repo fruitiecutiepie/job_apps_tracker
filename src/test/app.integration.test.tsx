@@ -36,6 +36,9 @@ const states = [
   'Accepted',
 ] as const
 
+/** Comfortably past the panel's own wait, for asserting that nothing was written. */
+const AUTOSAVE_SETTLE_MS = 1500
+
 function readSavedDocument() {
   return loadTrackerDocument(testTrackerStore)
 }
@@ -307,23 +310,116 @@ describe('job applications tracker', () => {
       within(dialog).getByLabelText('Applied prep notes'),
       'Ask about the rebrand project',
     )
-    await user.click(within(dialog).getByRole('button', { name: 'Save notes' }))
 
+    // No Save: the note writes itself once the typing pauses, with the panel still open.
+    const savedNotes = () =>
+      readSavedDocument().applications.find(
+        (application) => application.company === 'Marble & Finch',
+      )!
+    await waitFor(
+      () =>
+        expect(savedNotes().stage_notes).toEqual([
+          expect.objectContaining({ state: 'applied', body: 'Ask about the rebrand project' }),
+        ]),
+      { timeout: 4000 },
+    )
+    expect(screen.getByRole('dialog', { name: 'Stage prep notes' })).toBeInTheDocument()
+    expect(savedNotes().state_history).toHaveLength(1)
+
+    // A write per pause in typing would put a toast permanently over the note it names.
+    expect(screen.queryByText('Prep notes saved.')).not.toBeInTheDocument()
+    expect(within(dialog).getByText(/^Saved/)).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close dialog' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('Prep notes saved.')
-
-    const saved = readSavedDocument().applications.find(
-      (application) => application.company === 'Marble & Finch',
-    )!
-    expect(saved.stage_notes).toEqual([
-      expect.objectContaining({ state: 'applied', body: 'Ask about the rebrand project' }),
-    ])
-    expect(saved.state_history).toHaveLength(1)
 
     unmount()
     await renderLoadedApp()
     await user.type(screen.getByRole('searchbox', { name: 'Search applications' }), 'rebrand project')
     expect(screen.getByRole('button', { name: /Open Marble & Finch/ })).toBeInTheDocument()
+  })
+
+  it('keeps the last keystrokes when the panel is closed before they were written', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.type(within(dialog).getByLabelText('Applied prep notes'), 'Salary band question')
+
+    // Closed straight away, well inside the wait: the keystrokes just before the panel
+    // goes are the ones the wait has not run out on, and the ones worth keeping.
+    await user.click(within(dialog).getByRole('button', { name: 'Close dialog' }))
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
+
+    await waitFor(() =>
+      expect(
+        readSavedDocument()
+          .applications.find((application) => application.company === 'Marble & Finch')!
+          .stage_notes,
+      ).toEqual([expect.objectContaining({ state: 'applied', body: 'Salary band question' })]),
+    )
+  })
+
+  it('writes only the stage that changed, leaving the other stages as they were', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    const notes = () =>
+      readSavedDocument().applications.find(
+        (application) => application.company === 'Halcyon Maps',
+      )!.stage_notes
+    const stamps = new Map(notes().map((note) => [note.state, note.updated_at]))
+
+    await user.click(within(dialog).getByRole('tab', { name: 'Offer' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Offer' }))
+    await user.type(within(dialog).getByLabelText('Offer prep notes'), ' and the review cycle')
+
+    // The clock is pinned, so a rewritten note is stamped now and an untouched one keeps
+    // the date it was seeded with — which is what tells the two apart.
+    await waitFor(
+      () =>
+        expect(notes().find((note) => note.state === 'offer')!.updated_at)
+          .toBe(DEFAULT_DEMO_REFERENCE),
+      { timeout: 4000 },
+    )
+    for (const state of ['interview_1', 'interview_2'] as const) {
+      expect(notes().find((note) => note.state === state)!.updated_at).toBe(stamps.get(state))
+    }
+  })
+
+  it('takes a stage off the tab bar without deleting the note behind it', async () => {
+    const user = userEvent.setup()
+    const { unmount } = await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // The application's own stage is always listed, so only the others can be closed.
+    expect(within(dialog).queryByRole('button', { name: 'Close the Interview 2 tab' }))
+      .not.toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Close the Offer tab' }))
+    expect(within(dialog).getAllByRole('tab').map((tab) => tab.textContent))
+      .toEqual(['Interview 2Current stage', 'Interview 1'])
+
+    // Off screen, not deleted: the note is untouched and the tab is back next time.
+    expect(
+      readSavedDocument()
+        .applications.find((application) => application.company === 'Halcyon Maps')!
+        .stage_notes.map((note) => note.state),
+    ).toEqual(['interview_1', 'interview_2', 'offer'])
+
+    unmount()
+    await renderLoadedApp()
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    expect(
+      within(screen.getByRole('dialog', { name: 'Stage prep notes' }))
+        .getByRole('tab', { name: 'Offer' }),
+    ).toBeInTheDocument()
   })
 
   it('captures a line into the note being read and stores it without Save', async () => {
@@ -420,15 +516,14 @@ describe('job applications tracker', () => {
 
     await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
     await user.clear(within(dialog).getByLabelText('Interview 2 prep notes'))
-    await user.click(within(dialog).getByRole('button', { name: 'Save notes' }))
 
     // A blank body drops a note that holds nothing else. This one was told things.
-    const stored = readSavedDocument().applications.find(
-      (application) => application.company === 'Halcyon Maps',
-    )!
-    const captured = stored.stage_notes.find((note) => note.state === 'interview_2')!
-    expect(captured.body).toBe('')
-    expect(captured.heard).toHaveLength(3)
+    const captured = () =>
+      readSavedDocument()
+        .applications.find((application) => application.company === 'Halcyon Maps')!
+        .stage_notes.find((note) => note.state === 'interview_2')!
+    await waitFor(() => expect(captured().body).toBe(''), { timeout: 4000 })
+    expect(captured().heard).toHaveLength(3)
   })
 
   it('reaches the capture line of whichever pane is focused from the keyboard', async () => {
@@ -466,16 +561,21 @@ describe('job applications tracker', () => {
     expect(within(notes).queryByLabelText('Interview 2 prep notes')).not.toBeInTheDocument()
     expect(within(notes).getByText('Cutting cycle time')).toBeInTheDocument()
 
-    // Another stage's note is one tab away, and clearing it still saves with the rest.
+    // Another stage's note is one tab away, and clearing it drops the note on its own.
     await user.click(within(dialog).getByRole('tab', { name: 'Interview 1' }))
     await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 1' }))
     await user.clear(within(dialog).getByLabelText('Interview 1 prep notes'))
-    await user.click(within(dialog).getByRole('button', { name: 'Save notes' }))
 
-    const saved = readSavedDocument().applications.find(
-      (application) => application.company === 'Halcyon Maps',
-    )!
-    expect(saved.stage_notes.map((note) => note.state)).toEqual(['interview_2', 'offer'])
+    const savedStates = () =>
+      readSavedDocument()
+        .applications.find((application) => application.company === 'Halcyon Maps')!
+        .stage_notes.map((note) => note.state)
+    await waitFor(() => expect(savedStates()).toEqual(['interview_2', 'offer']), { timeout: 4000 })
+
+    // The stage keeps its tab and its pane: the note went, but the caret that emptied it
+    // is still in the box, and a stage typed into must not vanish from under it.
+    expect(within(dialog).getByRole('tab', { name: 'Interview 1' })).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Interview 1 prep notes')).toBeInTheDocument()
   })
 
   it('finds text across every stage and follows the matches from tab to tab', async () => {
@@ -713,7 +813,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
     // Nothing to close while a single pane is the whole panel.
-    expect(within(dialog).queryByRole('button', { name: /^Close the/ })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('button', { name: /pane$/ })).not.toBeInTheDocument()
 
     await user.click(within(dialog).getByRole('button', { name: 'Split' }))
     await user.click(within(dialog).getByRole('button', { name: 'Close the Interview 1 pane' }))
@@ -873,11 +973,11 @@ describe('job applications tracker', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Read Applied' }))
     expect(within(dialog).getByText('Rehearse the rebrand story')).toBeInTheDocument()
 
-    await user.click(within(dialog).getByRole('button', { name: 'Save notes' }))
-    const saved = readSavedDocument().applications.find(
-      (application) => application.company === 'Marble & Finch',
-    )!
-    expect(saved.stage_notes[0].body).toBe('- Rehearse the rebrand story')
+    const savedBody = () =>
+      readSavedDocument().applications.find(
+        (application) => application.company === 'Marble & Finch',
+      )!.stage_notes[0]?.body
+    await waitFor(() => expect(savedBody()).toBe('- Rehearse the rebrand story'), { timeout: 4000 })
   })
 
   it('adds prep notes for a stage the application has not reached yet', async () => {
@@ -898,15 +998,20 @@ describe('job applications tracker', () => {
       within(dialog).getByLabelText('Interview 1 prep notes'),
       'Prepare two operations stories',
     )
-    await user.click(within(dialog).getByRole('button', { name: 'Save notes' }))
 
-    const saved = readSavedDocument().applications.find(
-      (application) => application.company === 'Orbit & Oak',
-    )!
-    expect(saved.state).toBe('online_assessment')
-    expect(saved.stage_notes).toEqual([
-      expect.objectContaining({ state: 'interview_1', body: 'Prepare two operations stories' }),
-    ])
+    const saved = () =>
+      readSavedDocument().applications.find(
+        (application) => application.company === 'Orbit & Oak',
+      )!
+    await waitFor(
+      () =>
+        expect(saved().stage_notes).toEqual([
+          expect.objectContaining({ state: 'interview_1', body: 'Prepare two operations stories' }),
+        ]),
+      { timeout: 4000 },
+    )
+    // Writing a note for a stage does not move the application to it.
+    expect(saved().state).toBe('online_assessment')
   })
 
   it('folds every level of hierarchy: headings, points with detail, quotes, and code', async () => {
@@ -1080,6 +1185,15 @@ describe('job applications tracker', () => {
     expect(screen.getByText('Prep notes saved from your editor.')).toBeInTheDocument()
     expect(within(dialog).getByRole('button', { name: 'Rewritten' })).toBeInTheDocument()
 
+    // The file coming back is not then written a second time as though it had been typed
+    // here. Counted in writes rather than in timestamps: the clock is pinned, so a second
+    // write of the same text would be indistinguishable from the first by its stamp.
+    const writes = () =>
+      vi.mocked(fetch).mock.calls.filter(([, init]) => init?.method === 'PUT').length
+    const before = writes()
+    await new Promise((resolve) => setTimeout(resolve, AUTOSAVE_SETTLE_MS))
+    expect(writes()).toBe(before)
+
     await user.click(within(dialog).getByRole('button', { name: 'Stop editing Applied externally' }))
     expect(testEditorSessionCount()).toBe(0)
     expect(within(dialog).getByRole('button', { name: 'Edit Applied' })).toBeInTheDocument()
@@ -1098,7 +1212,7 @@ describe('job applications tracker', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Open Offer in an editor' }))
     expect(testEditorSessionCount()).toBe(2)
 
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Close dialog' }))
     await waitFor(() => expect(testEditorSessionCount()).toBe(0))
   })
 

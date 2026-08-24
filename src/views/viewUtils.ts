@@ -36,6 +36,11 @@ const shortDateFormatter = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
 });
 
+const timeOfDayFormatter = new Intl.DateTimeFormat(undefined, {
+  hour: "numeric",
+  minute: "2-digit",
+});
+
 const longDateFormatter = new Intl.DateTimeFormat(undefined, {
   day: "numeric",
   month: "long",
@@ -51,6 +56,16 @@ export function formatShortDate(value: string | null): string {
   if (!value) return "Not scheduled";
   const date = parseTimestamp(value);
   return date ? shortDateFormatter.format(date) : "Invalid date";
+}
+
+/**
+ * The time of day a timestamp fell on, for a stamp read beside something already filed
+ * under its date. It says nothing about which day it was: that is the caller's to say,
+ * and repeating it on every line is what this is meant to avoid.
+ */
+export function formatTimeOfDay(value: string): string {
+  const date = parseTimestamp(value);
+  return date ? timeOfDayFormatter.format(date) : "Invalid date";
 }
 
 export function formatLongDate(date: Date): string {

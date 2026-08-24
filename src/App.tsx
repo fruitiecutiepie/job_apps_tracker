@@ -77,6 +77,7 @@ import {
   type InviteRow,
 } from './invites'
 import { StageNotesDialog } from './StageNotesDialog'
+import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import {
   CalendarView,
@@ -240,6 +241,7 @@ interface ApplicationEditorProps {
   application: Application | null
   onClose: () => void
   onDelete?: () => void
+  onOpenStageNotes?: (id: string) => void
   onSave: (
     values: EditorValues,
     attachmentPlan: AttachmentSavePlan,
@@ -247,7 +249,7 @@ interface ApplicationEditorProps {
   ) => Promise<void>
 }
 
-function ApplicationEditor({ application, onClose, onDelete, onSave }: ApplicationEditorProps) {
+function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, onSave }: ApplicationEditorProps) {
   const isEditing = application !== null
   const dialogRef = useRef<HTMLElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -328,7 +330,12 @@ function ApplicationEditor({ application, onClose, onDelete, onSave }: Applicati
         tabIndex={-1}
       >
         <div className="dialog__header">
-          <h2 id="application-dialog-title">{isEditing ? 'Edit application' : 'Add application'}</h2>
+          <div className="dialog__header-title">
+            <h2 id="application-dialog-title">{isEditing ? 'Edit application' : 'Add application'}</h2>
+            {isEditing && application && onOpenStageNotes && (
+              <StageNotesButton application={application} onOpenStageNotes={onOpenStageNotes} variant="table" />
+            )}
+          </div>
           <button aria-label="Close dialog" className="icon-button" onClick={onClose} type="button">
             <X aria-hidden="true" size={20} />
           </button>
@@ -642,14 +649,18 @@ export default function App() {
     focusTarget?.focus()
   }, [dialogIsOpen])
 
-  const commit = async (next: TrackerDocument, message?: string) => {
+  // Reports whether the write landed, so a caller that keeps its own record of what is
+  // stored — the notes panel, which retries what did not — can tell the two apart.
+  const commit = async (next: TrackerDocument, message?: string): Promise<boolean> => {
     try {
       const saved = await saveTrackerDatabase(next)
       trackerRef.current = saved
       setTracker(saved)
       if (message) setNotice(message)
+      return true
     } catch (error) {
       setNotice(`Save failed: ${errorMessage(error)}`)
+      return false
     }
   }
 
@@ -705,9 +716,8 @@ export default function App() {
     : null
 
   /**
-   * Stores one stage's note on its own, for the two writes that do not go through Save:
-   * a file coming back from an external editor, and a line captured while reading. Only
-   * the stage named is touched, so the other stages' drafts are left to Save.
+   * Stores one stage's note on its own, for a file coming back from an external editor.
+   * Only the stage named is touched, so the other stages' drafts are left alone.
    */
   const commitStageNote = async (state: StateId, body: string, message: string) => {
     if (!stageNotesApplication) return
@@ -1002,6 +1012,10 @@ export default function App() {
               closeEditor()
             }
           } : undefined}
+          onOpenStageNotes={editor.mode === 'edit' ? (id) => {
+            closeEditor()
+            openStageNotes(id)
+          } : undefined}
           onSave={async (values, attachmentPlan, invites) => {
             const input: ApplicationInput = {
               company: values.company,
@@ -1073,13 +1087,14 @@ export default function App() {
           }}
           onExternalChange={(state: StateId, body: string) =>
             commitStageNote(state, body, 'Prep notes saved from your editor.')}
-          onSave={async (drafts: StageNoteDraft[]) => {
+          onSaveDrafts={async (drafts: StageNoteDraft[]) => {
             const current = trackerRef.current ?? tracker
-            await commit(
+            // No notice: the panel writes while it is being typed into, and a toast per
+            // pause would sit permanently over the notes it is describing. The panel's
+            // status bar says the same thing where the writing is already being watched.
+            return commit(
               updateApplicationStageNotes(current, stageNotesApplication.id, drafts, new Date()),
-              'Prep notes saved.',
             )
-            setStageNotesId(null)
           }}
         />
       )}

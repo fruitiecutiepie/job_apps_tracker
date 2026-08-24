@@ -101,7 +101,7 @@ Notes are written in Markdown. A stage that already has notes opens as a rendere
 
 Every stage has a **Heard** log docked beneath its prep note, holding what you were told during that stage. Type a line in the capture box and press Enter: it is stored immediately—there is no Save to remember mid-conversation, and nothing to lose by closing the panel. `Ctrl`/`Cmd+K` puts the caret in the box from anywhere in the panel, and in a split panel it lands in the pane you are reading.
 
-The dock stays on screen however far the prep note above it scrolls, so what you have been told and the box you add to are both always in view. The log takes what it needs and then scrolls on its own, holding the newest line in sight. Lines are grouped under the day they were captured on, so a second answer the same day costs one line. Each line is Markdown, so `**bold**` and links work in it.
+The dock stays on screen however far the prep note above it scrolls, so what you have been told and the box you add to are both always in view. The log takes what it needs and then scrolls on its own, holding the newest line in sight. Lines are grouped under the day they were captured on, and each carries the time it was captured. The date is said once, at the head of the day, rather than on every line. Each line is Markdown, so `**bold**` and links work in it.
 
 Captures are stored separately from what you prepared, which has three consequences worth knowing:
 
