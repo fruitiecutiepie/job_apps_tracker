@@ -105,7 +105,10 @@ test cannot judge reliably:
    Select a sentence inside a foldable point with the mouse and confirm it does not fold, and that
    the text can be copied.
    Select **Edit** on a stage, use the bold and bullet toolbar buttons, switch back with **Read**, and
-   confirm the formatting rendered. Save, reopen, and confirm the notes persist. Add notes for a stage
+   confirm the formatting rendered. Confirm the editor fills the pane's height between its toolbar
+   and its hint, on an empty stage as well as a full one, and that a short note being read still
+   sizes to itself. Write every kind of block the hint names — a quote, a nested quote, and a fenced
+   block — and confirm each renders, folds, and is indented under whatever it hangs from. Save, reopen, and confirm the notes persist. Add notes for a stage
    further down the pipeline and confirm searching for that text finds the application.
    Clear a stage's notes, save, and confirm they are gone.
    Confirm the notes fill the screen: the title bar, tab bar, breadcrumbs, outline, and Save row

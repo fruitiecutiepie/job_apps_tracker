@@ -106,8 +106,12 @@ export function StageNoteEditor({ label, value, onChange, autoFocus }: StageNote
       </label>
       <p className="stage-note__hint">
         Markdown: <code>##</code> heading, <code>-</code> bullet (indent to nest),
-        {' '}<code>**bold**</code>, <code>_italic_</code>, <code>`code`</code>, <code>[link](https://…)</code>.
-        Headings and bullets with sub-points fold in the reading view.
+        {' '}<code>&gt;</code> quote (<code>&gt;&gt;</code> to nest one inside another),
+        {' '}<code>```</code> fenced code, <code>**bold**</code>, <code>_italic_</code>,
+        {' '}<code>`code`</code>, <code>[link](https://…)</code>.
+        Headings, bullets with sub-points, quotes, and code blocks all fold in the reading
+        view. A line straight after a <code>&gt;</code> joins that quote — leave a blank
+        line to end it.
       </p>
     </div>
   )

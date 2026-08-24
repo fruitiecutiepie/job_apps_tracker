@@ -2090,6 +2090,36 @@ tbody tr:hover {
 }
 
 /*
+ * Writing gets the room reading gets. An 8rem box sitting under an otherwise empty pane
+ * invites a note the size of the box, so the editor takes the height the pane can give
+ * it, between the toolbar above and the hint below.
+ *
+ * Scoped with :has() to the stage actually being written: a short note being read still
+ * sizes to itself rather than stretching its card down an empty pane. Flex rather than
+ * grid here because only one row is meant to grow, and grid would hand the slack to
+ * every auto row it has.
+ */
+.panel__notes .stage-note:has(.stage-note__editor) {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.panel__notes .stage-note__editor {
+  flex: 1;
+  /* Toolbar, the field that grows, hint. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  min-height: 0;
+}
+
+/* The floor these carry elsewhere would stop the field shrinking back down again. */
+.panel__notes .stage-note__editor .field,
+.panel__notes .stage-note__editor .field textarea {
+  height: 100%;
+  min-height: 0;
+}
+
+/*
  * The dock pins to the bottom of its own scrolling pane, so what you were told stays on
  * screen however far the note above it is scrolled, and can be added to from where the
  * reading left off. Written as a child selector to outrank the padding above it, and
