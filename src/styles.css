@@ -2027,6 +2027,13 @@ tbody tr:hover {
   overflow-y: auto;
 }
 
+/* Focusable so Cmd+Up/Down and Page Up/Down scroll the note rather than the page behind
+   it, but it takes that focus programmatically rather than by Tab, so it carries none of
+   the button-like ring that focus-visible would otherwise draw around a whole column. */
+.panel__pane:focus-visible {
+  outline: none;
+}
+
 .panel__pane + .panel__pane {
   border-left: 1px solid var(--line);
 }

@@ -72,6 +72,20 @@ export function StageNotePane({
   const [line, setLine] = useState('')
   const [capturing, setCapturing] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+  const paneDivRef = useRef<HTMLDivElement | null>(null)
+
+  /**
+   * The pane itself takes focus when it opens with nothing else claiming it (no editor
+   * autofocused, no tab or button already focused): a scrollable div is otherwise never
+   * a keyboard target, so Cmd+Up/Down and Page Up/Down would scroll the page behind the
+   * panel — which is now scroll-locked — rather than the note actually on screen. Guarded
+   * to only body having focus, not merely "outside the pane", so it never steals focus
+   * back from a tab arrow-keyed to deliberately, or from the capture box or sidebar.
+   */
+  useEffect(() => {
+    if (!isFocused || document.activeElement !== document.body) return
+    paneDivRef.current?.focus()
+  }, [isFocused])
 
   /**
    * Holds the newest line in view as captures arrive. The log is short by design, so
@@ -105,8 +119,18 @@ export function StageNotePane({
     <div
       className={`panel__pane${isFocused ? ' panel__pane--focused' : ''}`}
       onFocusCapture={onFocus}
-      onMouseDown={onFocus}
-      ref={paneRef}
+      onMouseDown={(event) => {
+        onFocus()
+        // A click on the pane's own background, not on a button or the editor inside it,
+        // is someone reaching for this note to scroll it — give it the keyboard focus
+        // that takes, rather than leaving focus wherever it last was.
+        if (event.target === event.currentTarget) paneDivRef.current?.focus()
+      }}
+      ref={(node) => {
+        paneDivRef.current = node
+        paneRef(node)
+      }}
+      tabIndex={-1}
     >
       <section
         aria-labelledby={stageNoteHeadingId(state)}
