@@ -283,7 +283,9 @@ function MarkdownSection({ section, collapsed, onToggle, marks }: FoldProps & { 
   const Heading = `h${Math.min((section.heading?.level ?? 1) + 3, 6)}` as 'h4'
 
   return (
-    <section className="markdown__section">
+    <section
+      className={`markdown__section${section.heading ? ' markdown__section--titled' : ''}`}
+    >
       {section.heading ? (
         <Heading
           className={`markdown__heading markdown__heading--${section.heading.level}`}

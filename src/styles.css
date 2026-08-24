@@ -65,6 +65,11 @@
   --control: 32px;
   --control-form: 40px;
 
+  /* A folded outline's chevron column, and the indent that lines content up with the
+     text beside it rather than with the chevron */
+  --fold-gutter: 1rem;
+  --fold-indent: calc(var(--fold-gutter) + var(--s2));
+
   /* Prep notes panel: sidebar width, and the height of one stage's sticky header
      (a --control row, --s3 above and below it, and a 1px bottom border) */
   --sidebar: 208px;
@@ -2331,10 +2336,6 @@ tbody tr:hover {
   gap: var(--s2);
 }
 
-.markdown__section .markdown__section {
-  padding-left: var(--s4);
-}
-
 .markdown__fold-all {
   justify-self: start;
   min-height: 26px;
@@ -2423,8 +2424,8 @@ tbody tr:hover {
 
 .markdown__fold-row > .markdown__fold {
   align-self: center;
-  min-width: 1rem;
-  min-height: 1rem;
+  min-width: var(--fold-gutter);
+  min-height: var(--fold-gutter);
 }
 
 /* Foldable points keep the bullet marker their non-folding siblings get. */
@@ -2440,17 +2441,13 @@ ol.markdown__list > .markdown__item > .markdown__item-line.markdown__fold-row > 
 
 .markdown__bullet-spacer {
   flex: none;
-  width: 1rem;
+  width: var(--fold-gutter);
 }
 
 .markdown__item-content::before {
   margin-right: var(--s2);
   color: var(--accent);
   content: "•";
-}
-
-.markdown__list .markdown__list {
-  padding-left: var(--s5);
 }
 
 ol.markdown__list {
@@ -2499,6 +2496,36 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
 .markdown a {
   color: var(--accent);
+}
+
+/*
+ * Whatever a fold holds is indented past the chevron, so it lines up with the text of
+ * the row that folds it instead of with the chevron itself. Without this a note reads
+ * as one flat column and the only clue to what belongs where is the chevron's own
+ * state, which is exactly what a reader loses track of. One step is one --fold-indent,
+ * at every kind of fold, so depth stays comparable across headings, points, and quotes.
+ *
+ * A section is only titled once it has a heading of its own — the root section wraps the
+ * whole note and has nothing to indent under.
+ *
+ * Two things here are load-bearing.
+ *
+ * The indent is a margin, not padding. Padding would take over the padding these
+ * elements set for themselves: a quote would keep its border-left at the parent's edge
+ * and push only its text across — reading as not indented at all — and a code slab
+ * would fatten instead of moving. A margin moves the whole box, border and background
+ * with it, and leaves their own padding alone.
+ *
+ * And it comes last, after every rule it has to beat. A paragraph, a list, a quote, a
+ * code block and a code slab each reset `margin` for themselves; this is more specific
+ * than all of them, so it would win from anywhere, but a reader should not have to count
+ * class selectors to see that. Source order agrees with specificity here.
+ */
+.markdown__section--titled > *:not(.markdown__heading),
+.markdown__item > *:not(.markdown__item-line),
+.markdown__quote > *:not(.markdown__fold-row),
+.markdown__code-block > *:not(.markdown__fold-row) {
+  margin-left: var(--fold-indent);
 }
 
 /* =========================================================================
