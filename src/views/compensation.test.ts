@@ -54,6 +54,7 @@ function application(compensation: Compensation, company = 'Fixture'): Applicati
     next_action_at: null,
     deadline_at: null,
     notes: null,
+    completed_actions: [],
     stage_notes: [],
     state_events: [],
     attachments: [],

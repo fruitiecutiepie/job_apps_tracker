@@ -79,13 +79,19 @@ test cannot judge reliably:
    On Stale, confirm a live-state row has Move to Rejected and that already-rejected,
    accepted, headhunted, and no-openings rows do not.
 4. Confirm **Done** appears beside a next action in all three places and nowhere else: on the
-   Atlas Thread Kanban card, on its Focus row, and in its Table **Next action** cell, but on no
-   card or row without an action. Select **Done** on the Saffron Systems card — an accepted
-   application whose only remaining reason to appear is its task. Confirm the card's Next line
-   and the Done control both go, and that the notes now end with a line naming the task, dated
-   the way dates read everywhere else in the app under your locale. Confirm the stage, the state
-   history, and the deadline are unchanged, and that the row leaves Focus's **Finished, action
-   outstanding** group, since there is nothing left to do on it. Reload and confirm it stuck.
+   Atlas Thread Kanban card — on the **Next** line itself, not down beside Move and Prep notes —
+   on its Focus row, and in its Table **Next action** cell, but on no card or row without an
+   action. Select **Done** on the Saffron Systems card, an accepted application whose only
+   remaining reason to appear is its task. Confirm the Next line and the Done control both go,
+   that the row leaves Focus's **Finished, action outstanding** group, and that the stage, the
+   state history, the deadline, and the Notes text are all unchanged.
+   Open Saffron Systems and confirm **Completed actions** lists the task you just closed above
+   the Notes box, newest first, with today's date and nothing written into Notes itself. Open
+   Atlas Thread, select **Mark next action done**, and confirm the Next action field clears and
+   a row appears — then close without saving and confirm nothing was recorded. Repeat and save,
+   then reopen and confirm it persisted. **Remove** an entry, save, and confirm it is gone and
+   that the next action was not restored. Search for the text of a completed action and confirm
+   it finds the application.
 5. Add an application with a next action and date. Drag it to another Kanban column,
    then use its **Move** control to move it again — by mouse, and again by Tab plus the
    arrow keys — confirming the control shows a focus ring and sits on one row beside

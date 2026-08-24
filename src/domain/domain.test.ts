@@ -8,9 +8,11 @@ import {
   applyRatings,
   applyStageNotes,
   applyStateEvents,
+  applyCompletedActions,
   clearRating,
   completeApplicationNextAction,
   completeNextAction,
+  updateApplicationCompletedActions,
   createApplication,
   createAttachmentMetadata,
   createDemoDocument,
@@ -296,50 +298,55 @@ describe('completing a next action', () => {
         next_action: 'Email the recruiter',
         next_action_at: '2026-08-18T09:00:00+10:00',
         deadline_at: '2026-08-30T17:00:00+10:00',
+        notes: 'Referred by Dana.',
         ...overrides,
       },
       REFERENCE,
     )
   }
 
-  it('clears the plan and logs what was done in the notes', () => {
-    const done = completeNextAction(planned({ notes: 'Referred by Dana.' }), '20 Aug 2026', LATER)
+  it('clears the plan and records the task as its own entry', () => {
+    const done = completeNextAction(planned(), LATER)
 
     expect(done.next_action).toBeNull()
     expect(done.next_action_at).toBeNull()
-    expect(done.notes).toBe('Referred by Dana.\n20 Aug 2026 — Email the recruiter')
+    expect(done.completed_actions).toHaveLength(1)
+    expect(done.completed_actions[0]).toMatchObject({
+      action: 'Email the recruiter',
+      at: LATER.toISOString(),
+    })
     expect(done.updated_at).toBe(LATER.toISOString())
   })
 
-  it('starts the notes with the log line when there were no notes', () => {
-    const done = completeNextAction(planned({ notes: null }), '20 Aug 2026', LATER)
+  it('leaves the notes alone, so prose and record cannot clobber each other', () => {
+    const application = planned()
+    const done = completeNextAction(application, LATER)
 
-    expect(done.notes).toBe('20 Aug 2026 — Email the recruiter')
+    expect(done.notes).toBe(application.notes)
   })
 
-  it('stacks one line per completed action, oldest first', () => {
-    const first = completeNextAction(planned({ notes: null }), '20 Aug 2026', LATER)
+  it('stacks entries oldest first', () => {
+    const first = completeNextAction(planned(), LATER)
     const second = completeNextAction(
       { ...first, next_action: 'Send the portfolio', next_action_at: null },
-      '21 Aug 2026',
-      LATER,
+      new Date('2026-08-21T09:00:00+10:00'),
     )
 
-    expect(second.notes).toBe(
-      '20 Aug 2026 — Email the recruiter\n21 Aug 2026 — Send the portfolio',
-    )
+    expect(second.completed_actions.map((entry) => entry.action)).toEqual([
+      'Email the recruiter',
+      'Send the portfolio',
+    ])
   })
 
   it('leaves the deadline alone: it is an external fact, not the task', () => {
     const application = planned()
-    const done = completeNextAction(application, '20 Aug 2026', LATER)
 
-    expect(done.deadline_at).toBe(application.deadline_at)
+    expect(completeNextAction(application, LATER).deadline_at).toBe(application.deadline_at)
   })
 
   it('never appends state history, because finishing a task is not a stage change', () => {
     const application = planned()
-    const done = completeNextAction(application, '20 Aug 2026', LATER)
+    const done = completeNextAction(application, LATER)
 
     expect(done.state).toBe(application.state)
     expect(done.state_history).toEqual(application.state_history)
@@ -349,22 +356,16 @@ describe('completing a next action', () => {
     const idle = planned({ next_action: null, next_action_at: null })
 
     // Returning the same object keeps a pointless save from refreshing updated_at.
-    expect(completeNextAction(idle, '20 Aug 2026', LATER)).toBe(idle)
-    expect(completeNextAction({ ...idle, next_action: '   ' }, '20 Aug 2026', LATER).notes)
-      .toBe(idle.notes)
-  })
-
-  it('refuses a blank completion date rather than logging a dangling dash', () => {
-    expect(() => completeNextAction(planned(), '  ', LATER)).toThrow(/date/i)
+    expect(completeNextAction(idle, LATER)).toBe(idle)
+    expect(completeNextAction({ ...idle, next_action: '   ' }, LATER).completed_actions).toEqual([])
   })
 
   it('touches only the named application in the document', () => {
     const document = createDemoDocument(REFERENCE)
     const target = document.applications.find((item) => item.next_action?.trim())!
-    const next = completeApplicationNextAction(document, target.id, '20 Aug 2026', LATER)
+    const next = completeApplicationNextAction(document, target.id, LATER)
 
     expect(next).not.toBe(document)
-    expect(next.applications).toHaveLength(document.applications.length)
     expect(next.applications.find((item) => item.id === target.id)!.next_action).toBeNull()
     for (const application of next.applications) {
       if (application.id !== target.id) {
@@ -377,8 +378,63 @@ describe('completing a next action', () => {
     const document = createDemoDocument(REFERENCE)
     const idle = document.applications.find((item) => !item.next_action?.trim())!
 
-    expect(completeApplicationNextAction(document, 'missing', '20 Aug 2026', LATER)).toBe(document)
-    expect(completeApplicationNextAction(document, idle.id, '20 Aug 2026', LATER)).toBe(document)
+    expect(completeApplicationNextAction(document, 'missing', LATER)).toBe(document)
+    expect(completeApplicationNextAction(document, idle.id, LATER)).toBe(document)
+  })
+
+  describe('editing the recorded list', () => {
+    it('keeps an existing entry\'s timestamp and stamps a new one now', () => {
+      const done = completeNextAction(planned(), LATER)
+      const kept = done.completed_actions[0]!
+      const edited = applyCompletedActions(
+        done,
+        [{ id: kept.id, action: kept.action }, { action: 'Book the flight' }],
+        new Date('2026-08-22T09:00:00+10:00'),
+      )
+
+      expect(edited.completed_actions[0]).toEqual(kept)
+      expect(edited.completed_actions[1]).toMatchObject({
+        action: 'Book the flight',
+        at: '2026-08-21T23:00:00.000Z',
+      })
+    })
+
+    it('drops a blank entry, which is how a Done pressed by mistake is removed', () => {
+      const done = completeNextAction(planned(), LATER)
+      const cleared = applyCompletedActions(done, [], LATER)
+
+      expect(cleared.completed_actions).toEqual([])
+      // The plan is not restored: undoing the record is not the same as undoing the work.
+      expect(cleared.next_action).toBeNull()
+    })
+
+    it('returns the same object when nothing changed', () => {
+      const done = completeNextAction(planned(), LATER)
+      const drafts = done.completed_actions.map(({ id, action, at }) => ({ id, action, at }))
+
+      expect(applyCompletedActions(done, drafts, LATER)).toBe(done)
+    })
+
+    it('refuses the same entry twice', () => {
+      const done = completeNextAction(planned(), LATER)
+      const entry = done.completed_actions[0]!
+
+      expect(() =>
+        applyCompletedActions(done, [
+          { id: entry.id, action: entry.action },
+          { id: entry.id, action: entry.action },
+        ], LATER),
+      ).toThrow(/twice/i)
+    })
+
+    it('touches only the named application in the document', () => {
+      const document = createDemoDocument(REFERENCE)
+      const target = document.applications.find((item) => item.completed_actions.length > 0)!
+      const next = updateApplicationCompletedActions(document, target.id, [], LATER)
+
+      expect(next.applications.find((item) => item.id === target.id)!.completed_actions).toEqual([])
+      expect(updateApplicationCompletedActions(document, 'missing', [], LATER)).toBe(document)
+    })
   })
 })
 

@@ -35,6 +35,7 @@ export const TRACKER_JSON_SCHEMA = {
         'next_action_at',
         'deadline_at',
         'notes',
+        'completed_actions',
         'stage_notes',
         'state_events',
         'attachments',
@@ -68,6 +69,10 @@ export const TRACKER_JSON_SCHEMA = {
         next_action_at: { type: ['string', 'null'] },
         deadline_at: { type: ['string', 'null'] },
         notes: { type: ['string', 'null'] },
+        completed_actions: {
+          type: 'array',
+          items: { $ref: '#/$defs/completed_action' },
+        },
         stage_notes: {
           type: 'array',
           items: { $ref: '#/$defs/stage_note' },
@@ -106,6 +111,17 @@ export const TRACKER_JSON_SCHEMA = {
         },
         created_at: { type: 'string' },
         updated_at: { type: 'string' },
+      },
+    },
+    completed_action: {
+      type: 'object',
+      description: 'A next action that was carried out, kept apart from the free-text notes.',
+      required: ['id', 'action', 'at'],
+      additionalProperties: false,
+      properties: {
+        id: { type: 'string', minLength: 1 },
+        action: { type: 'string', minLength: 1 },
+        at: { type: 'string' },
       },
     },
     heard_entry: {

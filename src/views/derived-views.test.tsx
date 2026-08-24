@@ -45,6 +45,7 @@ function application(
     next_action_at: null,
     deadline_at: null,
     notes: null,
+    completed_actions: [],
     stage_notes: [],
     state_events: [],
     attachments: [],
@@ -1336,9 +1337,11 @@ describe('KanbanView', () => {
       />,
     )
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Mark done for Task Co: Send the portfolio' }),
-    )
+    const done = screen.getByRole('button', { name: 'Mark done for Task Co: Send the portfolio' })
+    // Beside the task it resolves, not down in the card's footer row of card-wide controls.
+    expect(done.closest('.application-card__action')).not.toBeNull()
+
+    fireEvent.click(done)
     expect(onCompleteAction).toHaveBeenCalledWith(tasked.id)
     expect(screen.queryByRole('button', { name: /^Mark done for Idle Co/ })).not.toBeInTheDocument()
   })

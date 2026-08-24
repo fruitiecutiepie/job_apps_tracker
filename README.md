@@ -14,7 +14,7 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 - Compensation as a measurement rather than a rating: what was advertised, what you expect, and what was offered, kept side by side and compared against your target
 - Derived urgency ranking that explains itself, combining stage, scheduled invites, deadline, next-action date, and how long an application has sat in the same state, into one sortable column
 - Sortable and filterable table with invites, deadline, urgency, preference, compensation, and attachments columns, where sorting by invite sorts by what is next
-- Focus view grouping live applications by what is most pressing, with collapsible groups and a reason on every row, and a **Done** control that clears a finished task and logs it in the application's notes
+- Focus view grouping live applications by what is most pressing, with collapsible groups and a reason on every row, and a **Done** control that clears a finished task and records it as a dated completed action, kept apart from your notes
 - Calendar invites imported from the `.ics` a recruiter sends, filed against a stage, with a rescheduled invite replacing the one it supersedes
 - Calendar showing next-action dates and invites together, day by day
 - Stale applications with 7-, 14-, and 30-day thresholds, plus a Move to Rejected shortcut to the current state's counterpart
@@ -60,13 +60,23 @@ Use `pnpm start:demo` after a build to preview against the demo database.
 Select **Add application** and enter a company, optional role and URL, its current state, notes, and an optional next action. A next action can be saved without a date; its date is cleared automatically if the action text is removed. A deadline is separate: it records an external closing or decision date and can be set with no next action at all. URLs must begin with `http://` or `https://`.
 
 Select **Done** beside a next action — on a Focus row, a Kanban card, or in the table's next
-action column — when you have finished it. The task is cleared and a dated line is appended to
-that application's notes, so `22 Aug 2026 — Email the recruiter` becomes the record that it
-happened rather than the plan quietly disappearing. The date is written the way your browser
-writes dates everywhere else in the app, so it reads `Aug 22, 2026` under a US locale. The deadline is left alone, since a closing
-date is not something you complete, and finishing a task is not a stage change, so no history
-entry is added. Applications with nothing left to do fall into Focus's **No stage change in more
-than 7 days** or **Nothing dated or planned** group, which is where you decide what is next.
+action column — when you have finished it. The task moves to that application's **Completed
+actions**, a dated record kept separately from Notes, and the next action clears. The deadline
+is left alone, since a closing date is not something you complete, and finishing a task is not
+a stage change, so no history entry is added. Applications with nothing left to do fall into
+Focus's **No stage change in more than 7 days** or **Nothing dated or planned** group, which is
+where you decide what is next.
+
+Completed actions are records rather than lines appended to your notes. Notes is prose you
+write and rewrite; a completed action is one line the app writes the moment you press Done.
+Keeping them apart means editing your notes can never disturb the record, the date is not
+something to parse back out of a sentence, and a Done pressed by mistake can be removed.
+
+Open an application to see the whole list, newest first, above Notes. **Mark next action done**
+does the same thing from inside the editor, and **Remove** deletes an entry you did not mean to
+record. Both are drafts until you save, like everything else in that dialog. Removing an entry
+does not put the task back on your plan — undoing the record is not the same as undoing the
+work, and the app does not guess which you meant.
 
 Open an existing application from any view to edit or delete it. Moving to another state adds a timestamped history entry. You can move a Kanban card by dragging it or by using its state selector, which also works for keyboard and touch interaction.
 

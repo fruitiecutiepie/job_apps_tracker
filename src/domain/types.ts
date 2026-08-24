@@ -46,6 +46,29 @@ export interface HeardEntry {
   at: string
 }
 
+/**
+ * A next action that was carried out, kept as a record rather than appended to `notes`. The
+ * two are written at different moments by different hands: `notes` is prose you compose and
+ * revise, while a completed action is one line the app writes the instant you press Done. As
+ * a record the date is a reading of `at` rather than something to parse back out of the prose,
+ * a mistaken Done can be removed without editing around it, and neither can clobber the other.
+ *
+ * There is no separate "planned at" field. What matters is that the task was done and when;
+ * when you first wrote it down is not something anyone goes looking for.
+ */
+export interface CompletedAction {
+  id: string
+  action: string
+  at: string
+}
+
+/** A completed action as held by the editor, before an id and timestamp are resolved. */
+export interface CompletedActionDraft {
+  id?: string
+  action: string
+  at?: string
+}
+
 export interface StageNote {
   state: StateId
   body: string
@@ -171,6 +194,8 @@ export interface Application {
   next_action_at: string | null
   deadline_at: string | null
   notes: string | null
+  /** Next actions carried out, oldest first. */
+  completed_actions: CompletedAction[]
   stage_notes: StageNote[]
   state_events: StateEvent[]
   attachments: Attachment[]

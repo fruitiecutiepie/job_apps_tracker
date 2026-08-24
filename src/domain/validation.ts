@@ -12,6 +12,7 @@ import type {
   Attachment,
   Compensation,
   CompensationBand,
+  CompletedAction,
   HeardEntry,
   Rating,
   StageNote,
@@ -250,6 +251,55 @@ function ratingsValue(value: unknown, path: string, errors: ValidationError[]): 
   })
 
   return ratings.sort((left, right) => ratingRank(left.dimension) - ratingRank(right.dimension))
+}
+
+function completedActionValue(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+): CompletedAction | null {
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object')
+    return null
+  }
+  if (!nonBlank(value.id)) addError(errors, `${path}.id`, 'is required')
+  if (!nonBlank(value.action)) addError(errors, `${path}.action`, 'is required')
+  if (!validTimestamp(value.at)) {
+    addError(errors, `${path}.at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (!nonBlank(value.id) || !nonBlank(value.action) || !validTimestamp(value.at)) return null
+
+  return { id: value.id.trim(), action: value.action.trim(), at: value.at }
+}
+
+/**
+ * Completed actions, oldest first. Absent is empty rather than an error: a document written
+ * before Done existed is a valid document with none, not a broken one.
+ */
+function completedActionsValue(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+): CompletedAction[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) {
+    addError(errors, path, 'must be an array')
+    return []
+  }
+
+  const entries = value
+    .map((entry, index) => completedActionValue(entry, `${path}[${index}]`, errors))
+    .filter((entry): entry is CompletedAction => entry !== null)
+
+  const seen = new Set<string>()
+  entries.forEach((entry, index) => {
+    if (seen.has(entry.id)) {
+      addError(errors, `${path}[${index}].id`, 'duplicates another completed action')
+    }
+    seen.add(entry.id)
+  })
+
+  return entries.sort((left, right) => left.at.localeCompare(right.at))
 }
 
 function heardEntryValue(value: unknown, path: string, errors: ValidationError[]): HeardEntry | null {
@@ -571,6 +621,11 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     next_action_at: nextAction ? nextActionAt : null,
     deadline_at: deadlineAt,
     notes: nullableText(value.notes, `${path}.notes`, errors),
+    completed_actions: completedActionsValue(
+      value.completed_actions,
+      `${path}.completed_actions`,
+      errors,
+    ),
     stage_notes: stageNotesValue(value.stage_notes, `${path}.stage_notes`, errors),
     state_events: stateEventsValue(value.state_events, `${path}.state_events`, errors),
     attachments: attachmentsValue(value.attachments, `${path}.attachments`, errors),

@@ -22,6 +22,7 @@ import {
   addApplication,
   clearLegacyLocalStorage,
   completeApplicationNextAction,
+  updateApplicationCompletedActions,
   createAttachmentMetadata,
   createUuidV7,
   deleteApplication,
@@ -52,12 +53,14 @@ import {
   type Application,
   type ApplicationInput,
   type Attachment,
+  type CompletedActionDraft,
   type StageNoteDraft,
   type StateEventDraft,
   type StateId,
   type TrackerDocument,
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
+import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
 import { RatingFields } from './RatingFields'
 import { StateHistory } from './StateHistory'
 import { CompensationFields } from './CompensationFields'
@@ -69,7 +72,6 @@ import {
 } from './compensation'
 import { clearedRatingDimensions, ratingDrafts, ratingValuesFor, type RatingValues } from './ratings'
 import { fromDateTimeInput, toDateTimeInput } from './dateInput'
-import { formatShortDate } from './views/viewUtils'
 import { InviteFields } from './InviteFields'
 import {
   firstInviteProblem,
@@ -247,6 +249,7 @@ interface ApplicationEditorProps {
     values: EditorValues,
     attachmentPlan: AttachmentSavePlan,
     invites: StateEventDraft[],
+    completedActions: CompletedActionDraft[],
   ) => Promise<void>
 }
 
@@ -268,6 +271,14 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
     compensation: compensationValuesFor(application),
   }))
   const [invites, setInvites] = useState<InviteRow[]>(() => inviteRowsFor(application))
+  const [completedActions, setCompletedActions] = useState<CompletedActionRow[]>(() =>
+    (application?.completed_actions ?? []).map((entry) => ({
+      key: entry.id,
+      id: entry.id,
+      action: entry.action,
+      at: entry.at,
+    })),
+  )
   const [keptAttachments] = useState<Attachment[]>(() => application?.attachments ?? [])
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([])
   const [stagedFiles, setStagedFiles] = useState<StagedAttachmentFile[]>([])
@@ -367,6 +378,7 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
                   stagedFiles,
                 },
                 inviteDrafts(invites),
+                completedActions.map(({ id, action, at }) => ({ id, action, at })),
               )
             } catch (error) {
               setFormError(errorMessage(error))
@@ -453,6 +465,22 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
                 value={values.nextActionAt}
               />
             </label>
+            <CompletedActionFields
+              nextAction={values.nextAction}
+              onChange={setCompletedActions}
+              onComplete={() => {
+                const action = values.nextAction.trim()
+                if (!action) return
+                // Draft only: the record is written when the dialog is saved, like every
+                // other control here, so closing without saving changes nothing.
+                setCompletedActions((current) => [
+                  ...current,
+                  { key: createUuidV7(), action, at: new Date().toISOString() },
+                ])
+                setValues((current) => ({ ...current, nextAction: '', nextActionAt: '' }))
+              }}
+              rows={completedActions}
+            />
             <label className="field field--wide">
               <span>Notes</span>
               <textarea
@@ -796,17 +824,11 @@ export default function App() {
     )
   }
 
-  /*
-   * The date is formatted here rather than in the mutation: the note line is prose the reader
-   * sees, and `formatShortDate` is the one place this app turns a date into something to read,
-   * so a logged action is dated the same way every other date on screen is.
-   */
   const completeAction = (id: string) => {
     const finishing = tracker.applications.find((application) => application.id === id)
-    const on = formatShortDate(new Date().toISOString())
     commit(
-      (current) => completeApplicationNextAction(current, id, on),
-      `Action marked done for ${finishing?.company ?? 'the application'} and logged in its notes.`,
+      (current) => completeApplicationNextAction(current, id),
+      `Action marked done for ${finishing?.company ?? 'the application'}.`,
     )
   }
 
@@ -1052,7 +1074,7 @@ export default function App() {
             closeEditor()
             openStageNotes(id)
           } : undefined}
-          onSave={async (values, attachmentPlan, invites) => {
+          onSave={async (values, attachmentPlan, invites, completedActions) => {
             const input: ApplicationInput = {
               company: values.company,
               role: values.role || null,
@@ -1078,6 +1100,7 @@ export default function App() {
                   next = updateApplication(next, id, { attachments }, now)
                 }
                 next = updateApplicationStateEvents(next, id, invites, now)
+                next = updateApplicationCompletedActions(next, id, completedActions, now)
                 return updateApplicationRatings(next, id, ratingDrafts(values.ratings), now)
               }, 'Application added.')
             } else {
@@ -1096,6 +1119,7 @@ export default function App() {
                   compensation: input.compensation,
                 }, now)
                 next = updateApplicationStateEvents(next, editor.id, invites, now)
+                next = updateApplicationCompletedActions(next, editor.id, completedActions, now)
                 next = updateApplicationRatings(next, editor.id, ratingDrafts(values.ratings), now)
                 // Drafts cannot express "back to never assessed", so blanked ones clear here.
                 for (const dimension of clearedRatingDimensions(editingApplication, values.ratings)) {

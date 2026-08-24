@@ -228,7 +228,7 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
-  it('marks a next action done from the board, logging it in the notes and persisting it', async () => {
+  it('marks a next action done from the board, recording it apart from the notes', async () => {
     const user = userEvent.setup()
     const { unmount } = await renderLoadedApp()
     const before = readSavedDocument().applications.find(
@@ -245,13 +245,14 @@ describe('job applications tracker', () => {
     const after = readSavedDocument().applications.find((item) => item.id === before.id)!
     expect(after.next_action).toBeNull()
     expect(after.next_action_at).toBeNull()
-    // The plan is gone but what was done is on the record. Exact, because the clock is pinned
-    // — but built from the app's own formatter rather than one locale's rendering of it, since
-    // the day the date reads as is the reader's locale, not this app's contract.
-    expect(after.notes).toBe(
-      `${before.notes}\n${formatShortDate(DEFAULT_DEMO_REFERENCE)} — Prepare questions for onboarding`,
-    )
-    // Resolving a task is not a stage change.
+    // A record of its own, not a line appended to the prose.
+    expect(after.notes).toBe(before.notes)
+    expect(after.completed_actions.map((entry) => entry.action)).toEqual([
+      ...before.completed_actions.map((entry) => entry.action),
+      'Prepare questions for onboarding',
+    ])
+    expect(after.completed_actions.at(-1)!.at).toBe(DEFAULT_DEMO_REFERENCE)
+    // Resolving a task is not a stage change, and a closing date is not a task.
     expect(after.state_history).toEqual(before.state_history)
     expect(after.deadline_at).toBe(before.deadline_at)
 
@@ -268,32 +269,62 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
-  it('shows the state history of an application it is editing, and none for a new one', async () => {
+  it('marks an action done from the editor and lists it apart from the notes', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
-
-    await user.click(
-      screen.getByRole('button', {
-        name: 'Open Saffron Systems, Product Operations Manager',
-      }),
-    )
-
-    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
-    const history = within(dialog).getByRole('list', { name: 'History' })
-    const rows = within(history).getAllByRole('listitem')
-    const saved = readSavedDocument().applications.find(
-      (application) => application.company === 'Saffron Systems',
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Atlas Thread',
     )!
-    expect(rows).toHaveLength(saved.state_history.length)
-    expect(rows[0]).toHaveTextContent('Applied')
-    expect(rows.at(-1)).toHaveTextContent('Accepted')
-    // The last move is still running, so its span reads as unfinished.
-    expect(rows.at(-1)).toHaveTextContent(/so far|Today/)
 
-    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
-    await user.click(screen.getByRole('button', { name: 'Add application' }))
-    const adding = screen.getByRole('dialog', { name: 'Add application' })
-    expect(within(adding).queryByRole('list', { name: 'History' })).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^Open Atlas Thread/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    // What is already recorded is listed, separately from the Notes textarea.
+    for (const entry of before.completed_actions) {
+      expect(within(dialog).getByText(entry.action)).toBeInTheDocument()
+    }
+    expect(within(dialog).getByLabelText('Notes')).toHaveValue(before.notes)
+
+    await user.click(within(dialog).getByRole('button', { name: 'Mark next action done' }))
+
+    // Draft only until the dialog is saved: the field clears, the record does not exist yet.
+    expect(within(dialog).getByLabelText('Next action')).toHaveValue('')
+    expect(
+      readSavedDocument().applications.find((item) => item.id === before.id)!.completed_actions,
+    ).toHaveLength(before.completed_actions.length)
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.next_action).toBeNull()
+    expect(after.notes).toBe(before.notes)
+    expect(after.completed_actions.map((entry) => entry.action)).toEqual([
+      ...before.completed_actions.map((entry) => entry.action),
+      'Prepare examples of system governance',
+    ])
+  })
+
+  it('removes a completed action recorded by mistake', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Atlas Thread',
+    )!
+    const mistake = before.completed_actions[0]!
+
+    await user.click(screen.getByRole('button', { name: /^Open Atlas Thread/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(
+      within(dialog).getByRole('button', { name: `Remove completed action ${mistake.action}` }),
+    )
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.completed_actions.map((entry) => entry.id)).toEqual(
+      before.completed_actions.slice(1).map((entry) => entry.id),
+    )
+    // Undoing the record does not put the task back on the plan.
+    expect(after.next_action).toBe(before.next_action)
   })
 
   it('records stage prep notes from the board and finds them again with search', async () => {

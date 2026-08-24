@@ -4,6 +4,7 @@ import { RATING_IDS } from './ratings'
 import { STATE_IDS } from './states'
 import type {
   Application,
+  CompletedAction,
   Compensation,
   CompensationStageId,
   Rating,
@@ -28,6 +29,8 @@ interface DemoSeed {
   /** Edits updated_at without moving state, so silence and last-touched diverge. */
   editedDaysAgo?: number
   notes?: string
+  /** Next actions already carried out, as [days before the reference, what was done]. */
+  completedActions?: readonly (readonly [number, string])[]
   source?: string | null
   /** Omit a dimension for never-assessed; give it null for an explicit "don't know". */
   ratings?: Partial<Record<RatingDimensionId, number | null>>
@@ -69,7 +72,7 @@ const DEMO_SEEDS: readonly DemoSeed[] = [
   { company: 'Tidal Grove', role: 'Platform Engineer', state: 'recruiter_messaged_rejected', createdDaysAgo: 26, updatedDaysAgo: 17, priorStates: ['applied', 'recruiter_messaged'], notes: 'Role requires a different on-call timezone.', source: 'LinkedIn' },
   { company: 'Orbit & Oak', role: 'Operations Lead', state: 'online_assessment', createdDaysAgo: 12, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [120_000, 140_000], expected: 135_000 }, priorStates: ['applied', 'recruiter_messaged'], nextAction: 'Complete the scenario assessment', nextActionDaysFromNow: 3, deadlineDaysFromNow: 4, notes: 'Assessment should take about 75 minutes.', source: 'Company site' },
   { company: 'Bright Harbor', role: 'Software Engineer', state: 'online_assessment_rejected', createdDaysAgo: 44, updatedDaysAgo: 29, priorStates: ['applied', 'online_assessment'], notes: 'Passed most cases; concurrency section was incomplete.' },
-  { company: 'Atlas Thread', role: 'Design Systems Lead', state: 'recruiter_interview', createdDaysAgo: 18, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [160_000, 185_000], expected: 175_000 }, ratings: { work: 4, growth: 4, people: null }, priorStates: ['applied', 'recruiter_messaged'], nextAction: 'Prepare examples of system governance', nextActionDaysFromNow: 1, notes: 'Thirty-minute video call with the internal recruiter.', source: 'Recruiter', stateEvents: [{ state: 'recruiter_interview', summary: 'Recruiter interview with Dana', daysFromNow: 1, hour: 11, minutes: 30, location: 'Level 4, 220 Example Street', url: 'https://example.com/meet/atlas-thread' }], stageNotes: { recruiter_messaged: '- Recruiter is **Dana**\n- Asked for salary expectations early — answer with the band, not a number', recruiter_interview: '## Story to lead with\n\n- Consolidating four component libraries into one system\n  - Cut component duplication by half\n  - Adopted by six product teams in a quarter\n\n## Questions to ask\n\n- How is design system work resourced between product teams?\n- What does the loop after this look like?' } },
+  { company: 'Atlas Thread', role: 'Design Systems Lead', state: 'recruiter_interview', createdDaysAgo: 18, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [160_000, 185_000], expected: 175_000 }, ratings: { work: 4, growth: 4, people: null }, priorStates: ['applied', 'recruiter_messaged'], nextAction: 'Prepare examples of system governance', nextActionDaysFromNow: 1, completedActions: [[9, 'Reply to the recruiter'], [4, 'Send the portfolio link']], notes: 'Thirty-minute video call with the internal recruiter.', source: 'Recruiter', stateEvents: [{ state: 'recruiter_interview', summary: 'Recruiter interview with Dana', daysFromNow: 1, hour: 11, minutes: 30, location: 'Level 4, 220 Example Street', url: 'https://example.com/meet/atlas-thread' }], stageNotes: { recruiter_messaged: '- Recruiter is **Dana**\n- Asked for salary expectations early — answer with the band, not a number', recruiter_interview: '## Story to lead with\n\n- Consolidating four component libraries into one system\n  - Cut component duplication by half\n  - Adopted by six product teams in a quarter\n\n## Questions to ask\n\n- How is design system work resourced between product teams?\n- What does the loop after this look like?' } },
   { company: 'Cinder Studio', role: 'Product Designer', state: 'recruiter_interview_rejected', createdDaysAgo: 35, updatedDaysAgo: 20, priorStates: ['applied', 'recruiter_messaged', 'recruiter_interview'], notes: 'Team selected someone with deeper enterprise experience.', source: 'LinkedIn' },
   { company: 'Kindred Cloud', role: 'Developer Advocate', state: 'take_home_assessment', createdDaysAgo: 16, updatedDaysAgo: 1, compensation: { currency: 'USD', advertised: [90_000, 110_000], expected: 105_000 }, priorStates: ['applied', 'recruiter_interview'], nextAction: 'Submit the API tutorial', nextActionDaysFromNow: 9, deadlineDaysFromNow: 12, notes: 'Keep the written exercise under 1,500 words. The window is generous, so this is not pressing yet.', source: 'Company site', stageNotes: { take_home_assessment: '## Brief\n\nWrite an API tutorial under **1,500 words**.\n\n## Outline\n\n1. Problem\n2. Quickstart\n3. One worked example\n4. Troubleshooting\n\nReuse the webhook walkthrough structure that tested well before.' } },
   { company: 'Willow Finance', role: 'Risk Product Manager', state: 'take_home_assessment_rejected', createdDaysAgo: 51, updatedDaysAgo: 24, priorStates: ['applied', 'recruiter_interview', 'take_home_assessment'], notes: 'Good feedback on structure; domain depth was the deciding factor.', source: 'Job board' },
@@ -79,7 +82,7 @@ const DEMO_SEEDS: readonly DemoSeed[] = [
   { company: 'Fern & Field', role: 'Brand Director', state: 'interview_2_rejected', createdDaysAgo: 73, updatedDaysAgo: 41, priorStates: ['headhunted', 'recruiter_interview', 'interview_1', 'interview_2'], nextAction: 'Thank the hiring manager and stay connected', notes: 'A thoughtful process and useful portfolio feedback.', source: 'Referral' },
   { company: 'Lumen Pantry', role: 'Head of Growth', state: 'offer', createdDaysAgo: 33, updatedDaysAgo: 1, compensation: { currency: 'AUD', advertised: [230_000, 260_000], expected: 250_000, offered: 230_000 }, ratings: { work: 5, growth: 5, people: 1, company: 5 }, priorStates: ['applied', 'recruiter_interview', 'interview_1', 'interview_2'], nextAction: 'Review compensation and equity terms', notes: 'Written offer received. No decision date given yet, so the review is not booked in.', source: 'Company site', stageNotes: { offer: '## Where the offer stands\n\n- Base is **8% below** target\n- Equity is above target\n- Ask for the base to move first\n\n## Confirm before accepting\n\n- Review cycle\n- Start date flexibility\n- Learning budget' } },
   { company: 'Redwood Relay', role: 'Principal Engineer', state: 'offer_rejected', createdDaysAgo: 88, updatedDaysAgo: 46, priorStates: ['headhunted', 'recruiter_interview', 'interview_1', 'interview_2', 'offer'], notes: 'Declined after the location policy changed.', source: 'Recruiter' },
-  { company: 'Saffron Systems', role: 'Product Operations Manager', state: 'accepted', createdDaysAgo: 58, updatedDaysAgo: 6, priorStates: ['applied', 'recruiter_messaged', 'recruiter_interview', 'interview_1', 'interview_2', 'offer'], nextAction: 'Prepare questions for onboarding', notes: 'Start date confirmed. Background check complete.', source: 'LinkedIn' },
+  { company: 'Saffron Systems', role: 'Product Operations Manager', state: 'accepted', createdDaysAgo: 58, updatedDaysAgo: 6, priorStates: ['applied', 'recruiter_messaged', 'recruiter_interview', 'interview_1', 'interview_2', 'offer'], nextAction: 'Prepare questions for onboarding', completedActions: [[3, 'Sign and return the contract']], notes: 'Start date confirmed. Background check complete.', source: 'LinkedIn' },
 ]
 
 function localDay(reference: Date, daysFromReference: number, hour = 10): Date {
@@ -101,6 +104,13 @@ function historyFor(seed: DemoSeed, reference: Date): StateHistoryEntry[] {
 }
 
 /** Timestamps come from the reference date, never the wall clock, to stay deterministic. */
+function completedActionsFor(seed: DemoSeed, index: number, reference: Date): CompletedAction[] {
+  return (seed.completedActions ?? []).map(([daysAgo, action], entry) => {
+    const at = localDay(reference, -daysAgo, 15).toISOString()
+    return { id: demoCompletedActionId(index, entry), action, at }
+  })
+}
+
 function ratingsFor(seed: DemoSeed, updatedAt: string): Rating[] {
   return RATING_IDS.flatMap((dimension) => {
     if (!seed.ratings || !(dimension in seed.ratings)) return []
@@ -180,6 +190,10 @@ function demoHeardId(index: number, state: number, order: number): string {
   return `018f0000-0000-7000-a000-${String(index + 1).padStart(6, '0')}${String(state + 1).padStart(3, '0')}${String(order + 1).padStart(3, '0')}`
 }
 
+function demoCompletedActionId(index: number, order: number): string {
+  return `018f0000-0000-7000-b000-${String(index + 1).padStart(9, '0')}${String(order + 1).padStart(3, '0')}`
+}
+
 function demoEventId(index: number, order: number): string {
   return `018f0000-0000-7000-9000-${String(index + 1).padStart(9, '0')}${String(order + 1).padStart(3, '0')}`
 }
@@ -222,6 +236,7 @@ export function createDemoDocument(
           ? localDay(reference, seed.deadlineDaysFromNow, 17).toISOString()
           : null,
       notes: seed.notes ?? null,
+      completed_actions: completedActionsFor(seed, index, reference),
       stage_notes: stageNotesFor(seed, index, history, updatedAt),
       state_events: demoStateEvents(seed, index, reference, updatedAt),
       attachments: [],

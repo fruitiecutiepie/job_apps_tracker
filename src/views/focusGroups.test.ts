@@ -28,6 +28,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
     next_action_at: null,
     deadline_at: null,
     notes: null,
+    completed_actions: [],
     stage_notes: [],
     state_events: [],
     attachments: [],

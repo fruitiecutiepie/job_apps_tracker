@@ -38,6 +38,7 @@ function application(scores: Scores): Application {
     next_action_at: null,
     deadline_at: null,
     notes: null,
+    completed_actions: [],
     stage_notes: [],
     state_events: [],
     attachments: [],

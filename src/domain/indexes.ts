@@ -69,6 +69,9 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       application.source,
       application.notes,
       application.next_action,
+      // What you did is as findable as what you plan to do; before Done had a field of its
+      // own these lines lived in `notes` and were already matched here.
+      ...application.completed_actions.map((entry) => entry.action),
       STATE_LABELS[application.state],
       ...application.stage_notes.map((note) =>
         [STATE_LABELS[note.state], note.body, ...note.heard.map((entry) => entry.body)]

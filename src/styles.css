@@ -767,6 +767,7 @@ p {
 .application-card--stale .application-card__attachments,
 .application-card--stale .application-card__attachments-icon,
 .application-card--stale .application-card__age,
+.application-card--stale .application-card__label,
 .application-card--stale .stage-notes-button--card,
 .application-card--stale .complete-action-button--card {
   color: var(--ink-2);
@@ -820,12 +821,22 @@ p {
   line-height: 1.4;
 }
 
-.application-card__action span,
-.application-card__invite span,
-.application-card__preference span {
+/*
+ * Only the line's own label, not every descendant span: the action line now holds a Done
+ * button whose text must not shrink to label size.
+ */
+.application-card__label {
   color: var(--ink-3);
   font-size: var(--t1);
   font-weight: 500;
+}
+
+/* Label left, Done right, on one line above the task text. */
+.application-card__action-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
 }
 
 .application-card__attachments {
@@ -1664,6 +1675,54 @@ tbody tr:hover {
 
 .invite-field__notice {
   color: var(--ink);
+}
+
+/* ---------------------------------------------------- completed actions --- */
+
+.completed-field {
+  display: grid;
+  gap: var(--s3);
+}
+
+.completed-field__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s2);
+}
+
+.completed-field__list {
+  display: grid;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.completed-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r1);
+  background: var(--surface-2);
+}
+
+/* The task takes the room; the date and Remove keep their intrinsic width. */
+.completed-item__action {
+  flex: 1 1 10rem;
+  min-width: 0;
+  color: var(--ink);
+  font-size: var(--t3);
+}
+
+.completed-item__date {
+  color: var(--ink-3);
+  font-size: var(--t2);
+  white-space: nowrap;
 }
 
 /* --------------------------------------------------------- stage notes --- */

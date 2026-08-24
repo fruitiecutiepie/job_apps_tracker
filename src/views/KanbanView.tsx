@@ -154,7 +154,19 @@ export function KanbanView({
                             ) : null}
                             {application.next_action?.trim() ? (
                               <p className="application-card__action">
-                                <span>Next</span> {application.next_action}
+                                {/*
+                                  * Done sits on the label line, beside the task it resolves,
+                                  * rather than in the card's footer row of card-wide controls.
+                                  */}
+                                <span className="application-card__action-head">
+                                  <span className="application-card__label">Next</span>
+                                  <CompleteActionButton
+                                    application={application}
+                                    onCompleteAction={onCompleteAction}
+                                    variant="card"
+                                  />
+                                </span>
+                                {application.next_action}
                                 {application.next_action_at ? (
                                   <time dateTime={application.next_action_at}>
                                     {" "}
@@ -165,7 +177,7 @@ export function KanbanView({
                             ) : null}
                             {invite ? (
                               <p className="application-card__invite">
-                                <span>Invite</span> {invite.summary}
+                                <span className="application-card__label">Invite</span> {invite.summary}
                                 <time dateTime={invite.starts_at}>
                                   {" "}
                                   · {formatShortDate(invite.starts_at)}
@@ -174,7 +186,7 @@ export function KanbanView({
                             ) : null}
                             {preference ? (
                               <p className="application-card__preference">
-                                <span>Preference</span> {describePreference(preference)}
+                                <span className="application-card__label">Preference</span> {describePreference(preference)}
                               </p>
                             ) : null}
                             <AttachmentFilenames attachments={application.attachments} variant="card" />
@@ -204,11 +216,6 @@ export function KanbanView({
                               <StageNotesButton
                                 application={application}
                                 onOpenStageNotes={onOpenStageNotes}
-                                variant="card"
-                              />
-                              <CompleteActionButton
-                                application={application}
-                                onCompleteAction={onCompleteAction}
                                 variant="card"
                               />
                             </div>

@@ -15,6 +15,8 @@ import type {
   Attachment,
   Compensation,
   CompensationBand,
+  CompletedAction,
+  CompletedActionDraft,
   HeardEntry,
   Rating,
   RatingDimensionId,
@@ -137,6 +139,7 @@ export function createApplication(
     next_action_at: nextAction ? optionalTimestamp(input.next_action_at) : null,
     deadline_at: optionalTimestamp(input.deadline_at),
     notes: optionalText(input.notes),
+    completed_actions: [],
     stage_notes: [],
     state_events: [],
     attachments: [],
@@ -180,39 +183,88 @@ export function editApplication(
   }
 }
 
+/** Completed actions read oldest first, so the list is a record of what happened in order. */
+function sortedCompletedActions(entries: CompletedAction[]): CompletedAction[] {
+  return [...entries].sort((left, right) => left.at.localeCompare(right.at))
+}
+
 /**
- * Records a next action as done: the plan is cleared and what you did is appended to the
- * application's notes as one dated line, so finishing a task leaves a trail rather than
- * silently deleting the only record that it was ever planned.
+ * Replaces the completed actions with a canonicalized list. Like invites, a draft carrying an
+ * existing id keeps that record's timestamp while a new one is stamped now, so re-saving the
+ * editor cannot restate when a task was finished. A blank action drops the entry, which is how
+ * the editor removes a Done pressed by mistake — the one recovery that appending to `notes`
+ * used to give for free, and the reason removal exists at all.
  *
- * `completedOn` is display text supplied by the caller, because the domain has no locale and
- * `formatShortDate` is the one place this app formats a date for reading. Lines stack with a
- * single newline: `notes` is plain text, so the log reads as a list without a Markdown pass.
+ * An unchanged list returns the same object so a pointless save cannot refresh `updated_at`.
+ */
+export function applyCompletedActions(
+  application: Application,
+  drafts: CompletedActionDraft[],
+  at: Date | string = new Date(),
+): Application {
+  const updatedAt = timestamp(at)
+  const existing = new Map(application.completed_actions.map((entry) => [entry.id, entry]))
+  const seen = new Set<string>()
+  const entries: CompletedAction[] = []
+
+  for (const draft of drafts) {
+    const action = optionalText(draft.action)
+    if (!action) continue
+
+    const current = draft.id ? existing.get(draft.id) ?? null : null
+    const id = current?.id ?? draft.id ?? createUuidV7(new Date(updatedAt))
+    if (seen.has(id)) throw new TypeError('A completed action may not appear twice')
+    seen.add(id)
+
+    entries.push({
+      id,
+      action,
+      at: current?.at ?? optionalTimestamp(draft.at) ?? updatedAt,
+    })
+  }
+
+  const completed = sortedCompletedActions(entries)
+  const unchanged =
+    completed.length === application.completed_actions.length
+    && completed.every((entry, index) => {
+      const before = application.completed_actions[index]!
+      return before.id === entry.id && before.action === entry.action && before.at === entry.at
+    })
+  if (unchanged) return application
+
+  return { ...application, completed_actions: completed, updated_at: updatedAt }
+}
+
+/**
+ * Records a next action as done: the plan is cleared and the task joins `completed_actions`,
+ * so finishing a task leaves a record rather than deleting the only evidence it was planned.
+ * It is deliberately not appended to `notes`: prose you revise and a line the app writes are
+ * different things, and mixing them means neither can be edited without disturbing the other.
  *
- * A blank action returns the same object — there is nothing to resolve. `deadline_at` is an
- * external fact and is left alone, and finishing a task is not a stage change, so no state
- * history is appended.
+ * A blank action returns the same object — there is nothing to resolve. `deadline_at` is
+ * untouched because an external closing date is not a task, and completing an action never
+ * appends state history because finishing a task is not a stage change.
  */
 export function completeNextAction(
   application: Application,
-  completedOn: string,
   at: Date | string = new Date(),
 ): Application {
   const action = optionalText(application.next_action)
   if (!action) return application
 
-  const on = optionalText(completedOn)
-  if (!on) throw new TypeError('A completion date is required')
-
-  const entry = `${on} — ${action}`
-  const notes = optionalText(application.notes)
+  const updatedAt = timestamp(at)
+  const entry: CompletedAction = {
+    id: createUuidV7(new Date(updatedAt)),
+    action,
+    at: updatedAt,
+  }
 
   return {
     ...application,
     next_action: null,
     next_action_at: null,
-    notes: notes ? `${notes}\n${entry}` : entry,
-    updated_at: timestamp(at),
+    completed_actions: sortedCompletedActions([...application.completed_actions, entry]),
+    updated_at: updatedAt,
   }
 }
 
@@ -693,12 +745,29 @@ export function updateApplicationStageNotes(
 export function completeApplicationNextAction(
   document: TrackerDocument,
   id: string,
-  completedOn: string,
   at: Date | string = new Date(),
 ): TrackerDocument {
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
-  const updated = completeNextAction(application, completedOn, at)
+  const updated = completeNextAction(application, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+/** Replaces one application's completed actions, leaving the rest of the document alone. */
+export function updateApplicationCompletedActions(
+  document: TrackerDocument,
+  id: string,
+  drafts: CompletedActionDraft[],
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = applyCompletedActions(application, drafts, at)
   if (updated === application) return document
 
   return {
