@@ -5,6 +5,10 @@
  * notes. An unrecognised or missing language still gets strings and numbers coloured,
  * since those read the same in almost any language; keywords and comments are skipped
  * there because guessing them wrong is worse than leaving the line plain.
+ *
+ * HTTP (a pasted request or response) doesn't fit that per-character model — it's a line
+ * format, not an expression grammar — so it gets its own line-based tokenizer below,
+ * with a JSON body coloured the same way a `json` block would be.
  */
 
 export type CodeTokenType = 'plain' | 'comment' | 'string' | 'number' | 'keyword' | 'function'
@@ -156,7 +160,13 @@ const NUMBER = /^0[xX][0-9a-fA-F]+|^\d+(\.\d+)?([eE][+-]?\d+)?/
 const WORD = /^[A-Za-z_$][A-Za-z0-9_$]*/
 
 export function tokenizeCode(value: string, language: string | null): CodeToken[] {
-  const config = configFor(language)
+  const name = language?.toLowerCase() ?? null
+  if (name === 'http' || name === 'https') return tokenizeHttp(value)
+  return scanTokens(value, configFor(language))
+}
+
+/** The generic per-character scanner every language in `CONFIGS` runs on. */
+function scanTokens(value: string, config: LangConfig): CodeToken[] {
   const tokens: CodeToken[] = []
   let plain = ''
   let index = 0
@@ -232,5 +242,86 @@ export function tokenizeCode(value: string, language: string | null): CodeToken[
   }
 
   flush()
+  return tokens
+}
+
+const HTTP_METHODS = keywordSet(
+  'GET POST PUT DELETE PATCH HEAD OPTIONS CONNECT TRACE',
+)
+const REQUEST_LINE = /^([A-Za-z]+)(\s+)(\S+)(\s+)(HTTP\/\d(?:\.\d)?)$/
+const STATUS_LINE = /^(HTTP\/\d(?:\.\d)?)(\s+)(\d{3})(\s+)(.*)$/
+const HEADER_LINE = /^([A-Za-z][\w-]*)(:\s*)(.*)$/
+
+/**
+ * A request or response line, or one header, coloured by what it is rather than by
+ * scanning characters: HTTP is a line format, not an expression grammar, so the request
+ * line's own scanner would only ever have three things to say about it.
+ */
+function tokenizeHttpLine(line: string): CodeToken[] {
+  const request = REQUEST_LINE.exec(line)
+  if (request && HTTP_METHODS.has(request[1].toUpperCase())) {
+    return [
+      { type: 'keyword', text: request[1] },
+      { type: 'plain', text: request[2] },
+      { type: 'string', text: request[3] },
+      { type: 'plain', text: request[4] },
+      { type: 'keyword', text: request[5] },
+    ]
+  }
+
+  const status = STATUS_LINE.exec(line)
+  if (status) {
+    const tokens: CodeToken[] = [
+      { type: 'keyword', text: status[1] },
+      { type: 'plain', text: status[2] },
+      { type: 'number', text: status[3] },
+      { type: 'plain', text: status[4] },
+    ]
+    if (status[5]) tokens.push({ type: 'plain', text: status[5] })
+    return tokens
+  }
+
+  const header = HEADER_LINE.exec(line)
+  if (header) {
+    const tokens: CodeToken[] = [
+      { type: 'function', text: header[1] },
+      { type: 'plain', text: header[2] },
+    ]
+    if (header[3]) tokens.push({ type: 'string', text: header[3] })
+    return tokens
+  }
+
+  return line ? [{ type: 'plain', text: line }] : []
+}
+
+/**
+ * A request or response: a request/status line, headers, a blank line, and an optional
+ * body. The body is scanned as JSON when it looks like one, since that is what an API
+ * exchange in a prep note is usually pasted in to show.
+ */
+function tokenizeHttp(value: string): CodeToken[] {
+  const blank = value.indexOf('\n\n')
+  const headEnd = blank === -1 ? value.length : blank
+  const lines = value.slice(0, headEnd).split('\n')
+
+  const tokens: CodeToken[] = []
+  lines.forEach((line, index) => {
+    tokens.push(...tokenizeHttpLine(line))
+    if (index < lines.length - 1) tokens.push({ type: 'plain', text: '\n' })
+  })
+
+  const rest = value.slice(headEnd)
+  if (!rest) return tokens
+
+  const gap = /^\n+/.exec(rest)![0]
+  tokens.push({ type: 'plain', text: gap })
+  const body = rest.slice(gap.length)
+  if (!body) return tokens
+
+  if (/^[[{]/.test(body.trim())) {
+    tokens.push(...scanTokens(body, CONFIGS.json))
+  } else {
+    tokens.push({ type: 'plain', text: body })
+  }
   return tokens
 }
