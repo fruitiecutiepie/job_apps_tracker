@@ -107,8 +107,11 @@ test cannot judge reliably:
    Select **Edit** on a stage, use the bold and bullet toolbar buttons, switch back with **Read**, and
    confirm the formatting rendered. Confirm the editor fills the pane's height between its toolbar
    and its hint, on an empty stage as well as a full one, and that a short note being read still
-   sizes to itself. Write every kind of block the hint names — a quote, a nested quote, and a fenced
-   block — and confirm each renders, folds, and is indented under whatever it hangs from. Save, reopen, and confirm the notes persist. Add notes for a stage
+   sizes to itself. Type past the bottom of the box and confirm it holds its height and scrolls the
+   text inside itself rather than growing, with no resize handle to drag, and that the toolbar, the
+   hint, and the dock below all stay where they are. Write every kind of block the hint names — a
+   quote, a nested quote, and a fenced block — and confirm each renders, folds, and is indented
+   under whatever it hangs from. Save, reopen, and confirm the notes persist. Add notes for a stage
    further down the pipeline and confirm searching for that text finds the application.
    Clear a stage's notes, save, and confirm they are gone.
    Confirm the notes fill the screen: the title bar, tab bar, breadcrumbs, outline, and Save row

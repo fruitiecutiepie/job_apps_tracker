@@ -2112,11 +2112,22 @@ tbody tr:hover {
   min-height: 0;
 }
 
-/* The floor these carry elsewhere would stop the field shrinking back down again. */
+/*
+ * The floor these carry elsewhere would stop the field shrinking back down again.
+ *
+ * The box is exactly its pane, so its height is fixed and the text scrolls inside it:
+ * dragging the resize handle could only break the fill, and a note long enough to need
+ * more room needs scrolling, not a taller box than the pane it sits in.
+ */
 .panel__notes .stage-note__editor .field,
 .panel__notes .stage-note__editor .field textarea {
   height: 100%;
   min-height: 0;
+}
+
+.panel__notes .stage-note__editor .field textarea {
+  overflow-y: auto;
+  resize: none;
 }
 
 /*
