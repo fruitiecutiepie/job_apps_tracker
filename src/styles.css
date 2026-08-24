@@ -2167,7 +2167,17 @@ tbody tr:hover {
  * The box is exactly its pane, so its height is fixed and the text scrolls inside it:
  * dragging the resize handle could only break the fill, and a note long enough to need
  * more room needs scrolling, not a taller box than the pane it sits in.
+ *
+ * `.field`'s own `align-content: start` packs its grid row to the textarea's content
+ * size regardless of the field's own height, so the 100% below still left the box at
+ * its content height with the field's extra space sitting empty beneath it. Stretch
+ * puts that space into the row the textarea sits in, which is what `height: 100%` on
+ * the textarea itself then has something to resolve against.
  */
+.panel__notes .stage-note__editor .field {
+  align-content: stretch;
+}
+
 .panel__notes .stage-note__editor .field,
 .panel__notes .stage-note__editor .field textarea {
   height: 100%;
