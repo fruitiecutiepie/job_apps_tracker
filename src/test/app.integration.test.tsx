@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_DEMO_REFERENCE } from '../domain/demo'
 import { loadTrackerDocument } from '../domain/storage'
-import { formatShortDate } from '../views/viewUtils'
+import { formatShortDate, formatTimeOfDay } from '../views/viewUtils'
 import App from '../App'
 import { testTrackerStore } from './trackerStore'
 import {
@@ -353,6 +353,15 @@ describe('job applications tracker', () => {
     const log = within(notes).getByRole('log', { name: 'Heard in Interview 2' })
     expect(within(log).getByText('Two more rounds after this')).toBeInTheDocument()
     expect(within(notes).getAllByText('Two more rounds after this')).toHaveLength(1)
+
+    // The line is stamped with the time it was captured. The date is not restated on it:
+    // it is already the heading the line sits under.
+    const stamp = formatTimeOfDay(DEFAULT_DEMO_REFERENCE)
+    expect(within(log).getByText(stamp)).toBeInTheDocument()
+    expect(within(log).getByRole('heading', { name: formatShortDate(DEFAULT_DEMO_REFERENCE) }))
+      .toBeInTheDocument()
+    expect(within(log).getByText('Two more rounds after this').textContent)
+      .not.toContain(formatShortDate(DEFAULT_DEMO_REFERENCE))
 
     // Stored on capture: the panel was never saved and is still open.
     const stored = readSavedDocument().applications.find(
@@ -926,8 +935,10 @@ describe('job applications tracker', () => {
     )
     await user.click(within(dialog).getByRole('button', { name: 'Read Applied' }))
 
-    // Nested spans mean a phrase can match several ancestors; presence is what matters here.
-    const shows = (text: string) => within(dialog).queryAllByText(text, { exact: false }).length > 0
+    // Nested spans mean a phrase can match several ancestors, and a code block's tokens
+    // split a line across siblings entirely; a plain substring check over the dialog's
+    // full text sidesteps both, since a fold removes its content rather than hiding it.
+    const shows = (text: string) => (dialog.textContent ?? '').includes(text)
 
     const detail = [
       'Eight percent below target',

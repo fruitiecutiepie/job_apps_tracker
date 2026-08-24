@@ -1,6 +1,7 @@
 import { useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { inlineText, parseMarkdown, type BlockNode, type InlineNode, type ListBlock, type QuoteBlock } from './parseMarkdown'
+import { tokenizeCode } from './highlightCode'
 import {
   blockKey,
   blockText,
@@ -95,6 +96,29 @@ function inline(nodes: InlineNode[], marks: Marks | null, cursor: Cursor): React
           </a>
         )
     }
+  })
+}
+
+/**
+ * Renders a fenced code block's body as coloured tokens, with a find's matches still
+ * highlighted inside them. `highlight` runs per token rather than once over the whole
+ * body, so a token keeps its own colour beneath the match instead of losing it.
+ */
+function codeContent(
+  value: string,
+  language: string | null,
+  marks: Marks | null,
+  cursor: Cursor,
+  keyPrefix: string,
+): ReactNode {
+  return tokenizeCode(value, language).map((token, index) => {
+    const rendered = marks ? highlight(token.text, marks, cursor, `${keyPrefix}${index}.`) : token.text
+    if (token.type === 'plain') return <span key={index}>{rendered}</span>
+    return (
+      <span className={`markdown__token markdown__token--${token.type}`} key={index}>
+        {rendered}
+      </span>
+    )
   })
 }
 
@@ -240,11 +264,7 @@ function MarkdownBlocks({ blocks, path, collapsed, onToggle, marks }: FoldProps 
             </FoldRow>
             {!isCollapsed ? (
               <pre className="markdown__code">
-                <code>
-                  {marks
-                    ? highlight(block.value, marks, cursorFor(marks, key), 'c')
-                    : block.value}
-                </code>
+                <code>{codeContent(block.value, block.language, marks, cursorFor(marks, key), 'c')}</code>
               </pre>
             ) : null}
           </div>
