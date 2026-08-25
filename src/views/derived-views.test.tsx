@@ -558,6 +558,46 @@ describe('TableView', () => {
     document.head.append(style)
   })
 
+  it('filters and sorts the Activity column, sinking rows with no silence to measure', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    const state: StateId = 'applied'
+    const applications = [
+      application('Quiet Co', { state_history: [{ state, at: localDate(-40) }] }),
+      application('Busy Co', { state_history: [{ state, at: localDate(-2) }] }),
+      application('Silent Co', { state_history: [{ state, at: localDate(-35) }] }),
+    ]
+
+    render(
+      <TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />,
+    )
+
+    expect(screen.getByText('Idle 40 days')).toBeInTheDocument()
+    expect(screen.getByText('Idle 35 days')).toBeInTheDocument()
+
+    // A row that is not idle has no value here, so it stays last whichever way the
+    // column is pointed rather than reading as the freshest or the quietest.
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Silent Co',
+      'Quiet Co',
+      'Busy Co',
+    ])
+
+    fireEvent.click(screen.getByRole('button', { name: 'Activity' }))
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Quiet Co',
+      'Silent Co',
+      'Busy Co',
+    ])
+
+    fireEvent.change(screen.getByLabelText('Filter Activity column'), {
+      target: { value: '40' },
+    })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Quiet Co'])
+  })
+
   it('sorts, opens, and moves an application without changing the data', () => {
     const onOpen = vi.fn()
     const onMove = vi.fn()
@@ -1491,15 +1531,16 @@ describe('KanbanView', () => {
     expect(screen.queryByRole('button', { name: /^Mark done for Idle Co/ })).not.toBeInTheDocument()
   })
 
-  it('greys out cards last updated 14 or more days ago', () => {
+  it('marks a card idle once its stage has not moved for 30 days', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
 
+    const state: StateId = 'applied'
     render(
       <KanbanView
         applications={[
-          application('Fresh Co', { updated_at: localDate(-13) }),
-          application('Quiet Co', { updated_at: localDate(-14) }),
+          application('Fresh Co', { state_history: [{ state, at: localDate(-29) }] }),
+          application('Quiet Co', { state_history: [{ state, at: localDate(-30) }] }),
         ]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()}
@@ -1510,15 +1551,66 @@ describe('KanbanView', () => {
 
     const fresh = screen.getByText('Fresh Co').closest('article')
     const quiet = screen.getByText('Quiet Co').closest('article')
-    expect(fresh).not.toHaveClass('application-card--stale')
-    expect(quiet).toHaveClass('application-card--stale')
+    expect(fresh).not.toHaveClass('application-card--idle')
+    expect(quiet).toHaveClass('application-card--idle')
     expect(screen.getByRole('button', { name: 'Open Fresh Co, Software engineer' })).toBeInTheDocument()
     expect(
-      screen.getByRole('button', {
-        name: 'Open Quiet Co, Software engineer, stale, last updated 14 days ago',
-      }),
+      screen.getByRole('button', { name: 'Open Quiet Co, Software engineer, Idle 30 days' }),
     ).toBeInTheDocument()
-    expect(within(quiet!).getByText('Untouched 14 days')).toBeInTheDocument()
-    expect(screen.queryByText('Untouched 13 days')).not.toBeInTheDocument()
+    expect(within(quiet!).getByText('Idle 30 days')).toBeInTheDocument()
+    expect(screen.queryByText('Idle 29 days')).not.toBeInTheDocument()
+  })
+
+  /**
+   * The Northstar Labs shape. Reading `updated_at` would call this card fresh, which is
+   * the whole reason the card stopped reading it.
+   */
+  it('marks a card idle even when it was edited today', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    const state: StateId = 'applied'
+    render(
+      <KanbanView
+        applications={[
+          application('Annotated Co', {
+            state_history: [{ state, at: localDate(-40) }],
+            updated_at: localDate(0),
+          }),
+        ]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+        onMove={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Annotated Co').closest('article')).toHaveClass('application-card--idle')
+    expect(screen.getByText('Idle 40 days')).toBeInTheDocument()
+  })
+
+  it('leaves a long-finished card alone rather than calling it idle', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    render(
+      <KanbanView
+        applications={[
+          application('Turned Down Co', {
+            state: 'auto_rejected',
+            state_history: [{ state: 'auto_rejected', at: localDate(-60) }],
+            updated_at: localDate(-60),
+          }),
+        ]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+        onMove={vi.fn()}
+      />,
+    )
+
+    const card = screen.getByText('Turned Down Co').closest('article')
+    expect(card).not.toHaveClass('application-card--idle')
+    expect(within(card!).queryByText(/^Idle /)).not.toBeInTheDocument()
   })
 })

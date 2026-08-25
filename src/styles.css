@@ -797,26 +797,24 @@ p {
   opacity: 0.45;
 }
 
-.application-card--stale {
+.application-card--idle {
   background: var(--surface-3);
 }
 
-.application-card--stale .application-card__open,
-.application-card--stale .application-card__open span,
-.application-card--stale .application-card__action,
-.application-card--stale .application-card__invite,
-.application-card--stale .application-card__preference,
-.application-card--stale .application-card__attachments,
-.application-card--stale .application-card__attachments-icon,
-.application-card--stale .application-card__age,
-.application-card--stale .application-card__label,
-.application-card--stale .stage-notes-button--card,
-.application-card--stale .complete-action-button--card {
+.application-card--idle .application-card__open,
+.application-card--idle .application-card__open span,
+.application-card--idle .application-card__action,
+.application-card--idle .application-card__invite,
+.application-card--idle .application-card__preference,
+.application-card--idle .application-card__attachments,
+.application-card--idle .application-card__attachments-icon,
+.application-card--idle .application-card__label,
+.application-card--idle .stage-notes-button--card,
+.application-card--idle .complete-action-button--card {
   color: var(--ink-2);
 }
 
 .application-card__open,
-.application-card__age,
 .application-card__action,
 .application-card__invite,
 .application-card__preference,
@@ -825,10 +823,22 @@ p {
   padding: 0;
 }
 
-.application-card__age {
-  color: var(--ink-3);
+/*
+ * A pill rather than a line of text: Idle qualifies the stage the card already sits in,
+ * so it should read as a label on the card, not as another of its facts. Recessed, not
+ * alarming — the accent and danger hues stay out of it, because silence is a nudge.
+ */
+.application-card__idle {
+  align-self: flex-start;
+  margin: 0;
+  padding: 0 var(--s2);
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  color: var(--ink-2);
+  /* The card behind it is --surface-3 when idle, so the chip lifts rather than recedes. */
+  background: var(--surface);
   font-size: var(--t1);
-  font-weight: 500;
+  font-weight: 600;
 }
 
 .application-card__open {

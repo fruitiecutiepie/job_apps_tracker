@@ -13,6 +13,7 @@ import {
   type CompensationRangeFilter,
 } from "./compensation";
 import type { MovableApplicationsViewProps } from "./types";
+import { describeIdle, idleStatusFor } from "./idle";
 import { describePreference, preferenceFor, type PreferenceScore } from "./preference";
 import { rankByUrgency, type UrgencyRanking } from "./urgency";
 import { formatShortDate, parseTimestamp, upcomingStateEvent } from "./viewUtils";
@@ -22,6 +23,7 @@ type SortField =
   | "role"
   | "source"
   | "state"
+  | "activity"
   | "next_action"
   | "invites"
   | "deadline_at"
@@ -39,6 +41,7 @@ const COLUMN_ORDER: readonly ColumnKey[] = [
   "role",
   "source",
   "state",
+  "activity",
   "next_action",
   "invites",
   "deadline_at",
@@ -92,6 +95,7 @@ interface ColumnFilters {
   role: string;
   source: string;
   state: StateColumnFilter;
+  activity: string;
   next_action: string;
   invites: string;
   deadline_at: string;
@@ -108,6 +112,7 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
   role: "",
   source: "",
   state: "all",
+  activity: "",
   next_action: "",
   invites: "",
   deadline_at: "",
@@ -144,6 +149,9 @@ function comparableValue(
     const next = upcomingStateEvent(application);
     return next ? Date.parse(next.starts_at) : null;
   }
+  // Null, not zero: an application that is not idle has no silence to measure, and a
+  // zero would sort it as the freshest thing on the board in one direction.
+  if (field === "activity") return idleStatusFor(application)?.days ?? null;
   if (field === "urgency") return urgency.get(application.id)?.score ?? UNRANKED_SCORE;
   if (field === "preference") return preference.get(application.id)?.score ?? null;
   // Null, not zero: an application nobody has quoted a number for is absent from this
@@ -173,6 +181,7 @@ function matchesColumnFilters(
   if (!includesQuery(application.company, filters.company)) return false;
   if (!includesQuery(application.role ?? "", filters.role)) return false;
   if (!includesQuery(application.source ?? "", filters.source)) return false;
+  if (!includesQuery(describeIdle(idleStatusFor(application)), filters.activity)) return false;
 
   const nextActionText = [application.next_action, formatShortDate(application.next_action_at)]
     .filter((value) => value && value !== "Not scheduled")
@@ -217,6 +226,7 @@ function columnFiltersAreActive(filters: ColumnFilters): boolean {
       filters.company.trim() ||
         filters.role.trim() ||
         filters.source.trim() ||
+        filters.activity.trim() ||
         filters.next_action.trim() ||
         filters.invites.trim() ||
         filters.deadline_at.trim() ||
@@ -561,6 +571,7 @@ export function TableView({
                 "state",
                 "state",
               )}
+              {headerCell("Activity", textFilter("activity", "Activity"), "activity", "activity")}
               {headerCell(
                 "Next action",
                 textFilter("next_action", "Next action"),
@@ -629,6 +640,11 @@ export function TableView({
                       </option>
                     ))}
                   </select>,
+                )}
+                {/* describeIdle is empty for a row that is not idle, which is the dash case. */}
+                {bodyCell(
+                  "activity",
+                  describeIdle(idleStatusFor(application)) || <span aria-label="Not idle">—</span>,
                 )}
                 {bodyCell(
                   "next_action",

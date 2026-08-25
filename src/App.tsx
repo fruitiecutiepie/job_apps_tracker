@@ -87,6 +87,7 @@ import {
 import { StageNotesDialog } from './StageNotesDialog'
 import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
+import { idleFilterMatches, type IdleFilter } from './views/idle'
 import {
   CalendarView,
   FocusView,
@@ -636,6 +637,7 @@ export default function App() {
   const [activeView, setActiveView] = useState<ViewId>('kanban')
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<StateFilter>('all')
+  const [idleFilter, setIdleFilter] = useState<IdleFilter>('all')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
   const [editor, setEditor] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
@@ -771,12 +773,13 @@ export default function App() {
     const searchText = tracker?.indexes.search_text ?? {}
     return applications.filter((application) => {
       if (!stateFilterMatches(stateFilter, application.state)) return false
+      if (!idleFilterMatches(idleFilter, application)) return false
       if (companyFilter !== 'all' && application.company !== companyFilter) return false
       if (sourceFilter !== 'all' && application.source?.trim() !== sourceFilter) return false
       if (!query) return true
       return searchText[application.id]?.includes(query) ?? false
     })
-  }, [companyFilter, search, sourceFilter, stateFilter, tracker?.applications, tracker?.indexes])
+  }, [companyFilter, idleFilter, search, sourceFilter, stateFilter, tracker?.applications, tracker?.indexes])
 
   /**
    * The roles of what is showing, one per line. Repeats are dropped: two applications to the
@@ -1101,6 +1104,22 @@ export default function App() {
                 {STATE_CONFIG.map((state) => <option key={state.id} value={state.id}>{state.label}</option>)}
               </optgroup>
             </select>
+            {/*
+              * Activity gets its own control rather than joining the state select's
+              * groups. The outcome groups could share that control because they answer
+              * the same question a single state does; idleness is orthogonal to stage,
+              * so "Interview 1 and idle" is a combination worth expressing and one
+              * select cannot hold both halves of it.
+              */}
+            <select
+              aria-label="Filter by activity"
+              onChange={(event) => setIdleFilter(event.target.value as IdleFilter)}
+              value={idleFilter}
+            >
+              <option value="all">All activity</option>
+              <option value="idle">Idle</option>
+              <option value="not_idle">Active</option>
+            </select>
             <select
               aria-label="Filter by company"
               onChange={(event) => setCompanyFilter(event.target.value)}
@@ -1136,12 +1155,13 @@ export default function App() {
                 <ClipboardCopy aria-hidden="true" size={15} /> Copy roles
               </button>
             </div>
-            {(search || stateFilter !== 'all' || companyFilter !== 'all' || sourceFilter !== 'all') && (
+            {(search || stateFilter !== 'all' || idleFilter !== 'all' || companyFilter !== 'all' || sourceFilter !== 'all') && (
               <button
                 className="button button--quiet"
                 onClick={() => {
                   setSearch('')
                   setStateFilter('all')
+                  setIdleFilter('all')
                   setCompanyFilter('all')
                   setSourceFilter('all')
                 }}

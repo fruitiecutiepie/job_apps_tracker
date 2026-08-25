@@ -202,6 +202,32 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
+  it('filters to the applications that have gone quiet, whatever stage they sit at', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    const activityFilter = screen.getByLabelText('Filter by activity')
+
+    await user.selectOptions(activityFilter, 'idle')
+    // Northstar Labs was edited yesterday but has not moved stage in 34 days, which is
+    // exactly the case reading `updated_at` would miss.
+    expect(screen.getByText('1 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Open Northstar Labs/ })).toBeInTheDocument()
+    // The stage is untouched: it is still in its own lane, not moved somewhere new.
+    expect(screen.getByRole('heading', { name: 'Headhunted' })).toBeInTheDocument()
+
+    await user.selectOptions(activityFilter, 'not_idle')
+    expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Open Northstar Labs/ })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+
+    // Filtering is a view: nothing about the application was written.
+    const saved = readSavedDocument().applications.find((a) => a.company === 'Northstar Labs')!
+    expect(saved.state).toBe('headhunted')
+  })
+
   it('copies the roles of a whole outcome, not just one state', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

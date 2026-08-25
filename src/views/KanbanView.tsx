@@ -3,16 +3,11 @@ import { STATE_CONFIG, stateLabel } from "../domain";
 import type { StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import { CompleteActionButton } from "./CompleteActionButton";
+import { describeIdle, idleStatusFor } from "./idle";
 import { describePreference, preferenceFor } from "./preference";
 import { StageNotesButton } from "./StageNotesButton";
 import type { MovableApplicationsViewProps } from "./types";
-import {
-  applicationAgeInDays,
-  DEFAULT_STALE_THRESHOLD_DAYS,
-  formatShortDate,
-  kanbanColumnGroups,
-  upcomingStateEvent,
-} from "./viewUtils";
+import { formatShortDate, kanbanColumnGroups, upcomingStateEvent } from "./viewUtils";
 
 export function KanbanView({
   applications,
@@ -105,8 +100,9 @@ export function KanbanView({
                         <p className="kanban-lane__empty">Drop an application here</p>
                       ) : null}
                       {stateApplications.map((application) => {
-                        const ageInDays = applicationAgeInDays(application.updated_at);
-                        const stale = ageInDays >= DEFAULT_STALE_THRESHOLD_DAYS;
+                        // Silence since the last stage change, not since the last edit: a
+                        // card you annotated yesterday can still have gone quiet for weeks.
+                        const idle = idleStatusFor(application);
                         const invite = upcomingStateEvent(application);
                         // The board's one non-derivable fact about the role itself: how you
                         // judged it. Shown with the weakest judgement and what is missing,
@@ -115,7 +111,7 @@ export function KanbanView({
                         const openLabel = [
                           `Open ${application.company}`,
                           application.role,
-                          stale ? `stale, last updated ${ageInDays} days ago` : null,
+                          idle ? describeIdle(idle) : null,
                         ]
                           .filter(Boolean)
                           .join(", ");
@@ -123,7 +119,7 @@ export function KanbanView({
                           <article
                             className={[
                               "application-card",
-                              stale ? "application-card--stale" : "",
+                              idle ? "application-card--idle" : "",
                               draggingId === application.id ? "application-card--dragging" : "",
                             ]
                               .filter(Boolean)
@@ -149,8 +145,8 @@ export function KanbanView({
                               <strong>{application.company}</strong>
                               {application.role ? <span>{application.role}</span> : null}
                             </button>
-                            {stale ? (
-                              <p className="application-card__age">Untouched {ageInDays} days</p>
+                            {idle ? (
+                              <p className="application-card__idle">{describeIdle(idle)}</p>
                             ) : null}
                             {application.next_action?.trim() ? (
                               <p className="application-card__action">

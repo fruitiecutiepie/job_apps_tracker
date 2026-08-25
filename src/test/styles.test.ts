@@ -21,3 +21,21 @@ describe('dialog actions', () => {
     expect(ruleBody('.dialog')).toMatch(/overflow-y:\s*auto/)
   })
 })
+
+describe('idle pill', () => {
+  it('reads as a chip on the recessed card, in tokens only', () => {
+    const body = ruleBody('.application-card__idle')
+
+    expect(body).toMatch(/border-radius:\s*var\(--pill\)/)
+    // The card behind it is --surface-3 when idle, so a --surface-3 chip would vanish.
+    expect(body).toMatch(/background:\s*var\(--surface\)/)
+    expect(ruleBody('.application-card--idle')).toMatch(/background:\s*var\(--surface-3\)/)
+    // Silence is a nudge, not an alarm: no accent, no danger, and no raw values.
+    expect(body).not.toMatch(/--accent|--danger/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(body).toMatch(/padding:\s*0 var\(--s2\)/)
+    expect(body).toMatch(/font-size:\s*var\(--t1\)/)
+    // The 1px hairline is the card's own border convention; every colour is a token.
+    expect(body).toMatch(/border:\s*1px solid var\(--line\)/)
+  })
+})

@@ -64,7 +64,7 @@ interface DemoEventSeed {
 }
 
 const DEMO_SEEDS: readonly DemoSeed[] = [
-  { company: 'Northstar Labs', role: 'Staff Product Designer', state: 'headhunted', createdDaysAgo: 22, updatedDaysAgo: 22, compensation: { currency: 'AUD', expected: 190_000 }, editedDaysAgo: 1, notes: 'Introduced through a former teammate. Tidied these notes yesterday, but the conversation itself has not moved since the first message.', source: 'Referral' },
+  { company: 'Northstar Labs', role: 'Staff Product Designer', state: 'headhunted', createdDaysAgo: 34, updatedDaysAgo: 34, compensation: { currency: 'AUD', expected: 190_000 }, editedDaysAgo: 1, notes: 'Introduced through a former teammate. Tidied these notes yesterday, but the conversation itself has not moved since the first message.', source: 'Referral' },
   { company: 'Juniper Works', role: 'Frontend Engineer', state: 'no_openings', createdDaysAgo: 47, updatedDaysAgo: 31, priorStates: ['headhunted'], nextAction: 'Check the careers page next quarter', notes: 'Hiring is paused, but the team asked to stay in touch.', source: 'Company site' },
   { company: 'Marble & Finch', role: 'Product Manager', state: 'applied', createdDaysAgo: 9, updatedDaysAgo: 9, compensation: { currency: 'AUD', advertised: [110_000, 125_000] }, nextAction: 'Follow up on the application', nextActionDaysFromNow: -2, deadlineDaysFromNow: -1, notes: 'Applied with a tailored portfolio.', source: 'LinkedIn' },
   { company: 'Copperline Health', role: 'Data Analyst', state: 'auto_rejected', createdDaysAgo: 39, updatedDaysAgo: 38, priorStates: ['applied'], notes: 'Automated rejection arrived the following morning.', source: 'Job board' },
