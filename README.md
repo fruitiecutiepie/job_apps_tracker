@@ -72,9 +72,9 @@ write and rewrite; a completed action is one line the app writes the moment you 
 Keeping them apart means editing your notes can never disturb the record, the date is not
 something to parse back out of a sentence, and a Done pressed by mistake can be removed.
 
-Open an application to see the whole list, newest first, above Notes. **Done** sits beside the
-Next action field there too, so you can finish a task while editing, and **Remove** deletes an
-entry you did not mean to record. Both are drafts until you save, like everything else in that dialog. Removing an entry
+Open an application to see the whole list, newest first, above Notes. **Done** sits on the same
+row as the next action and its date there, so you can finish a task while editing, and
+**Remove** deletes an entry you did not mean to record. Both are drafts until you save, like everything else in that dialog. Removing an entry
 does not put the task back on your plan — undoing the record is not the same as undoing the
 work, and the app does not guess which you meant.
 

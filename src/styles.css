@@ -1688,12 +1688,13 @@ tbody tr:hover {
 }
 
 /*
- * The Next action field carries Done on the input's row: label above, then the input and the
- * button side by side. `align-items: end` lands the button on the input rather than on the
- * label above it, and the button keeps the form control height so the two read as one row.
+ * One row for the action, its date, and Done — in that order, so the control follows the
+ * fields it acts on. The action takes the free space; the date and the button keep their
+ * intrinsic width. `align-items: end` lines all three up on the inputs rather than on the
+ * labels above them.
  */
 .next-action-field {
-  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto auto;
   align-items: end;
 }
 
@@ -3049,7 +3050,8 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .invite-item__head,
   .invite-item__grid,
   .rating-grid,
-  .compensation-row {
+  .compensation-row,
+  .next-action-field {
     grid-template-columns: minmax(0, 1fr);
   }
 

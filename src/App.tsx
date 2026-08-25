@@ -451,18 +451,28 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
               />
             </label>
             {/*
-              * Done sits on the input's row, beside the action it resolves. The button is a
-              * sibling of the label rather than inside it: a label hands its click to the
-              * first labelable thing it wraps, and nesting an interactive control in there
-              * makes which one you hit depend on the browser.
+              * Action, its date, then Done — the control comes after the fields it acts on,
+              * so the row reads in the order you fill it in. The button is a sibling of the
+              * labels rather than inside one: a label hands its click to the first labelable
+              * thing it wraps, and nesting an interactive control in there makes which one
+              * you hit depend on the browser.
               */}
-            <div className="field next-action-field">
+            <div className="field field--wide next-action-field">
               <label>
                 <span>Next action</span>
                 <input
                   onChange={(event) => update('nextAction', event.target.value)}
                   placeholder="Follow up, prepare, send…"
                   value={values.nextAction}
+                />
+              </label>
+              <label>
+                <span>Next action date</span>
+                <input
+                  disabled={!values.nextAction.trim()}
+                  onChange={(event) => update('nextActionAt', event.target.value)}
+                  type="datetime-local"
+                  value={values.nextActionAt}
                 />
               </label>
               <button
@@ -487,15 +497,6 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
                 <span>Done</span>
               </button>
             </div>
-            <label className="field">
-              <span>Next action date</span>
-              <input
-                disabled={!values.nextAction.trim()}
-                onChange={(event) => update('nextActionAt', event.target.value)}
-                type="datetime-local"
-                value={values.nextActionAt}
-              />
-            </label>
             <CompletedActionFields onChange={setCompletedActions} rows={completedActions} />
             <label className="field field--wide">
               <span>Notes</span>

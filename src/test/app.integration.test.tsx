@@ -326,10 +326,13 @@ describe('job applications tracker', () => {
     expect(within(dialog).getByLabelText('Notes')).toHaveValue(before.notes)
 
     const done = within(dialog).getByRole('button', { name: 'Mark next action done' })
-    // On the Next action field's own row, beside the task it resolves.
-    const field = done.closest('.next-action-field')
-    expect(field).not.toBeNull()
-    expect(within(field as HTMLElement).getByLabelText('Next action')).toBeInTheDocument()
+    // One row: the action, its date, then Done — the control follows the fields it acts on.
+    const row = done.closest('.next-action-field') as HTMLElement | null
+    expect(row).not.toBeNull()
+    const action = within(row!).getByLabelText('Next action')
+    const date = within(row!).getByLabelText('Next action date')
+    expect(action.compareDocumentPosition(date) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(date.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     await user.click(done)
 
