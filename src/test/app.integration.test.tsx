@@ -190,6 +190,46 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
+  it('filters views by source without changing saved applications', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.selectOptions(screen.getByLabelText('Filter by source'), 'LinkedIn')
+
+    expect(screen.getByRole('button', { name: 'Open Marble & Finch, Product Manager' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Open Orbit & Oak/ })).not.toBeInTheDocument()
+    expect(readSavedDocument().applications).toHaveLength(19)
+  })
+
+  it('copies the roles of exactly what the filters are showing', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.selectOptions(screen.getByLabelText('Filter by source'), 'LinkedIn')
+    await user.selectOptions(screen.getByLabelText('Filter by state'), 'applied')
+    await user.click(screen.getByRole('button', { name: 'Copy roles' }))
+
+    expect(await navigator.clipboard.readText()).toBe('Product Manager')
+    expect(screen.getByRole('status')).toHaveTextContent('Copied 1 role')
+  })
+
+  it('copies one line per showing application, newest filter state included', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.selectOptions(screen.getByLabelText('Filter by source'), 'LinkedIn')
+    await user.click(screen.getByRole('button', { name: 'Copy roles' }))
+
+    expect((await navigator.clipboard.readText()).split('\n').sort()).toEqual([
+      'Platform Engineer',
+      'Product Designer',
+      'Product Manager',
+      'Product Operations Manager',
+      'Senior Data Scientist',
+    ])
+    expect(screen.getByRole('status')).toHaveTextContent('Copied 5 roles')
+  })
+
   it('persists edits across reloads and appends history only when state changes', async () => {
     const user = userEvent.setup()
     const { unmount } = await renderLoadedApp()

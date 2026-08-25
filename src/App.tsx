@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   CalendarDays,
   ChartNoAxesColumnIncreasing,
+  ClipboardCopy,
   Download,
   KanbanSquare,
   Moon,
@@ -617,6 +618,7 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<StateId | 'all'>('all')
   const [companyFilter, setCompanyFilter] = useState('all')
+  const [sourceFilter, setSourceFilter] = useState('all')
   const [editor, setEditor] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
   const [stageNotesId, setStageNotesId] = useState<string | null>(null)
   const [notice, setNotice] = useState<string | null>(null)
@@ -732,6 +734,18 @@ export default function App() {
     return names.sort((left, right) => left.localeCompare(right))
   }, [tracker?.applications])
 
+  // Only the sources actually in use: an empty option filters to nothing, and a suggestion
+  // nobody has applied through would do the same.
+  const sources = useMemo(() => {
+    const names = new Set(
+      (tracker?.applications ?? []).flatMap((application) => {
+        const source = application.source?.trim()
+        return source ? [source] : []
+      }),
+    )
+    return [...names].sort((left, right) => left.localeCompare(right))
+  }, [tracker?.applications])
+
   const filteredApplications = useMemo(() => {
     const query = search.trim().toLocaleLowerCase()
     const applications = tracker?.applications ?? []
@@ -739,10 +753,38 @@ export default function App() {
     return applications.filter((application) => {
       if (stateFilter !== 'all' && application.state !== stateFilter) return false
       if (companyFilter !== 'all' && application.company !== companyFilter) return false
+      if (sourceFilter !== 'all' && application.source?.trim() !== sourceFilter) return false
       if (!query) return true
       return searchText[application.id]?.includes(query) ?? false
     })
-  }, [companyFilter, search, stateFilter, tracker?.applications, tracker?.indexes])
+  }, [companyFilter, search, sourceFilter, stateFilter, tracker?.applications, tracker?.indexes])
+
+  /**
+   * The roles of what is showing, one per line. Repeats are dropped: two applications to the
+   * same role at the same company are one line to paste, not two.
+   */
+  const rolesToCopy = useMemo(() => {
+    const roles = new Set(
+      filteredApplications.flatMap((application) => {
+        const role = application.role?.trim()
+        return role ? [role] : []
+      }),
+    )
+    return [...roles]
+  }, [filteredApplications])
+
+  const copyRoles = async () => {
+    if (rolesToCopy.length === 0) {
+      setNotice('Nothing to copy — no application showing has a role.')
+      return
+    }
+    try {
+      await navigator.clipboard.writeText(rolesToCopy.join('\n'))
+      setNotice(`Copied ${rolesToCopy.length} ${rolesToCopy.length === 1 ? 'role' : 'roles'}.`)
+    } catch (error) {
+      setNotice(`Copy failed: ${errorMessage(error)}`)
+    }
+  }
 
   if (loading) {
     return (
@@ -937,6 +979,7 @@ export default function App() {
                       setSearch('')
                       setStateFilter('all')
                       setCompanyFilter('all')
+                      setSourceFilter('all')
                       setNotice('Demo data restored.')
                     } catch (error) {
                       setNotice(`Reset failed: ${errorMessage(error)}`)
@@ -1032,13 +1075,32 @@ export default function App() {
                 <option key={company} value={company}>{company}</option>
               ))}
             </select>
-            {(search || stateFilter !== 'all' || companyFilter !== 'all') && (
+            <select
+              aria-label="Filter by source"
+              onChange={(event) => setSourceFilter(event.target.value)}
+              value={sourceFilter}
+            >
+              <option value="all">All sources</option>
+              {sources.map((source) => (
+                <option key={source} value={source}>{source}</option>
+              ))}
+            </select>
+            <button
+              className="button button--quiet"
+              disabled={rolesToCopy.length === 0}
+              onClick={copyRoles}
+              type="button"
+            >
+              <ClipboardCopy aria-hidden="true" size={15} /> Copy roles
+            </button>
+            {(search || stateFilter !== 'all' || companyFilter !== 'all' || sourceFilter !== 'all') && (
               <button
                 className="button button--quiet"
                 onClick={() => {
                   setSearch('')
                   setStateFilter('all')
                   setCompanyFilter('all')
+                  setSourceFilter('all')
                 }}
                 type="button"
               >

@@ -132,7 +132,9 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - The Kanban card's state `<select>` reads **Move** rather than repeating the lane's state, and is
   laid over that trigger at zero opacity. It must remain a real focusable `combobox` named
   `Move {company} to state` — it is the accessible and touch fallback for drag-and-drop.
-- All six views consume the same application collection and respect app-wide search, state, and company filters.
+- All six views consume the same application collection and respect app-wide search, state, company, and source filters.
+- The source filter lists only sources applications actually carry, not `SOURCE_SUGGESTIONS`: an unused suggestion would filter to nothing.
+- Copy roles writes the roles of the filtered collection, deduplicated, one per line. It copies what is showing, so narrowing the filters is how you narrow the copy.
 - `onCompleteAction` is required on `ApplicationsViewProps` rather than optional, so a new task-bearing view cannot silently forget to wire it. Views with no task row simply ignore it.
 - Table column filters further narrow only the table. They are display state and must not be persisted.
 - The table's Invites column lists every invite on an application, soonest first, with a cancelled one marked

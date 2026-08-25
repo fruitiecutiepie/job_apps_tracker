@@ -387,6 +387,16 @@ p {
   color: var(--ink);
 }
 
+/* A quiet button dims rather than filling in, so a disabled one never reads as hovered.
+   Scoped to the quiet variant: the primary button keeps its fill while a save is in flight. */
+.button--quiet:disabled,
+.button--quiet:disabled:hover {
+  border-color: transparent;
+  color: var(--ink-3);
+  background: transparent;
+  cursor: not-allowed;
+}
+
 .button--danger,
 .stale-row__reject {
   border-color: transparent;
