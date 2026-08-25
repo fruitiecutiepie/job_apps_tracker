@@ -185,7 +185,7 @@ describe('job applications tracker', () => {
 
     await user.selectOptions(screen.getByLabelText('Filter by company'), 'Saffron Systems')
 
-    expect(screen.getByRole('button', { name: 'Open Saffron Systems, Product Operations Manager' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /^Open Saffron Systems, Product Operations Manager/ })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Open Marble & Finch/ })).not.toBeInTheDocument()
     expect(readSavedDocument().applications).toHaveLength(19)
   })
@@ -239,7 +239,7 @@ describe('job applications tracker', () => {
 
     await user.click(
       screen.getByRole('button', {
-        name: 'Open Saffron Systems, Product Operations Manager',
+        name: /^Open Saffron Systems, Product Operations Manager/,
       }),
     )
 
@@ -1656,7 +1656,7 @@ describe('job applications tracker', () => {
 
     await user.click(
       screen.getByRole('button', {
-        name: 'Open Saffron Systems, Product Operations Manager',
+        name: /^Open Saffron Systems, Product Operations Manager/,
       }),
     )
     const dialog = screen.getByRole('dialog', { name: 'Edit application' })
@@ -1779,7 +1779,7 @@ describe('job applications tracker', () => {
     await renderLoadedApp()
 
     await user.click(
-      screen.getByRole('button', { name: 'Open Paper Kite, Senior UX Researcher' }),
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
     )
     const dialog = screen.getByRole('dialog', { name: 'Edit application' })
     await user.upload(
@@ -1816,7 +1816,7 @@ describe('job applications tracker', () => {
     const storedId = paperKite()!.state_events[0]!.id
 
     await user.click(
-      screen.getByRole('button', { name: 'Open Paper Kite, Senior UX Researcher' }),
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
     )
     const reopened = screen.getByRole('dialog', { name: 'Edit application' })
     await user.upload(
@@ -1850,7 +1850,7 @@ describe('job applications tracker', () => {
     await renderLoadedApp()
 
     await user.click(
-      screen.getByRole('button', { name: 'Open Paper Kite, Senior UX Researcher' }),
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
     )
     const dialog = screen.getByRole('dialog', { name: 'Edit application' })
     await user.click(within(dialog).getByRole('button', { name: 'Add invite manually' }))
@@ -1927,7 +1927,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Add application' })
 
     await user.type(within(dialog).getByLabelText('Company'), 'Paid Pier')
-    await user.type(within(dialog).getByLabelText('Currency'), 'aud')
+    await user.selectOptions(within(dialog).getByLabelText('Currency'), 'AUD')
     // Thousands separators are how people write salaries, so they are accepted.
     await user.type(within(dialog).getByLabelText('Advertised from'), '130,000')
     await user.type(within(dialog).getByLabelText('Advertised to'), '150,000')
@@ -1991,6 +1991,56 @@ describe('job applications tracker', () => {
     ).toBeNull()
   })
 
+  it('nudges an amount with the arrow keys and saves the stepped figure', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: /Open Halcyon Maps/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const offered = within(dialog).getByLabelText('Offered from')
+
+    await user.click(offered)
+    await user.keyboard('{ArrowUp}')
+    expect(offered).toHaveValue('220,000')
+
+    // Shift is the coarse step, and a stepped amount reads back as money.
+    await user.keyboard('{Shift>}{ArrowDown}{/Shift}')
+    expect(offered).toHaveValue('210,000')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    expect(
+      readSavedDocument().applications.find(({ company }) => company === 'Halcyon Maps')
+        ?.compensation.offered,
+    ).toEqual({ min: 210_000, max: 210_000 })
+  })
+
+  it('keeps a stored currency selectable even when it is not a suggestion', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // A picker that dropped an unrecognised code would rewrite the amounts' unit on save.
+    await user.click(screen.getByRole('button', { name: /Open Marble & Finch/ }))
+    let dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const currency = within(dialog).getByLabelText('Currency')
+    await user.selectOptions(currency, 'USD')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    await user.click(screen.getByRole('button', { name: /Open Marble & Finch/ }))
+    dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    expect(within(dialog).getByLabelText('Currency')).toHaveValue('USD')
+
+    // Clearing every amount drops the currency, so the picker returns to Not set.
+    const from = within(dialog).getByLabelText('Advertised from')
+    await user.clear(from)
+    await user.clear(within(dialog).getByLabelText('Advertised to'))
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(
+      readSavedDocument().applications.find(({ company }) => company === 'Marble & Finch')
+        ?.compensation.currency,
+    ).toBeNull()
+  })
+
   it('saves a deadline that stands alone from the next action', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
@@ -2022,7 +2072,7 @@ describe('job applications tracker', () => {
 
     await user.click(
       screen.getByRole('button', {
-        name: 'Open Saffron Systems, Product Operations Manager',
+        name: /^Open Saffron Systems, Product Operations Manager/,
       }),
     )
     const dialog = screen.getByRole('dialog', { name: 'Edit application' })
@@ -2038,7 +2088,7 @@ describe('job applications tracker', () => {
 
     await user.click(
       screen.getByRole('button', {
-        name: 'Open Saffron Systems, Product Operations Manager',
+        name: /^Open Saffron Systems, Product Operations Manager/,
       }),
     )
     const editDialog = screen.getByRole('dialog', { name: 'Edit application' })

@@ -1,4 +1,9 @@
-import { COMPENSATION_CONFIG, bandMidpoint, isPointValue } from "../domain";
+import {
+  COMPENSATION_CONFIG,
+  bandMidpoint,
+  formatCompensationAmount,
+  isPointValue,
+} from "../domain";
 import type { Application, CompensationBand, CompensationStageId } from "../domain";
 
 /**
@@ -70,12 +75,6 @@ export function compensationGapFor(application: Application): CompensationGap | 
     return { figure, target, verdict: "above", difference, share: difference / target.max };
   }
   return { figure, target, verdict: "within", difference: 0, share: 0 };
-}
-
-const amountFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 });
-
-export function formatCompensationAmount(amount: number): string {
-  return amountFormatter.format(amount);
 }
 
 /** A point value reads as one number; only a real band shows both ends. */

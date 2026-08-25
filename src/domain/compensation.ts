@@ -64,6 +64,17 @@ export function isCompensationAmount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value > 0
 }
 
+const amountFormatter = new Intl.NumberFormat(undefined, { maximumFractionDigits: 0 })
+
+/**
+ * One amount as a reader sees it. This lives beside `isCompensationAmount` rather than in a
+ * view, because the "whole units, no cents" rule is the same rule in both directions: the
+ * editor and the table must never disagree about how a stored amount looks.
+ */
+export function formatCompensationAmount(amount: number): string {
+  return amountFormatter.format(amount)
+}
+
 /** A record with nothing filled in. A fresh object each call, so no two records alias one. */
 export function emptyCompensation(): Compensation {
   return { currency: null, advertised: null, expected: null, offered: null }

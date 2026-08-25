@@ -7,7 +7,9 @@
 import {
   COMPENSATION_STAGE_IDS,
   COMPENSATION_STAGE_LABELS,
+  CURRENCY_SUGGESTIONS,
   emptyCompensation,
+  formatCompensationAmount,
   isCurrencyCode,
 } from './domain'
 import type { Application, Compensation, CompensationStageId } from './domain'
@@ -83,6 +85,48 @@ export function firstCompensationProblem(values: CompensationValues): string | n
     return 'Currency must be a three-letter code such as AUD.'
   }
   return null
+}
+
+/**
+ * How far one arrow-key press moves an amount. Salaries are negotiated in round steps, so
+ * a bare text box that only accepts typing makes the commonest edit — nudging a figure —
+ * more work than it should be. Shift is the coarse step, matching the convention native
+ * number inputs already set.
+ */
+export const AMOUNT_STEP = 5_000
+export const AMOUNT_STEP_LARGE = 10_000
+
+/**
+ * The box's next value after an arrow key, or null when there is nothing sensible to do:
+ * text that is not a number, or a step that would take the amount to zero or below, which
+ * `null` already means and a figure may not be. An empty box steps up from nothing to one
+ * step, so the key still starts a value rather than doing nothing at all.
+ *
+ * Returns formatted text, so a stepped amount reads as money and reinforces the unit.
+ */
+export function steppedAmount(
+  text: string,
+  direction: 1 | -1,
+  large = false,
+): string | null {
+  const step = large ? AMOUNT_STEP_LARGE : AMOUNT_STEP
+  const current = parseAmount(text)
+  if (current === null) return direction === 1 ? formatCompensationAmount(step) : null
+  if (!Number.isInteger(current) || current <= 0) return null
+
+  const next = current + direction * step
+  return next <= 0 ? null : formatCompensationAmount(next)
+}
+
+/**
+ * The codes the editor offers, with any code already stored kept on the list. That second
+ * part is not a nicety: a picker that silently drops a currency it does not recognise would
+ * rewrite the amounts' unit on the next save. Anything a document holds stays selectable.
+ */
+export function currencyOptions(values: CompensationValues): readonly string[] {
+  const stored = values.currency.trim().toUpperCase()
+  const suggestions = CURRENCY_SUGGESTIONS as readonly string[]
+  return stored && !suggestions.includes(stored) ? [...suggestions, stored] : suggestions
 }
 
 /**

@@ -214,10 +214,16 @@ that came in under the advertised band is worth seeing.
 
 Every figure is a band, because that is what a posting gives you (`130–150k`). Leave the
 **to** box empty for a single number and it reads back the way you typed it. Amounts are
-annual base pay in whole units; thousands separators are accepted. An amount needs a
-currency to be read in, so saving one without a currency is refused — but a currency with
-no amount behind it is simply dropped, the way a next-action date is dropped when the action
-goes away.
+annual base pay in whole units; thousands separators are accepted, and the arrow keys nudge
+a figure by 5,000 — 10,000 with Shift — so adjusting an offer does not mean retyping it. An
+amount needs a currency to be read in, so saving one without a currency is refused — but a
+currency with no amount behind it is simply dropped, the way a next-action date is dropped
+when the action goes away.
+
+The currency is a picker rather than a text box, since it is the field easiest to get wrong
+and there are only so many answers. It always includes whatever the application already
+holds, so a code imported from elsewhere is never quietly replaced; imports still accept any
+three-letter code.
 
 **Expected** doubles as the target. There is no global salary target because there is
 nowhere honest to keep one: the saved document has a closed shape and discards any extra

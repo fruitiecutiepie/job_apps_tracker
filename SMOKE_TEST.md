@@ -208,9 +208,11 @@ test cannot judge reliably:
     and that the **Ratings** table lists all four dimensions with the demo's counts — People
     judged twice with a mean of 2.50, and one **Don't know**. Filter by a company you have not
     rated and confirm the table is replaced by a plain sentence rather than a grid of zeros.
-13. In the application editor, set a currency, an **Advertised** band, and an **Expected**
+13. In the application editor, pick a currency, set an **Advertised** band and an **Expected**
     single figure, save, reopen, and confirm the band reads back in both boxes while the
-    single figure leaves its **to** box empty. Type an amount with no currency and confirm
+    single figure leaves its **to** box empty. With the cursor in an amount box, press the up
+    and down arrows and confirm the figure moves by 5,000, by 10,000 with Shift, and gains
+    its thousands separators. Type an amount with no currency and confirm
     the save is refused with a readable message, then clear every amount and confirm the
     currency is dropped rather than kept alone. Confirm the demo's Halcyon Maps row reads
     `AUD · Advertised 180,000–210,000 · Expected 200,000 · Offered 215,000 · 8% above target`,

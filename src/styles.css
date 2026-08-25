@@ -1621,6 +1621,26 @@ tbody tr:hover {
   gap: var(--s3);
 }
 
+.compensation-field__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s3);
+}
+
+/* The currency is a unit for the whole block, not a field of its own, so it sits on the
+   heading row and lays its label out beside the control instead of above it. */
+.compensation-currency {
+  grid-auto-flow: column;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.compensation-currency select {
+  width: auto;
+}
+
 .compensation-field__hint {
   margin: 0;
   color: var(--ink-2);
