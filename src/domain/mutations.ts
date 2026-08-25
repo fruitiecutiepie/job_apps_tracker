@@ -595,12 +595,22 @@ export function moveApplicationState(
   }
 }
 
+/**
+ * Adds one application, optionally under an id the caller has already minted. Naming it
+ * up front is what lets work keyed by that id — an attachment folder — happen before the
+ * document is written, so the write itself stays a single derivation from the current
+ * document rather than something that has to be built from a snapshot first.
+ */
 export function addApplication(
   document: TrackerDocument,
   input: ApplicationInput,
   at: Date | string = new Date(),
+  id?: string,
 ): TrackerDocument {
-  return { ...document, applications: [...document.applications, createApplication(input, at)] }
+  const created = id === undefined
+    ? createApplication(input, at)
+    : createApplication(input, at, id)
+  return { ...document, applications: [...document.applications, created] }
 }
 
 export function updateApplication(

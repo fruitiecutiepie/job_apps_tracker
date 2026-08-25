@@ -651,17 +651,51 @@ export default function App() {
 
   // Reports whether the write landed, so a caller that keeps its own record of what is
   // stored — the notes panel, which retries what did not — can tell the two apart.
-  const commit = async (next: TrackerDocument, message?: string): Promise<boolean> => {
-    try {
-      const saved = await saveTrackerDatabase(next)
-      trackerRef.current = saved
-      setTracker(saved)
-      if (message) setNotice(message)
-      return true
-    } catch (error) {
-      setNotice(`Save failed: ${errorMessage(error)}`)
-      return false
-    }
+  /**
+   * Writes run one at a time, and each is handed the document the write before it stored
+   * rather than one read when it was scheduled.
+   *
+   * Every write here stores the whole document, so two of them built from the same
+   * snapshot do not merge: the second silently undoes the first. That is not hypothetical
+   * with the notes panel open — the autosave writes on a pause in typing while a captured
+   * line writes the instant it is entered, and either can start while the other is in
+   * flight. Losing what someone just told you, with nothing failing anywhere, is the worst
+   * outcome this app has.
+   *
+   * Queueing the mutation rather than the save is what fixes it. A mutation that has not
+   * run yet cannot be holding a stale document, so the fix cannot be undone by adding
+   * another caller: passing a document instead of a function is no longer possible.
+   */
+  const writes = useRef<Promise<unknown>>(Promise.resolve())
+
+  const commit = (
+    mutate: (current: TrackerDocument) => TrackerDocument,
+    message?: string,
+  ): Promise<boolean> => {
+    const done = writes.current.then(async () => {
+      const current = trackerRef.current
+      if (!current) return false
+
+      const next = mutate(current)
+      // Every mutation returns the document it was given when there is nothing to do, so
+      // this is also what keeps a no-op move or an unchanged draft off the disk.
+      if (next === current) return true
+
+      try {
+        const saved = await saveTrackerDatabase(next)
+        trackerRef.current = saved
+        setTracker(saved)
+        if (message) setNotice(message)
+        return true
+      } catch (error) {
+        setNotice(`Save failed: ${errorMessage(error)}`)
+        return false
+      }
+    })
+
+    // The chain has to survive a failed write, or one would strand every write after it.
+    writes.current = done.catch(() => undefined)
+    return done
   }
 
   const companies = useMemo(() => {
@@ -721,9 +755,9 @@ export default function App() {
    */
   const commitStageNote = async (state: StateId, body: string, message: string) => {
     if (!stageNotesApplication) return
-    const current = trackerRef.current ?? tracker
+    const id = stageNotesApplication.id
     await commit(
-      updateApplicationStageNotes(current, stageNotesApplication.id, [{ state, body }], new Date()),
+      (current) => updateApplicationStageNotes(current, id, [{ state, body }], new Date()),
       message,
     )
   }
@@ -752,9 +786,13 @@ export default function App() {
   const closeEditor = () => setEditor(null)
 
   const move = (id: string, state: StateId) => {
-    const current = tracker.applications.find((application) => application.id === id)
-    const next = moveApplication(tracker, id, state)
-    if (next !== tracker) commit(next, `${current?.company ?? 'Application'} moved to ${STATE_LABELS[state]}.`)
+    const moving = tracker.applications.find((application) => application.id === id)
+    // A move to the state it already holds returns the same document, and `commit` reads
+    // that as nothing to write, so no notice is shown for it either.
+    commit(
+      (current) => moveApplication(current, id, state),
+      `${moving?.company ?? 'Application'} moved to ${STATE_LABELS[state]}.`,
+    )
   }
 
   /*
@@ -763,15 +801,12 @@ export default function App() {
    * so a logged action is dated the same way every other date on screen is.
    */
   const completeAction = (id: string) => {
-    const current = tracker.applications.find((application) => application.id === id)
-    const next = completeApplicationNextAction(
-      tracker,
-      id,
-      formatShortDate(new Date().toISOString()),
+    const finishing = tracker.applications.find((application) => application.id === id)
+    const on = formatShortDate(new Date().toISOString())
+    commit(
+      (current) => completeApplicationNextAction(current, id, on),
+      `Action marked done for ${finishing?.company ?? 'the application'} and logged in its notes.`,
     )
-    if (next !== tracker) {
-      commit(next, `Action marked done for ${current?.company ?? 'the application'} and logged in its notes.`)
-    }
   }
 
   const currentView = (() => {
@@ -1008,7 +1043,7 @@ export default function App() {
           onDelete={editor.mode === 'edit' ? async () => {
             if (window.confirm(`Delete ${editingApplication?.company ?? 'this application'}?`)) {
               await deleteApplicationAttachmentFolder(editor.id)
-              await commit(deleteApplication(tracker, editor.id), 'Application deleted.')
+              await commit((current) => deleteApplication(current, editor.id), 'Application deleted.')
               closeEditor()
             }
           } : undefined}
@@ -1031,37 +1066,42 @@ export default function App() {
             }
             const now = new Date()
             if (editor.mode === 'add') {
-              let next = addApplication(tracker, input, now)
-              const created = next.applications.at(-1)!
-              const attachments = await applyAttachmentPlan(created.id, attachmentPlan, now)
-              if (attachments.length > 0) {
-                next = updateApplication(next, created.id, { attachments }, now)
-              }
-              next = updateApplicationStateEvents(next, created.id, invites, now)
-              next = updateApplicationRatings(next, created.id, ratingDrafts(values.ratings), now)
-              await commit(next, 'Application added.')
+              // Named here rather than by the mutation, so the attachment folder can be
+              // written under its id before the application itself is stored. The write
+              // then stays one derivation from whatever document is current when it runs.
+              const id = createUuidV7(now)
+              const attachments = await applyAttachmentPlan(id, attachmentPlan, now)
+              await commit((current) => {
+                let next = addApplication(current, input, now, id)
+                if (attachments.length > 0) {
+                  next = updateApplication(next, id, { attachments }, now)
+                }
+                next = updateApplicationStateEvents(next, id, invites, now)
+                return updateApplicationRatings(next, id, ratingDrafts(values.ratings), now)
+              }, 'Application added.')
             } else {
               const attachments = await applyAttachmentPlan(editor.id, attachmentPlan, now)
-              let next = updateApplication(tracker, editor.id, {
-                company: input.company,
-                role: input.role,
-                url: input.url,
-                source: input.source,
-                next_action: input.next_action,
-                next_action_at: input.next_action_at,
-                deadline_at: input.deadline_at,
-                notes: input.notes,
-                attachments,
-                compensation: input.compensation,
-              }, now)
-              next = updateApplicationStateEvents(next, editor.id, invites, now)
-              next = updateApplicationRatings(next, editor.id, ratingDrafts(values.ratings), now)
-              // Drafts cannot express "back to never assessed", so blanked ones clear here.
-              for (const dimension of clearedRatingDimensions(editingApplication, values.ratings)) {
-                next = clearApplicationRating(next, editor.id, dimension, now)
-              }
-              next = moveApplication(next, editor.id, values.state, now)
-              await commit(next, 'Application updated.')
+              await commit((current) => {
+                let next = updateApplication(current, editor.id, {
+                  company: input.company,
+                  role: input.role,
+                  url: input.url,
+                  source: input.source,
+                  next_action: input.next_action,
+                  next_action_at: input.next_action_at,
+                  deadline_at: input.deadline_at,
+                  notes: input.notes,
+                  attachments,
+                  compensation: input.compensation,
+                }, now)
+                next = updateApplicationStateEvents(next, editor.id, invites, now)
+                next = updateApplicationRatings(next, editor.id, ratingDrafts(values.ratings), now)
+                // Drafts cannot express "back to never assessed", so blanked ones clear here.
+                for (const dimension of clearedRatingDimensions(editingApplication, values.ratings)) {
+                  next = clearApplicationRating(next, editor.id, dimension, now)
+                }
+                return moveApplication(next, editor.id, values.state, now)
+              }, 'Application updated.')
             }
             closeEditor()
           }}
@@ -1073,28 +1113,20 @@ export default function App() {
           application={stageNotesApplication}
           onClose={() => setStageNotesId(null)}
           onCapture={async (state: StateId, line: string) => {
-            const current = trackerRef.current ?? tracker
+            const id = stageNotesApplication.id
             await commit(
-              updateApplicationStageCapture(
-                current,
-                stageNotesApplication.id,
-                state,
-                line,
-                new Date(),
-              ),
+              (current) => updateApplicationStageCapture(current, id, state, line, new Date()),
               'Note captured.',
             )
           }}
           onExternalChange={(state: StateId, body: string) =>
             commitStageNote(state, body, 'Prep notes saved from your editor.')}
           onSaveDrafts={async (drafts: StageNoteDraft[]) => {
-            const current = trackerRef.current ?? tracker
+            const id = stageNotesApplication.id
             // No notice: the panel writes while it is being typed into, and a toast per
             // pause would sit permanently over the notes it is describing. The panel's
             // status bar says the same thing where the writing is already being watched.
-            return commit(
-              updateApplicationStageNotes(current, stageNotesApplication.id, drafts, new Date()),
-            )
+            return commit((current) => updateApplicationStageNotes(current, id, drafts, new Date()))
           }}
         />
       )}

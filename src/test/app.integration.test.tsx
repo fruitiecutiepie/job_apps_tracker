@@ -526,6 +526,55 @@ describe('job applications tracker', () => {
     expect(captured().heard).toHaveLength(3)
   })
 
+  it('keeps a capture made while an earlier write is still in flight', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // Hold the first write open, so the capture below is made while the autosave's write
+    // is still unfinished — which is what happens whenever someone is told something while
+    // the note being read is also being written. Both writes store the whole document, so
+    // one built from the document the other started from would silently undo it.
+    const store = globalThis.fetch as typeof fetch
+    let release = () => {}
+    const held = new Promise<void>((resolve) => {
+      release = resolve
+    })
+    let holding = true
+    let inFlight = false
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (holding && init?.method === 'PUT') {
+        holding = false
+        inFlight = true
+        await held
+      }
+      return store(input, init)
+    }))
+
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    await user.type(within(dialog).getByLabelText('Interview 2 prep notes'), ' Ask about on-call.')
+    await waitFor(() => expect(inFlight).toBe(true), { timeout: 3000 })
+
+    await user.type(
+      within(dialog).getByLabelText('Capture a line in Interview 2'),
+      'Decision comes back Friday{Enter}',
+    )
+    release()
+
+    // Neither write may be the one that survives: the note keeps what was typed into it,
+    // and the line keeps what was said.
+    await waitFor(() => {
+      const stored = readSavedDocument().applications.find(
+        (application) => application.company === 'Halcyon Maps',
+      )!
+      const note = stored.stage_notes.find((entry) => entry.state === 'interview_2')!
+      expect(note.heard.at(-1)?.body).toBe('Decision comes back Friday')
+      expect(note.body).toContain('Ask about on-call.')
+    }, { timeout: 3000 })
+  })
+
   it('reaches the capture line of whichever pane is focused from the keyboard', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
