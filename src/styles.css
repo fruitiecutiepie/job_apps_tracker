@@ -1848,12 +1848,21 @@ tbody tr:hover {
   z-index: 0;
   inset: 0;
   padding: var(--s3);
-  overflow: hidden;
+  /* Scrolls like the box so it reserves the same gutter and wraps at the same column. */
+  overflow-y: scroll;
+  overflow-x: hidden;
+  scrollbar-color: transparent transparent;
   border: 1px solid transparent;
   border-radius: var(--r1);
   color: transparent;
   background: var(--surface);
   font-size: var(--t3);
+  /*
+   * Stated, not inherited. The box takes its weight from .field and the mirror is not
+   * inside it, so leaving this alone drew the mirror at 400 under text at 500 — every
+   * character a shade narrower, drifting further along each line.
+   */
+  font-weight: 500;
   line-height: 1.5;
   white-space: pre-wrap;
   overflow-wrap: break-word;
@@ -1873,9 +1882,27 @@ tbody tr:hover {
   overflow-wrap: break-word;
 }
 
-/* A mark under the text is a backdrop, so it must not restyle the text it sits behind. */
+/*
+ * The gutter has to stay, so the scrollbar is hidden by painting rather than by removing
+ * it: `scrollbar-width: none` would take the width back and undo the point of reserving.
+ */
+.stage-note__marks::-webkit-scrollbar {
+  background: transparent;
+}
+
+.stage-note__marks::-webkit-scrollbar-thumb {
+  background: transparent;
+}
+
+/*
+ * A mark under the text is a backdrop: it paints a background and changes nothing about
+ * the run it covers. The reading view draws its own marks heavier, which here would set
+ * the covered run wider than the same characters in the box above and push the rest of
+ * the line out of step.
+ */
 .stage-note__marks .markdown__match {
   color: transparent;
+  font-weight: inherit;
 }
 
 .stage-note__editor {
@@ -2367,7 +2394,13 @@ tbody tr:hover {
 }
 
 .panel__notes .stage-note__editor .field textarea {
-  overflow-y: auto;
+  /*
+   * Always scroll, never auto. A scrollbar that comes and goes takes its width out of
+   * the text as it appears, so the box would rewrap while the mirror behind it did not
+   * — which is why the highlights held on a short note and slid on a long one.
+   */
+  overflow-y: scroll;
+  overflow-x: hidden;
   resize: none;
 }
 
