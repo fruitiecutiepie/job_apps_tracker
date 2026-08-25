@@ -493,9 +493,18 @@ p {
   white-space: nowrap;
 }
 
+/*
+ * One row, always: search, the three filters, and the button that copies from them.
+ * They are read and set as a group, so the group is what wraps — below the title when the
+ * bar is tight — rather than the controls splitting across lines among themselves.
+ *
+ * That means the controls give up width instead. Each keeps a floor it will not shrink
+ * past, which is also what gives this row a min-content width to wrap at; under it the
+ * narrow-width rules below let the row break again rather than crush what is in it.
+ */
 .context-bar__filters {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--s2);
   margin-left: auto;
@@ -504,7 +513,8 @@ p {
 .search-field {
   position: relative;
   display: block;
-  min-width: 14rem;
+  flex: 1 1 14rem;
+  min-width: 9rem;
 }
 
 .search-field svg {
@@ -531,6 +541,8 @@ p {
 }
 
 .context-bar select {
+  flex: 0 1 12rem;
+  min-width: 6rem;
   max-width: 12rem;
 }
 
@@ -543,7 +555,7 @@ p {
   display: flex;
   align-items: center;
   gap: var(--s2);
-  min-width: 0;
+  flex: 0 1 auto;
 }
 
 .context-bar__source .button {
@@ -3088,6 +3100,12 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     min-height: 34px;
   }
 
+  /* Under the floors above, one row would leave every control at its minimum. Wrapping
+     is the better trade there: the same controls, legible, over two lines. */
+  .context-bar__filters {
+    flex-wrap: wrap;
+  }
+
   .context-bar select {
     max-width: none;
     flex: 1 1 9rem;
@@ -3226,6 +3244,13 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     min-width: 0;
     max-width: none;
     width: 100%;
+  }
+
+  /* The source select is stretched by the rule above, so inside its pair it has to give
+     the copy button back the width it needs rather than pushing it out of the row. */
+  .context-bar__source select {
+    flex: 1 1 auto;
+    width: auto;
   }
 
   .view-toolbar,
