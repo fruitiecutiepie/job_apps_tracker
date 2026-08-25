@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { parseMarkdown } from './parseMarkdown'
 import { buildSections, collectFoldableKeys, outlineTree, sectionPath } from './sections'
-import { searchNote, splitMatches } from './searchNote'
+import { matchOffsets, searchNote, splitMatches } from './searchNote'
 
 function search(source: string, query: string) {
   return searchNote(buildSections(parseMarkdown(source)), query)
@@ -27,6 +27,30 @@ describe('splitMatches', () => {
 
   it('returns the whole string when there is no query', () => {
     expect(splitMatches('Panel', '')).toEqual([{ text: 'Panel', isMatch: false }])
+  })
+})
+
+describe('matchOffsets', () => {
+  it('reports where each match starts', () => {
+    expect(matchOffsets('a cat and a cat', 'cat')).toEqual([2, 12])
+  })
+
+  it('matches without case, and reports offsets into the text as typed', () => {
+    expect(matchOffsets('Panel and panel', 'PANEL')).toEqual([0, 10])
+  })
+
+  it('does not overlap one match with the next', () => {
+    expect(matchOffsets('aaaa', 'aa')).toEqual([0, 2])
+  })
+
+  it('counts nothing without a query', () => {
+    expect(matchOffsets('anything', '')).toEqual([])
+  })
+
+  it('agrees with splitMatches on how many there are', () => {
+    const text = 'The panel asked the panel question'
+    const split = splitMatches(text, 'panel').filter((segment) => segment.isMatch)
+    expect(matchOffsets(text, 'panel')).toHaveLength(split.length)
   })
 })
 

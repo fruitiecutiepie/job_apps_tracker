@@ -6,6 +6,11 @@ interface StageNoteEditorProps {
   value: string
   onChange: (value: string) => void
   autoFocus?: boolean
+  /**
+   * Names this box for the find, which reaches it through the DOM: a note being written
+   * holds source rather than highlights, so a match is shown by selecting it here.
+   */
+  sourceId?: string
 }
 
 interface Format {
@@ -59,7 +64,13 @@ function applyWrap(value: string, start: number, end: number, wrap: string) {
   }
 }
 
-export function StageNoteEditor({ label, value, onChange, autoFocus }: StageNoteEditorProps) {
+export function StageNoteEditor({
+  label,
+  value,
+  onChange,
+  autoFocus,
+  sourceId,
+}: StageNoteEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const format = (entry: Format) => {
@@ -97,6 +108,7 @@ export function StageNoteEditor({ label, value, onChange, autoFocus }: StageNote
         <span className="sr-only">{label} prep notes</span>
         <textarea
           autoFocus={autoFocus}
+          data-note-source={sourceId}
           onChange={(event) => onChange(event.target.value)}
           placeholder="Questions to ask, stories to tell, names to remember…"
           ref={textareaRef}
@@ -108,7 +120,8 @@ export function StageNoteEditor({ label, value, onChange, autoFocus }: StageNote
         Markdown: <code>##</code> heading, <code>-</code> bullet (indent to nest),
         {' '}<code>&gt;</code> quote (<code>&gt;&gt;</code> to nest one inside another),
         {' '}<code>```</code> fenced code, <code>**bold**</code>, <code>_italic_</code>,
-        {' '}<code>`code`</code>, <code>[link](https://…)</code>.
+        {' '}<code>`code`</code>, <code>[link](https://…)</code>. A pasted
+        {' '}<code>https://…</code> URL or email address links itself.
         Headings, bullets with sub-points, quotes, and code blocks all fold in the reading
         view. A line straight after a <code>&gt;</code> joins that quote — leave a blank
         line to end it.

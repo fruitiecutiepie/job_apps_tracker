@@ -17,6 +17,7 @@ import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
 import {
   capturedMarkdown,
   buildSections,
+  matchOffsets,
   outlineTree,
   parseMarkdown,
   searchNote,
@@ -467,7 +468,10 @@ export function StageNotesDialog({
    */
   const findMatches = useCallback(
     (value: string) => {
-      const perStage = new Map<StateId, { base: number; count: number; written: number }>()
+      const perStage = new Map<
+        StateId,
+        { base: number; count: number; written: number; inEditor: boolean }
+      >()
       const order: StateId[] = []
       let total = 0
       if (!value.trim()) return { perStage, order, total }
@@ -477,13 +481,17 @@ export function StageNotesDialog({
 
       for (const state of stages) {
         const inEditor = editing.includes(state) && !sessions[state]
-        const written = inEditor ? 0 : countIn(drafts[state] ?? '')
-        // Lines open for correcting sit out for the same reason: each is in a box of its
-        // own, and a box holds text rather than highlights to step onto.
+        const source = drafts[state] ?? ''
+        // A note being written is searched as the source it is. It carries no highlights,
+        // so those matches are stepped onto by selecting them in the box instead — but
+        // they are counted here with the rest, so one list runs through the whole panel.
+        const written = inEditor ? matchOffsets(source, value).length : countIn(source)
+        // Lines open for correcting still sit out: each is in a box of its own, and there
+        // is no one place to send a caret that stands for all of them.
         const said = editingLines.includes(state) ? 0 : countIn(capturedByState.get(state) ?? '')
         const count = written + said
         if (count === 0) continue
-        perStage.set(state, { base: total, count, written })
+        perStage.set(state, { base: total, count, written, inEditor })
         order.push(state)
         total += count
       }
@@ -536,6 +544,35 @@ export function StageNotesDialog({
     setPanes((current) => current.map((entry, index) => (index === focused ? state : entry)))
   }
 
+  /**
+   * Puts the caret on a match that lives in a note being written. A textarea carries no
+   * highlight to scroll to, so the match is selected instead — which is where someone
+   * searching a note they are editing wants to be anyway.
+   *
+   * Deferred a frame because the step may have just moved that stage into a pane. Done
+   * from the step rather than from an effect watching the cursor: typing into the find
+   * box moves the cursor on every keystroke, and following it there would take the caret
+   * out of the box mid-word.
+   */
+  const selectInSource = (state: StateId | undefined, position: number) => {
+    const found = state ? matches.perStage.get(state) : undefined
+    if (!state || !found?.inEditor) return
+    const index = position - found.base
+    // Past the written note is the captured log, which renders marks like any note.
+    if (index >= found.written) return
+    const at = matchOffsets(drafts[state] ?? '', query)[index]
+    if (at === undefined) return
+
+    requestAnimationFrame(() => {
+      const box = notesRef.current?.querySelector<HTMLTextAreaElement>(
+        `[data-note-source="${state}"]`,
+      )
+      if (!box) return
+      box.focus()
+      box.setSelectionRange(at, at + query.length)
+    })
+  }
+
   /** Steps the find, following it into whichever stage the next match lives in. */
   const stepMatch = (delta: number) => {
     if (matches.total === 0) return
@@ -544,6 +581,7 @@ export function StageNotesDialog({
     const landing = ((next % matches.total) + matches.total) % matches.total
     const stage = stageOfMatch(landing)
     if (stage) showStage(stage)
+    selectInSource(stage, landing)
   }
 
   /** A new query starts from its first match, in whichever stage that turns out to be. */

@@ -64,6 +64,28 @@ export function splitMatches(text: string, query: string): Segment[] {
   return segments
 }
 
+/**
+ * Where each match starts in a raw string, counting from 0. A note being written is in a
+ * textarea, which has no elements to mark, so a find steps through it by selecting these
+ * ranges instead. Same matcher as `splitMatches`, so source and rendered notes agree on
+ * what counts and the panel can number them in one list.
+ */
+export function matchOffsets(text: string, query: string): number[] {
+  if (!query) return []
+
+  const offsets: number[] = []
+  const haystack = text.toLocaleLowerCase()
+  const needle = query.toLocaleLowerCase()
+  let from = 0
+
+  for (;;) {
+    const at = haystack.indexOf(needle, from)
+    if (at === -1) return offsets
+    offsets.push(at)
+    from = at + needle.length
+  }
+}
+
 function countInText(text: string, query: string): number {
   if (!query) return 0
   const haystack = text.toLocaleLowerCase()

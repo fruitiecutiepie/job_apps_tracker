@@ -242,6 +242,7 @@ export function StageNotePane({
             key={state}
             label={label}
             onChange={onChange}
+            sourceId={state}
             value={body}
           />
         ) : body.trim() ? (

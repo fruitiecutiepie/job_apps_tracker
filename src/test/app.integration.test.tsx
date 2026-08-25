@@ -760,6 +760,63 @@ describe('job applications tracker', () => {
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Offer')
   })
 
+  it('finds text in a stage being written, and selects the match in the box', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    const box = within(dialog).getByLabelText('Interview 2 prep notes') as HTMLTextAreaElement
+    expect(box).toHaveAttribute('data-note-source', 'interview_2')
+
+    // The note is source now, not an outline, but it is still searched.
+    await user.keyboard('{Control>}f{/Control}')
+    await user.type(within(dialog).getByLabelText('Find in notes'), 'leads')
+    expect(within(dialog).getByText('1 of 1')).toBeInTheDocument()
+
+    // Typing must not take the caret out of the find box and into the note.
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Find in notes'))
+
+    // Stepping puts it on the match, which a textarea shows by selecting rather than
+    // by carrying a highlight.
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    await waitFor(() => expect(document.activeElement).toBe(box))
+    expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe('leads')
+  })
+
+  it('numbers a written note and its captured lines as one list while it is being edited', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // A capture holding the same word as the note being written.
+    await user.type(within(dialog).getByLabelText('Capture a line in Interview 2'), 'More on leads')
+    await user.keyboard('{Enter}')
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+
+    await user.keyboard('{Control>}f{/Control}')
+    await user.type(within(dialog).getByLabelText('Find in notes'), 'leads')
+
+    // One in the source, one in the log: counted together, with the source first.
+    expect(within(dialog).getByText('1 of 2')).toBeInTheDocument()
+
+    // Second is the captured line, which does carry a highlight of its own.
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    expect(within(dialog).getByText('2 of 2')).toBeInTheDocument()
+    expect(within(dialog).getAllByText('leads').some((node) => node.tagName === 'MARK')).toBe(true)
+
+    // Wrapping back reaches the source match, which is shown by selecting it instead.
+    const box = within(dialog).getByLabelText('Interview 2 prep notes') as HTMLTextAreaElement
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    expect(within(dialog).getByText('1 of 2')).toBeInTheDocument()
+    await waitFor(() => expect(document.activeElement).toBe(box))
+    expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe('leads')
+  })
+
   it('reveals a match inside a folded section, and refolds it when the find closes', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
