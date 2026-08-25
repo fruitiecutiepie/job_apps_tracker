@@ -85,6 +85,49 @@ export function collectFoldableKeys(section: Section): string[] {
   return keys
 }
 
+/**
+ * The anchor a heading answers to, in the shape a generated table of contents writes:
+ * lowercased, punctuation dropped, spaces turned into hyphens. Notes are written in an
+ * editor and pasted in with their contents list already built, so the slugs here have to
+ * be the ones already in those links — including the double hyphen that a dropped `/`
+ * between two spaces leaves behind.
+ */
+export function headingSlug(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}_\- ]+/gu, '')
+    .replace(/ /g, '-')
+}
+
+/**
+ * Every heading's anchor, mapped to the section it names. A repeated heading is numbered
+ * from the second one on, the way a contents list numbers it, so two `### Notes` in one
+ * note stay separately reachable rather than both leading to the first.
+ */
+export function sectionSlugs(root: Section): Map<string, string> {
+  const slugs = new Map<string, string>()
+  const counts = new Map<string, number>()
+
+  const walk = (section: Section) => {
+    if (section.heading) {
+      const base = headingSlug(inlineText(section.heading.content))
+      if (base) {
+        const seen = counts.get(base) ?? 0
+        counts.set(base, seen + 1)
+        const slug = seen === 0 ? base : `${base}-${seen}`
+        // First writer wins, so a heading cannot be shadowed by a later one whose own
+        // numbering happens to land on the same slug.
+        if (!slugs.has(slug)) slugs.set(slug, section.key)
+      }
+    }
+    section.children.forEach(walk)
+  }
+  walk(root)
+
+  return slugs
+}
+
 export interface OutlineEntry {
   key: string
   text: string

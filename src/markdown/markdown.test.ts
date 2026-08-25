@@ -223,6 +223,96 @@ describe('markdown inline formatting', () => {
     ])
   })
 
+  it('links a bare URL pasted into a note', () => {
+    expect(parseInline('Posting: https://example.com/jobs?id=4 — read it')).toEqual([
+      { type: 'text', value: 'Posting: ' },
+      {
+        type: 'link',
+        href: 'https://example.com/jobs?id=4',
+        children: [{ type: 'text', value: 'https://example.com/jobs?id=4' }],
+      },
+      { type: 'text', value: ' — read it' },
+    ])
+  })
+
+  it('leaves sentence punctuation outside a bare URL', () => {
+    expect(parseInline('Call is at https://meet.example.com/abc.')).toEqual([
+      { type: 'text', value: 'Call is at ' },
+      {
+        type: 'link',
+        href: 'https://meet.example.com/abc',
+        children: [{ type: 'text', value: 'https://meet.example.com/abc' }],
+      },
+      { type: 'text', value: '.' },
+    ])
+  })
+
+  it('keeps a closing parenthesis that the URL opened', () => {
+    expect(parseInline('(see https://example.com/a_(b) now)')).toEqual([
+      { type: 'text', value: '(see ' },
+      {
+        type: 'link',
+        href: 'https://example.com/a_(b)',
+        children: [{ type: 'text', value: 'https://example.com/a_(b)' }],
+      },
+      { type: 'text', value: ' now)' },
+    ])
+  })
+
+  it('links a bare email address through mailto', () => {
+    expect(parseInline('Recruiter is jane.doe@example.com')).toEqual([
+      { type: 'text', value: 'Recruiter is ' },
+      {
+        type: 'link',
+        href: 'mailto:jane.doe@example.com',
+        children: [{ type: 'text', value: 'jane.doe@example.com' }],
+      },
+    ])
+  })
+
+  it('does not double the scheme on an address already written as mailto', () => {
+    expect(parseInline('mailto:jane@example.com')).toEqual([
+      {
+        type: 'link',
+        href: 'mailto:jane@example.com',
+        children: [{ type: 'text', value: 'mailto:jane@example.com' }],
+      },
+    ])
+  })
+
+  it('links an angle-bracketed target', () => {
+    expect(parseInline('<https://example.com/jobs>')).toEqual([
+      {
+        type: 'link',
+        href: 'https://example.com/jobs',
+        children: [{ type: 'text', value: 'https://example.com/jobs' }],
+      },
+    ])
+    expect(parseInline('<javascript:alert(1)>')).toEqual([
+      { type: 'text', value: '<javascript:alert(1)>' },
+    ])
+  })
+
+  it('does not autolink inside a written link, which would nest links', () => {
+    expect(parseInline('[https://example.com/jobs](https://example.com/jobs)')).toEqual([
+      {
+        type: 'link',
+        href: 'https://example.com/jobs',
+        children: [{ type: 'text', value: 'https://example.com/jobs' }],
+      },
+    ])
+  })
+
+  it('leaves the destination of a written link alone', () => {
+    expect(parseInline('[docs](https://example.com/a@b)')).toEqual([
+      {
+        type: 'link',
+        href: 'https://example.com/a@b',
+        children: [{ type: 'text', value: 'docs' }],
+      },
+    ])
+  })
+
   it('flattens inline nodes to plain text for fold labels', () => {
     expect(inlineText(parseInline('**Panel** with `three` [people](https://example.com)'))).toBe(
       'Panel with three people',

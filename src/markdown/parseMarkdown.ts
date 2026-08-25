@@ -74,6 +74,49 @@ const ESCAPABLE = /[\\`*_[\]()#+\-.!>]/
 // under a line of text — a divider some notes use, not a would-be one-column table.
 const TABLE_DELIMITER_ROW = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
 
+/**
+ * A URL or an email typed straight into a note, with no `[]()` around it. Notes are
+ * written mid-conversation and pasted into, so a posting or a meeting URL usually
+ * arrives bare; without this it would read as a link and do nothing when clicked.
+ */
+const BARE_URL = /^https?:\/\/[^\s<>]+/i
+const BARE_EMAIL = /^(?:mailto:)?[\w.!#$%&'*+/=?^`{|}~-]+@[\w-]+(?:\.[\w-]+)+/i
+const ANGLE_LINK = /^<([^\s<>]+)>/
+
+/**
+ * Gives back the punctuation a sentence put after a bare URL rather than swallowing it
+ * into the destination: a note ends "…join at https://meet.example.com/abc." far more
+ * often than it links to a path that really ends in a full stop. A closing parenthesis
+ * only comes off when the URL never opened it, so `…/a_(b)` stays whole.
+ */
+function trimTrailingPunctuation(value: string): string {
+  let end = value.length
+
+  while (end > 0) {
+    const character = value[end - 1]
+    if (character === ')') {
+      const slice = value.slice(0, end)
+      const opened = slice.split('(').length - 1
+      const closed = slice.split(')').length - 1
+      if (closed <= opened) break
+    } else if (!'.,;:!?\'"'.includes(character)) {
+      break
+    }
+    end -= 1
+  }
+
+  return value.slice(0, end)
+}
+
+/**
+ * A link to a heading of the note itself, which is how a note carrying its own table of
+ * contents refers to its parts. The reading view follows one by moving to that heading
+ * rather than by navigating, so the fragment is kept as written and resolved there.
+ */
+function fragmentHref(value: string): string | null {
+  return /^#\S+$/.test(value) ? value : null
+}
+
 /** Only linkable schemes render as links; anything else falls back to plain text. */
 function safeHref(value: string): string | null {
   try {
@@ -112,7 +155,12 @@ function readDestination(source: string, start: number): { value: string; end: n
   return null
 }
 
-export function parseInline(source: string): InlineNode[] {
+/**
+ * Parses one line's inline content. `autolink` is off while a written link's label is
+ * parsed: a bare URL used as its own label would otherwise become a second link nested
+ * inside the first, which is invalid and renders as an unclickable stub.
+ */
+export function parseInline(source: string, autolink = true): InlineNode[] {
   const nodes: InlineNode[] = []
   let text = ''
   let index = 0
@@ -149,14 +197,44 @@ export function parseInline(source: string): InlineNode[] {
       const destination = label ? readDestination(rest, label[0].length) : null
       if (label && destination) {
         flush()
-        const href = safeHref(destination.value)
+        const href = fragmentHref(destination.value) ?? safeHref(destination.value)
         if (href) {
-          nodes.push({ type: 'link', href, children: parseInline(label[1]) })
+          nodes.push({ type: 'link', href, children: parseInline(label[1], false) })
         } else {
-          nodes.push(...parseInline(label[1]))
+          nodes.push(...parseInline(label[1], false))
         }
         index += destination.end + 1
         continue
+      }
+    }
+
+    if (autolink) {
+      const angle = character === '<' ? ANGLE_LINK.exec(rest) : null
+      if (angle) {
+        const target = angle[1]
+        const href = safeHref(target) ?? safeHref(`mailto:${target}`)
+        if (href && (href === target || BARE_EMAIL.test(target))) {
+          flush()
+          nodes.push({ type: 'link', href, children: [{ type: 'text', value: target }] })
+          index += angle[0].length
+          continue
+        }
+      }
+
+      // A URL only starts where a word does, so an address inside a longer token—and
+      // the second half of one already being read—is left as the text it is part of.
+      const atBoundary = !/[\w@./]/.test(source[index - 1] ?? '')
+      const bare = atBoundary ? (BARE_URL.exec(rest) ?? BARE_EMAIL.exec(rest)) : null
+      if (bare) {
+        const target = trimTrailingPunctuation(bare[0])
+        // A bare address carries no scheme of its own, so it is posted through mailto.
+        const href = /^(?:https?:\/\/|mailto:)/i.test(target) ? safeHref(target) : safeHref(`mailto:${target}`)
+        if (href) {
+          flush()
+          nodes.push({ type: 'link', href, children: [{ type: 'text', value: target }] })
+          index += target.length
+          continue
+        }
       }
     }
 
@@ -166,14 +244,14 @@ export function parseInline(source: string): InlineNode[] {
       const strong = /^(\*\*|__)(?=\S)([\s\S]*?\S)\1(?!\w)/.exec(rest)
       if (strong) {
         flush()
-        nodes.push({ type: 'strong', children: parseInline(strong[2]) })
+        nodes.push({ type: 'strong', children: parseInline(strong[2], autolink) })
         index += strong[0].length
         continue
       }
       const emphasis = /^(\*|_)(?=\S)([\s\S]*?\S)\1(?!\w)/.exec(rest)
       if (emphasis) {
         flush()
-        nodes.push({ type: 'emphasis', children: parseInline(emphasis[2]) })
+        nodes.push({ type: 'emphasis', children: parseInline(emphasis[2], autolink) })
         index += emphasis[0].length
         continue
       }

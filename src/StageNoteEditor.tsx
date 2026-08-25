@@ -121,7 +121,8 @@ export function StageNoteEditor({
         {' '}<code>&gt;</code> quote (<code>&gt;&gt;</code> to nest one inside another),
         {' '}<code>```</code> fenced code, <code>**bold**</code>, <code>_italic_</code>,
         {' '}<code>`code`</code>, <code>[link](https://…)</code>. A pasted
-        {' '}<code>https://…</code> URL or email address links itself.
+        {' '}<code>https://…</code> URL or email address links itself, and
+        {' '}<code>[to a heading](#heading)</code> jumps within the note.
         Headings, bullets with sub-points, quotes, and code blocks all fold in the reading
         view. A line straight after a <code>&gt;</code> joins that quote — leave a blank
         line to end it.

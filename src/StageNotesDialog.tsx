@@ -1118,6 +1118,10 @@ export function StageNotesDialog({
                     onChange={(value) => editDraft(state, value)}
                     onClose={isSplit ? () => closePane(index) : null}
                     onFocus={() => setFocused(index)}
+                    // Only the focused pane, which is the one the jump scrolls; a link
+                    // clicked in the other pane focuses it first, so this is that pane by
+                    // the time the click lands.
+                    onJumpToSection={index === paneIndex ? jumpToSection : undefined}
                     onOpenInEditor={() => openInEditor(state)}
                     onStopExternal={() => stopEditingExternally(state)}
                     onToggleEditing={() => toggleEditing(state)}

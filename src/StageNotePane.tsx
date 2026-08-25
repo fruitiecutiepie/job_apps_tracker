@@ -39,6 +39,12 @@ interface StageNotePaneProps {
   onToggleEditLines: () => void
   /** Stores a rewritten captured line, or removes it when the text is blank. */
   onRevise: (id: string, body: string) => Promise<void>
+  /**
+   * Follows a link in the note to one of its own headings, the same way the outline
+   * follows a heading picked from it. Absent for the pane that is not focused, which
+   * moves itself instead — the panel's jump scrolls the focused pane.
+   */
+  onJumpToSection?: (key: string) => void
   onChange: (value: string) => void
   /** Files one line under the note's capture section and stores it there and then. */
   onCapture: (line: string) => Promise<void>
@@ -75,6 +81,7 @@ export function StageNotePane({
   isEditingLines,
   onToggleEditLines,
   onRevise,
+  onJumpToSection,
   onChange,
   onCapture,
   onToggleEditing,
@@ -250,6 +257,7 @@ export function StageNotePane({
             currentMatch={currentMatch}
             label={label}
             matchBase={matchBase}
+            onJumpToSection={onJumpToSection}
             query={query}
             revealKeys={revealKeys}
             source={body}

@@ -5,10 +5,12 @@ export type { BlockNode, InlineNode, ListBlock, ListItem } from './parseMarkdown
 export {
   buildSections,
   collectFoldableKeys,
+  headingSlug,
   outlineTree,
   sectionAtLine,
   sectionHeadingLine,
   sectionPath,
+  sectionSlugs,
 } from './sections'
 export type { OutlineEntry, OutlineNode, Section } from './sections'
 export { matchOffsets, searchNote, splitMatches } from './searchNote'

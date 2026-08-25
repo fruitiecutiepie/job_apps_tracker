@@ -120,7 +120,7 @@ Captures are stored separately from what you prepared, which has three consequen
 - Captures stay on screen and writable while you are editing the prep note, or while that note is open in an external editor. There is no shared text for the two to race over.
 - Saving the panel never rewrites a capture, and Cancel never rolls one back. Corrections are stored as they are made, the same way captures are, so there is nothing here for a Save to be waiting on.
 
-Supported syntax is a practical subset: `#` through `######` headings, `-` or `1.` lists that nest when you indent them, `**bold**`, `_italic_`, `` `code` ``, `>` block quotes, fenced code blocks, and `[links](https://example.com)`. Links open only for `http`, `https`, and `mailto` targets.
+Supported syntax is a practical subset: `#` through `######` headings, `-` or `1.` lists that nest when you indent them, `**bold**`, `_italic_`, `` `code` ``, `>` block quotes, fenced code blocks, and `[links](https://example.com)`. A URL or email address pasted in bare links itself, as does one written inside `<…>`; trailing sentence punctuation stays out of the link. A `[link](#heading)` to one of the note's own headings jumps to it, opening whatever fold it sits inside, so a note that arrives with its own contents list works as written. Links out open only for `http`, `https`, and `mailto` targets.
 
 In the reading view **everything with hierarchy folds**, so you can collapse a long note to its shape and open only the part you need mid-interview:
 

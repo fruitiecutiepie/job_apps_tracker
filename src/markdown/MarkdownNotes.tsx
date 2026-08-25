@@ -1,4 +1,4 @@
-import { useMemo, useState, type MouseEvent, type ReactNode } from 'react'
+import { createContext, useContext, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { inlineText, parseMarkdown, type BlockNode, type InlineNode, type ListBlock, type QuoteBlock, type TableBlock } from './parseMarkdown'
 import { tokenizeCode } from './highlightCode'
@@ -9,6 +9,8 @@ import {
   cellKey,
   collectFoldableKeys,
   itemKey,
+  sectionPath,
+  sectionSlugs,
   type Section,
 } from './sections'
 import { headingKey, searchNote, splitMatches } from './searchNote'
@@ -66,6 +68,34 @@ function highlight(text: string, marks: Marks, cursor: Cursor, keyPrefix: string
 }
 
 /**
+ * How a link to one of the note's own headings is followed. Passed through context
+ * rather than as an argument, because a link can sit at any depth — in a heading, a
+ * point, a quote, a table cell — and every container between here and there would
+ * otherwise have to carry a prop it makes no use of.
+ */
+const FollowSection = createContext<(slug: string) => void>(() => {})
+
+/**
+ * A link into the note itself. It never navigates: the panel is a dialog over the
+ * application, and letting the browser act on the fragment would put a hash in the
+ * address bar and scroll nothing, since the heading's id is not what a note is keyed by.
+ */
+function SectionLink({ href, children }: { href: string; children: ReactNode }) {
+  const follow = useContext(FollowSection)
+  return (
+    <a
+      href={href}
+      onClick={(event) => {
+        event.preventDefault()
+        follow(href.slice(1))
+      }}
+    >
+      {children}
+    </a>
+  )
+}
+
+/**
  * Renders inline content. This is a plain function rather than a component so that a
  * container and everything nested inside it share one cursor in document order.
  */
@@ -91,7 +121,11 @@ function inline(nodes: InlineNode[], marks: Marks | null, cursor: Cursor): React
       case 'emphasis':
         return <em key={index}>{inline(node.children, marks, cursor)}</em>
       case 'link':
-        return (
+        return node.href.startsWith('#') ? (
+          <SectionLink href={node.href} key={index}>
+            {inline(node.children, marks, cursor)}
+          </SectionLink>
+        ) : (
           <a key={index} href={node.href} rel="noreferrer noopener" target="_blank">
             {inline(node.children, marks, cursor)}
           </a>
@@ -408,6 +442,14 @@ interface MarkdownNotesProps {
    * Left collapsed afterwards is not an option — the jump would have nothing to show.
    */
   revealKeys?: Set<string>
+  /**
+   * Follows a link to one of this note's own headings, given the section key the link's
+   * fragment resolved to. The panel takes this so a link jumps exactly the way picking
+   * the heading from the outline does — same reveal, same landing under the header, same
+   * breadcrumb trail. Without it the note falls back to opening and scrolling to the
+   * heading on its own, which is all a note rendered outside the panel can do.
+   */
+  onJumpToSection?: (key: string) => void
 }
 
 export function MarkdownNotes({
@@ -418,12 +460,15 @@ export function MarkdownNotes({
   currentMatch = null,
   foldAll = true,
   revealKeys,
+  onJumpToSection,
 }: MarkdownNotesProps) {
   const section = useMemo(() => buildSections(parseMarkdown(source)), [source])
   const keys = useMemo(() => collectFoldableKeys(section), [section])
   const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
 
   const search = useMemo(() => searchNote(section, query), [section, query])
+  const slugs = useMemo(() => sectionSlugs(section), [section])
+  const root = useRef<HTMLDivElement>(null)
 
   const marks = useMemo<Marks | null>(
     () => (query && search.count > 0 ? { query, base: matchBase, current: currentMatch, bases: search.bases } : null),
@@ -443,6 +488,35 @@ export function MarkdownNotes({
     return next
   }, [collapsed, revealKeys, search])
 
+  /**
+   * Follows a link to a heading of this note. A fragment naming no heading is left alone
+   * rather than guessed at: a note pasted in from elsewhere can carry links to documents
+   * it was written beside, and scrolling somewhere arbitrary is worse than not moving.
+   */
+  const follow = (slug: string) => {
+    const key = slugs.get(slug)
+    if (!key) return
+    if (onJumpToSection) {
+      onJumpToSection(key)
+      return
+    }
+    // On its own, the note can still open the target's folds and scroll to it. The path
+    // has to be opened first or the heading is not in the document to scroll to, so the
+    // scroll waits for that render rather than running against the old one.
+    const path = sectionPath(section, key).map((entry) => entry.key)
+    setCollapsed((current) => {
+      const next = new Set(current)
+      for (const ancestor of path) next.delete(ancestor)
+      return next
+    })
+    requestAnimationFrame(() => {
+      root.current
+        ?.querySelector<HTMLElement>(`[data-section-key="${key}"]`)
+        // Optional call: jsdom has no layout and leaves scrollIntoView undefined.
+        ?.scrollIntoView?.({ block: 'start' })
+    })
+  }
+
   const toggle = (key: string) => {
     setCollapsed((current) => {
       const next = new Set(current)
@@ -454,7 +528,7 @@ export function MarkdownNotes({
   const allCollapsed = keys.length > 0 && keys.every((key) => collapsed.has(key))
 
   return (
-    <div className="markdown">
+    <div className="markdown" ref={root}>
       {foldAll && keys.length > 0 ? (
         <button
           aria-label={`${allCollapsed ? 'Expand' : 'Collapse'} all points in ${label}`}
@@ -465,12 +539,14 @@ export function MarkdownNotes({
           {allCollapsed ? 'Expand all' : 'Collapse all'}
         </button>
       ) : null}
-      <MarkdownSection
-        collapsed={effectiveCollapsed}
-        marks={marks}
-        onToggle={toggle}
-        section={section}
-      />
+      <FollowSection.Provider value={follow}>
+        <MarkdownSection
+          collapsed={effectiveCollapsed}
+          marks={marks}
+          onToggle={toggle}
+          section={section}
+        />
+      </FollowSection.Provider>
     </div>
   )
 }
