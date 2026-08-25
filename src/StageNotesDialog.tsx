@@ -24,6 +24,7 @@ import {
   type OutlineNode,
 } from './markdown'
 import { FindWidget } from './FindWidget'
+import { headingAtScrollTop, readingTopLine } from './noteScrollSpy'
 import { StageNotePane } from './StageNotePane'
 import { stageNotePanelId, stageTabId } from './stageNoteIds'
 import { useDialogKeyboard } from './useDialogKeyboard'
@@ -40,12 +41,6 @@ const EDITOR_POLL_MS = 1000
  * straight after a thought is rare — and the flush on close catches it when it is not.
  */
 const AUTOSAVE_MS = 800
-
-/**
- * The height of a stage's sticky header, matching --note-header. The breadcrumbs read it
- * to decide which heading has been scrolled past, since a heading sticks under it.
- */
-const NOTE_HEADER_PX = 49
 
 interface StageNotesDialogProps {
   application: Application
@@ -204,6 +199,14 @@ export function StageNotesDialog({
   const [quickOpen, setQuickOpen] = useState(false)
   /** The section the breadcrumbs name: the last heading scrolled past. */
   const [trailKey, setTrailKey] = useState<string | null>(null)
+  /** Ancestors of an outline pick, force-opened so the jump lands somewhere folded open. */
+  const [revealKeys, setRevealKeys] = useState<Set<string> | null>(null)
+  const [pendingJumpKey, setPendingJumpKey] = useState<string | null>(null)
+  /**
+   * The heading picked from the outline, with the scroll position the jump settled at, so
+   * the pick can outrank what layout reports until the reader scrolls somewhere else.
+   */
+  const pickedTrailRef = useRef<{ key: string; scrollTop: number } | null>(null)
   const notesRef = useRef<HTMLDivElement>(null)
   const paneRefs = useRef<(HTMLDivElement | null)[]>([])
   const tabRefs = useRef<Partial<Record<StateId, HTMLButtonElement | null>>>({})
@@ -644,13 +647,17 @@ export function StageNotesDialog({
     let frame = 0
     const update = () => {
       frame = 0
-      const limit = container.getBoundingClientRect().top + NOTE_HEADER_PX
-      let found: string | null = null
-      for (const heading of container.querySelectorAll<HTMLElement>('[data-section-key]')) {
-        if (heading.getBoundingClientRect().bottom > limit) break
-        found = heading.dataset.sectionKey ?? null
+      // A heading near the end of a note can never reach the top of the pane — the note
+      // runs out of scroll first — so layout alone would report the heading above the one
+      // just picked. While the pane still sits exactly where the jump left it, the pick
+      // stands; the first real scroll from the reader drops it and tracking resumes.
+      const picked = pickedTrailRef.current
+      if (picked && Math.abs(container.scrollTop - picked.scrollTop) < 1) {
+        setTrailKey(picked.key)
+        return
       }
-      setTrailKey(found)
+      pickedTrailRef.current = null
+      setTrailKey(headingAtScrollTop(container))
     }
     const onScroll = () => {
       if (!frame) frame = requestAnimationFrame(update)
@@ -666,10 +673,56 @@ export function StageNotesDialog({
   }, [activeBody, activeStage, editing, paneIndex])
 
   const jumpToSection = (key: string) => {
-    paneRefs.current[paneIndex]
-      ?.querySelector<HTMLElement>(`[data-section-key="${key}"]`)
-      ?.scrollIntoView?.({ block: 'start' })
+    // A folded ancestor keeps the target heading out of the DOM entirely, so the scroll
+    // below would silently do nothing — force its whole path open first, then jump once
+    // that has rendered.
+    setRevealKeys(new Set(sectionPath(activeSection, key).map((entry) => entry.key)))
+    setPendingJumpKey(key)
   }
+
+  useEffect(() => {
+    if (!pendingJumpKey) return
+    const container = paneRefs.current[paneIndex]
+    const heading = container?.querySelector<HTMLElement>(`[data-section-key="${pendingJumpKey}"]`)
+    if (!container || !heading) return
+    /*
+     * A level 1 or 2 heading is sticky, and a pinned one measures — and scrolls — as the
+     * line it is stuck to rather than as the place it occupies in the note. Both
+     * `scrollIntoView` and the correction below would then be working from a position it
+     * does not really hold: the jump barely moves, and where it ends up depends on where
+     * the reader happened to be, so the same heading lands somewhere new each time.
+     *
+     * Holding it un-sticky for the measurement puts it back where the note actually has
+     * it. Its ancestors stay sticky, so the line it has to clear is still the real one.
+     */
+    const stuckPosition = heading.style.position
+    heading.style.position = 'static'
+    try {
+      // Optional call: jsdom has no layout and leaves scrollIntoView undefined, and the
+      // panel still has to render there.
+      heading.scrollIntoView?.({ block: 'start' })
+      // Flush with the top is under the header, which then covers it. Correct by whatever
+      // is actually left between the two rather than by an assumed header height. Repeated
+      // because the first scroll is what pins the target's own sticky ancestor: the line it
+      // has to clear does not exist to be measured until the note has moved.
+      for (let pass = 0; pass < 3; pass += 1) {
+        const gap = heading.getBoundingClientRect().top - readingTopLine(container, heading)
+        if (Math.abs(gap) < 0.5) break
+        const before = container.scrollTop
+        container.scrollTop += gap
+        // The note can run out of scroll before the heading reaches the line, and then the
+        // gap never closes. Stop rather than spend the next pass asking again.
+        if (container.scrollTop === before) break
+      }
+    } finally {
+      heading.style.position = stuckPosition
+    }
+    // The reader named this heading, so it is the current one even if the note could not
+    // scroll far enough to put it under the header.
+    pickedTrailRef.current = { key: pendingJumpKey, scrollTop: container.scrollTop }
+    setTrailKey(pendingJumpKey)
+    setPendingJumpKey(null)
+  }, [pendingJumpKey, paneIndex])
 
   const words = wordCount(activeBody)
 
@@ -914,6 +967,7 @@ export function StageNotesDialog({
                       paneRefs.current[index] = node
                     }}
                     query={query}
+                    revealKeys={index === paneIndex ? (revealKeys ?? undefined) : undefined}
                     saved={noteByState.get(state)}
                     session={session}
                     state={state}

@@ -2051,6 +2051,9 @@ tbody tr:hover {
  * sticks to the top of its own column.
  */
 .panel__notes {
+  /* The space above a stage note, which the note itself carries so that it scrolls away
+     rather than leaving a gap above the header stuck to the top of the pane. */
+  --note-gap: var(--s5);
   display: flex;
   min-height: 0;
 }
@@ -2058,7 +2061,13 @@ tbody tr:hover {
 .panel__pane {
   flex: 1;
   min-width: 0;
-  padding: var(--s5);
+  /*
+   * Nothing along the top: the stage header sticks to the top of this scrollport, and
+   * padding here would hold it that far down and leave a strip above it for the note to
+   * scroll through. The note carries the same space as its own margin instead, so it is
+   * still there at rest and scrolls away with the note rather than becoming a gap.
+   */
+  padding: 0 var(--s5) var(--s5);
   /* Transparent until focused, so marking a pane never shifts what is inside it. */
   border-top: 2px solid transparent;
   overflow-y: auto;
@@ -2114,6 +2123,10 @@ tbody tr:hover {
  */
 .panel__notes .stage-note {
   padding: 0;
+  /* The room the pane's top padding used to give, held here so it scrolls away with the
+     note instead of sitting above the header the note would show through. Named once
+     because the editor's full-height rule has to subtract exactly this much. */
+  margin-top: var(--note-gap);
 }
 
 .panel__notes .stage-note__header {
@@ -2151,7 +2164,9 @@ tbody tr:hover {
 .panel__notes .stage-note:has(.stage-note__editor) {
   display: flex;
   flex-direction: column;
-  min-height: 100%;
+  /* Less the margin above it, or the note would stand one --note-gap taller than the pane
+     and leave the editor with a scrollbar it has no content for. */
+  min-height: calc(100% - var(--note-gap));
 }
 
 .panel__notes .stage-note__editor {
@@ -2869,8 +2884,13 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     flex-direction: column;
   }
 
+  /* Same as the wide layout: no top padding, so the sticky header has nothing above it. */
   .panel__pane {
-    padding: var(--s4);
+    padding: 0 var(--s4) var(--s4);
+  }
+
+  .panel__notes {
+    --note-gap: var(--s4);
   }
 
   .panel__pane + .panel__pane {

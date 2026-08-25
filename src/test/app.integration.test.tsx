@@ -718,6 +718,28 @@ describe('job applications tracker', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Go to Questions to ask' }))
     expect(within(dialog).getByRole('tabpanel')).toHaveTextContent('Questions to ask')
 
+    // And marks the heading picked, not the one above it. A heading near the end of a note
+    // cannot scroll to the top of the pane — the note runs out first — so reading the
+    // position back would name the heading before it.
+    await waitFor(() => {
+      expect(within(dialog).getByRole('button', { name: 'Go to Questions to ask' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      )
+    })
+    expect(
+      within(dialog).getByRole('button', { name: 'Go to Leadership themes' }),
+    ).not.toHaveAttribute('aria-current')
+
+    // The jump holds its target un-sticky while it measures where the note really has it,
+    // and has to put that back: left static, a heading would never pin under the header
+    // again. Level 1 and 2 headings are the sticky ones, so this is not cosmetic.
+    for (const heading of within(dialog)
+      .getByRole('tabpanel')
+      .querySelectorAll<HTMLElement>('[data-section-key]')) {
+      expect(heading.style.position).toBe('')
+    }
+
     // The outline follows the tab: Interview 1's note is prose with no headings at all.
     await user.click(within(dialog).getByRole('tab', { name: 'Interview 1' }))
     expect(

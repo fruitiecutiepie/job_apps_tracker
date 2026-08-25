@@ -39,6 +39,8 @@ interface StageNotePaneProps {
   onStopExternal: () => void
   paneRef: RefCallback<HTMLDivElement>
   formatDate: (iso: string) => string
+  /** Ancestor keys to force open, so a heading picked from the outline is not hidden inside a fold. */
+  revealKeys?: Set<string>
 }
 
 /**
@@ -68,6 +70,7 @@ export function StageNotePane({
   onStopExternal,
   paneRef,
   formatDate,
+  revealKeys,
 }: StageNotePaneProps) {
   const [line, setLine] = useState('')
   const [capturing, setCapturing] = useState(false)
@@ -223,6 +226,7 @@ export function StageNotePane({
             label={label}
             matchBase={matchBase}
             query={query}
+            revealKeys={revealKeys}
             source={body}
           />
         ) : (

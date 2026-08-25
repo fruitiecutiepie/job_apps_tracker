@@ -360,6 +360,11 @@ interface MarkdownNotesProps {
    * and every point in it still folds on its own.
    */
   foldAll?: boolean
+  /**
+   * Ancestor keys to force open, for a jump landing inside a section that is folded.
+   * Left collapsed afterwards is not an option — the jump would have nothing to show.
+   */
+  revealKeys?: Set<string>
 }
 
 export function MarkdownNotes({
@@ -369,6 +374,7 @@ export function MarkdownNotes({
   matchBase = 0,
   currentMatch = null,
   foldAll = true,
+  revealKeys,
 }: MarkdownNotesProps) {
   const section = useMemo(() => buildSections(parseMarkdown(source)), [source])
   const keys = useMemo(() => collectFoldableKeys(section), [section])
@@ -382,16 +388,17 @@ export function MarkdownNotes({
   )
 
   /**
-   * A fold holding a match opens for as long as the search runs, then goes back to
-   * however the reader had left it: finding something must not quietly rearrange the
-   * outline they were working through.
+   * A fold holding a match, or a jump's landing place, opens for as long as that reason
+   * lasts, then goes back to however the reader had left it: finding or jumping to
+   * something must not quietly rearrange the outline they were working through.
    */
   const effectiveCollapsed = useMemo(() => {
-    if (search.reveal.size === 0) return collapsed
+    if (search.reveal.size === 0 && !revealKeys?.size) return collapsed
     const next = new Set(collapsed)
     for (const key of search.reveal) next.delete(key)
+    if (revealKeys) for (const key of revealKeys) next.delete(key)
     return next
-  }, [collapsed, search])
+  }, [collapsed, revealKeys, search])
 
   const toggle = (key: string) => {
     setCollapsed((current) => {
