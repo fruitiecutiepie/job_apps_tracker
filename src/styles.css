@@ -534,6 +534,23 @@ p {
   max-width: 12rem;
 }
 
+/*
+ * The source filter and the button that copies from it travel as one item, so the row
+ * breaks between filters rather than leaving the button stranded on a line below them.
+ * The select still shrinks; the button keeps its label on one line.
+ */
+.context-bar__source {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.context-bar__source .button {
+  flex: none;
+  white-space: nowrap;
+}
+
 /* Declared after .context-bar input so the icon's inset is not reset. */
 .search-field input {
   padding-left: 28px;

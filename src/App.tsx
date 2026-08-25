@@ -1091,24 +1091,31 @@ export default function App() {
                 <option key={company} value={company}>{company}</option>
               ))}
             </select>
-            <select
-              aria-label="Filter by source"
-              onChange={(event) => setSourceFilter(event.target.value)}
-              value={sourceFilter}
-            >
-              <option value="all">All sources</option>
-              {sources.map((source) => (
-                <option key={source} value={source}>{source}</option>
-              ))}
-            </select>
-            <button
-              className="button button--quiet"
-              disabled={rolesToCopy.length === 0}
-              onClick={copyRoles}
-              type="button"
-            >
-              <ClipboardCopy aria-hidden="true" size={15} /> Copy roles
-            </button>
+            {/*
+              * Copy roles is paired with the source select rather than left loose in the
+              * filter row: the two wrap together, so the button sits at the right of the
+              * last filter instead of dropping onto a line of its own.
+              */}
+            <div className="context-bar__source">
+              <select
+                aria-label="Filter by source"
+                onChange={(event) => setSourceFilter(event.target.value)}
+                value={sourceFilter}
+              >
+                <option value="all">All sources</option>
+                {sources.map((source) => (
+                  <option key={source} value={source}>{source}</option>
+                ))}
+              </select>
+              <button
+                className="button button--quiet"
+                disabled={rolesToCopy.length === 0}
+                onClick={copyRoles}
+                type="button"
+              >
+                <ClipboardCopy aria-hidden="true" size={15} /> Copy roles
+              </button>
+            </div>
             {(search || stateFilter !== 'all' || companyFilter !== 'all' || sourceFilter !== 'all') && (
               <button
                 className="button button--quiet"

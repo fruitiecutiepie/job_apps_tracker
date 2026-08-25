@@ -201,6 +201,18 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
+  it('keeps Copy roles beside the source filter rather than below the filter row', async () => {
+    await renderLoadedApp()
+
+    const source = screen.getByLabelText('Filter by source')
+    const copy = screen.getByRole('button', { name: 'Copy roles' })
+
+    // jsdom has no layout, so this pins the pairing that keeps the two on one line —
+    // where they actually land is a browser check.
+    expect(source.nextElementSibling).toBe(copy)
+    expect(copy.parentElement).toBe(source.parentElement)
+  })
+
   it('copies the roles of exactly what the filters are showing', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
