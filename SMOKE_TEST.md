@@ -220,6 +220,12 @@ test cannot judge reliably:
     Marble & Finch claims no gap because it has no target. Sort Compensation both ways and
     confirm Northstar Labs — which has only an expectation — stays at the bottom in each
     direction along with the rows that have nothing at all.
+    On the Compensation column filter, pick **Advertised** and a range that overlaps Orbit &
+    Oak's posting, and confirm only rows advertised in that stage and range show, not rows
+    whose offer happens to fall in it. Switch back to **Any stage**, leave **Max** blank, and
+    confirm a **Min** alone reads as at least that figure rather than requiring an upper end.
+    Clear column filters and confirm the picker returns to **Any stage** with both boxes
+    empty.
 14. Open the demo's Saffron Systems application and confirm the **History** list reads down from
     **Applied** to **Accepted**, each move showing its date and how long that state held, with the
     last one still running. Move it to another state, save, reopen, and confirm one entry was

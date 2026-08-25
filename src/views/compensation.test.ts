@@ -9,6 +9,8 @@ import {
   compensationText,
   describeCompensationGap,
   formatCompensationBand,
+  matchesCompensationRange,
+  type CompensationRangeFilter,
 } from './compensation'
 import { focusGroups } from './focusGroups'
 import { rankByUrgency, urgencyFor } from './urgency'
@@ -245,5 +247,61 @@ describe('compensation and the other rankings', () => {
     ).toEqual(
       focusGroups([plain], today).map(({ id, rows }) => [id, rows.map(({ reason }) => reason)]),
     )
+  })
+})
+
+describe('matchesCompensationRange', () => {
+  function range(overrides: Partial<CompensationRangeFilter> = {}): CompensationRangeFilter {
+    return { stage: 'any', min: '', max: '', ...overrides }
+  }
+
+  it('matches everything when neither bound is set, whatever the stage', () => {
+    expect(matchesCompensationRange(application(emptyCompensation()), range())).toBe(true)
+    expect(
+      matchesCompensationRange(
+        application(money({ advertised: [100_000, 120_000] })),
+        range({ stage: 'offered' }),
+      ),
+    ).toBe(true)
+  })
+
+  it('treats the range as overlap, not containment', () => {
+    const overlapping = application(money({ advertised: [100_000, 120_000] }))
+    expect(
+      matchesCompensationRange(overlapping, range({ stage: 'advertised', min: '110000', max: '200000' })),
+    ).toBe(true)
+    expect(
+      matchesCompensationRange(overlapping, range({ stage: 'advertised', min: '130000' })),
+    ).toBe(false)
+  })
+
+  it('reads one open bound as at-least or at-most rather than requiring both', () => {
+    const posting = application(money({ advertised: [100_000, 120_000] }))
+    expect(matchesCompensationRange(posting, range({ stage: 'advertised', min: '90000' }))).toBe(true)
+    expect(matchesCompensationRange(posting, range({ stage: 'advertised', min: '150000' }))).toBe(false)
+    expect(matchesCompensationRange(posting, range({ stage: 'advertised', max: '150000' }))).toBe(true)
+    expect(matchesCompensationRange(posting, range({ stage: 'advertised', max: '90000' }))).toBe(false)
+  })
+
+  it('scopes to the named stage, so the right number in the wrong stage does not match', () => {
+    const offer = application(money({ offered: 115_000 }))
+    expect(matchesCompensationRange(offer, range({ stage: 'advertised', min: '100000', max: '120000' })))
+      .toBe(false)
+    expect(matchesCompensationRange(offer, range({ stage: 'offered', min: '100000', max: '120000' })))
+      .toBe(true)
+    // "any" checks every stage, so the same query catches it without picking one out.
+    expect(matchesCompensationRange(offer, range({ min: '100000', max: '120000' }))).toBe(true)
+  })
+
+  it('has nothing to match against a stage the application never recorded', () => {
+    const advertisedOnly = application(money({ advertised: [100_000, 120_000] }))
+    expect(matchesCompensationRange(advertisedOnly, range({ stage: 'offered', min: '100000' })))
+      .toBe(false)
+  })
+
+  it('treats unparseable text as an unset bound rather than a bound of zero', () => {
+    // A half-typed box should not hide every row while the rest of the number is entered.
+    const posting = application(money({ advertised: [100_000, 120_000] }))
+    expect(matchesCompensationRange(posting, range({ stage: 'advertised', min: 'abc' }))).toBe(true)
   })
 })

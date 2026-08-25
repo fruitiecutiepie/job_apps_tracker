@@ -1016,14 +1016,13 @@ describe('TableView', () => {
     ])
   })
 
-  it('filters the compensation column by its text', () => {
+  it('filters the compensation column to one stage, treating a range as overlap', () => {
     const applications = [
-      application('Short Co', {
-        compensation: compensation('AUD', { advertised: [100_000, 115_000], expected: 130_000 }),
-      }),
-      application('Ample Co', {
-        compensation: compensation('AUD', { expected: 150_000, offered: 170_000 }),
-      }),
+      application('Advertised Co', { compensation: compensation('AUD', { advertised: [100_000, 120_000] }) }),
+      application('Wide Advertised Co', { compensation: compensation('AUD', { advertised: [200_000, 250_000] }) }),
+      // Only stated as an offer, so a filter scoped to Advertised must exclude it even
+      // though the number would otherwise fall inside the range.
+      application('Offered Co', { compensation: compensation('AUD', { offered: 115_000 }) }),
     ]
 
     render(
@@ -1036,10 +1035,87 @@ describe('TableView', () => {
       />,
     )
 
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Compensation column' }), {
-      target: { value: 'below target' },
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter Compensation column by stage' }), {
+      target: { value: 'advertised' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Short Co'])
+    fireEvent.change(screen.getByLabelText('Filter Compensation column, minimum'), {
+      target: { value: '110,000' },
+    })
+    fireEvent.change(screen.getByLabelText('Filter Compensation column, maximum'), {
+      target: { value: '130000' },
+    })
+
+    // 100,000-120,000 overlaps 110,000-130,000; 200,000-250,000 does not; the offer is the
+    // right number but the wrong stage.
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Advertised Co'])
+  })
+
+  it('checks every stage when none is picked, and leaves an open bound unbounded', () => {
+    const applications = [
+      application('Advertised Co', { compensation: compensation('AUD', { advertised: [100_000, 120_000] }) }),
+      application('Offered Co', { compensation: compensation('AUD', { offered: 130_000 }) }),
+      application('Well Paid Co', { compensation: compensation('AUD', { advertised: [200_000, 250_000] }) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    const minimum = screen.getByLabelText('Filter Compensation column, minimum')
+    const maximum = screen.getByLabelText('Filter Compensation column, maximum')
+
+    // "Any stage" is the default, so a range can catch an offer without picking it out.
+    fireEvent.change(minimum, { target: { value: '125000' } })
+    fireEvent.change(maximum, { target: { value: '135000' } })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Offered Co'])
+
+    // A minimum with no maximum reads as "at least", not as a band the row must fit inside.
+    fireEvent.change(minimum, { target: { value: '150000' } })
+    fireEvent.change(maximum, { target: { value: '' } })
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Well Paid Co'])
+  })
+
+  it('ignores a range that has not been typed as a number yet, rather than hiding every row', () => {
+    const applications = [
+      application('Advertised Co', { compensation: compensation('AUD', { advertised: [100_000, 120_000] }) }),
+      application('Nothing Co'),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    fireEvent.change(screen.getByLabelText('Filter Compensation column, minimum'), {
+      target: { value: 'abc' },
+    })
+    expect(screen.getAllByRole('rowheader')).toHaveLength(2)
+
+    // Clear column filters resets the stage as well as both bounds.
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter Compensation column by stage' }), {
+      target: { value: 'offered' },
+    })
+    fireEvent.change(screen.getByLabelText('Filter Compensation column, minimum'), {
+      target: { value: '500000' },
+    })
+    expect(screen.queryAllByRole('rowheader')).toHaveLength(0)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
+    expect(
+      screen.getByRole('combobox', { name: 'Filter Compensation column by stage' }),
+    ).toHaveValue('any')
+    expect(screen.getAllByRole('rowheader')).toHaveLength(2)
   })
 
   it('offers company and source datalist suggestions', () => {

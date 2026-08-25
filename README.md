@@ -241,6 +241,13 @@ application holding only your own expectation has no quoted figure and stays at 
 in either direction. That sort compares raw numbers and ignores currency, since there are no
 exchange rates to keep, which is why every cell names its currency first.
 
+The column's filter is a range rather than a text box: pick **Any stage**, **Advertised**,
+**Expected**, or **Offered**, then a minimum, a maximum, or both. A bound checks overlap
+against the relevant band, so a `120,000–150,000` query catches a `100,000–130,000` posting;
+leaving one bound blank reads as "at least" or "at most" rather than as zero. **Any stage**
+checks all three, so an application with only an offer can still turn up without picking
+Offered by name.
+
 ### Find the right view
 
 - **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames, a preference score for rated applications, and a prep notes button appear on cards, and you can move applications by drag-and-drop or the state selector. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.

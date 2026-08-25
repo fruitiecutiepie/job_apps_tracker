@@ -1,8 +1,10 @@
 import {
   COMPENSATION_CONFIG,
+  COMPENSATION_STAGE_IDS,
   bandMidpoint,
   formatCompensationAmount,
   isPointValue,
+  parseTypedAmount,
 } from "../domain";
 import type { Application, CompensationBand, CompensationStageId } from "../domain";
 
@@ -124,4 +126,55 @@ export function compensationText(application: Application): string {
 export function compensationSortValue(application: Application): number | null {
   const figure = compensationFigureFor(application);
   return figure ? bandMidpoint(figure.band) : null;
+}
+
+
+/** Which stage a range filter checks: one named stage, or "any" of the three. */
+export type CompensationFilterStage = CompensationStageId | "any";
+
+/**
+ * A typed min/max range, kept as the raw box text rather than parsed numbers: the filter is
+ * display state that lives in the table, and re-parsing on every match keeps this the only
+ * place that has to agree with the boxes about what counts as a number.
+ */
+export interface CompensationRangeFilter {
+  stage: CompensationFilterStage;
+  min: string;
+  max: string;
+}
+
+function filterBound(text: string): number | null {
+  const amount = parseTypedAmount(text);
+  // Unparseable text is treated as no bound rather than as an error: a filter that hides
+  // every row while a number is half-typed would be worse than one that briefly ignores it.
+  return amount === null || Number.isNaN(amount) ? null : amount;
+}
+
+/**
+ * Whether an application's recorded pay could satisfy a typed range. This checks overlap
+ * against the relevant band, not containment: a query for 120,000 to 150,000 should catch a
+ * 100,000-130,000 band, the same way `compensationGapFor` treats an overlapping band as
+ * "within target" rather than short — one policy for what "a band matches a number" means,
+ * used both places.
+ *
+ * A row with no band for the selected stage never matches: silence is not an answer to a
+ * question about a number, the same reason `compensationSortValue` returns `null` for it
+ * rather than a sentinel.
+ */
+export function matchesCompensationRange(
+  application: Application,
+  filter: CompensationRangeFilter,
+): boolean {
+  const min = filterBound(filter.min);
+  const max = filterBound(filter.max);
+  if (min === null && max === null) return true;
+
+  const stages = filter.stage === "any" ? COMPENSATION_STAGE_IDS : [filter.stage];
+  return stages.some((stage) => {
+    const band = application.compensation[stage];
+    if (!band) return false;
+    if (min !== null && band.max < min) return false;
+    if (max !== null && band.min > max) return false;
+    return true;
+  });
 }

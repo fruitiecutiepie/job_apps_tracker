@@ -1045,6 +1045,17 @@ tbody tr:hover {
   outline: none;
 }
 
+.table-compensation-filter {
+  display: grid;
+  gap: var(--s2);
+}
+
+.table-compensation-filter__bounds {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--s2);
+}
+
 .table-col-header input,
 .table-col-header select {
   min-height: 28px;

@@ -75,6 +75,19 @@ export function formatCompensationAmount(amount: number): string {
   return amountFormatter.format(amount)
 }
 
+/**
+ * A typed amount as a person writes it — thousands separators and spaces are how a salary
+ * gets written — read back into the number it names. `null` for a blank box; `NaN` for text
+ * that is not a number at all, so a caller can tell "empty" apart from "wrong". The editor's
+ * amount boxes and the table's range filter both need this, and reading a written amount the
+ * same way in both places is the same rule as formatting one the same way in both.
+ */
+export function parseTypedAmount(text: string): number | null {
+  const cleaned = text.replace(/[\s,]/g, '')
+  if (!cleaned) return null
+  return Number(cleaned)
+}
+
 /** A record with nothing filled in. A fresh object each call, so no two records alias one. */
 export function emptyCompensation(): Compensation {
   return { currency: null, advertised: null, expected: null, offered: null }

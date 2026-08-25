@@ -1,11 +1,17 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain";
+import { COMPENSATION_CONFIG, SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain";
 import type { Application, StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import { CompleteActionButton } from "./CompleteActionButton";
 import { InviteSummaries, inviteFilterText } from "./InviteSummaries";
 import { StageNotesButton } from "./StageNotesButton";
-import { compensationSortValue, compensationText } from "./compensation";
+import {
+  compensationSortValue,
+  compensationText,
+  matchesCompensationRange,
+  type CompensationFilterStage,
+  type CompensationRangeFilter,
+} from "./compensation";
 import type { MovableApplicationsViewProps } from "./types";
 import { describePreference, preferenceFor, type PreferenceScore } from "./preference";
 import { rankByUrgency, type UrgencyRanking } from "./urgency";
@@ -77,6 +83,10 @@ function estimateTextWidth(characterCount: number): number {
   return Math.round(characterCount * CHAR_WIDTH_PX + CELL_HORIZONTAL_PADDING);
 }
 
+/** The column filters that are one plain text box. State is its own select, and
+ * compensation is a stage plus a min/max range, so both are excluded here. */
+type TextFilterField = Exclude<keyof ColumnFilters, "state" | "compensation">;
+
 interface ColumnFilters {
   company: string;
   role: string;
@@ -87,7 +97,7 @@ interface ColumnFilters {
   deadline_at: string;
   urgency: string;
   preference: string;
-  compensation: string;
+  compensation: CompensationRangeFilter;
   attachments: string;
   created_at: string;
   updated_at: string;
@@ -103,7 +113,7 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
   deadline_at: "",
   urgency: "",
   preference: "",
-  compensation: "",
+  compensation: { stage: "any", min: "", max: "" },
   attachments: "",
   created_at: "",
   updated_at: "",
@@ -113,8 +123,6 @@ const stateOrder = new Map(STATE_CONFIG.map((state, index) => [state.id, index])
 
 type UrgencyLookup = ReadonlyMap<string, UrgencyRanking>;
 type PreferenceLookup = ReadonlyMap<string, PreferenceScore>;
-/** Rendered compensation text, absent for the rows that have none. */
-type CompensationLookup = ReadonlyMap<string, string>;
 
 const UNRANKED_SCORE = -1;
 
@@ -160,7 +168,6 @@ function matchesColumnFilters(
   filters: ColumnFilters,
   urgency: UrgencyLookup,
   preference: PreferenceLookup,
-  compensation: CompensationLookup,
 ): boolean {
   if (filters.state !== "all" && application.state !== filters.state) return false;
   if (!includesQuery(application.company, filters.company)) return false;
@@ -178,7 +185,7 @@ function matchesColumnFilters(
   if (!includesQuery(describePreference(preference.get(application.id) ?? null), filters.preference)) {
     return false;
   }
-  if (!includesQuery(compensation.get(application.id) ?? "", filters.compensation)) return false;
+  if (!matchesCompensationRange(application, filters.compensation)) return false;
   if (!includesQuery(application.attachments.map((attachment) => attachment.filename).join(" "), filters.attachments)) {
     return false;
   }
@@ -215,7 +222,9 @@ function columnFiltersAreActive(filters: ColumnFilters): boolean {
         filters.deadline_at.trim() ||
         filters.urgency.trim() ||
         filters.preference.trim() ||
-        filters.compensation.trim() ||
+        filters.compensation.stage !== "any" ||
+        filters.compensation.min.trim() ||
+        filters.compensation.max.trim() ||
         filters.attachments.trim() ||
         filters.created_at.trim() ||
         filters.updated_at.trim(),
@@ -320,7 +329,7 @@ export function TableView({
   const visibleApplications = useMemo(() => {
     return applications
       .filter((application) =>
-        matchesColumnFilters(application, filters, urgencyById, preferenceById, compensationById),
+        matchesColumnFilters(application, filters, urgencyById, preferenceById),
       )
       .sort((left, right) => {
         const leftValue = comparableValue(left, sortField, urgencyById, preferenceById);
@@ -343,7 +352,7 @@ export function TableView({
               });
         return sortDirection === "ascending" ? result : -result;
       });
-  }, [applications, compensationById, filters, preferenceById, sortDirection, sortField, urgencyById]);
+  }, [applications, filters, preferenceById, sortDirection, sortField, urgencyById]);
 
   const setSort = (field: SortField) => {
     if (field === sortField) {
@@ -363,12 +372,12 @@ export function TableView({
     }
   };
 
-  const setTextFilter = (field: keyof Omit<ColumnFilters, "state">, value: string) => {
+  const setTextFilter = (field: TextFilterField, value: string) => {
     setFilters((current) => ({ ...current, [field]: value }));
   };
 
   const textFilter = (
-    field: keyof Omit<ColumnFilters, "state">,
+    field: TextFilterField,
     label: string,
     suggestions?: readonly string[],
   ) => {
@@ -393,6 +402,57 @@ export function TableView({
       </>
     );
   };
+
+  const compensationFilter = () => (
+    <div className="table-compensation-filter">
+      <select
+        aria-label="Filter Compensation column by stage"
+        onChange={(event) =>
+          setFilters((current) => ({
+            ...current,
+            compensation: {
+              ...current.compensation,
+              stage: event.target.value as CompensationFilterStage,
+            },
+          }))
+        }
+        value={filters.compensation.stage}
+      >
+        <option value="any">Any stage</option>
+        {COMPENSATION_CONFIG.map(({ id, label }) => (
+          <option key={id} value={id}>
+            {label}
+          </option>
+        ))}
+      </select>
+      <div className="table-compensation-filter__bounds">
+        <input
+          aria-label="Filter Compensation column, minimum"
+          inputMode="numeric"
+          onChange={(event) =>
+            setFilters((current) => ({
+              ...current,
+              compensation: { ...current.compensation, min: event.target.value },
+            }))
+          }
+          placeholder="Min"
+          value={filters.compensation.min}
+        />
+        <input
+          aria-label="Filter Compensation column, maximum"
+          inputMode="numeric"
+          onChange={(event) =>
+            setFilters((current) => ({
+              ...current,
+              compensation: { ...current.compensation, max: event.target.value },
+            }))
+          }
+          placeholder="Max"
+          value={filters.compensation.max}
+        />
+      </div>
+    </div>
+  );
 
   const headerCell = (label: string, control: ReactNode, column: ColumnKey, field?: SortField) => (
     <th scope="col" aria-sort={field ? (sortField === field ? sortDirection : "none") : undefined}>
@@ -523,7 +583,7 @@ export function TableView({
               )}
               {headerCell(
                 "Compensation",
-                textFilter("compensation", "Compensation"),
+                compensationFilter(),
                 "compensation",
                 "compensation",
               )}
