@@ -154,6 +154,29 @@ export function sectionHeadingLine(root: Section, key: string | null): number | 
   return find(root)
 }
 
+/**
+ * The section a line of the source falls inside: the last heading written at or before it.
+ * Null when the note opens with writing above its first heading, which is where the note
+ * genuinely is in no section at all.
+ *
+ * What the outline follows while a note is being written, where there is nothing rendered
+ * to read a scroll position off and the caret is what says where the writer is.
+ */
+export function sectionAtLine(root: Section, line: number): string | null {
+  let found: string | null = null
+
+  // Depth first, which is the order the headings are written in.
+  const walk = (section: Section) => {
+    for (const child of section.children) {
+      if (child.heading && child.heading.line <= line) found = child.key
+      walk(child)
+    }
+  }
+  walk(root)
+
+  return found
+}
+
 export function blockText(blocks: BlockNode[]): string {
   return blocks
     .map((block) => {

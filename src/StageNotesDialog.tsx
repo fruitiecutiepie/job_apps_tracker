@@ -20,12 +20,13 @@ import {
   outlineTree,
   parseMarkdown,
   searchNote,
+  sectionAtLine,
   sectionHeadingLine,
   sectionPath,
   type OutlineNode,
 } from './markdown'
 import { FindWidget } from './FindWidget'
-import { jumpToLine } from './noteEditorJump'
+import { jumpToLine, lineAtOffset } from './noteEditorJump'
 import { headingAtScrollTop, readingTopLine } from './noteScrollSpy'
 import { StageNotePane } from './StageNotePane'
 import { stageNotePanelId, stageTabId } from './stageNoteIds'
@@ -654,14 +655,20 @@ export function StageNotesDialog({
   const trail = useMemo(() => sectionPath(activeSection, trailKey), [activeSection, trailKey])
   const trailKeys = useMemo(() => new Set(trail.map((entry) => entry.key)), [trail])
 
+  /** Whether the pane the outline and breadcrumbs describe is being written in. */
+  const editingActive = editing.includes(activeStage) && !sessions[activeStage]
+
   /**
    * Tracks the last heading scrolled past in the focused pane, for the breadcrumbs. Read
    * from layout rather than from the outline, because a folded heading is not on screen
    * to be inside. Each pane scrolls on its own, so this watches one of them.
+   *
+   * Stands aside while that pane is being written in: there are no rendered headings to
+   * read a position off then, and the caret below says where the writer is instead.
    */
   useEffect(() => {
     const container = paneRefs.current[paneIndex]
-    if (!container) return
+    if (!container || editingActive) return
 
     let frame = 0
     const update = () => {
@@ -689,7 +696,43 @@ export function StageNotesDialog({
       container.removeEventListener('scroll', onScroll)
       if (frame) cancelAnimationFrame(frame)
     }
-  }, [activeBody, activeStage, editing, paneIndex])
+  }, [activeBody, activeStage, editing, editingActive, paneIndex])
+
+  /**
+   * Follows the caret while a note is being written, so the outline keeps saying which
+   * part is being worked on rather than freezing wherever the editor was opened.
+   *
+   * `selectionchange` on the document is what reports a textarea caret moving, whichever
+   * way it was moved — typed, arrowed, clicked, or set by a jump from the outline.
+   */
+  useEffect(() => {
+    if (!editingActive) return
+    const container = paneRefs.current[paneIndex]
+    const editor = container?.querySelector<HTMLTextAreaElement>('.stage-note__editor textarea')
+    if (!editor) return
+
+    let frame = 0
+    const update = () => {
+      frame = 0
+      // Only while the writing itself has the caret: the capture line at the foot of a
+      // pane is a textarea too, and typing into it says nothing about the note above.
+      if (document.activeElement !== editor) return
+      setTrailKey(sectionAtLine(activeSection, lineAtOffset(editor.value, editor.selectionStart)))
+    }
+    const onChange = () => {
+      if (!frame) frame = requestAnimationFrame(update)
+    }
+
+    document.addEventListener('selectionchange', onChange)
+    editor.addEventListener('input', onChange)
+    // Deferred rather than called here, so no state is set during the effect itself.
+    frame = requestAnimationFrame(update)
+    return () => {
+      document.removeEventListener('selectionchange', onChange)
+      editor.removeEventListener('input', onChange)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [activeBody, activeSection, editingActive, paneIndex])
 
   const jumpToSection = (key: string) => {
     // A folded ancestor keeps the target heading out of the DOM entirely, so the scroll

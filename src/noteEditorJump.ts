@@ -20,6 +20,20 @@ export function lineStartOffset(text: string, line: number): number {
   return offset
 }
 
+/**
+ * Which line `offset` falls on. The other way round from `lineStartOffset`, for reading
+ * the caret back out of the editor as it is moved and typed in.
+ */
+export function lineAtOffset(text: string, offset: number): number {
+  const end = Math.min(Math.max(offset, 0), text.length)
+
+  let line = 0
+  for (let index = 0; index < end; index += 1) {
+    if (text[index] === '\n') line += 1
+  }
+  return line
+}
+
 /** Where `line` ends, so the heading can be shown selected rather than as a bare caret. */
 export function lineEndOffset(text: string, line: number): number {
   const start = lineStartOffset(text, line)

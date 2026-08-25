@@ -805,6 +805,54 @@ describe('job applications tracker', () => {
     })
   })
 
+  it('follows the caret through the outline while the note is being written', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    const editor = within(dialog).getByRole('textbox', {
+      name: 'Interview 2 prep notes',
+    }) as HTMLTextAreaElement
+
+    // Writing under the first heading marks it, wherever the editor was opened.
+    const themes = editor.value.indexOf('Growing seniors')
+    await user.type(editor, 'x', {
+      initialSelectionStart: themes,
+      initialSelectionEnd: themes,
+    })
+    await waitFor(() => {
+      expect(
+        within(dialog).getByRole('button', { name: 'Go to Leadership themes' }),
+      ).toHaveAttribute('aria-current', 'true')
+    })
+
+    // Moving on to the next section moves the outline with it.
+    const questions = editor.value.indexOf('How is platform work')
+    await user.type(editor, 'y', {
+      initialSelectionStart: questions,
+      initialSelectionEnd: questions,
+    })
+    await waitFor(() => {
+      expect(within(dialog).getByRole('button', { name: 'Go to Questions to ask' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      )
+    })
+    expect(
+      within(dialog).getByRole('button', { name: 'Go to Leadership themes' }),
+    ).not.toHaveAttribute('aria-current')
+
+    // And above the first heading the note is in no section at all.
+    await user.type(editor, 'z', { initialSelectionStart: 0, initialSelectionEnd: 0 })
+    await waitFor(() => {
+      expect(
+        within(dialog).getByRole('button', { name: 'Go to Questions to ask' }),
+      ).not.toHaveAttribute('aria-current')
+    })
+  })
+
   it('drops a pane whose stage stops being open while the panel is up', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
