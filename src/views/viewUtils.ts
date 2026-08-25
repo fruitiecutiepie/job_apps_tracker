@@ -1,16 +1,8 @@
-import { rejectedStateFor, STATE_CONFIG } from "../domain";
+import { isRejectedState, rejectedStateFor, STATE_CONFIG } from "../domain";
 import type { Application, StateEvent, StateId } from "../domain";
 
 export interface KanbanColumnGroup {
   lanes: StateId[];
-}
-
-const REJECTED_COUNTERPARTS = new Set(
-  STATE_CONFIG.map(({ id }) => rejectedStateFor(id)).filter((id): id is StateId => id !== null),
-);
-
-export function isRejectedState(state: StateId): boolean {
-  return REJECTED_COUNTERPARTS.has(state);
 }
 
 export function kanbanColumnGroups(visibleStates?: readonly StateId[]): KanbanColumnGroup[] {

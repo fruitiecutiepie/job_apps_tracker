@@ -50,3 +50,47 @@ export function rejectedStateFor(state: StateId): StateId | null {
   const counterpart = `${state}_rejected`
   return isStateId(counterpart) ? counterpart : null
 }
+
+/**
+ * The rejected states are exactly the counterparts of the states that have one, which is
+ * what keeps this in step with STATE_CONFIG rather than restating it as a second list.
+ * Note what is not here: `no_openings` and `accepted` are outcomes of their own, not
+ * somebody turning the application down.
+ */
+const REJECTED_STATES = new Set<StateId>(
+  STATE_CONFIG.map(({ id }) => rejectedStateFor(id)).filter((id): id is StateId => id !== null),
+)
+
+export function isRejectedState(state: StateId): boolean {
+  return REJECTED_STATES.has(state)
+}
+
+export const REJECTED_STATE_IDS = Object.freeze(
+  STATE_IDS.filter(isRejectedState),
+) as readonly StateId[]
+
+export const NOT_REJECTED_STATE_IDS = Object.freeze(
+  STATE_IDS.filter((id) => !isRejectedState(id)),
+) as readonly StateId[]
+
+/**
+ * What the state filter can be set to: one state, one of the two outcome groups, or all.
+ * The groups share the control rather than adding one of their own — they answer the same
+ * question a single state does, so picking both at once was never meaningful.
+ */
+export type StateFilter = StateId | 'all' | 'rejected' | 'not_rejected'
+
+export function stateFilterMatches(filter: StateFilter, state: StateId): boolean {
+  if (filter === 'all') return true
+  if (filter === 'rejected') return isRejectedState(state)
+  if (filter === 'not_rejected') return !isRejectedState(state)
+  return state === filter
+}
+
+/** The states a filter admits, or undefined for the filter that admits every one. */
+export function statesForFilter(filter: StateFilter): readonly StateId[] | undefined {
+  if (filter === 'all') return undefined
+  if (filter === 'rejected') return REJECTED_STATE_IDS
+  if (filter === 'not_rejected') return NOT_REJECTED_STATE_IDS
+  return [filter]
+}

@@ -135,6 +135,8 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   laid over that trigger at zero opacity. It must remain a real focusable `combobox` named
   `Move {company} to state` — it is the accessible and touch fallback for drag-and-drop.
 - All six views consume the same application collection and respect app-wide search, state, company, and source filters.
+- The state filter takes a single state or one of two outcome groups, `rejected` and `not_rejected`. `StateFilter`, `stateFilterMatches` and `statesForFilter` in `src/domain/states.ts` are the only source for what each admits; the Kanban's `visibleStates` comes from the same helper. The groups share the state control rather than adding one beside it, because pairing them with a single state selects nothing.
+- `isRejectedState` lives in `src/domain/states.ts` and derives from `rejectedStateFor`, so it stays in step with `STATE_CONFIG`. `no_openings` and `accepted` are not rejections.
 - The source filter lists only sources applications actually carry, not `SOURCE_SUGGESTIONS`: an unused suggestion would filter to nothing.
 - Copy roles writes the roles of the filtered collection, deduplicated, one per line. It copies what is showing, so narrowing the filters is how you narrow the copy.
 - `onCompleteAction` is required on `ApplicationsViewProps` rather than optional, so a new task-bearing view cannot silently forget to wire it. Views with no task row simply ignore it.

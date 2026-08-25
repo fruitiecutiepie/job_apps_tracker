@@ -20,6 +20,8 @@ import {
 import {
   SOURCE_SUGGESTIONS,
   STATE_CONFIG,
+  statesForFilter,
+  stateFilterMatches,
   STATE_LABELS,
   addApplication,
   clearLegacyLocalStorage,
@@ -58,6 +60,7 @@ import {
   type CompletedActionDraft,
   type StageNoteDraft,
   type StateEventDraft,
+  type StateFilter,
   type StateId,
   type TrackerDocument,
 } from './domain'
@@ -632,7 +635,7 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<ViewId>('kanban')
   const [search, setSearch] = useState('')
-  const [stateFilter, setStateFilter] = useState<StateId | 'all'>('all')
+  const [stateFilter, setStateFilter] = useState<StateFilter>('all')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
   const [editor, setEditor] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
@@ -767,7 +770,7 @@ export default function App() {
     const applications = tracker?.applications ?? []
     const searchText = tracker?.indexes.search_text ?? {}
     return applications.filter((application) => {
-      if (stateFilter !== 'all' && application.state !== stateFilter) return false
+      if (!stateFilterMatches(stateFilter, application.state)) return false
       if (companyFilter !== 'all' && application.company !== companyFilter) return false
       if (sourceFilter !== 'all' && application.source?.trim() !== sourceFilter) return false
       if (!query) return true
@@ -913,7 +916,7 @@ export default function App() {
           <KanbanView
             {...shared}
             onMove={move}
-            visibleStates={stateFilter === 'all' ? undefined : [stateFilter]}
+            visibleStates={statesForFilter(stateFilter)}
           />
         )
     }
@@ -1080,11 +1083,23 @@ export default function App() {
           <div className="context-bar__filters">
             <select
               aria-label="Filter by state"
-              onChange={(event) => setStateFilter(event.target.value as StateId | 'all')}
+              onChange={(event) => setStateFilter(event.target.value as StateFilter)}
               value={stateFilter}
             >
               <option value="all">All states</option>
-              {STATE_CONFIG.map((state) => <option key={state.id} value={state.id}>{state.label}</option>)}
+              {/*
+                * The two outcome groups share this control rather than adding one beside
+                * it: they answer the same question a single state does, so a bar holding
+                * both would offer combinations — Offer and rejected — that select nothing.
+                * Grouped so "Rejected" is not read as a nineteenth state.
+                */}
+              <optgroup label="By outcome">
+                <option value="rejected">Rejected</option>
+                <option value="not_rejected">Not rejected</option>
+              </optgroup>
+              <optgroup label="By state">
+                {STATE_CONFIG.map((state) => <option key={state.id} value={state.id}>{state.label}</option>)}
+              </optgroup>
             </select>
             <select
               aria-label="Filter by company"

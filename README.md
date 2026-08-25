@@ -250,7 +250,7 @@ exchange rates to keep, which is why every cell names its currency first.
 - **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved. When the current state has a rejected counterpart, **Move to Rejected** records that outcome and keeps the history.
 - **Statistics** compares current state counts with counts for every state applications have previously reached, then summarises your ratings: how many applications you have rated, the mean preference across them, and one row per dimension showing what you judged, what you could not tell, what you never assessed, and the mean of the judgements.
 
-The global search, state, company, and source filters apply across views. **Copy roles** puts the roles of whatever is showing on the clipboard, one per line and without repeats—so filtering to Applied at one company from LinkedIn and pressing it copies exactly those roles. Dates, calendar days, overdue status, and stale thresholds use your browser's timezone.
+The global search, state, company, and source filters apply across views. The state filter also takes an outcome—**Rejected** or **Not rejected**—which stands for every rejection at once, or everything that is not one. Neither `Accepted` nor `No openings` counts as a rejection: they are outcomes of their own rather than somebody turning the application down. **Copy roles** puts the roles of whatever is showing on the clipboard, one per line and without repeats—so filtering to Applied at one company from LinkedIn and pressing it copies exactly those roles. Dates, calendar days, overdue status, and stale thresholds use your browser's timezone.
 
 ### Back up or replace data
 

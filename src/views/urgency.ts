@@ -1,8 +1,7 @@
-import { STATE_CONFIG } from "../domain";
+import { isRejectedState, STATE_CONFIG } from "../domain";
 import type { Application, StateId } from "../domain";
 import {
   applicationAgeInDays,
-  isRejectedState,
   localDayNumber,
   parseTimestamp,
   upcomingStateEvent,

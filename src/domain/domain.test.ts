@@ -32,6 +32,11 @@ import {
   RATING_IDS,
   rebuildIndexes,
   rejectedStateFor,
+  isRejectedState,
+  statesForFilter,
+  stateFilterMatches,
+  REJECTED_STATE_IDS,
+  NOT_REJECTED_STATE_IDS,
   removeAttachment,
   editorUrlFor,
   looksLikeRemoteHost,
@@ -104,6 +109,49 @@ describe('state configuration and demo content', () => {
     expect(STATE_IDS.map((id) => [id, rejectedStateFor(id)])).toEqual(
       STATE_IDS.map((id) => [id, expected[id]]),
     )
+  })
+
+  it('counts every rejected counterpart as a rejection, and nothing else', () => {
+    expect(STATE_IDS.filter(isRejectedState)).toEqual([...REJECTED_STATE_IDS])
+    expect(REJECTED_STATE_IDS).toEqual([
+      'auto_rejected',
+      'recruiter_messaged_rejected',
+      'online_assessment_rejected',
+      'recruiter_interview_rejected',
+      'take_home_assessment_rejected',
+      'interview_1_rejected',
+      'interview_2_rejected',
+      'offer_rejected',
+    ])
+    // Ending badly is not the same as being rejected: both of these are the tracker's
+    // own outcomes, and neither is somebody turning the application down.
+    expect(isRejectedState('no_openings')).toBe(false)
+    expect(isRejectedState('accepted')).toBe(false)
+  })
+
+  it('splits the states into rejected and not, with nothing in both or neither', () => {
+    expect([...REJECTED_STATE_IDS, ...NOT_REJECTED_STATE_IDS].sort()).toEqual([...STATE_IDS].sort())
+    expect(REJECTED_STATE_IDS.some((id) => NOT_REJECTED_STATE_IDS.includes(id))).toBe(false)
+    expect(NOT_REJECTED_STATE_IDS).toContain('accepted')
+    expect(NOT_REJECTED_STATE_IDS).toContain('no_openings')
+  })
+
+  it('matches a state filter by outcome as well as by single state', () => {
+    expect(STATE_IDS.filter((id) => stateFilterMatches('all', id))).toEqual([...STATE_IDS])
+    expect(STATE_IDS.filter((id) => stateFilterMatches('rejected', id))).toEqual([
+      ...REJECTED_STATE_IDS,
+    ])
+    expect(STATE_IDS.filter((id) => stateFilterMatches('not_rejected', id))).toEqual([
+      ...NOT_REJECTED_STATE_IDS,
+    ])
+    expect(STATE_IDS.filter((id) => stateFilterMatches('applied', id))).toEqual(['applied'])
+  })
+
+  it('names the states a filter shows, and nothing for the one that shows them all', () => {
+    expect(statesForFilter('all')).toBeUndefined()
+    expect(statesForFilter('rejected')).toEqual([...REJECTED_STATE_IDS])
+    expect(statesForFilter('not_rejected')).toEqual([...NOT_REJECTED_STATE_IDS])
+    expect(statesForFilter('offer')).toEqual(['offer'])
   })
 
   it('creates one useful example in every state', () => {

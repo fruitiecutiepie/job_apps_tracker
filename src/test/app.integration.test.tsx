@@ -179,6 +179,44 @@ describe('job applications tracker', () => {
     expect(savedDocument.applications).toHaveLength(19)
   })
 
+  it('filters to every rejection at once, and to everything that is not one', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    const stateFilter = screen.getByLabelText('Filter by state')
+
+    await user.selectOptions(stateFilter, 'rejected')
+    // Eight states record a rejection, one application in each.
+    expect(screen.getByText('8 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Offer — Rejected' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Offer' })).not.toBeInTheDocument()
+
+    await user.selectOptions(stateFilter, 'not_rejected')
+    expect(screen.getByText('11 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Offer' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Offer — Rejected' })).not.toBeInTheDocument()
+    // Neither is a rejection, so both survive a filter that only removes them.
+    expect(screen.getByRole('heading', { name: 'Accepted' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'No openings' })).toBeInTheDocument()
+
+    expect(readSavedDocument().applications).toHaveLength(19)
+  })
+
+  it('copies the roles of a whole outcome, not just one state', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.selectOptions(screen.getByLabelText('Filter by state'), 'rejected')
+    await user.selectOptions(screen.getByLabelText('Filter by source'), 'LinkedIn')
+    await user.click(screen.getByRole('button', { name: 'Copy roles' }))
+
+    expect((await navigator.clipboard.readText()).split('\n').sort()).toEqual([
+      'Platform Engineer',
+      'Product Designer',
+      'Senior Data Scientist',
+    ])
+  })
+
   it('filters views by company without changing saved applications', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
