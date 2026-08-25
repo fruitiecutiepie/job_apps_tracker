@@ -246,9 +246,12 @@ export function StageNotePane({
           <StageNoteEditor
             // Only the focused pane may take the caret, or two panes would fight over it.
             autoFocus={isFocused}
+            currentMatch={currentMatch}
             key={state}
             label={label}
+            matchBase={matchBase}
             onChange={onChange}
+            query={query}
             sourceId={state}
             value={body}
           />

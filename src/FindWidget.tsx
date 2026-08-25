@@ -34,6 +34,16 @@ export function FindWidget({
     inputRef.current?.select()
   }, [])
 
+  /**
+   * Stepping never leaves the query behind. Clicking a step button would otherwise take
+   * focus to the button, so the next Enter would repeat that click rather than step, and
+   * a search carried on from the keyboard would need the box clicking again first.
+   */
+  const step = (move: () => void) => {
+    move()
+    inputRef.current?.focus()
+  }
+
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'Escape') {
       event.preventDefault()
@@ -72,7 +82,7 @@ export function FindWidget({
         aria-label="Previous match"
         className="icon-button find-widget__step"
         disabled={total === 0}
-        onClick={onPrevious}
+        onClick={() => step(onPrevious)}
         type="button"
       >
         <ChevronUp aria-hidden="true" size={16} />
@@ -81,7 +91,7 @@ export function FindWidget({
         aria-label="Next match"
         className="icon-button find-widget__step"
         disabled={total === 0}
-        onClick={onNext}
+        onClick={() => step(onNext)}
         type="button"
       >
         <ChevronDown aria-hidden="true" size={16} />

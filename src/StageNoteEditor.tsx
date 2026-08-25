@@ -1,5 +1,6 @@
-import { useRef } from 'react'
+import { useMemo, useRef } from 'react'
 import { Bold, Heading2, Italic, List } from 'lucide-react'
+import { splitMatches } from './markdown'
 
 interface StageNoteEditorProps {
   label: string
@@ -11,6 +12,12 @@ interface StageNoteEditorProps {
    * holds source rather than highlights, so a match is shown by selecting it here.
    */
   sourceId?: string
+  /** The find's query. Its matches are painted on the layer behind the text. */
+  query?: string
+  /** Where this note's matches start in the panel's list, so a mark can be named. */
+  matchBase?: number
+  /** The ordinal of the match the find is sitting on, in that same list. */
+  currentMatch?: number | null
 }
 
 interface Format {
@@ -70,8 +77,37 @@ export function StageNoteEditor({
   onChange,
   autoFocus,
   sourceId,
+  query = '',
+  matchBase = 0,
+  currentMatch = null,
 }: StageNoteEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
+  const marksRef = useRef<HTMLDivElement>(null)
+
+  /*
+   * A textarea cannot carry a highlight, and an unfocused one paints no selection either,
+   * so the find would have nothing to show while the caret stays in its box. This layer
+   * sits behind the text holding the same characters, transparent apart from the matches,
+   * which is what makes them visible. It only mirrors while a query is running.
+   */
+  const marks = useMemo(() => {
+    if (!query) return null
+    let ordinal = matchBase
+    return splitMatches(value, query).map((segment, index) => {
+      if (!segment.isMatch) return <span key={index}>{segment.text}</span>
+      const id = ordinal
+      ordinal += 1
+      return (
+        <mark
+          className={`markdown__match${id === currentMatch ? ' markdown__match--current' : ''}`}
+          data-source-match-id={id}
+          key={index}
+        >
+          {segment.text}
+        </mark>
+      )
+    })
+  }, [currentMatch, matchBase, query, value])
 
   const format = (entry: Format) => {
     const textarea = textareaRef.current
@@ -104,18 +140,38 @@ export function StageNoteEditor({
           </button>
         ))}
       </div>
-      <label className="field">
-        <span className="sr-only">{label} prep notes</span>
-        <textarea
-          autoFocus={autoFocus}
-          data-note-source={sourceId}
-          onChange={(event) => onChange(event.target.value)}
-          placeholder="Questions to ask, stories to tell, names to remember…"
-          ref={textareaRef}
-          rows={8}
-          value={value}
-        />
-      </label>
+      {/*
+        The mirror sits outside the label, not inside it. A label names its control by its
+        content, so a mirror within it would read the whole note out as the box's name.
+        Hidden from assistive tech for the same reason it is transparent: it is the same
+        characters as the box in front of it, and announcing them twice helps nobody. The
+        trailing line break keeps a note ending in a newline as tall as its mirror.
+      */}
+      <div className="stage-note__source">
+        <div aria-hidden="true" className="stage-note__marks" ref={marksRef}>
+          {marks}
+          {'\n'}
+        </div>
+        <label className="field">
+          <span className="sr-only">{label} prep notes</span>
+          <textarea
+            autoFocus={autoFocus}
+            data-note-source={sourceId}
+            onChange={(event) => onChange(event.target.value)}
+            // The mirror behind the box only lines up while it is scrolled with it.
+            onScroll={(event) => {
+              const layer = marksRef.current
+              if (!layer) return
+              layer.scrollTop = event.currentTarget.scrollTop
+              layer.scrollLeft = event.currentTarget.scrollLeft
+            }}
+            placeholder="Questions to ask, stories to tell, names to remember…"
+            ref={textareaRef}
+            rows={8}
+            value={value}
+          />
+        </label>
+      </div>
       <p className="stage-note__hint">
         Markdown: <code>##</code> heading, <code>-</code> bullet (indent to nest),
         {' '}<code>&gt;</code> quote (<code>&gt;&gt;</code> to nest one inside another),

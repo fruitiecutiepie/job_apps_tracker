@@ -779,11 +779,16 @@ describe('job applications tracker', () => {
     // Typing must not take the caret out of the find box and into the note.
     expect(document.activeElement).toBe(within(dialog).getByLabelText('Find in notes'))
 
-    // Stepping puts it on the match, which a textarea shows by selecting rather than
-    // by carrying a highlight.
+    // Stepping marks the match on the layer behind the box, and leaves the caret in the
+    // find bar so Enter keeps stepping.
+    const find = within(dialog).getByLabelText('Find in notes')
     await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
-    await waitFor(() => expect(document.activeElement).toBe(box))
-    expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe('leads')
+    expect(within(dialog).getByText('leads', { selector: 'mark' })).toBeInTheDocument()
+    // Selected all the same, so clicking into the box lands on the hit. Set a frame later
+    // than the mark, because the step may have just moved this stage into a pane.
+    await waitFor(() => expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe('leads'))
+    // And the caret never left the find bar, so Enter goes on stepping.
+    expect(document.activeElement).toBe(find)
   })
 
   it('numbers a written note and its captured lines as one list while it is being edited', async () => {
@@ -809,12 +814,14 @@ describe('job applications tracker', () => {
     expect(within(dialog).getByText('2 of 2')).toBeInTheDocument()
     expect(within(dialog).getAllByText('leads').some((node) => node.tagName === 'MARK')).toBe(true)
 
-    // Wrapping back reaches the source match, which is shown by selecting it instead.
+    // Wrapping back reaches the source match, marked on the layer behind the box.
     const box = within(dialog).getByLabelText('Interview 2 prep notes') as HTMLTextAreaElement
     await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
     expect(within(dialog).getByText('1 of 2')).toBeInTheDocument()
-    await waitFor(() => expect(document.activeElement).toBe(box))
-    expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe('leads')
+    await waitFor(() =>
+      expect(box.value.slice(box.selectionStart, box.selectionEnd)).toBe('leads'),
+    )
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Find in notes'))
   })
 
   it('reveals a match inside a folded section, and refolds it when the find closes', async () => {

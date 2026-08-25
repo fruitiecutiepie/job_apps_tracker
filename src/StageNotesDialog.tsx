@@ -545,16 +545,21 @@ export function StageNotesDialog({
   }
 
   /**
-   * Puts the caret on a match that lives in a note being written. A textarea carries no
-   * highlight to scroll to, so the match is selected instead — which is where someone
-   * searching a note they are editing wants to be anyway.
+   * Brings a match that lives in a note being written into view. Focus stays in the find
+   * bar so Enter keeps stepping, which means the box paints no selection of its own —
+   * the highlight layer behind it is what shows the match, and this only has to scroll
+   * the box to it. The mark on that layer is where its position is read from: measuring
+   * a character offset in a textarea is otherwise guesswork.
+   *
+   * The selection is set all the same, unfocused and invisible, so clicking into the box
+   * afterwards puts the caret on the hit rather than wherever it last was.
    *
    * Deferred a frame because the step may have just moved that stage into a pane. Done
    * from the step rather than from an effect watching the cursor: typing into the find
-   * box moves the cursor on every keystroke, and following it there would take the caret
-   * out of the box mid-word.
+   * box moves the cursor on every keystroke, and following it would scroll the note
+   * about under someone who is still deciding what to search for.
    */
-  const selectInSource = (state: StateId | undefined, position: number) => {
+  const revealInSource = (state: StateId | undefined, position: number) => {
     const found = state ? matches.perStage.get(state) : undefined
     if (!state || !found?.inEditor) return
     const index = position - found.base
@@ -564,12 +569,16 @@ export function StageNotesDialog({
     if (at === undefined) return
 
     requestAnimationFrame(() => {
-      const box = notesRef.current?.querySelector<HTMLTextAreaElement>(
-        `[data-note-source="${state}"]`,
-      )
+      const pane = notesRef.current
+      const box = pane?.querySelector<HTMLTextAreaElement>(`[data-note-source="${state}"]`)
       if (!box) return
-      box.focus()
       box.setSelectionRange(at, at + query.length)
+
+      const mark = pane?.querySelector<HTMLElement>(`[data-source-match-id="${position}"]`)
+      // Guarded: jsdom has no layout, so every offset it reports is 0.
+      if (mark && box.clientHeight > 0) {
+        box.scrollTop = Math.max(0, mark.offsetTop - box.clientHeight / 2)
+      }
     })
   }
 
@@ -581,7 +590,7 @@ export function StageNotesDialog({
     const landing = ((next % matches.total) + matches.total) % matches.total
     const stage = stageOfMatch(landing)
     if (stage) showStage(stage)
-    selectInSource(stage, landing)
+    revealInSource(stage, landing)
   }
 
   /** A new query starts from its first match, in whichever stage that turns out to be. */

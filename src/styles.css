@@ -1829,6 +1829,55 @@ tbody tr:hover {
   white-space: nowrap;
 }
 
+/*
+ * The find's highlight layer, behind the box it mirrors.
+ *
+ * Every property that decides where a character lands has to be the same on both, or the
+ * highlights drift off the words they mark: font, size, line height, wrapping, padding,
+ * and border width. The layer carries the surface colour and the box is transparent over
+ * it, so the marks show through from underneath while the text stays on top. Its own text
+ * is transparent — it exists to be measured and painted behind, never read.
+ */
+.stage-note__source {
+  position: relative;
+  min-height: 0;
+}
+
+.stage-note__marks {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  padding: var(--s3);
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--r1);
+  color: transparent;
+  background: var(--surface);
+  font-size: var(--t3);
+  line-height: 1.5;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+
+.stage-note__source textarea {
+  position: relative;
+  z-index: 1;
+  background: transparent;
+  /*
+   * Wrapping is stated on both sides rather than left to the browser's own textarea
+   * defaults, so the mirror is known to break lines where the box does instead of
+   * matching it only as long as those defaults agree.
+   */
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
+/* A mark under the text is a backdrop, so it must not restyle the text it sits behind. */
+.stage-note__marks .markdown__match {
+  color: transparent;
+}
+
 .stage-note__editor {
   display: grid;
   gap: var(--s3);
