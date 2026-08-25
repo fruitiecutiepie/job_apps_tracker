@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   CalendarDays,
+  CircleCheck,
   ChartNoAxesColumnIncreasing,
   ClipboardCopy,
   Download,
@@ -449,14 +450,43 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
                 value={values.deadlineAt}
               />
             </label>
-            <label className="field">
-              <span>Next action</span>
-              <input
-                onChange={(event) => update('nextAction', event.target.value)}
-                placeholder="Follow up, prepare, send…"
-                value={values.nextAction}
-              />
-            </label>
+            {/*
+              * Done sits on the input's row, beside the action it resolves. The button is a
+              * sibling of the label rather than inside it: a label hands its click to the
+              * first labelable thing it wraps, and nesting an interactive control in there
+              * makes which one you hit depend on the browser.
+              */}
+            <div className="field next-action-field">
+              <label>
+                <span>Next action</span>
+                <input
+                  onChange={(event) => update('nextAction', event.target.value)}
+                  placeholder="Follow up, prepare, send…"
+                  value={values.nextAction}
+                />
+              </label>
+              <button
+                aria-label="Mark next action done"
+                className="button button--quiet"
+                disabled={!values.nextAction.trim()}
+                onClick={() => {
+                  const action = values.nextAction.trim()
+                  if (!action) return
+                  // Draft only: the record is written when the dialog is saved, like every
+                  // other control here, so closing without saving changes nothing.
+                  setCompletedActions((current) => [
+                    ...current,
+                    { key: createUuidV7(), action, at: new Date().toISOString() },
+                  ])
+                  setValues((current) => ({ ...current, nextAction: '', nextActionAt: '' }))
+                }}
+                title={values.nextAction.trim() ? undefined : 'Set a next action to mark one done'}
+                type="button"
+              >
+                <CircleCheck aria-hidden="true" size={14} />
+                <span>Done</span>
+              </button>
+            </div>
             <label className="field">
               <span>Next action date</span>
               <input
@@ -466,22 +496,7 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
                 value={values.nextActionAt}
               />
             </label>
-            <CompletedActionFields
-              nextAction={values.nextAction}
-              onChange={setCompletedActions}
-              onComplete={() => {
-                const action = values.nextAction.trim()
-                if (!action) return
-                // Draft only: the record is written when the dialog is saved, like every
-                // other control here, so closing without saving changes nothing.
-                setCompletedActions((current) => [
-                  ...current,
-                  { key: createUuidV7(), action, at: new Date().toISOString() },
-                ])
-                setValues((current) => ({ ...current, nextAction: '', nextActionAt: '' }))
-              }}
-              rows={completedActions}
-            />
+            <CompletedActionFields onChange={setCompletedActions} rows={completedActions} />
             <label className="field field--wide">
               <span>Notes</span>
               <textarea

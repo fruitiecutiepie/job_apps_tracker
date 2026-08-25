@@ -1687,19 +1687,32 @@ tbody tr:hover {
   color: var(--ink);
 }
 
+/*
+ * The Next action field carries Done on the input's row: label above, then the input and the
+ * button side by side. `align-items: end` lands the button on the input rather than on the
+ * label above it, and the button keeps the form control height so the two read as one row.
+ */
+.next-action-field {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+}
+
+.next-action-field > label {
+  display: grid;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.next-action-field > button {
+  min-height: var(--control-form);
+  white-space: nowrap;
+}
+
 /* ---------------------------------------------------- completed actions --- */
 
 .completed-field {
   display: grid;
   gap: var(--s3);
-}
-
-.completed-field__head {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s2);
 }
 
 .completed-field__list {

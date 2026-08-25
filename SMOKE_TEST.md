@@ -87,8 +87,10 @@ test cannot judge reliably:
    state history, the deadline, and the Notes text are all unchanged.
    Open Saffron Systems and confirm **Completed actions** lists the task you just closed above
    the Notes box, newest first, with today's date and nothing written into Notes itself. Open
-   Atlas Thread, select **Mark next action done**, and confirm the Next action field clears and
-   a row appears — then close without saving and confirm nothing was recorded. Repeat and save,
+   Atlas Thread and confirm **Done** sits on the Next action field's own row, beside the input.
+   Select it, and confirm the Next action field clears, the control greys out with nothing left
+   to resolve, and a row appears below — then close without saving and confirm nothing was
+   recorded. Repeat and save,
    then reopen and confirm it persisted. **Remove** an entry, save, and confirm it is gone and
    that the next action was not restored. Search for the text of a completed action and confirm
    it finds the application.

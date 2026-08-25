@@ -325,10 +325,18 @@ describe('job applications tracker', () => {
     }
     expect(within(dialog).getByLabelText('Notes')).toHaveValue(before.notes)
 
-    await user.click(within(dialog).getByRole('button', { name: 'Mark next action done' }))
+    const done = within(dialog).getByRole('button', { name: 'Mark next action done' })
+    // On the Next action field's own row, beside the task it resolves.
+    const field = done.closest('.next-action-field')
+    expect(field).not.toBeNull()
+    expect(within(field as HTMLElement).getByLabelText('Next action')).toBeInTheDocument()
+
+    await user.click(done)
 
     // Draft only until the dialog is saved: the field clears, the record does not exist yet.
     expect(within(dialog).getByLabelText('Next action')).toHaveValue('')
+    // Nothing left to resolve, so the control cannot record an empty entry.
+    expect(done).toBeDisabled()
     expect(
       readSavedDocument().applications.find((item) => item.id === before.id)!.completed_actions,
     ).toHaveLength(before.completed_actions.length)

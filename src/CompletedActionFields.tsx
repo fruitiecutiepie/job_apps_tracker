@@ -1,5 +1,3 @@
-import { CircleCheck } from 'lucide-react'
-
 import { formatShortDate } from './views/viewUtils'
 
 /**
@@ -16,9 +14,6 @@ export interface CompletedActionRow {
 
 interface CompletedActionFieldsProps {
   rows: CompletedActionRow[]
-  /** The draft next action, so Done knows whether there is anything to resolve. */
-  nextAction: string
-  onComplete: () => void
   onChange: (rows: CompletedActionRow[]) => void
 }
 
@@ -27,34 +22,13 @@ interface CompletedActionFieldsProps {
  * differently: Notes is prose you compose, while these are lines the app writes when you press
  * Done. Newest first — what you did last is what you are most likely to be checking.
  *
- * Done lives here rather than beside the Next action input so that pressing it shows the entry
- * appearing in the list directly below, and because a button inside a field's `label` would
- * fight the label for the click. Nothing is written until the dialog is saved, which is what
- * every other control in this form does.
+ * Read-only apart from Remove. Entries arrive from the Done button on the Next action field,
+ * which is where the task being resolved actually is; this section is where it lands.
  */
-export function CompletedActionFields({
-  rows,
-  nextAction,
-  onComplete,
-  onChange,
-}: CompletedActionFieldsProps) {
-  const pending = nextAction.trim()
-
+export function CompletedActionFields({ rows, onChange }: CompletedActionFieldsProps) {
   return (
     <div className="field field--wide completed-field">
-      <div className="completed-field__head">
-        <span>Completed actions</span>
-        <button
-          className="button button--quiet"
-          disabled={!pending}
-          onClick={onComplete}
-          title={pending ? undefined : 'Set a next action to mark one done'}
-          type="button"
-        >
-          <CircleCheck aria-hidden="true" size={14} />
-          <span>Mark next action done</span>
-        </button>
-      </div>
+      <span>Completed actions</span>
 
       {rows.length === 0 ? (
         <p className="empty-inline">No action has been marked done yet.</p>
