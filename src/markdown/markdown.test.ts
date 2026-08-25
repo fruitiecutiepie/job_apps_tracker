@@ -11,8 +11,8 @@ function asList(block: BlockNode | undefined): ListBlock {
 describe('markdown blocks', () => {
   it('parses headings with their level', () => {
     expect(parseMarkdown('# Panel\n### Questions')).toEqual([
-      { type: 'heading', level: 1, content: [{ type: 'text', value: 'Panel' }] },
-      { type: 'heading', level: 3, content: [{ type: 'text', value: 'Questions' }] },
+      { type: 'heading', level: 1, content: [{ type: 'text', value: 'Panel' }], line: 0 },
+      { type: 'heading', level: 3, content: [{ type: 'text', value: 'Questions' }], line: 1 },
     ])
   })
 

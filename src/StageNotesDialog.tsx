@@ -20,10 +20,12 @@ import {
   outlineTree,
   parseMarkdown,
   searchNote,
+  sectionHeadingLine,
   sectionPath,
   type OutlineNode,
 } from './markdown'
 import { FindWidget } from './FindWidget'
+import { jumpToLine } from './noteEditorJump'
 import { headingAtScrollTop, readingTopLine } from './noteScrollSpy'
 import { StageNotePane } from './StageNotePane'
 import { stageNotePanelId, stageTabId } from './stageNoteIds'
@@ -683,8 +685,25 @@ export function StageNotesDialog({
   useEffect(() => {
     if (!pendingJumpKey) return
     const container = paneRefs.current[paneIndex]
-    const heading = container?.querySelector<HTMLElement>(`[data-section-key="${pendingJumpKey}"]`)
-    if (!container || !heading) return
+    if (!container) return
+
+    /*
+     * A stage open for writing has no rendered headings to scroll to: the heading exists
+     * only as the line it was typed on. Scoped to the editor's own box, because the
+     * capture line at the foot of a pane is a textarea as well.
+     */
+    const editor = container.querySelector<HTMLTextAreaElement>('.stage-note__editor textarea')
+    if (editor) {
+      const line = sectionHeadingLine(activeSection, pendingJumpKey)
+      if (line !== null) jumpToLine(editor, activeBody, line)
+      pickedTrailRef.current = { key: pendingJumpKey, scrollTop: container.scrollTop }
+      setTrailKey(pendingJumpKey)
+      setPendingJumpKey(null)
+      return
+    }
+
+    const heading = container.querySelector<HTMLElement>(`[data-section-key="${pendingJumpKey}"]`)
+    if (!heading) return
     /*
      * A level 1 or 2 heading is sticky, and a pinned one measures — and scrolls — as the
      * line it is stuck to rather than as the place it occupies in the note. Both
@@ -722,7 +741,7 @@ export function StageNotesDialog({
     pickedTrailRef.current = { key: pendingJumpKey, scrollTop: container.scrollTop }
     setTrailKey(pendingJumpKey)
     setPendingJumpKey(null)
-  }, [pendingJumpKey, paneIndex])
+  }, [activeBody, activeSection, pendingJumpKey, paneIndex])
 
   const words = wordCount(activeBody)
 

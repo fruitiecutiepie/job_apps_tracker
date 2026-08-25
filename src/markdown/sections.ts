@@ -9,7 +9,8 @@ import { inlineText, type BlockNode, type InlineNode } from './parseMarkdown'
 
 export interface Section {
   key: string
-  heading: { level: number; content: InlineNode[] } | null
+  /** `line` is where the heading is written in the source, for jumping to it in the editor. */
+  heading: { level: number; content: InlineNode[]; line: number } | null
   blocks: BlockNode[]
   children: Section[]
 }
@@ -33,7 +34,7 @@ export function buildSections(blocks: BlockNode[]): Section {
       const parent = stack[stack.length - 1]
       const section: Section = {
         key: `${parent.key}.h${counter}`,
-        heading: { level: block.level, content: block.content },
+        heading: { level: block.level, content: block.content, line: block.line },
         blocks: [],
         children: [],
       }
@@ -131,6 +132,26 @@ export function sectionPath(root: Section, key: string | null): OutlineEntry[] {
   }
 
   return find(root, []) ?? []
+}
+
+/**
+ * The source line a section's heading is written on, or null when the key names no
+ * section. What the outline jumps to while a note is open in the editor, where there is
+ * no rendered heading to scroll to — only the text it was written as.
+ */
+export function sectionHeadingLine(root: Section, key: string | null): number | null {
+  if (!key) return null
+
+  const find = (section: Section): number | null => {
+    if (section.key === key) return section.heading?.line ?? null
+    for (const child of section.children) {
+      const found = find(child)
+      if (found !== null) return found
+    }
+    return null
+  }
+
+  return find(root)
 }
 
 export function blockText(blocks: BlockNode[]): string {

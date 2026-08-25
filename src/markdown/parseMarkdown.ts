@@ -21,6 +21,13 @@ export interface HeadingBlock {
   type: 'heading'
   level: number
   content: InlineNode[]
+  /**
+   * Which line of the source the heading is written on, so the outline can jump to it
+   * while the note is being edited and there is no rendered heading to scroll to. Counted
+   * here rather than by searching the text later: only the parser knows that a `#` inside
+   * a fenced code block is not a heading.
+   */
+  line: number
 }
 
 export interface ParagraphBlock {
@@ -243,7 +250,11 @@ function parseList(lines: string[], start: number): { node: ListBlock; next: num
   return { node: { type: 'list', ordered, items }, next: index }
 }
 
-function parseBlocks(lines: string[]): BlockNode[] {
+/**
+ * `offset` is the source line `lines[0]` came from, so a heading can be told where it is
+ * written even when this is recursing into the body of a quote.
+ */
+function parseBlocks(lines: string[], offset = 0): BlockNode[] {
   const blocks: BlockNode[] = []
   let index = 0
 
@@ -275,6 +286,8 @@ function parseBlocks(lines: string[]): BlockNode[] {
 
     if (QUOTE.test(line)) {
       const body: string[] = []
+      // Each line of the body comes from exactly one source line, starting here.
+      const quoteStart = index
       while (index < lines.length) {
         const quoted = QUOTE.exec(lines[index])
         if (quoted) {
@@ -286,7 +299,7 @@ function parseBlocks(lines: string[]): BlockNode[] {
         body.push(lines[index].trim())
         index += 1
       }
-      blocks.push({ type: 'quote', children: parseBlocks(body) })
+      blocks.push({ type: 'quote', children: parseBlocks(body, offset + quoteStart) })
       continue
     }
 
@@ -296,6 +309,7 @@ function parseBlocks(lines: string[]): BlockNode[] {
         type: 'heading',
         level: heading[1].length,
         content: parseInline(heading[2]),
+        line: offset + index,
       })
       index += 1
       continue

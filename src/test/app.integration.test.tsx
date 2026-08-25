@@ -748,6 +748,35 @@ describe('job applications tracker', () => {
     expect(within(dialog).getByText('This note has no headings to outline.')).toBeInTheDocument()
   })
 
+  it('takes the caret to a heading picked from the outline while the note is being written', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // Writing rather than reading: there is no rendered heading to scroll to, only the
+    // line the heading was typed on.
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    const editor = within(dialog).getByRole('textbox', {
+      name: 'Interview 2 prep notes',
+    }) as HTMLTextAreaElement
+
+    await user.click(within(dialog).getByRole('button', { name: 'Go to Questions to ask' }))
+
+    await waitFor(() => {
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe(
+        '## Questions to ask',
+      )
+    })
+
+    // And the outline marks it, the same as it does when reading.
+    expect(within(dialog).getByRole('button', { name: 'Go to Questions to ask' })).toHaveAttribute(
+      'aria-current',
+      'true',
+    )
+  })
+
   it('drops a pane whose stage stops being open while the panel is up', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
