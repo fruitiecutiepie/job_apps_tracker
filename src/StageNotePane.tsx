@@ -87,19 +87,19 @@ export function StageNotePane({
   const [line, setLine] = useState('')
   const [capturing, setCapturing] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
-  const paneDivRef = useRef<HTMLDivElement | null>(null)
+  const bodyRef = useRef<HTMLDivElement | null>(null)
 
   /**
-   * The pane itself takes focus when it opens with nothing else claiming it (no editor
-   * autofocused, no tab or button already focused): a scrollable div is otherwise never
-   * a keyboard target, so Cmd+Up/Down and Page Up/Down would scroll the page behind the
-   * panel — which is now scroll-locked — rather than the note actually on screen. Guarded
-   * to only body having focus, not merely "outside the pane", so it never steals focus
-   * back from a tab arrow-keyed to deliberately, or from the capture box or sidebar.
+   * The note itself takes focus when the pane opens with nothing else claiming it (no
+   * editor autofocused, no tab or button already focused): a scrollable div is otherwise
+   * never a keyboard target, so Cmd+Up/Down and Page Up/Down would scroll the page behind
+   * the panel — which is now scroll-locked — rather than the note actually on screen.
+   * Guarded to only body having focus, not merely "outside the pane", so it never steals
+   * focus back from a tab arrow-keyed to deliberately, or from the capture box or sidebar.
    */
   useEffect(() => {
     if (!isFocused || document.activeElement !== document.body) return
-    paneDivRef.current?.focus()
+    bodyRef.current?.focus()
   }, [isFocused])
 
   /**
@@ -139,13 +139,8 @@ export function StageNotePane({
         // A click on the pane's own background, not on a button or the editor inside it,
         // is someone reaching for this note to scroll it — give it the keyboard focus
         // that takes, rather than leaving focus wherever it last was.
-        if (event.target === event.currentTarget) paneDivRef.current?.focus()
+        if (event.target === event.currentTarget) bodyRef.current?.focus()
       }}
-      ref={(node) => {
-        paneDivRef.current = node
-        paneRef(node)
-      }}
-      tabIndex={-1}
     >
       <section
         aria-labelledby={stageNoteHeadingId(state)}
@@ -204,6 +199,23 @@ export function StageNotePane({
           </span>
         </header>
 
+        {/*
+          The note scrolls in here rather than the pane scrolling around it, so the header
+          above and the dock below are simply always on screen instead of being stuck there
+          over a column that runs past them. Nothing can show through above or below them,
+          and the card's own rounded corners clip what scrolls.
+        */}
+        <div
+          className="stage-note__body"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) bodyRef.current?.focus()
+          }}
+          ref={(node) => {
+            bodyRef.current = node
+            paneRef(node)
+          }}
+          tabIndex={-1}
+        >
         {session ? (
           <p className="stage-note__external" role="status">
             {session.open_url ? (
@@ -248,6 +260,7 @@ export function StageNotePane({
               : 'No notes for this stage yet.'}
           </p>
         )}
+        </div>
 
         {/*
           What you were told is pinned below what you prepared, and stays on screen however

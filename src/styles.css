@@ -84,7 +84,6 @@
   /* Prep notes panel: sidebar width, and the height of one stage's sticky header
      (a --control row, --s3 above and below it, and a 1px bottom border) */
   --sidebar: 208px;
-  --note-header: 49px;
   /* How much of a pane the captured lines may take before they scroll on their own.
      In rem so it holds the same number of lines as the text scales. */
   --capture-log: 11rem;
@@ -2096,32 +2095,28 @@ tbody tr:hover {
 }
 
 /*
- * The notes area is a row of panes. Each pane scrolls on its own, so a long note in a
- * split panel does not drag the note beside it along, and each pane's stage header
- * sticks to the top of its own column.
+ * The notes area is a row of panes. Each note scrolls on its own, so a long one in a
+ * split panel does not drag the note beside it along, and each keeps its own header and
+ * dock on screen while it does.
  */
 .panel__notes {
-  /* The space above a stage note, which the note itself carries so that it scrolls away
-     rather than leaving a gap above the header stuck to the top of the pane. */
-  --note-gap: var(--s5);
   display: flex;
   min-height: 0;
 }
 
+/*
+ * The pane holds a stage's card and does not scroll: the scrolling happens inside the
+ * card, between its header and its dock. Padding here is safe for that reason — there is
+ * nothing behind it to scroll past — where a scrolling pane left a strip at each end for
+ * the note to show through.
+ */
 .panel__pane {
+  display: flex;
   flex: 1;
   min-width: 0;
-  /*
-   * Nothing along the top or the bottom: the stage header sticks to the top of this
-   * scrollport and the capture dock to the bottom of it, and padding either end would hold
-   * them that far in and leave a strip for the note to scroll through behind them. The
-   * note carries the same space as its own margin instead, so it is still there at rest
-   * and scrolls away with the note rather than standing as a gap.
-   */
-  padding: 0 var(--s5);
+  padding: var(--s5);
   /* Transparent until focused, so marking a pane never shifts what is inside it. */
   border-top: 2px solid transparent;
-  overflow-y: auto;
 }
 
 /* Focusable so Cmd+Up/Down and Page Up/Down scroll the note rather than the page behind
@@ -2174,11 +2169,34 @@ tbody tr:hover {
  */
 .panel__notes .stage-note {
   padding: 0;
-  /* The room the pane's own padding used to give, held here so it scrolls away with the
-     note instead of standing as a gap the note shows through, above the stuck header or
-     below the stuck dock. Named once because the editor's full-height rule has to
-     subtract exactly this much, at both ends. */
-  margin-block: var(--note-gap);
+  /* Header, the note that scrolls, dock. The card fills its pane so the two ends sit
+     against the edges, and clips what scrolls to its own rounded corners. */
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * The only thing that scrolls: the note between the header and the dock.
+ *
+ * Nothing along the top, for the same reason the pane has nothing at its ends. A heading
+ * sticks to the top of this box past its padding, so padding here would sit above the
+ * stuck heading and let the note scroll through the strip it left. What separates the
+ * first line from the header is that line's own margin, which scrolls away with it.
+ */
+.panel__notes .stage-note__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0 var(--s4) var(--s4);
+}
+
+/* Focusable so Cmd+Up/Down and Page Up/Down scroll the note rather than the page behind
+   it, but taken programmatically, so it draws none of the ring focus-visible would. */
+.panel__notes .stage-note__body:focus-visible {
+  outline: none;
 }
 
 .panel__notes .stage-note__header {
@@ -2195,30 +2213,19 @@ tbody tr:hover {
   background: var(--accent-weak);
 }
 
-.panel__notes .stage-note > *:not(.stage-note__header) {
-  padding: 0 var(--s4);
-}
-
-.panel__notes .stage-note > *:last-child {
-  padding-bottom: var(--s4);
-}
-
 /*
  * Writing gets the room reading gets. An 8rem box sitting under an otherwise empty pane
- * invites a note the size of the box, so the editor takes the height the pane can give
- * it, between the toolbar above and the hint below.
+ * invites a note the size of the box, so the editor takes the height the note has to
+ * give it, between the toolbar above and the hint below.
  *
- * Scoped with :has() to the stage actually being written: a short note being read still
- * sizes to itself rather than stretching its card down an empty pane. Flex rather than
- * grid here because only one row is meant to grow, and grid would hand the slack to
- * every auto row it has.
+ * Flex rather than grid because only one row is meant to grow, and grid would hand the
+ * slack to every auto row it has. The box itself does not scroll: the textarea inside it
+ * does, so there is no second scrollbar for the same text.
  */
-.panel__notes .stage-note:has(.stage-note__editor) {
+.panel__notes .stage-note__body:has(.stage-note__editor) {
   display: flex;
   flex-direction: column;
-  /* Less the margin at each end, or the note would stand two --note-gaps taller than the
-     pane and leave the editor with a scrollbar it has no content for. */
-  min-height: calc(100% - 2 * var(--note-gap));
+  overflow: hidden;
 }
 
 .panel__notes .stage-note__editor {
@@ -2297,16 +2304,15 @@ tbody tr:hover {
 /*
  * Sticky scroll: a top-level heading stays visible while its own section scrolls past,
  * so a long outline never leaves you wondering which part you are reading. It sits
- * below the stage header, so --note-header has to match that header's height:
- * one --control tall row, --s3 of padding above and below, and its bottom border.
- * The header wraps to two rows when it runs out of width, so the narrow breakpoint
- * turns this off rather than sticking headings at the wrong offset.
+ * at the top of the note, which is the top of the only thing that scrolls. The stage
+ * header is above that rather than over it, so this needs no offset to clear it and no
+ * longer comes undone at the width where that header wraps to two rows.
  */
 .panel__notes .markdown__heading--1,
 .panel__notes .markdown__heading--2 {
   position: sticky;
   z-index: 1;
-  top: var(--note-header);
+  top: 0;
   padding: var(--s1) 0;
   background: var(--surface);
 }
@@ -2936,25 +2942,13 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     flex-direction: column;
   }
 
-  /* Same as the wide layout: nothing top or bottom, so the header and dock stick flush. */
   .panel__pane {
-    padding: 0 var(--s4);
-  }
-
-  .panel__notes {
-    --note-gap: var(--s4);
+    padding: var(--s4);
   }
 
   .panel__pane + .panel__pane {
     border-top: 1px solid var(--line);
     border-left: 0;
-  }
-
-  /* The stage header wraps at this width, so it is no longer --note-header tall and
-     a heading stuck below it would sit in the wrong place. */
-  .panel__notes .markdown__heading--1,
-  .panel__notes .markdown__heading--2 {
-    position: static;
   }
 
   .find-widget {
