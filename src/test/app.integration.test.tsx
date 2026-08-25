@@ -777,6 +777,34 @@ describe('job applications tracker', () => {
     )
   })
 
+  it('opens the editor at the heading that was being read, not at the top', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // Read partway down, then reach for the editor: it should open where reading left off.
+    await user.click(within(dialog).getByRole('button', { name: 'Go to Questions to ask' }))
+    await waitFor(() => {
+      expect(within(dialog).getByRole('button', { name: 'Go to Questions to ask' })).toHaveAttribute(
+        'aria-current',
+        'true',
+      )
+    })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    const editor = within(dialog).getByRole('textbox', {
+      name: 'Interview 2 prep notes',
+    }) as HTMLTextAreaElement
+
+    await waitFor(() => {
+      expect(editor.value.slice(editor.selectionStart, editor.selectionEnd)).toBe(
+        '## Questions to ask',
+      )
+    })
+  })
+
   it('drops a pane whose stage stops being open while the panel is up', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

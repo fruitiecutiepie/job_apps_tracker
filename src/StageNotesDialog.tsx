@@ -420,11 +420,6 @@ export function StageNotesDialog({
     [application.stage_notes],
   )
 
-  const toggleEditing = (state: StateId) => {
-    setEditing((current) =>
-      current.includes(state) ? current.filter((entry) => entry !== state) : [...current, state],
-    )
-  }
   const title = [application.company, application.role].filter(Boolean).join(' — ')
   const query = findOpen ? findQuery : ''
 
@@ -628,6 +623,28 @@ export function StageNotesDialog({
   const activeBody = drafts[activeStage] ?? ''
   const activeLabel = stateLabel(activeStage)
   const isSplit = openPanes.length > 1
+
+  const toggleEditing = (state: StateId) => {
+    /*
+     * Opening a note to write in it carries the place being read into the editor: someone
+     * partway down a long note is reaching for the part they were reading, not the top.
+     *
+     * Which heading that is comes from the outline rather than from the top of the pane.
+     * The two part company at the end of a note, where there is not enough left to scroll
+     * the heading up to the header: the outline still marks the heading picked, which is
+     * the one being read, while the pane still has an earlier one at the top.
+     */
+    if (!editing.includes(state)) {
+      const container = paneRefs.current[openPanes.indexOf(state)]
+      const carried =
+        state === activeStage ? trailKey : container && headingAtScrollTop(container)
+      if (carried) setPendingJumpKey(carried)
+    }
+
+    setEditing((current) =>
+      current.includes(state) ? current.filter((entry) => entry !== state) : [...current, state],
+    )
+  }
 
   const activeSection = useMemo(
     () => buildSections(parseMarkdown(activeBody)),
