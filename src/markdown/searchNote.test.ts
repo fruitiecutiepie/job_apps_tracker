@@ -112,6 +112,17 @@ describe('searchNote', () => {
     expect([...reveal]).toEqual(collectFoldableKeys(section))
   })
 
+  it('counts a match in a table cell, header or body, with no fold to open', () => {
+    const source = '| Company | Level |\n| --- | --- |\n| Orbit & Oak | Senior |'
+    const section = buildSections(parseMarkdown(source))
+
+    expect(searchNote(section, 'company').count).toBe(1)
+    const { count, reveal } = searchNote(section, 'orbit')
+    expect(count).toBe(1)
+    // Nothing hides a table, so no fold needs to open for its match to be visible.
+    expect(reveal.size).toBe(0)
+  })
+
   it('opens nothing for a note with no match', () => {
     const { count, reveal, bases } = search('## Themes\n\n- A point', 'absent')
     expect(count).toBe(0)

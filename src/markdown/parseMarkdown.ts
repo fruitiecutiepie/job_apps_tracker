@@ -52,13 +52,27 @@ export interface QuoteBlock {
   children: BlockNode[]
 }
 
-export type BlockNode = HeadingBlock | ParagraphBlock | ListBlock | CodeBlock | QuoteBlock
+export type TableAlign = 'left' | 'center' | 'right'
+
+export interface TableBlock {
+  type: 'table'
+  /** One entry per column, in header order; `null` where the delimiter set none. */
+  align: (TableAlign | null)[]
+  header: InlineNode[][]
+  rows: InlineNode[][][]
+}
+
+export type BlockNode = HeadingBlock | ParagraphBlock | ListBlock | CodeBlock | QuoteBlock | TableBlock
 
 const HEADING = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/
 const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([^\s`~]+)?\s*$/
 const LIST_ITEM = /^(\s*)(?:([-*+])|(\d{1,9})[.)])\s+(.*)$/
 const QUOTE = /^ {0,3}> ?(.*)$/
 const ESCAPABLE = /[\\`*_[\]()#+\-.!>]/
+// A table's second line: one or more `-`, optionally flanked by `:`, per column. `|`
+// is required somewhere in this row, which is what tells it apart from a bare `---`
+// under a line of text — a divider some notes use, not a would-be one-column table.
+const TABLE_DELIMITER_ROW = /^\s*\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?\s*$/
 
 /** Only linkable schemes render as links; anything else falls back to plain text. */
 function safeHref(value: string): string | null {
@@ -173,12 +187,64 @@ export function parseInline(source: string): InlineNode[] {
   return nodes
 }
 
+/** A row that could plausibly open or continue a table: it has a `|` outside escapes. */
+function looksLikeTableRow(line: string): boolean {
+  return line.trim().length > 0 && /(?<!\\)\|/.test(line)
+}
+
+/**
+ * Splits a table row into cell source text, dropping the outer pipes a row is usually
+ * written with. `\|` inside a cell survives as a literal pipe rather than a separator.
+ */
+function splitTableRow(line: string): string[] {
+  const trimmed = line.trim()
+  const cells: string[] = []
+  let cell = ''
+
+  for (let index = 0; index < trimmed.length; index += 1) {
+    const character = trimmed[index]
+    if (character === '\\' && trimmed[index + 1] === '|') {
+      cell += '|'
+      index += 1
+      continue
+    }
+    if (character === '|') {
+      cells.push(cell)
+      cell = ''
+      continue
+    }
+    cell += character
+  }
+  cells.push(cell)
+
+  if (cells.length > 1 && cells[0].trim() === '') cells.shift()
+  if (cells.length > 1 && cells[cells.length - 1].trim() === '') cells.pop()
+  return cells.map((value) => value.trim())
+}
+
+function parseTableAlign(cell: string): TableAlign | null {
+  const left = cell.startsWith(':')
+  const right = cell.endsWith(':')
+  if (left && right) return 'center'
+  if (right) return 'right'
+  if (left) return 'left'
+  return null
+}
+
+/** Whether `lines[index]` opens a table, which takes the next line too to tell. */
+function startsTable(lines: string[], index: number): boolean {
+  const line = lines[index]
+  const delimiter = lines[index + 1]
+  return looksLikeTableRow(line) && delimiter !== undefined && delimiter.includes('|') && TABLE_DELIMITER_ROW.test(delimiter)
+}
+
 function indentWidth(line: string): number {
   return line.length - line.trimStart().length
 }
 
-function startsBlock(line: string): boolean {
-  return LIST_ITEM.test(line) || HEADING.test(line) || FENCE.test(line) || QUOTE.test(line)
+function startsBlock(lines: string[], index: number): boolean {
+  const line = lines[index]
+  return LIST_ITEM.test(line) || HEADING.test(line) || FENCE.test(line) || QUOTE.test(line) || startsTable(lines, index)
 }
 
 /** Removes the shared leading indent so nested content can be parsed on its own terms. */
@@ -200,7 +266,7 @@ function parseListItem(lines: string[]): ListItem {
   while (index < lines.length) {
     const line = lines[index]
     if (!line.trim()) break
-    if (index > 0 && startsBlock(line)) break
+    if (index > 0 && startsBlock(lines, index)) break
     if (index > 0) content.push({ type: 'break' })
     content.push(...parseInline(line.trim()))
     index += 1
@@ -295,11 +361,34 @@ function parseBlocks(lines: string[], offset = 0): BlockNode[] {
           index += 1
           continue
         }
-        if (!lines[index].trim() || startsBlock(lines[index])) break
+        if (!lines[index].trim() || startsBlock(lines, index)) break
         body.push(lines[index].trim())
         index += 1
       }
       blocks.push({ type: 'quote', children: parseBlocks(body, offset + quoteStart) })
+      continue
+    }
+
+    if (startsTable(lines, index)) {
+      const header = splitTableRow(line).map((cell) => parseInline(cell))
+      const columns = header.length
+      const align = splitTableRow(lines[index + 1]).map(parseTableAlign)
+      index += 2
+
+      const rows: InlineNode[][][] = []
+      while (index < lines.length && looksLikeTableRow(lines[index])) {
+        const cells = splitTableRow(lines[index]).map((cell) => parseInline(cell)).slice(0, columns)
+        while (cells.length < columns) cells.push([])
+        rows.push(cells)
+        index += 1
+      }
+
+      blocks.push({
+        type: 'table',
+        align: header.map((_, column) => align[column] ?? null),
+        header,
+        rows,
+      })
       continue
     }
 
@@ -325,7 +414,7 @@ function parseBlocks(lines: string[], offset = 0): BlockNode[] {
     const paragraph: InlineNode[] = []
     while (index < lines.length) {
       const current = lines[index]
-      if (!current.trim() || startsBlock(current)) break
+      if (!current.trim() || startsBlock(lines, index)) break
       if (paragraph.length > 0) paragraph.push({ type: 'break' })
       paragraph.push(...parseInline(current.trim()))
       index += 1

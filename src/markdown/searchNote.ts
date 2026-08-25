@@ -15,7 +15,7 @@
  * finds nothing, because no reader sees those asterisks.
  */
 
-import { blockKey, itemKey, type Section } from './sections'
+import { blockKey, cellKey, itemKey, type Section } from './sections'
 import type { BlockNode, InlineNode } from './parseMarkdown'
 
 export interface Segment {
@@ -163,6 +163,17 @@ export function searchNote(root: Section, query: string): NoteSearch {
             record(key2, countInInline(item.content, query), gates)
             if (item.children.length === 0) return
             walkBlocks(item.children, key2, [...gates, key2])
+          })
+          return
+        case 'table':
+          // A table isn't itself foldable, so a cell's match needs no gate of its own.
+          block.header.forEach((cell, column) => {
+            record(cellKey(key, -1, column), countInInline(cell, query), gates)
+          })
+          block.rows.forEach((row, rowIndex) => {
+            row.forEach((cell, column) => {
+              record(cellKey(key, rowIndex, column), countInInline(cell, query), gates)
+            })
           })
           return
         case 'heading':

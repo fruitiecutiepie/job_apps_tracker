@@ -18,6 +18,8 @@ export interface Section {
 /** One key scheme, used by the renderer, the fold-all collector, and the search. */
 export const blockKey = (path: string, index: number) => `${path}.b${index}`
 export const itemKey = (path: string, index: number) => `${path}.i${index}`
+/** `row` is `-1` for the header, so a table's header and body cells never collide. */
+export const cellKey = (path: string, row: number, column: number) => `${path}.r${row}c${column}`
 
 /** Groups blocks under their heading so a heading can fold everything beneath it. */
 export function buildSections(blocks: BlockNode[]): Section {
@@ -190,6 +192,10 @@ export function blockText(blocks: BlockNode[]): string {
           return blockText(block.children)
         case 'list':
           return block.items.map((item) => inlineText(item.content)).join(' ')
+        case 'table':
+          return [block.header, ...block.rows]
+            .map((row) => row.map((cell) => inlineText(cell)).join(' '))
+            .join(' ')
       }
     })
     .join(' ')

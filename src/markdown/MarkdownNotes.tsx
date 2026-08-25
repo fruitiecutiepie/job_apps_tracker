@@ -1,11 +1,12 @@
 import { useMemo, useState, type MouseEvent, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
-import { inlineText, parseMarkdown, type BlockNode, type InlineNode, type ListBlock, type QuoteBlock } from './parseMarkdown'
+import { inlineText, parseMarkdown, type BlockNode, type InlineNode, type ListBlock, type QuoteBlock, type TableBlock } from './parseMarkdown'
 import { tokenizeCode } from './highlightCode'
 import {
   blockKey,
   blockText,
   buildSections,
+  cellKey,
   collectFoldableKeys,
   itemKey,
   type Section,
@@ -239,6 +240,46 @@ function MarkdownQuote({ quote, path, collapsed, onToggle, marks }: FoldProps & 
   )
 }
 
+/**
+ * A table has no fold of its own — it is small enough in a prep note to just read — but
+ * every cell is still its own text container, keyed like a list item's, so a find can
+ * number and highlight matches inside a header the same way it does in the body.
+ */
+function MarkdownTable({ table, path, marks }: { table: TableBlock; path: string; marks: Marks | null }) {
+  return (
+    <div className="markdown__table-wrap">
+      <table className="markdown__table">
+        <thead>
+          <tr>
+            {table.header.map((cell, column) => {
+              const key = cellKey(path, -1, column)
+              return (
+                <th className={table.align[column] ? `markdown__table--align-${table.align[column]}` : undefined} key={key}>
+                  {inline(cell, marks, cursorFor(marks, key))}
+                </th>
+              )
+            })}
+          </tr>
+        </thead>
+        <tbody>
+          {table.rows.map((row, rowIndex) => (
+            <tr key={rowIndex}>
+              {row.map((cell, column) => {
+                const key = cellKey(path, rowIndex, column)
+                return (
+                  <td className={table.align[column] ? `markdown__table--align-${table.align[column]}` : undefined} key={key}>
+                    {inline(cell, marks, cursorFor(marks, key))}
+                  </td>
+                )
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 function MarkdownBlocks({ blocks, path, collapsed, onToggle, marks }: FoldProps & { blocks: BlockNode[]; path: string }) {
   return blocks.map((block, index) => {
     const key = blockKey(path, index)
@@ -292,6 +333,8 @@ function MarkdownBlocks({ blocks, path, collapsed, onToggle, marks }: FoldProps 
             path={key}
           />
         )
+      case 'table':
+        return <MarkdownTable key={key} marks={marks} path={key} table={block} />
       default:
         return null
     }

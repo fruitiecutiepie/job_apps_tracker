@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 
 import { inlineText, parseInline, parseMarkdown } from './parseMarkdown'
-import type { BlockNode, ListBlock, QuoteBlock } from './parseMarkdown'
+import type { BlockNode, ListBlock, QuoteBlock, TableBlock } from './parseMarkdown'
 
 function asList(block: BlockNode | undefined): ListBlock {
   if (block?.type !== 'list') throw new Error(`expected a list, received ${block?.type}`)
+  return block
+}
+
+function asTable(block: BlockNode | undefined): TableBlock {
+  if (block?.type !== 'table') throw new Error(`expected a table, received ${block?.type}`)
   return block
 }
 
@@ -116,6 +121,69 @@ describe('markdown blocks', () => {
       language: 'ts',
       value: 'const answer = 1\n# not a heading',
     })
+  })
+})
+
+describe('markdown tables', () => {
+  it('reads the header, alignment, and rows of a pipe table', () => {
+    const table = asTable(
+      parseMarkdown('| Company | Level | Comp |\n| --- | :---: | ---: |\n| Orbit & Oak | Senior | 180k |')[0],
+    )
+
+    expect(table.header.map(inlineText)).toEqual(['Company', 'Level', 'Comp'])
+    expect(table.align).toEqual([null, 'center', 'right'])
+    expect(table.rows.map((row) => row.map(inlineText))).toEqual([['Orbit & Oak', 'Senior', '180k']])
+  })
+
+  it('works without a leading or trailing pipe', () => {
+    const table = asTable(parseMarkdown('Company | Level\n--- | ---\nHalcyon | Staff')[0])
+
+    expect(table.header.map(inlineText)).toEqual(['Company', 'Level'])
+    expect(table.rows.map((row) => row.map(inlineText))).toEqual([['Halcyon', 'Staff']])
+  })
+
+  it('parses inline formatting inside a cell', () => {
+    const table = asTable(parseMarkdown('| Note |\n| --- |\n| **Strong** point |')[0])
+
+    expect(table.rows[0][0]).toEqual([
+      { type: 'strong', children: [{ type: 'text', value: 'Strong' }] },
+      { type: 'text', value: ' point' },
+    ])
+  })
+
+  it('keeps a literal pipe written as \\|', () => {
+    const table = asTable(parseMarkdown('| A |\n| --- |\n| this \\| that |')[0])
+
+    expect(inlineText(table.rows[0][0])).toBe('this | that')
+  })
+
+  it('pads a short row and truncates a long one to the header width', () => {
+    const table = asTable(
+      parseMarkdown('| A | B | C |\n| --- | --- | --- |\n| short |\n| 1 | 2 | 3 | extra |')[0],
+    )
+
+    expect(table.rows[0].map(inlineText)).toEqual(['short', '', ''])
+    expect(table.rows[1].map(inlineText)).toEqual(['1', '2', '3'])
+  })
+
+  it('ends a table at the first line without a pipe', () => {
+    const blocks = parseMarkdown('| A |\n| --- |\n| 1 |\n\nA closing thought')
+
+    expect(blocks.map((block) => block.type)).toEqual(['table', 'paragraph'])
+    expect(asTable(blocks[0]).rows).toHaveLength(1)
+  })
+
+  it('does not mistake a bare divider under a line of text for a one-column table', () => {
+    // `---` alone is a divider some notes use, not a delimiter row: nothing here has a `|`.
+    const blocks = parseMarkdown('Title\n---\nmore text')
+
+    expect(blocks.map((block) => block.type)).toEqual(['paragraph'])
+  })
+
+  it('opens a table without a blank line before it, interrupting a paragraph', () => {
+    const blocks = parseMarkdown('Some intro text\n| A | B |\n| --- | --- |\n| 1 | 2 |')
+
+    expect(blocks.map((block) => block.type)).toEqual(['paragraph', 'table'])
   })
 })
 

@@ -2810,6 +2810,37 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   font-style: italic;
 }
 
+.markdown__table-wrap {
+  margin: 0;
+  overflow-x: auto;
+}
+
+.markdown__table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--t3);
+}
+
+.markdown__table th,
+.markdown__table td {
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  text-align: left;
+}
+
+.markdown__table th {
+  background: var(--surface-2);
+  font-weight: 600;
+}
+
+.markdown__table--align-center {
+  text-align: center;
+}
+
+.markdown__table--align-right {
+  text-align: right;
+}
+
 .markdown a {
   color: var(--accent);
 }
