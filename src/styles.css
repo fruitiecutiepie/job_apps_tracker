@@ -55,6 +55,7 @@
   --r3: 8px;
   --pill: 999px;
 
+
   /* Type */
   --t1: 11px;
   --t2: 12px;
@@ -974,16 +975,20 @@ p {
 
 table {
   width: 100%;
+  table-layout: fixed;
   border-collapse: collapse;
   font-size: var(--t3);
 }
 
 th,
 td {
+  position: relative;
   padding: var(--s2) var(--s3);
   border-bottom: 1px solid var(--line);
   vertical-align: top;
   text-align: left;
+  overflow: hidden;
+  overflow-wrap: break-word;
 }
 
 thead th {
@@ -1024,6 +1029,22 @@ tbody tr:hover {
   font-weight: 600;
 }
 
+.table-col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.table-col-resize:hover,
+.table-col-resize:focus-visible {
+  background: var(--accent-weak);
+  outline: none;
+}
+
 .table-col-header input,
 .table-col-header select {
   min-height: 28px;
@@ -1058,7 +1079,6 @@ tbody tr:hover {
   display: block;
   color: var(--ink);
   font-weight: 600;
-  white-space: nowrap;
 }
 
 .table-state-select {

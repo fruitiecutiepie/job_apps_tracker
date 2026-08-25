@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useMemo, useRef, useState, type ReactNode } from "react";
 import { SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain";
 import type { Application, StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
@@ -26,6 +26,56 @@ type SortField =
   | "updated_at";
 type SortDirection = "ascending" | "descending";
 type StateColumnFilter = StateId | "all";
+type ColumnKey = SortField | "attachments" | "prep_notes";
+
+const COLUMN_ORDER: readonly ColumnKey[] = [
+  "company",
+  "role",
+  "source",
+  "state",
+  "next_action",
+  "invites",
+  "deadline_at",
+  "urgency",
+  "preference",
+  "compensation",
+  "attachments",
+  "prep_notes",
+  "created_at",
+  "updated_at",
+];
+
+const DEFAULT_COLUMN_WIDTH = 160;
+const MIN_COLUMN_WIDTH = 72;
+const RESIZE_KEYBOARD_STEP = 24;
+
+/**
+ * Typography research on continuous prose (e.g. Bringhurst's "Elements of Typographic Style")
+ * puts the readable line length at 45-75 characters, 66 as the usual ideal. A table column
+ * is scanned in short bursts rather than read start to finish, so this sits at the narrow end
+ * of that band rather than at the prose ideal.
+ */
+const MAX_COLUMN_CHARACTERS = 60;
+/** Average glyph width for the table's body font (13px, system sans stack) — ~0.58em per character. */
+const CHAR_WIDTH_PX = 7.5;
+/** Matches `padding: var(--s2) var(--s3)` on th/td: 2 x s3 (8px). */
+const CELL_HORIZONTAL_PADDING = 16;
+const MAX_COLUMN_WIDTH = Math.round(MAX_COLUMN_CHARACTERS * CHAR_WIDTH_PX + CELL_HORIZONTAL_PADDING);
+
+function defaultColumnWidths(): Record<ColumnKey, number> {
+  return Object.fromEntries(COLUMN_ORDER.map((column) => [column, DEFAULT_COLUMN_WIDTH])) as Record<
+    ColumnKey,
+    number
+  >;
+}
+
+function clampColumnWidth(width: number): number {
+  return Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, width));
+}
+
+function estimateTextWidth(characterCount: number): number {
+  return Math.round(characterCount * CHAR_WIDTH_PX + CELL_HORIZONTAL_PADDING);
+}
 
 interface ColumnFilters {
   company: string;
@@ -183,6 +233,50 @@ export function TableView({
   const [sortField, setSortField] = useState<SortField>("updated_at");
   const [sortDirection, setSortDirection] = useState<SortDirection>("descending");
   const [filters, setFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
+  const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(defaultColumnWidths);
+  const resizing = useRef<{ column: ColumnKey; startX: number; startWidth: number } | null>(null);
+
+  const resizeColumnBy = (column: ColumnKey, delta: number) => {
+    setColumnWidths((current) => ({
+      ...current,
+      [column]: clampColumnWidth(current[column] + delta),
+    }));
+  };
+
+  const handleResizeMove = (event: MouseEvent) => {
+    const drag = resizing.current;
+    if (!drag) return;
+    const width = clampColumnWidth(drag.startWidth + (event.clientX - drag.startX));
+    setColumnWidths((current) => ({ ...current, [drag.column]: width }));
+  };
+
+  const handleResizeEnd = () => {
+    resizing.current = null;
+    window.removeEventListener("mousemove", handleResizeMove);
+    window.removeEventListener("mouseup", handleResizeEnd);
+  };
+
+  const startResize = (column: ColumnKey) => (event: React.MouseEvent) => {
+    event.preventDefault();
+    resizing.current = { column, startX: event.clientX, startWidth: columnWidths[column] };
+    window.addEventListener("mousemove", handleResizeMove);
+    window.addEventListener("mouseup", handleResizeEnd);
+  };
+
+  // Fits the column to its longest cell's full text, so double-click gives the smallest
+  // width that still shows everything on one line, without exceeding the readable-width cap.
+  const autoFitColumn = (column: ColumnKey) => {
+    const cells = document.querySelectorAll(`[data-column="${column}"]`);
+    let longestChars = 0;
+    cells.forEach((cell) => {
+      const text = (cell.textContent ?? "").replace(/\s+/g, " ").trim();
+      longestChars = Math.max(longestChars, text.length);
+    });
+    setColumnWidths((current) => ({
+      ...current,
+      [column]: clampColumnWidth(estimateTextWidth(longestChars)),
+    }));
+  };
 
   const stateFilterOptions = useMemo(() => {
     const present = new Set(applications.map((application) => application.state));
@@ -300,7 +394,7 @@ export function TableView({
     );
   };
 
-  const headerCell = (label: string, control: ReactNode, field?: SortField) => (
+  const headerCell = (label: string, control: ReactNode, column: ColumnKey, field?: SortField) => (
     <th scope="col" aria-sort={field ? (sortField === field ? sortDirection : "none") : undefined}>
       <div className="table-col-header">
         {field ? (
@@ -315,8 +409,36 @@ export function TableView({
         )}
         {control}
       </div>
+      <div
+        className="table-col-resize"
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={`Resize ${label} column`}
+        aria-valuenow={columnWidths[column]}
+        tabIndex={0}
+        onMouseDown={startResize(column)}
+        onDoubleClick={() => autoFitColumn(column)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowLeft") {
+            event.preventDefault();
+            resizeColumnBy(column, -RESIZE_KEYBOARD_STEP);
+          } else if (event.key === "ArrowRight") {
+            event.preventDefault();
+            resizeColumnBy(column, RESIZE_KEYBOARD_STEP);
+          }
+        }}
+      />
     </th>
   );
+
+  const bodyCell = (column: ColumnKey, content: ReactNode, props?: { header?: boolean }) =>
+    props?.header ? (
+      <th scope="row" data-column={column}>
+        {content}
+      </th>
+    ) : (
+      <td data-column={column}>{content}</td>
+    );
 
   const filtersActive = columnFiltersAreActive(filters);
 
@@ -337,11 +459,26 @@ export function TableView({
 
       <div className="table-scroll">
         <table>
+          <colgroup>
+            {COLUMN_ORDER.map((column) => (
+              <col key={column} style={{ width: `${columnWidths[column]}px` }} />
+            ))}
+          </colgroup>
           <thead>
             <tr>
-              {headerCell("Company", textFilter("company", "Company", companySuggestions), "company")}
-              {headerCell("Role", textFilter("role", "Role"), "role")}
-              {headerCell("Source", textFilter("source", "Source", sourceSuggestions), "source")}
+              {headerCell(
+                "Company",
+                textFilter("company", "Company", companySuggestions),
+                "company",
+                "company",
+              )}
+              {headerCell("Role", textFilter("role", "Role"), "role", "role")}
+              {headerCell(
+                "Source",
+                textFilter("source", "Source", sourceSuggestions),
+                "source",
+                "source",
+              )}
               {headerCell(
                 "State",
                 <select
@@ -362,34 +499,64 @@ export function TableView({
                   ))}
                 </select>,
                 "state",
+                "state",
               )}
-              {headerCell("Next action", textFilter("next_action", "Next action"), "next_action")}
-              {headerCell("Invites", textFilter("invites", "Invites"), "invites")}
-              {headerCell("Deadline", textFilter("deadline_at", "Deadline"), "deadline_at")}
-              {headerCell("Urgency", textFilter("urgency", "Urgency"), "urgency")}
-              {headerCell("Preference", textFilter("preference", "Preference"), "preference")}
+              {headerCell(
+                "Next action",
+                textFilter("next_action", "Next action"),
+                "next_action",
+                "next_action",
+              )}
+              {headerCell("Invites", textFilter("invites", "Invites"), "invites", "invites")}
+              {headerCell(
+                "Deadline",
+                textFilter("deadline_at", "Deadline"),
+                "deadline_at",
+                "deadline_at",
+              )}
+              {headerCell("Urgency", textFilter("urgency", "Urgency"), "urgency", "urgency")}
+              {headerCell(
+                "Preference",
+                textFilter("preference", "Preference"),
+                "preference",
+                "preference",
+              )}
               {headerCell(
                 "Compensation",
                 textFilter("compensation", "Compensation"),
                 "compensation",
+                "compensation",
               )}
-              {headerCell("Attachments", textFilter("attachments", "Attachments"))}
-              {headerCell("Prep notes", null)}
-              {headerCell("Created", textFilter("created_at", "Created"), "created_at")}
-              {headerCell("Last update", textFilter("updated_at", "Last update"), "updated_at")}
+              {headerCell("Attachments", textFilter("attachments", "Attachments"), "attachments")}
+              {headerCell("Prep notes", null, "prep_notes")}
+              {headerCell(
+                "Created",
+                textFilter("created_at", "Created"),
+                "created_at",
+                "created_at",
+              )}
+              {headerCell(
+                "Last update",
+                textFilter("updated_at", "Last update"),
+                "updated_at",
+                "updated_at",
+              )}
             </tr>
           </thead>
           <tbody>
             {visibleApplications.map((application) => (
               <tr key={application.id}>
-                <th scope="row">
+                {bodyCell(
+                  "company",
                   <button type="button" className="table-link" onClick={() => onOpen(application.id)}>
                     {application.company}
-                  </button>
-                </th>
-                <td>{application.role || <span aria-label="Not set">—</span>}</td>
-                <td>{application.source || <span aria-label="Not set">—</span>}</td>
-                <td>
+                  </button>,
+                  { header: true },
+                )}
+                {bodyCell("role", application.role || <span aria-label="Not set">—</span>)}
+                {bodyCell("source", application.source || <span aria-label="Not set">—</span>)}
+                {bodyCell(
+                  "state",
                   <select
                     aria-label={`Move ${application.company} to state`}
                     className="table-state-select"
@@ -401,10 +568,11 @@ export function TableView({
                         {state.label}
                       </option>
                     ))}
-                  </select>
-                </td>
-                <td>
-                  {application.next_action?.trim() ? (
+                  </select>,
+                )}
+                {bodyCell(
+                  "next_action",
+                  application.next_action?.trim() ? (
                     <>
                       <span>{application.next_action}</span>
                       {application.next_action_at ? (
@@ -420,71 +588,80 @@ export function TableView({
                     </>
                   ) : (
                     <span aria-label="Not set">—</span>
-                  )}
-                </td>
-                <td>
-                  {application.state_events.length > 0 ? (
+                  ),
+                )}
+                {bodyCell(
+                  "invites",
+                  application.state_events.length > 0 ? (
                     <InviteSummaries invites={application.state_events} />
                   ) : (
                     <span aria-label="Not set">—</span>
-                  )}
-                </td>
-                <td>
-                  {application.deadline_at ? (
+                  ),
+                )}
+                {bodyCell(
+                  "deadline_at",
+                  application.deadline_at ? (
                     <time dateTime={application.deadline_at}>
                       {formatShortDate(application.deadline_at)}
                     </time>
                   ) : (
                     <span aria-label="Not set">—</span>
-                  )}
-                </td>
-                <td>
-                  {urgencyById.has(application.id) ? (
+                  ),
+                )}
+                {bodyCell(
+                  "urgency",
+                  urgencyById.has(application.id) ? (
                     <span className="table-view__urgency">
                       {urgencyById.get(application.id)!.reason}
                     </span>
                   ) : (
                     <span aria-label="Not ranked">—</span>
-                  )}
-                </td>
-                <td>
-                  {preferenceById.has(application.id) ? (
+                  ),
+                )}
+                {bodyCell(
+                  "preference",
+                  preferenceById.has(application.id) ? (
                     <span className="table-view__urgency">
                       {describePreference(preferenceById.get(application.id)!)}
                     </span>
                   ) : (
                     <span aria-label="Not rated">—</span>
-                  )}
-                </td>
-                <td>
-                  {compensationById.has(application.id) ? (
+                  ),
+                )}
+                {bodyCell(
+                  "compensation",
+                  compensationById.has(application.id) ? (
                     <span className="table-view__urgency">
                       {compensationById.get(application.id)}
                     </span>
                   ) : (
                     <span aria-label="Not recorded">—</span>
-                  )}
-                </td>
-                <td>
-                  {application.attachments.length > 0 ? (
+                  ),
+                )}
+                {bodyCell(
+                  "attachments",
+                  application.attachments.length > 0 ? (
                     <AttachmentFilenames attachments={application.attachments} variant="table" />
                   ) : (
                     <span aria-label="Not set">—</span>
-                  )}
-                </td>
-                <td>
+                  ),
+                )}
+                {bodyCell(
+                  "prep_notes",
                   <StageNotesButton
                     application={application}
                     onOpenStageNotes={onOpenStageNotes}
                     variant="table"
-                  />
-                </td>
-                <td>
-                  <time dateTime={application.created_at}>{formatShortDate(application.created_at)}</time>
-                </td>
-                <td>
-                  <time dateTime={application.updated_at}>{formatShortDate(application.updated_at)}</time>
-                </td>
+                  />,
+                )}
+                {bodyCell(
+                  "created_at",
+                  <time dateTime={application.created_at}>{formatShortDate(application.created_at)}</time>,
+                )}
+                {bodyCell(
+                  "updated_at",
+                  <time dateTime={application.updated_at}>{formatShortDate(application.updated_at)}</time>,
+                )}
               </tr>
             ))}
           </tbody>

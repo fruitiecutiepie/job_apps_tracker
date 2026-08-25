@@ -1,7 +1,8 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { COMPENSATION_STAGE_IDS, emptyCompensation } from '../domain'
+import stylesheet from '../styles.css?raw'
 import type {
   Application,
   Compensation,
@@ -551,6 +552,12 @@ describe('CalendarView', () => {
 })
 
 describe('TableView', () => {
+  beforeAll(() => {
+    const style = document.createElement('style')
+    style.textContent = stylesheet
+    document.head.append(style)
+  })
+
   it('sorts, opens, and moves an application without changing the data', () => {
     const onOpen = vi.fn()
     const onMove = vi.fn()
@@ -1072,6 +1079,68 @@ describe('TableView', () => {
     render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByText('resume.pdf')).toBeInTheDocument()
+  })
+
+  it('resizes a column via its header handle', () => {
+    const applications = [application('Alpha Labs', { role: 'Engineer' })]
+
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+
+    const handle = screen.getByRole('separator', { name: 'Resize Role column' })
+    const roleColumn = document.querySelectorAll('col')[1] as HTMLElement
+
+    expect(roleColumn.style.width).toBe('160px')
+
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    expect(roleColumn.style.width).toBe('184px')
+
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    expect(roleColumn.style.width).toBe('136px')
+  })
+
+  it('clamps resizing at the maximum readable column width', () => {
+    const applications = [application('Alpha Labs', { role: 'Engineer' })]
+
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+
+    const handle = screen.getByRole('separator', { name: 'Resize Role column' })
+    const roleColumn = document.querySelectorAll('col')[1] as HTMLElement
+
+    for (let step = 0; step < 20; step += 1) {
+      fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    }
+
+    expect(roleColumn.style.width).toBe('466px')
+  })
+
+  it('lets the compensation cell wrap instead of clipping long text', () => {
+    const applications = [
+      application('Alpha Labs', {
+        compensation: compensation('AUD', { advertised: [180_000, 260_000], expected: 220_000, offered: 240_000 }),
+      }),
+    ]
+
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+
+    const cell = document.querySelector('[data-column="compensation"] .table-view__urgency')!
+    expect(getComputedStyle(cell).whiteSpace).not.toBe('nowrap')
+  })
+
+  it('double-clicking the resize handle fits the column to its longest cell', () => {
+    const applications = [
+      application('Alpha Labs', { role: 'Senior Software Engineer' }),
+      application('Beta Inc', { role: 'PM' }),
+    ]
+
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+
+    const handle = screen.getByRole('separator', { name: 'Resize Role column' })
+    const roleColumn = document.querySelectorAll('col')[1] as HTMLElement
+
+    fireEvent.doubleClick(handle)
+
+    expect(roleColumn.style.width).toBe('196px')
   })
 })
 
