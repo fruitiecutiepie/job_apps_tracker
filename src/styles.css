@@ -1449,10 +1449,23 @@ tbody tr:hover {
   font-size: var(--t3);
 }
 
+/*
+ * Delete, Cancel and Save pin to the bottom of the dialog, which is the thing that
+ * scrolls, so the form's long tail never leaves you scrolling back down to commit or
+ * abandon it. The negative offsets cancel the dialog's own padding so the strip meets
+ * its edges, and it is opaque with a rule above because the fields pass underneath.
+ */
 .dialog__actions {
+  position: sticky;
+  z-index: 3;
+  bottom: calc(var(--s5) * -1);
   display: flex;
   flex-wrap: wrap;
   gap: var(--s3);
+  margin: 0 calc(var(--s5) * -1) calc(var(--s5) * -1);
+  padding: var(--s4) var(--s5) var(--s5);
+  border-top: 1px solid var(--line);
+  background: var(--surface);
 }
 
 .dialog__actions-spacer {
