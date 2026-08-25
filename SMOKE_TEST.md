@@ -37,6 +37,9 @@ Capturing what you were told — Enter storing a line without Save and without s
 the line reading in the docked log and not in the prep note above it, the log and its capture box
 staying writable while the prep note is being edited, captures surviving the prep note being
 cleared, and Ctrl+K reaching the focused pane's box — is covered by the app integration tests.
+Correcting a captured line in place — rewriting one and keeping its id and the moment it was
+captured, removing one with the bin, and dropping a note whose last line goes when nothing was
+written for it — is covered by the app integration tests and by `src/domain/domain.test.ts`.
 Reading captured records back as a note, a heading per day, and the order they were said in are
 covered by `src/markdown/capture.test.ts`. The sticky headers,
 the breadcrumb trail, and the scroll to each hit need real layout, so they stay manual below.
@@ -148,6 +151,10 @@ test cannot judge reliably:
    the newest line in view, with the day heading sticking to the top of it and the prep note above
    still readable. Select **Edit** on that stage and confirm the log and its box stay put and
    still work while the prep note is in the editor.
+   Select **Correct** and confirm each captured line opens in its own box with the time it was
+   captured beside it, that Enter and clicking away both store a change, that Escape puts a line
+   back as it was, and that the bin removes one. Confirm a corrected line keeps its place and its
+   time when you select **Done** and read the log back.
 8. In the prep notes panel, press `Ctrl`/`Cmd+F` and confirm the browser's own find does not open.
    Search for text that appears in more than one stage, and confirm the count reads `1 of N`, every
    hit is highlighted, the current one stands out, and each tab shows a count of the matches in

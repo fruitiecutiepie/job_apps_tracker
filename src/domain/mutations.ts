@@ -286,9 +286,9 @@ export function setStageNote(
 
 /**
  * Files one captured line against a stage, opening a note for that stage if it has none.
- * Append-only: a captured line is a record of what was said at a moment, so there is no
- * edit and no draft it could be rolled back from, and the id and `at` are minted here
- * rather than supplied so two lines can never claim the same identity.
+ * A line is stored as it is entered rather than drafted, and its id and `at` are minted
+ * here rather than supplied, so two lines can never claim the same identity or the same
+ * moment's ordering. Rewriting one afterwards goes through `reviseStageNoteCapture`.
  *
  * A blank line is not a capture and returns the application untouched.
  */
@@ -317,6 +317,51 @@ export function captureStageNote(
   return {
     ...application,
     stage_notes: sortedStageNotes([...kept, note]),
+    updated_at: updatedAt,
+  }
+}
+
+/**
+ * Rewrites one captured line, or removes it when the new text is blank.
+ *
+ * `at` is the moment the line was captured and does not move: an edit is a correction to
+ * what was written down, not a claim that it was said later, and the day a line reads
+ * under is a reading of that timestamp. The id does not move either, so a line being
+ * edited stays the same line to anything holding a reference to it.
+ *
+ * Removing the last captured line from a stage that has nothing written for it drops the
+ * note, which is the same rule a blank body follows: an empty note is not a record of
+ * anything. Text that matches what is already there, or an id the stage does not hold,
+ * returns the application untouched.
+ */
+export function reviseStageNoteCapture(
+  application: Application,
+  state: StateId,
+  entryId: string,
+  line: string,
+  at: Date | string = new Date(),
+): Application {
+  if (!isStateId(state)) throw new TypeError('State is invalid')
+  const note = stageNoteFor(application, state)
+  const existing = note?.heard.find((entry) => entry.id === entryId)
+  if (!note || !existing) return application
+
+  const body = line.trim()
+  if (body === existing.body) return application
+
+  const updatedAt = timestamp(at)
+  const heard = body
+    ? note.heard.map((entry) => (entry.id === entryId ? { ...entry, body } : entry))
+    : note.heard.filter((entry) => entry.id !== entryId)
+
+  const kept = application.stage_notes.filter((current) => current.state !== state)
+  const remaining: StageNote[] = heard.length === 0 && !note.body
+    ? []
+    : [{ ...note, heard, updated_at: updatedAt }]
+
+  return {
+    ...application,
+    stage_notes: sortedStageNotes([...kept, ...remaining]),
     updated_at: updatedAt,
   }
 }
@@ -673,6 +718,26 @@ export function updateApplicationStageCapture(
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
   const updated = captureStageNote(application, state, line, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+/** Rewrites or removes one captured line on one stage of one application. */
+export function reviseApplicationStageCapture(
+  document: TrackerDocument,
+  id: string,
+  state: StateId,
+  entryId: string,
+  line: string,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = reviseStageNoteCapture(application, state, entryId, line, at)
   if (updated === application) return document
 
   return {

@@ -63,6 +63,12 @@ interface StageNotesDialogProps {
    * are likelier than a lull the autosave could ride on.
    */
   onCapture: (state: StateId, line: string) => Promise<void>
+  /**
+   * Stores a rewritten captured line, or removes it when the text is blank. Like a
+   * capture and unlike a draft, it is stored as it is entered: a correction to something
+   * already written down has nothing a Save could still be waiting for.
+   */
+  onRevise: (state: StateId, entryId: string, body: string) => Promise<void>
 }
 
 function errorMessage(error: unknown): string {
@@ -150,6 +156,7 @@ export function StageNotesDialog({
   onSaveDrafts,
   onExternalChange,
   onCapture,
+  onRevise,
 }: StageNotesDialogProps) {
   const dialogRef = useRef<HTMLElement>(null)
   const [drafts, setDrafts] = useState<Partial<Record<StateId, string>>>(() =>
@@ -175,6 +182,12 @@ export function StageNotesDialog({
   const [editing, setEditing] = useState<StateId[]>(() =>
     application.stage_notes.length > 0 ? [] : [application.state],
   )
+  /**
+   * Stages whose captured lines are open for correcting. Held here rather than in the pane
+   * for the same reason `editing` is: the find has to know, because a line in a box has no
+   * highlight to step onto.
+   */
+  const [editingLines, setEditingLines] = useState<StateId[]>([])
   const [sessions, setSessions] = useState<Partial<Record<StateId, StageNoteEditSession>>>({})
   const sessionsRef = useRef(sessions)
   const [formError, setFormError] = useState<string | null>(null)
@@ -410,6 +423,22 @@ export function StageNotesDialog({
    * from `drafts`, because a capture is written as it is typed: there is no unsaved version
    * of it, and Save must not be able to put one back the way it was.
    */
+  /** The same lines as records, with their stamps read, for correcting one at a time. */
+  const linesByState = useMemo(
+    () =>
+      new Map(
+        application.stage_notes.map((note) => [
+          note.state,
+          note.heard.map((entry) => ({
+            id: entry.id,
+            body: entry.body,
+            stamp: formatTimeOfDay(entry.at),
+          })),
+        ]),
+      ),
+    [application.stage_notes],
+  )
+
   const capturedByState = useMemo(
     () =>
       new Map(
@@ -449,7 +478,10 @@ export function StageNotesDialog({
       for (const state of stages) {
         const inEditor = editing.includes(state) && !sessions[state]
         const written = inEditor ? 0 : countIn(drafts[state] ?? '')
-        const count = written + countIn(capturedByState.get(state) ?? '')
+        // Lines open for correcting sit out for the same reason: each is in a box of its
+        // own, and a box holds text rather than highlights to step onto.
+        const said = editingLines.includes(state) ? 0 : countIn(capturedByState.get(state) ?? '')
+        const count = written + said
         if (count === 0) continue
         perStage.set(state, { base: total, count, written })
         order.push(state)
@@ -457,7 +489,7 @@ export function StageNotesDialog({
       }
       return { perStage, order, total }
     },
-    [capturedByState, drafts, editing, sessions, stages],
+    [capturedByState, drafts, editing, editingLines, sessions, stages],
   )
 
   const matches = useMemo(() => findMatches(query), [findMatches, query])
@@ -1026,6 +1058,15 @@ export function StageNotesDialog({
                   <StageNotePane
                     body={drafts[state] ?? ''}
                     captured={capturedByState.get(state) ?? ''}
+                    isEditingLines={editingLines.includes(state)}
+                    lines={linesByState.get(state) ?? []}
+                    onRevise={(entryId, revised) => onRevise(state, entryId, revised)}
+                    onToggleEditLines={() =>
+                      setEditingLines((current) =>
+                        current.includes(state)
+                          ? current.filter((entry) => entry !== state)
+                          : [...current, state],
+                      )}
                     currentMatch={currentMatch}
                     formatDate={formatShortDate}
                     heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}

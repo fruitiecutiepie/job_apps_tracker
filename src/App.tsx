@@ -42,6 +42,7 @@ import {
   unpackTrackerArchive,
   clearApplicationRating,
   updateApplication,
+  reviseApplicationStageCapture,
   updateApplicationStageCapture,
   updateApplicationStageNotes,
   updateApplicationRatings,
@@ -1117,6 +1118,13 @@ export default function App() {
             await commit(
               (current) => updateApplicationStageCapture(current, id, state, line, new Date()),
               'Note captured.',
+            )
+          }}
+          onRevise={async (state: StateId, entryId: string, revised: string) => {
+            const id = stageNotesApplication.id
+            await commit(
+              (current) => reviseApplicationStageCapture(current, id, state, entryId, revised, new Date()),
+              revised.trim() ? 'Note updated.' : 'Note removed.',
             )
           }}
           onExternalChange={(state: StateId, body: string) =>

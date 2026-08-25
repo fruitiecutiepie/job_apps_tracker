@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { CornerDownLeft, ExternalLink, X } from 'lucide-react'
+import { CornerDownLeft, ExternalLink, PencilLine, X } from 'lucide-react'
 import type { RefCallback } from 'react'
+import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_SECTION, MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
 import type { StageNote, StageNoteEditSession, StateId } from './domain'
@@ -31,6 +32,13 @@ interface StageNotePaneProps {
    * version of it here that Save could still change.
    */
   captured: string
+  /** The same lines as records, for correcting them one at a time. */
+  lines: readonly CapturedLine[]
+  /** Whether the captured lines are open for correcting rather than being read. */
+  isEditingLines: boolean
+  onToggleEditLines: () => void
+  /** Stores a rewritten captured line, or removes it when the text is blank. */
+  onRevise: (id: string, body: string) => Promise<void>
   onChange: (value: string) => void
   /** Files one line under the note's capture section and stores it there and then. */
   onCapture: (line: string) => Promise<void>
@@ -63,6 +71,10 @@ export function StageNotePane({
   heardMatchBase,
   currentMatch,
   captured,
+  lines,
+  isEditingLines,
+  onToggleEditLines,
+  onRevise,
   onChange,
   onCapture,
   onToggleEditing,
@@ -245,7 +257,7 @@ export function StageNotePane({
           write for a second caret here to race.
         */}
         <div className="stage-note__dock">
-          {captured ? (
+          {captured && !isEditingLines ? (
             <div
               aria-label={`${CAPTURE_SECTION} in ${label}`}
               className="stage-note__log"
@@ -260,6 +272,12 @@ export function StageNotePane({
                 query={query}
                 source={captured}
               />
+            </div>
+          ) : null}
+
+          {isEditingLines ? (
+            <div className="stage-note__log stage-note__log--editing" ref={logRef}>
+              <CapturedLines label={label} lines={lines} onRevise={onRevise} />
             </div>
           ) : null}
           <div className="stage-note__capture">
@@ -285,6 +303,18 @@ export function StageNotePane({
                 value={line}
               />
             </label>
+            {lines.length > 0 ? (
+              <button
+                aria-label={`${isEditingLines ? 'Read' : 'Correct'} the captured lines in ${label}`}
+                aria-pressed={isEditingLines}
+                className="button button--quiet stage-note__mode"
+                onClick={onToggleEditLines}
+                type="button"
+              >
+                <PencilLine aria-hidden="true" size={14} />
+                {isEditingLines ? 'Done' : 'Correct'}
+              </button>
+            ) : null}
             <button
               aria-label={`Capture this line in ${label}`}
               className="button button--quiet stage-note__mode"

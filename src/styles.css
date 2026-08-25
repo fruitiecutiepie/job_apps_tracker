@@ -1826,6 +1826,56 @@ tbody tr:hover {
 }
 
 /*
+ * Captured lines open for correcting. One row per line, the stamp beside the box rather
+ * than inside it: the moment a line was captured is not something an edit changes, so it
+ * is never something to retype. Rows stay as dense as the log they replace, so correcting
+ * a typo does not resize the dock under the note.
+ */
+.stage-note__lines {
+  display: grid;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage-note__line {
+  display: flex;
+  align-items: start;
+  gap: var(--s2);
+}
+
+.stage-note__line .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.stage-note__line .field textarea {
+  min-height: var(--control);
+  padding: var(--s2) var(--s3);
+  font-size: var(--t3);
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.stage-note__stamp {
+  padding: var(--s2) 0;
+  color: var(--ink-3);
+  font-size: var(--t2);
+  white-space: nowrap;
+}
+
+.stage-note__line-remove {
+  min-width: var(--control);
+  min-height: var(--control);
+  color: var(--ink-3);
+}
+
+.stage-note__line-remove:hover {
+  color: var(--danger);
+}
+
+/*
  * The capture row: one line in, filed into the note being read. It reads as a dense
  * toolbar rather than a form field, because it is answered mid-conversation and sits
  * under a note rather than in a dialog full of inputs.

@@ -41,6 +41,9 @@ import {
   setStageNote,
   stageNoteEditFilename,
   stageNoteEditUrl,
+  captureStageNote,
+  reviseStageNoteCapture,
+  reviseApplicationStageCapture,
   stageNoteFor,
   stateEventsFor,
   trackerDatabasePath,
@@ -505,6 +508,106 @@ describe('stage prep notes', () => {
     ])
     expect(withNote.updated_at).toBe(REFERENCE.toISOString())
     expect(withNote.state_history).toEqual(application.state_history)
+  })
+
+  describe('rewriting a captured line', () => {
+    const LATEST = new Date('2026-08-17T02:00:00.000Z')
+
+    const withTwoCaptures = () => {
+      const application = setStageNote(
+        createApplication({ company: 'Northwind' }, REFERENCE),
+        'interview_1',
+        'Ask about the panel',
+        REFERENCE,
+      )
+      const first = captureStageNote(application, 'interview_1', 'Panel is three people', REFERENCE)
+      return captureStageNote(first, 'interview_1', 'Dana runs the lop', LATER)
+    }
+
+    const captures = (application: Application) =>
+      stageNoteFor(application, 'interview_1')?.heard ?? []
+
+    it('rewrites the line and leaves the moment it was captured alone', () => {
+      const application = withTwoCaptures()
+      const [, typo] = captures(application)
+      const fixed = reviseStageNoteCapture(
+        application,
+        'interview_1',
+        typo.id,
+        '  Dana runs the loop  ',
+        LATEST,
+      )
+
+      // An edit corrects what was written down; it does not claim the line was said
+      // later, and the day it reads under is a reading of `at`.
+      expect(captures(fixed)[1]).toEqual({ id: typo.id, body: 'Dana runs the loop', at: typo.at })
+      expect(captures(fixed)[0]).toEqual(captures(application)[0])
+      expect(stageNoteFor(fixed, 'interview_1')?.updated_at).toBe(LATEST.toISOString())
+      expect(fixed.updated_at).toBe(LATEST.toISOString())
+    })
+
+    it('removes the line when it is rewritten blank, leaving the rest of the note', () => {
+      const application = withTwoCaptures()
+      const [first, second] = captures(application)
+      const removed = reviseStageNoteCapture(application, 'interview_1', second.id, '   ', LATEST)
+
+      expect(captures(removed).map((entry) => entry.id)).toEqual([first.id])
+      expect(stageNoteFor(removed, 'interview_1')?.body).toBe('Ask about the panel')
+    })
+
+    it('drops a note whose last captured line is removed and which holds nothing else', () => {
+      const application = captureStageNote(
+        createApplication({ company: 'Northwind' }, REFERENCE),
+        'interview_1',
+        'Panel is three people',
+        REFERENCE,
+      )
+      const [only] = captures(application)
+
+      // The same rule a blank body follows: an empty note is not a record of anything.
+      expect(stageNoteFor(application, 'interview_1')?.body).toBe('')
+      const removed = reviseStageNoteCapture(application, 'interview_1', only.id, '', LATEST)
+      expect(removed.stage_notes).toEqual([])
+    })
+
+    it('treats unchanged text and an unknown line as no-ops', () => {
+      const application = withTwoCaptures()
+      const [first] = captures(application)
+
+      expect(reviseStageNoteCapture(application, 'interview_1', first.id, first.body, LATEST))
+        .toBe(application)
+      // Trimming is applied before the comparison, so whitespace alone is not a change.
+      expect(reviseStageNoteCapture(application, 'interview_1', first.id, ` ${first.body} `, LATEST))
+        .toBe(application)
+      expect(reviseStageNoteCapture(application, 'interview_1', 'not-a-line', 'Something', LATEST))
+        .toBe(application)
+      expect(reviseStageNoteCapture(application, 'offer', first.id, 'Something', LATEST))
+        .toBe(application)
+    })
+
+    it('rewrites through the document without touching other applications', () => {
+      const document = createDemoDocument(REFERENCE)
+      const target = document.applications.find((application) => application.stage_notes.some(
+        (note) => note.heard.length > 0,
+      ))!
+      const note = target.stage_notes.find((entry) => entry.heard.length > 0)!
+      const [line] = note.heard
+
+      const updated = reviseApplicationStageCapture(
+        document,
+        target.id,
+        note.state,
+        line.id,
+        'What they actually said',
+        LATEST,
+      )
+
+      const after = updated.applications.find((application) => application.id === target.id)!
+      expect(stageNoteFor(after, note.state)?.heard[0].body).toBe('What they actually said')
+      expect(updated.applications.filter((application) => application.id !== target.id)).toEqual(
+        document.applications.filter((application) => application.id !== target.id),
+      )
+    })
   })
 
   it('records notes for a stage the application has not reached yet', () => {

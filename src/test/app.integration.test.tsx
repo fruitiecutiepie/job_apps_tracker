@@ -526,6 +526,73 @@ describe('job applications tracker', () => {
     expect(captured().heard).toHaveLength(3)
   })
 
+  it('corrects a captured line in place, keeping the moment it was captured', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    const [first] = before.stage_notes.find((note) => note.state === 'interview_2')!.heard
+
+    await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Interview 2' }))
+
+    const rows = within(dialog).getByRole('list', { name: 'Captured lines in Interview 2' })
+    const box = within(rows).getByLabelText(
+      `Captured at ${formatTimeOfDay(first.at)} in Interview 2`,
+    )
+    expect(box).toHaveValue('Team is 40 engineers across four squads')
+
+    await user.clear(box)
+    await user.type(box, 'Team is 42 engineers across four squads{Enter}')
+    expect(screen.getByRole('status')).toHaveTextContent('Note updated.')
+
+    const stored = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    const line = stored.stage_notes.find((note) => note.state === 'interview_2')!.heard[0]
+    expect(line.body).toBe('Team is 42 engineers across four squads')
+    // A correction fixes what was written down; it does not claim the line was said later.
+    expect(line.id).toBe(first.id)
+    expect(line.at).toBe(first.at)
+
+    // Read it back: the log shows the corrected line, under the day it was captured on.
+    await user.click(within(dialog).getByRole('button', { name: 'Read the captured lines in Interview 2' }))
+    const log = within(dialog).getByRole('log', { name: 'Heard in Interview 2' })
+    expect(within(log).getByText('Team is 42 engineers across four squads')).toBeInTheDocument()
+  })
+
+  it('removes a captured line, and the note with it when nothing else is left', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    const heard = before.stage_notes.find((note) => note.state === 'interview_2')!.heard
+    expect(heard).toHaveLength(3)
+
+    await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Interview 2' }))
+    await user.click(within(dialog).getByRole('button', {
+      name: `Remove the line captured at ${formatTimeOfDay(heard[1].at)} in Interview 2`,
+    }))
+
+    expect(screen.getByRole('status')).toHaveTextContent('Note removed.')
+    const stored = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    const note = stored.stage_notes.find((entry) => entry.state === 'interview_2')!
+    expect(note.heard.map((entry) => entry.id)).toEqual([heard[0].id, heard[2].id])
+    // What was prepared for the stage is untouched by a line being taken out of it.
+    expect(note.body).toContain('Cutting cycle time')
+  })
+
   it('keeps a capture made while an earlier write is still in flight', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
