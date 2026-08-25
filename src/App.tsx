@@ -1061,18 +1061,23 @@ export default function App() {
           <p className="context-bar__count">
             {filteredApplications.length} of {tracker.applications.length} applications shown
           </p>
+          {/*
+            * Search sits with the count rather than among the filters: it is what most
+            * often decides that number, and it takes free text where the rest of the row
+            * takes a value from a list.
+            */}
+          <div className="search-field">
+            <Search aria-hidden="true" size={15} />
+            <input
+              aria-label="Search applications"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search company, role, source, notes or action"
+              type="search"
+              value={search}
+            />
+          </div>
 
           <div className="context-bar__filters">
-            <div className="search-field">
-              <Search aria-hidden="true" size={15} />
-              <input
-                aria-label="Search applications"
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search company, role, source, notes or action"
-                type="search"
-                value={search}
-              />
-            </div>
             <select
               aria-label="Filter by state"
               onChange={(event) => setStateFilter(event.target.value as StateId | 'all')}

@@ -201,6 +201,16 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
+  it('puts search on the count row, not among the filters', async () => {
+    await renderLoadedApp()
+
+    const count = screen.getByText('19 of 19 applications shown')
+    const search = screen.getByRole('searchbox', { name: 'Search applications' })
+
+    expect(count.nextElementSibling).toBe(search.parentElement)
+    expect(search.closest('.context-bar__filters')).toBeNull()
+  })
+
   it('keeps Copy roles beside the source filter rather than below the filter row', async () => {
     await renderLoadedApp()
 

@@ -494,9 +494,9 @@ p {
 }
 
 /*
- * One row, always: search, the three filters, and the button that copies from them.
- * They are read and set as a group, so the group is what wraps — below the title when the
- * bar is tight — rather than the controls splitting across lines among themselves.
+ * One row, always: the three filters and the button that copies from them. They are read
+ * and set as a group, so the group is what wraps — below the title when the bar is tight —
+ * rather than the controls splitting across lines among themselves.
  *
  * That means the controls give up width instead. Each keeps a floor it will not shrink
  * past, which is also what gives this row a min-content width to wrap at; under it the
@@ -510,10 +510,12 @@ p {
   margin-left: auto;
 }
 
+/* Sits with the count it decides, between the title and the filters. It takes what the
+   title and that row leave rather than growing into them. */
 .search-field {
   position: relative;
   display: block;
-  flex: 1 1 14rem;
+  flex: 0 1 18rem;
   min-width: 9rem;
 }
 
