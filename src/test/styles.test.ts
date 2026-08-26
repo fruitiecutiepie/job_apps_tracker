@@ -73,3 +73,17 @@ describe('collapsed outline', () => {
     expect(rail.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
   })
 })
+
+describe('context bar buttons', () => {
+  it('keeps every filter-row button label on one line', () => {
+    // A flex item shrinks below its content by default, and a button narrower than its
+    // own two words is what a wrapped label looks like. Scoped to the row rather than to
+    // one button's wrapper, so a button added here cannot quietly get the old behaviour.
+    const body = ruleBody('.context-bar__filters .button')
+
+    expect(body).toMatch(/white-space:\s*nowrap/)
+    // Nothing to shrink means the selects give the width up instead, down to the floors
+    // they set for themselves.
+    expect(body).toMatch(/flex:\s*none/)
+  })
+})

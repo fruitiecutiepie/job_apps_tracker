@@ -552,7 +552,6 @@ p {
 /*
  * The source filter and the button that copies from it travel as one item, so the row
  * breaks between filters rather than leaving the button stranded on a line below them.
- * The select still shrinks; the button keeps its label on one line.
  */
 .context-bar__source {
   display: flex;
@@ -561,7 +560,13 @@ p {
   flex: 0 1 auto;
 }
 
-.context-bar__source .button {
+/*
+ * Every button in this row keeps its label on one line — Copy roles and Clear filters
+ * both. A flex item shrinks below its content by default, and a two-word label in a
+ * button narrower than the words is what a wrapped label looks like. The selects give up
+ * the width instead, which is what their min-width floors above are for.
+ */
+.context-bar__filters .button {
   flex: none;
   white-space: nowrap;
 }
