@@ -2247,8 +2247,20 @@ tbody tr:hover {
   min-height: 0;
 }
 
-.panel__body--no-sidebar {
-  grid-template-columns: minmax(0, 1fr);
+/* Collapsed, the outline leaves a rail rather than disappearing: the control that brings
+   it back has to be where the one that sent it away was, or it is no more findable than a
+   shortcut. `auto` rather than a width token — the rail is one icon button wide. */
+.panel__body--rail {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.panel__rail {
+  display: grid;
+  align-content: start;
+  justify-items: center;
+  padding: var(--s4) var(--s3);
+  border-right: 1px solid var(--line);
+  background: var(--surface-2);
 }
 
 .panel__sidebar {
@@ -2261,8 +2273,18 @@ tbody tr:hover {
   background: var(--surface-2);
 }
 
-.panel__sidebar-title {
+/* The title and the control that collapses it read as one row, so the button sits with
+   the outline it acts on instead of floating above the tree. */
+.panel__sidebar-head {
+  display: flex;
+  gap: var(--s3);
+  align-items: center;
+  justify-content: space-between;
   margin: 0 0 var(--s2);
+}
+
+.panel__sidebar-title {
+  margin: 0;
   color: var(--ink-3);
   font-size: var(--t1);
   font-weight: 600;
@@ -3303,10 +3325,21 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     grid-template-rows: auto minmax(0, 1fr);
   }
 
-  .panel__sidebar {
+  .panel__sidebar,
+  .panel__rail {
     gap: var(--s3);
     border-right: 0;
     border-bottom: 1px solid var(--line);
+  }
+
+  /* The body is one column here, so the rail is a row across the top of the notes. */
+  .panel__body--rail {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .panel__rail {
+    justify-items: start;
+    padding: var(--s3) var(--s4);
   }
 
   /* A strip rather than a column, so it is capped and scrolls instead of pushing the

@@ -58,3 +58,18 @@ describe('shortcut keys', () => {
     expect(ruleBody('.panel__shortcuts-panel')).toMatch(/position:\s*absolute/)
   })
 })
+
+describe('collapsed outline', () => {
+  it('keeps a rail where the sidebar was, rather than closing the column away', () => {
+    // A control inside the thing it hides has nowhere to be once it is hidden, so the
+    // collapsed state is a narrower first column, never a missing one.
+    expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\)/)
+
+    const rail = ruleBody('.panel__rail')
+    // It reads as the sidebar it stands in for: same face, same edge.
+    expect(rail).toMatch(/background:\s*var\(--surface-2\)/)
+    expect(rail).toMatch(/border-right:\s*1px solid var\(--line\)/)
+    expect(ruleBody('.panel__sidebar')).toMatch(/background:\s*var\(--surface-2\)/)
+    expect(rail.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
+  })
+})

@@ -844,6 +844,7 @@ describe('job applications tracker', () => {
       'title',
       'Open the stage picker (Ctrl+P)',
     )
+    // This one lives in the sidebar beside the outline it collapses, not in the title bar.
     expect(within(dialog).getByRole('button', { name: 'Hide the outline' })).toHaveAttribute(
       'title',
       'Hide the outline (Ctrl+B)',
@@ -1365,11 +1366,25 @@ describe('job applications tracker', () => {
     expect(panes[0]).toHaveAccessibleName('Offer')
     expect(panes[1]).toHaveAccessibleName('Interview 1')
 
-    // The outline collapses away to give the notes the full width, and comes back.
+    // The outline collapses away to give the notes the full width, and comes back. The
+    // control that does it sits with the outline it acts on, not up in the title bar
+    // among the actions that act on the notes.
     expect(within(dialog).getByText('Outline')).toBeInTheDocument()
-    await user.click(within(dialog).getByRole('button', { name: 'Hide the outline' }))
+    const toggle = within(dialog).getByRole('button', { name: 'Hide the outline' })
+    expect(toggle.closest('.panel__sidebar')).not.toBeNull()
+    expect(toggle.closest('.panel__titlebar')).toBeNull()
+
+    await user.click(toggle)
     expect(within(dialog).queryByText('Outline')).not.toBeInTheDocument()
-    await user.click(within(dialog).getByRole('button', { name: 'Show the outline' }))
+
+    // Collapsing leaves a rail behind. A control inside the thing it hides would have
+    // nowhere to be once it was hidden, so the way back would have to be somewhere else
+    // — and then the button would move every time it was pressed.
+    const railToggle = within(dialog).getByRole('button', { name: 'Show the outline' })
+    expect(railToggle.closest('.panel__rail')).not.toBeNull()
+    expect(railToggle.closest('.panel__titlebar')).toBeNull()
+
+    await user.click(railToggle)
     expect(within(dialog).getByText('Outline')).toBeInTheDocument()
   })
 

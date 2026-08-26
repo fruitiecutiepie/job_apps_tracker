@@ -975,6 +975,28 @@ export function StageNotesDialog({
         ? `Saved ${formatTimeOfDay(savedAt.toISOString())}`
         : 'Saved'
 
+  /*
+   * One control, rendered in whichever of the two the sidebar currently is. It collapses
+   * the outline, so it belongs beside the outline rather than up in the title bar among
+   * the actions that act on the notes. That only works if collapsing leaves something
+   * behind: a control inside the thing it hides has nowhere to be once it is hidden. So
+   * the sidebar collapses to a rail holding just this button, and the button does not
+   * move when it is pressed.
+   */
+  const outlineToggle = (
+    <button
+      aria-keyshortcuts={shortcutKeys('B')}
+      aria-label={sidebarOpen ? 'Hide the outline' : 'Show the outline'}
+      aria-pressed={sidebarOpen}
+      className="icon-button"
+      onClick={() => setSidebarOpen((current) => !current)}
+      title={`${sidebarOpen ? 'Hide the outline' : 'Show the outline'} (${shortcutLabel('B')})`}
+      type="button"
+    >
+      <PanelLeft aria-hidden="true" size={16} />
+    </button>
+  )
+
   return (
     <div className="dialog-backdrop dialog-backdrop--panel">
       {/* A panel fills the viewport, so there is no backdrop left to click away on. */}
@@ -991,17 +1013,6 @@ export function StageNotesDialog({
             <p className="dialog__subject">{title}</p>
             <h2 id="stage-notes-dialog-title">Stage prep notes</h2>
           </div>
-          <button
-            aria-keyshortcuts={shortcutKeys('B')}
-            aria-label={sidebarOpen ? 'Hide the outline' : 'Show the outline'}
-            aria-pressed={sidebarOpen}
-            className="icon-button"
-            onClick={() => setSidebarOpen((current) => !current)}
-            title={`${sidebarOpen ? 'Hide the outline' : 'Show the outline'} (${shortcutLabel('B')})`}
-            type="button"
-          >
-            <PanelLeft aria-hidden="true" size={16} />
-          </button>
           <button
             aria-keyshortcuts={shortcutKeys('\\')}
             aria-pressed={isSplit}
@@ -1047,7 +1058,7 @@ export function StageNotesDialog({
         </div>
 
         <form
-          className={`panel__body${sidebarOpen ? '' : ' panel__body--no-sidebar'}`}
+          className={`panel__body${sidebarOpen ? '' : ' panel__body--rail'}`}
           // There is nothing to submit — the notes write themselves. The form element
           // stays because it carries the panel's layout, and because the capture box's
           // Enter guard is written against the panel being one form around every stage.
@@ -1056,7 +1067,10 @@ export function StageNotesDialog({
           {sidebarOpen ? (
           <aside className="panel__sidebar">
             <div>
-              <p className="panel__sidebar-title">Outline</p>
+              <div className="panel__sidebar-head">
+                <p className="panel__sidebar-title">Outline</p>
+                {outlineToggle}
+              </div>
               {outline.length > 0 ? (
                 <OutlineList
                   current={trailKey}
@@ -1079,7 +1093,9 @@ export function StageNotesDialog({
               were told in it.
             </p>
           </aside>
-          ) : null}
+          ) : (
+            <div className="panel__rail">{outlineToggle}</div>
+          )}
 
           <div className="panel__main">
             <div
