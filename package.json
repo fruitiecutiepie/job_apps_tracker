@@ -1,5 +1,6 @@
 {
   "name": "job-applications-tracker",
+  "description": "A job search organizer that keeps every application in a JSON file on your own machine — no account, no backend, no sync.",
   "private": true,
   "version": "1.0.0",
   "type": "module",
