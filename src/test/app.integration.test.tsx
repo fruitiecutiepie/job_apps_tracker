@@ -828,6 +828,56 @@ describe('job applications tracker', () => {
     expect(within(dialog).getByLabelText('Capture a line in Interview 1')).toHaveFocus()
   })
 
+  it('names its shortcuts on the controls that share them and in a list of their own', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // A control that duplicates a shortcut says so where it is, to a pointer and to a
+    // screen reader both — jsdom reports no platform, so the labels read as Ctrl.
+    const find = within(dialog).getByRole('button', { name: 'Find' })
+    expect(find).toHaveAttribute('aria-keyshortcuts', 'Meta+F Control+F')
+    expect(find).toHaveAttribute('title', 'Open the find bar (Ctrl+F)')
+    expect(within(dialog).getByRole('button', { name: 'Go to stage' })).toHaveAttribute(
+      'title',
+      'Open the stage picker (Ctrl+P)',
+    )
+    expect(within(dialog).getByRole('button', { name: 'Hide the outline' })).toHaveAttribute(
+      'title',
+      'Hide the outline (Ctrl+B)',
+    )
+    expect(within(dialog).getByRole('button', { name: 'Split' })).toHaveAttribute(
+      'title',
+      'Open a second pane (Ctrl+\\)',
+    )
+    // Ctrl+K has no button in the title bar, so the box it lands in carries it instead.
+    expect(within(dialog).getByLabelText('Capture a line in Interview 2')).toHaveAttribute(
+      'aria-keyshortcuts',
+      'Meta+K Control+K',
+    )
+
+    // All five are listed together, reachable from the keyboard rather than on hover.
+    const trigger = within(dialog).getByRole('button', { name: 'Keyboard shortcuts' })
+    expect(trigger).toHaveAttribute('aria-expanded', 'false')
+    await user.click(trigger)
+    expect(trigger).toHaveAttribute('aria-expanded', 'true')
+
+    const list = screen.getByRole('group', { name: 'Keyboard shortcuts' })
+    expect(
+      within(list).getAllByText(/^Ctrl\+/).map((key) => key.textContent),
+    ).toEqual(['Ctrl+\\', 'Ctrl+F', 'Ctrl+P', 'Ctrl+B', 'Ctrl+K'])
+    expect(within(list).getByText('Put the caret in the capture box')).toBeInTheDocument()
+
+    // Escape closes the list before it closes the panel, the debt every overlay in here
+    // owes the dialog's own Escape handler, and focus goes back to what opened it.
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('group', { name: 'Keyboard shortcuts' })).not.toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: 'Stage prep notes' })).toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+  })
+
   it('opens a tab per stage with the current one first, and can clear a stage', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

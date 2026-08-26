@@ -171,12 +171,12 @@ When nothing is configured and the server looks like it is on a remote host, the
 
 ### Keyboard shortcuts
 
-The stage notes panel binds five shortcuts while it is open. They are bound to the document rather than to a particular field, so they work wherever the caret is in the panel:
+The stage notes panel binds five shortcuts while it is open. They are bound to the document rather than to a particular field, so they work wherever the caret is in the panel. You do not have to come back here for them: the keyboard button in the panel's title bar lists all five, and the **Split**, **Go to stage**, **Find**, and outline controls each name the shortcut they share, in a tooltip and to a screen reader. The panel answers `Ctrl` and `Cmd` alike whatever you are on; the labels show the one your own platform writes.
 
 - `Ctrl`/`Cmd+\` opens a second pane beside the one you are reading, on the first other stage the application has, and closes back to one pane when pressed again. An application with only one stage has nothing to split to, so nothing happens.
 - `Ctrl`/`Cmd+F` opens the find bar. It deliberately takes over the browser's own find, which cannot see text inside a folded note. `Enter` steps to the next match and `Shift+Enter` to the previous; `Escape` closes the bar rather than the panel.
 - `Ctrl`/`Cmd+P` opens the stage picker. Type to narrow it, `ArrowUp` and `ArrowDown` move through the results, `Enter` opens the highlighted stage—reopening one you had closed, or adding one you have not reached—and `Escape` dismisses it.
-- `Ctrl`/`Cmd+B` shows and hides the sidebar.
+- `Ctrl`/`Cmd+B` shows and hides the outline sidebar.
 - `Ctrl`/`Cmd+K` puts the caret in the capture box, and in a split panel it lands in the pane you are reading.
 
 Elsewhere, `Escape` closes any dialog, `Tab` cycles within it rather than escaping to the page behind, and the compensation amount fields take arrow keys to nudge a figure by 5,000—10,000 with `Shift`.

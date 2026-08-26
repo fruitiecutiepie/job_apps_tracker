@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronRight, Columns2, CornerDownLeft, PanelLeft, Search, X } from 'lucide-react'
+import { ChevronRight, Columns2, CornerDownLeft, Keyboard, PanelLeft, Search, X } from 'lucide-react'
 import {
   closeStageNoteEditor,
   openStageNoteInEditor,
@@ -13,6 +13,7 @@ import {
   type StateId,
 } from './domain'
 import { QuickOpen, type QuickOpenEntry } from './QuickOpen'
+import { PANEL_SHORTCUTS, shortcutKeys, shortcutLabel } from './shortcuts'
 import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
 import {
   capturedMarkdown,
@@ -143,6 +144,82 @@ function OutlineList({ nodes, depth, path, current, onPick }: OutlineListProps) 
         )
       })}
     </ul>
+  )
+}
+
+/*
+ * The shortcuts the panel binds, listed where they are used. They are bound to the
+ * document because the panel is modal, so there is no one control to hang them off and
+ * nothing else on screen that would otherwise name them.
+ *
+ * A disclosure holding a plain list, the same shape as the topbar's More actions: Escape
+ * closes it before the panel, an outside pointer dismisses it, and focus returns to the
+ * trigger. Escape is stopped here rather than left to bubble, which is the debt every
+ * overlay inside this panel owes `useDialogKeyboard`, as the find bar already pays.
+ */
+function ShortcutsHelp() {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [open])
+
+  return (
+    <div
+      className="panel__shortcuts"
+      onKeyDown={(event) => {
+        if (!open || event.key !== 'Escape') return
+        // Handled on the way up from the trigger, not from a second document listener:
+        // `useDialogKeyboard` is already bound to the document and was bound first, so
+        // nothing added there could stop it. React's own handler runs before it does.
+        event.preventDefault()
+        event.stopPropagation()
+        setOpen(false)
+        triggerRef.current?.focus()
+      }}
+      ref={containerRef}
+    >
+      <button
+        aria-expanded={open}
+        aria-label="Keyboard shortcuts"
+        className="icon-button"
+        onClick={() => setOpen((current) => !current)}
+        ref={triggerRef}
+        type="button"
+      >
+        <Keyboard aria-hidden="true" size={16} />
+      </button>
+      {open ? (
+        <div
+          aria-labelledby="stage-notes-shortcuts-title"
+          className="panel__shortcuts-panel"
+          role="group"
+        >
+          <p className="panel__shortcuts-title" id="stage-notes-shortcuts-title">
+            Keyboard shortcuts
+          </p>
+          <dl className="panel__shortcuts-list">
+            {PANEL_SHORTCUTS.map((shortcut) => (
+              <div className="panel__shortcuts-row" key={shortcut.key}>
+                {/* The key names the row, so it is the term and the sentence is the
+                    definition — which is also the order a reader scans them in. */}
+                <dt>
+                  <kbd className="panel__shortcut-key">{shortcutLabel(shortcut.key)}</kbd>
+                </dt>
+                <dd>{shortcut.description}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
+      ) : null}
+    </div>
   )
 }
 
@@ -915,41 +992,55 @@ export function StageNotesDialog({
             <h2 id="stage-notes-dialog-title">Stage prep notes</h2>
           </div>
           <button
+            aria-keyshortcuts={shortcutKeys('B')}
             aria-label={sidebarOpen ? 'Hide the outline' : 'Show the outline'}
             aria-pressed={sidebarOpen}
             className="icon-button"
             onClick={() => setSidebarOpen((current) => !current)}
+            title={`${sidebarOpen ? 'Hide the outline' : 'Show the outline'} (${shortcutLabel('B')})`}
             type="button"
           >
             <PanelLeft aria-hidden="true" size={16} />
           </button>
           <button
+            aria-keyshortcuts={shortcutKeys('\\')}
             aria-pressed={isSplit}
             className="button button--quiet panel__chrome-button"
             disabled={!isSplit && stages.length < 2}
             onClick={toggleSplit}
-            title={stages.length < 2 ? 'Only one stage is open' : undefined}
+            // Why it cannot be pressed outranks how to press it: a shortcut hint on a
+            // dead control only invites the key that does nothing either.
+            title={
+              stages.length < 2
+                ? 'Only one stage is open'
+                : `${isSplit ? 'Close back to one pane' : 'Open a second pane'} (${shortcutLabel('\\')})`
+            }
             type="button"
           >
             <Columns2 aria-hidden="true" size={14} />
             {isSplit ? 'Unsplit' : 'Split'}
           </button>
           <button
+            aria-keyshortcuts={shortcutKeys('P')}
             className="button button--quiet panel__chrome-button"
             onClick={() => setQuickOpen(true)}
+            title={`Open the stage picker (${shortcutLabel('P')})`}
             type="button"
           >
             <CornerDownLeft aria-hidden="true" size={14} />
             Go to stage
           </button>
           <button
+            aria-keyshortcuts={shortcutKeys('F')}
             className="button button--quiet panel__chrome-button"
             onClick={openFind}
+            title={`Open the find bar (${shortcutLabel('F')})`}
             type="button"
           >
             <Search aria-hidden="true" size={14} />
             Find
           </button>
+          <ShortcutsHelp />
           <button aria-label="Close dialog" className="icon-button" onClick={onClose} type="button">
             <X aria-hidden="true" size={20} />
           </button>

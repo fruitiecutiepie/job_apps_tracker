@@ -2696,6 +2696,76 @@ tbody tr:hover {
   gap: var(--s2);
 }
 
+/* ------------------------------------------------ shortcuts help --- */
+
+/* A disclosure in the title bar, anchored the way More actions is. The panel clips its
+   own overflow, so the popover is placed against the trigger rather than the viewport. */
+.panel__shortcuts {
+  position: relative;
+}
+
+.panel__shortcuts-panel {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + var(--s2));
+  right: 0;
+  display: grid;
+  gap: var(--s3);
+  width: max-content;
+  max-width: min(22rem, 80vw);
+  padding: var(--s4);
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.panel__shortcuts-title {
+  margin: 0;
+  color: var(--ink);
+  font-size: var(--t3);
+  font-weight: 600;
+}
+
+.panel__shortcuts-list {
+  display: grid;
+  gap: var(--s2);
+  margin: 0;
+}
+
+/* The key and what it does on one line, the keys in a column of their own so they line
+   up down the left rather than ragging against sentences of differing length. */
+.panel__shortcuts-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--s3);
+  align-items: baseline;
+}
+
+.panel__shortcuts-row dt,
+.panel__shortcuts-row dd {
+  margin: 0;
+}
+
+.panel__shortcuts-row dd {
+  color: var(--ink-2);
+  font-size: var(--t2);
+}
+
+.panel__shortcut-key {
+  display: inline-block;
+  min-width: var(--s6);
+  padding: 0 var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--surface-2);
+  font-family: inherit;
+  font-size: var(--t1);
+  text-align: center;
+  white-space: nowrap;
+}
+
 /* ---------------------------------------------------- stage picker --- */
 
 .quick-open {

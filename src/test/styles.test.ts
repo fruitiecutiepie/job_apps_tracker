@@ -39,3 +39,22 @@ describe('idle pill', () => {
     expect(body).toMatch(/border:\s*1px solid var\(--line\)/)
   })
 })
+
+describe('shortcut keys', () => {
+  it('draws the key chip from the token scale, like every other chip', () => {
+    const body = ruleBody('.panel__shortcut-key')
+
+    expect(body).toMatch(/border:\s*1px solid var\(--line-strong\)/)
+    expect(body).toMatch(/border-radius:\s*var\(--r1\)/)
+    expect(body).toMatch(/background:\s*var\(--surface-2\)/)
+    expect(body).toMatch(/font-size:\s*var\(--t1\)/)
+    // A key is a label, not a state: no accent, no danger, and no raw values.
+    expect(body).not.toMatch(/--accent|--danger/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    // The 1px hairline is the interface's own border convention; nothing else is raw.
+    expect(body.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
+    // The popover hangs off the trigger, so the trigger has to be the containing block.
+    expect(ruleBody('.panel__shortcuts')).toMatch(/position:\s*relative/)
+    expect(ruleBody('.panel__shortcuts-panel')).toMatch(/position:\s*absolute/)
+  })
+})

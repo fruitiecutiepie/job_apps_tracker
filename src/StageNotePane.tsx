@@ -6,6 +6,7 @@ import { CAPTURE_SECTION, MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
 import type { StageNote, StageNoteEditSession, StateId } from './domain'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
+import { shortcutKeys } from './shortcuts'
 
 interface StageNotePaneProps {
   state: StateId
@@ -309,6 +310,10 @@ export function StageNotePane({
             <label className="field">
               <span className="sr-only">Capture a line in {label}</span>
               <textarea
+                // The one shortcut with no button in the title bar to hang a hint on, so
+                // the box it lands in is what names it. The shortcuts list carries the
+                // visible half.
+                aria-keyshortcuts={shortcutKeys('K')}
                 data-capture-focus={isFocused ? 'true' : undefined}
                 // Never disabled, not even mid-write: taking the caret away from someone
                 // typing what they are being told is worse than a write it has to wait for.

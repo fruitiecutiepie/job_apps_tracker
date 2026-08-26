@@ -33,6 +33,13 @@ afterwards, and Escape closing the find bar before the panel — is covered by t
 tests, along with the tab bar, its arrow keys, the outline and its hierarchy, quick open, and
 splitting into two panes.
 
+Discovering the panel's five shortcuts without the README — the title bar controls naming the one
+they share, the capture box carrying `aria-keyshortcuts` for the shortcut with no button, and the
+shortcuts list opening, reading all five, and closing on Escape without taking the panel with it —
+is covered by the app integration tests. Which modifier the labels read is covered by
+`src/shortcuts.test.ts`; jsdom reports no platform, so the `⌘` half only appears on a real Mac and
+stays manual below.
+
 Capturing what you were told — Enter storing a line without Save and without submitting the panel,
 the line reading in the docked log and not in the prep note above it, the log and its capture box
 staying writable while the prep note is being edited, captures surviving the prep note being
@@ -177,6 +184,11 @@ test cannot judge reliably:
    again when the find closes. Search for something absent and confirm it reads No results.
    Press `Ctrl`/`Cmd+F` again while the bar is open and confirm the existing query is selected.
    Press Escape once to close the find and again to close the panel.
+   Reopen the panel and select the keyboard button in the title bar. Confirm the list names all
+   five shortcuts, that on macOS they read `⌘F` and elsewhere `Ctrl+F`, that Tab reaches the button
+   and Enter opens it, that Escape closes the list and returns focus to it without closing the
+   panel, and that hovering **Split**, **Go to stage**, **Find**, and the outline toggle shows the
+   same shortcut each one answers.
 9. With `VISUAL` or `EDITOR` set to a GUI editor, select **Editor** on a stage note. Confirm the file
    opens, that `data/editing/` holds it, and that the banner names the editor and path. Save a change
    in the editor and confirm it appears in the app within a second or two and is stored without
