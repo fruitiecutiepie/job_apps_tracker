@@ -6,7 +6,7 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 
 ## Features
 
-- Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, the next upcoming invite and attachment filenames on cards, a state-selector fallback, and muted styling for applications untouched for 14 days
+- Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, the next upcoming invite and attachment filenames on cards, a state-selector fallback, and muted styling with an `Idle 30 days` label for live applications that have not changed stage in 30 days
 - Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first
 - Captured lines per stage, recording what an interviewer tells you as you are told it, stored the moment they are entered and pinned on screen under the prep note however far it scrolls
 - Optional deadline per application, recording an external closing or decision date separately from your own next action
@@ -19,10 +19,10 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 - Calendar showing next-action dates and invites together, day by day
 - Stale applications with 7-, 14-, and 30-day thresholds, plus a Move to Rejected shortcut to the current state's counterpart
 - Current-state and ever-reached statistics derived from application history
-- Global company, role, notes, stage prep note, and invite search plus state filtering
+- Global company, role, notes, stage prep note, and invite search plus state and activity filtering
 - Add, edit, delete, import, and export controls, plus confirmed demo-data reset in the demo profile
 - Append-only state history whenever an application actually changes state
-- Responsive layouts and keyboard-accessible forms and dialogs
+- Responsive layouts, keyboard-accessible forms and dialogs, and keyboard shortcuts for splitting, finding, and navigating the stage notes panel
 
 ## Quick start
 
@@ -169,6 +169,18 @@ When nothing is configured and the server looks like it is on a remote host, the
 
 `tracker.json` remains the source of truth; the files under `data/editing/` are disposable scratch copies and are gitignored. The route is only served by `pnpm dev` and `pnpm start`, and it refuses cross-origin requests since it both writes a file and starts a process.
 
+### Keyboard shortcuts
+
+The stage notes panel binds five shortcuts while it is open. They are bound to the document rather than to a particular field, so they work wherever the caret is in the panel:
+
+- `Ctrl`/`Cmd+\` opens a second pane beside the one you are reading, on the first other stage the application has, and closes back to one pane when pressed again. An application with only one stage has nothing to split to, so nothing happens.
+- `Ctrl`/`Cmd+F` opens the find bar. It deliberately takes over the browser's own find, which cannot see text inside a folded note. `Enter` steps to the next match and `Shift+Enter` to the previous; `Escape` closes the bar rather than the panel.
+- `Ctrl`/`Cmd+P` opens the stage picker. Type to narrow it, `ArrowUp` and `ArrowDown` move through the results, `Enter` opens the highlighted stage—reopening one you had closed, or adding one you have not reached—and `Escape` dismisses it.
+- `Ctrl`/`Cmd+B` shows and hides the sidebar.
+- `Ctrl`/`Cmd+K` puts the caret in the capture box, and in a split panel it lands in the pane you are reading.
+
+Elsewhere, `Escape` closes any dialog, `Tab` cycles within it rather than escaping to the page behind, and the compensation amount fields take arrow keys to nudge a figure by 5,000—10,000 with `Shift`.
+
 ### Rate what you think of a role
 
 The editor carries four ratings: **Work** (the day-to-day itself), **Growth** (where it
@@ -250,14 +262,14 @@ Offered by name.
 
 ### Find the right view
 
-- **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames, a preference score for rated applications, and a prep notes button appear on cards, and you can move applications by drag-and-drop or the state selector. Cards last updated 14 or more days ago are greyed out and labelled as untouched; they stay on the board with their history.
-- **Table** sorts and column-filters by company, role, source, state, next action, deadline, urgency, preference, compensation, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—deadline, invites, preference, compensation—keep the rows without one last in either sort direction. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, company, and source filters still apply across views.
+- **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames, a preference score for rated applications, and a prep notes button appear on cards, and you can move applications by drag-and-drop or the state selector. A live application that has not changed stage for 30 days or more is greyed out and labelled `Idle 30 days`; it stays in its own lane with its history, and still moves wherever any other application can. Silence is measured from the last stage change rather than the last edit, so annotating a card or importing an invite does not reset it. Rejected, accepted, and no-openings applications are finished rather than idle and are never labelled.
+- **Table** sorts and column-filters by company, role, source, state, activity, next action, deadline, urgency, preference, compensation, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—activity, deadline, invites, preference, compensation—keep the rows without one last in either sort direction. The Activity column carries the same `Idle N days` text the board shows and filters on it, and reads `—` for an application that is not idle. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, activity, company, and source filters still apply across views.
 - **Focus** answers "what should I do next". Each group heading states its own membership rule, so nothing is hidden behind a mood word: **Overdue or due today**, **Due in 1 to 7 days**, **Due in more than 7 days**, **Action with no date**, **No stage change in more than 7 days**, **Nothing dated or planned**, and a trailing **Finished, action outstanding** for tasks left on rejected, accepted, or no-openings applications. Placement uses the nearest of the soonest upcoming invite, the deadline, and the next-action date, so a date always decides the group; the urgency score only orders rows within it, and preference breaks ties the date and the score have both left level. An application with just an invite, or just a deadline, and no action of its own appears here too. Silence is measured from the last actual state change, not from the last edit, so fixing a typo does not make an application look like it moved. Groups collapse and expand—only the leading non-empty group starts open, and that choice is never saved.
 - **Calendar** places applications only by their next-action date; select an item to edit it. There is no Done control here — the Calendar is a picture of when things fall, not a task list.
-- **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved. When the current state has a rejected counterpart, **Move to Rejected** records that outcome and keeps the history.
+- **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved. This is a view you tune, unlike the Idle label on the board and in the table, which is fixed at 30 days—here you choose the window you want to look through. When the current state has a rejected counterpart, **Move to Rejected** records that outcome and keeps the history.
 - **Statistics** compares current state counts with counts for every state applications have previously reached, then summarises your ratings: how many applications you have rated, the mean preference across them, and one row per dimension showing what you judged, what you could not tell, what you never assessed, and the mean of the judgements.
 
-The global search, state, company, and source filters apply across views. The state filter also takes an outcome—**Rejected** or **Not rejected**—which stands for every rejection at once, or everything that is not one. Neither `Accepted` nor `No openings` counts as a rejection: they are outcomes of their own rather than somebody turning the application down. **Copy roles** puts the roles of whatever is showing on the clipboard, one per line and without repeats—so filtering to Applied at one company from LinkedIn and pressing it copies exactly those roles. Dates, calendar days, overdue status, and stale thresholds use your browser's timezone.
+The global search, state, activity, company, and source filters apply across views. Activity takes **Idle** or **Active**, which are complements rather than a pair of thresholds—a finished application counts as Active because it is not idle. It is a separate control from the state filter because idleness qualifies a stage without changing it, so "Interview 1 and idle" is a question worth asking. The state filter also takes an outcome—**Rejected** or **Not rejected**—which stands for every rejection at once, or everything that is not one. Neither `Accepted` nor `No openings` counts as a rejection: they are outcomes of their own rather than somebody turning the application down. **Copy roles** puts the roles of whatever is showing on the clipboard, one per line and without repeats—so filtering to Applied at one company from LinkedIn and pressing it copies exactly those roles. Dates, calendar days, overdue status, and stale thresholds use your browser's timezone.
 
 ### Back up or replace data
 
@@ -286,3 +298,7 @@ pnpm build
 Use `pnpm test:watch` while developing. The automated smoke test and optional browser checklist are documented in [SMOKE_TEST.md](./SMOKE_TEST.md).
 
 Contributor architecture, invariants, and common traps are documented in [AGENTS.md](./AGENTS.md).
+
+## License
+
+MIT. See [LICENSE](./LICENSE).
