@@ -4,6 +4,7 @@ import { expect, it, vi } from 'vitest'
 
 import { loadTrackerDocument } from '../domain/storage'
 import App from '../App'
+import { seedFullDemo } from './fixture'
 import { testTrackerStore } from './trackerStore'
 
 function readSavedDocument() {
@@ -17,6 +18,8 @@ async function renderLoadedApp() {
 }
 
 it('completes the primary tracker journey and persists it across reloads', async () => {
+  // The journey counts what is there and resets it, so it wants the demo entire.
+  seedFullDemo()
   const user = userEvent.setup()
   const firstRender = await renderLoadedApp()
 
@@ -45,9 +48,11 @@ it('completes the primary tracker journey and persists it across reloads', async
     await user.click(viewButton)
     expect(viewButton).toHaveAttribute('aria-current', 'page')
   }
+  console.log('DEBUG: views done')
 
   await user.click(views.getByRole('button', { name: 'Kanban' }))
   expect(screen.getByRole('heading', { name: 'Applied' })).toBeInTheDocument()
+  console.log('DEBUG: kanban done')
 
   await user.click(screen.getByRole('button', { name: 'Add application' }))
   const addDialog = screen.getByRole('dialog', { name: 'Add application' })
@@ -57,9 +62,11 @@ it('completes the primary tracker journey and persists it across reloads', async
   await user.selectOptions(within(addDialog).getByLabelText('State'), 'applied')
   await user.type(within(addDialog).getByLabelText('Next action'), 'Send portfolio')
   await user.click(within(addDialog).getByRole('button', { name: 'Add application' }))
+  console.log('DEBUG: add application done')
 
   expect(screen.getByRole('status')).toHaveTextContent('Application added.')
   await user.type(contextBar.getByRole('searchbox'), 'Smoke Test Co')
+  console.log('DEBUG: search typed')
 
   await user.click(
     screen.getByRole('button', { name: 'Open Smoke Test Co, Product Designer' }),
@@ -67,12 +74,15 @@ it('completes the primary tracker journey and persists it across reloads', async
   const editDialog = screen.getByRole('dialog', { name: 'Edit application' })
   await user.selectOptions(within(editDialog).getByLabelText('State'), 'offer')
   await user.click(within(editDialog).getByRole('button', { name: 'Save changes' }))
+  console.log('DEBUG: edit done')
 
   expect(screen.getByRole('status')).toHaveTextContent('Application updated.')
 
   await user.click(screen.getByRole('button', { name: 'Add prep notes for Smoke Test Co' }))
+  console.log('DEBUG: prep dialog opened')
   const prepDialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
   await user.type(within(prepDialog).getByLabelText('Offer prep notes'), 'Confirm the review cycle')
+  console.log('DEBUG: prep notes typed')
 
   // Prep notes write themselves once the typing pauses; there is nothing to submit.
   await waitFor(

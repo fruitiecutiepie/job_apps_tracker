@@ -2,8 +2,8 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
-import { createDemoDocument } from '../domain/demo'
 import { loadTrackerDocument, resetTrackerDocument, saveTrackerDocument } from '../domain/storage'
+import { seedNamedCompanies } from './fixture'
 import { handleTestAttachmentFetch, wipeTestAttachments } from './attachmentStore'
 import { handleTestNoteEditFetch, wipeTestEditorSessions } from './noteEditStore'
 import { testTrackerStore } from './trackerStore'
@@ -18,7 +18,7 @@ beforeEach(() => {
   testTrackerStore.clear()
   wipeTestAttachments()
   wipeTestEditorSessions()
-  saveTrackerDocument(createDemoDocument(), testTrackerStore)
+  seedNamedCompanies()
 
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()

@@ -6,6 +6,7 @@ import { DEFAULT_DEMO_REFERENCE } from '../domain/demo'
 import { loadTrackerDocument } from '../domain/storage'
 import { formatShortDate, formatTimeOfDay } from '../views/viewUtils'
 import App from '../App'
+import { seedFullDemo } from './fixture'
 import { testTrackerStore } from './trackerStore'
 import {
   readTestEditorNote,
@@ -93,6 +94,8 @@ describe('job applications tracker', () => {
   })
 
   it('starts with every configured state represented in the Kanban', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     await renderLoadedApp()
 
     for (const state of states) {
@@ -173,6 +176,8 @@ describe('job applications tracker', () => {
   })
 
   it('filters the Kanban by state without changing saved applications', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -186,6 +191,8 @@ describe('job applications tracker', () => {
   })
 
   it('filters to every rejection at once, and to everything that is not one', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -209,6 +216,8 @@ describe('job applications tracker', () => {
   })
 
   it('filters to the applications that have gone quiet, whatever stage they sit at', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -235,6 +244,8 @@ describe('job applications tracker', () => {
   })
 
   it('copies the roles of a whole outcome, not just one state', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -250,6 +261,8 @@ describe('job applications tracker', () => {
   })
 
   it('filters views by company without changing saved applications', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -261,6 +274,8 @@ describe('job applications tracker', () => {
   })
 
   it('filters views by source without changing saved applications', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -272,6 +287,8 @@ describe('job applications tracker', () => {
   })
 
   it('puts search on the count row, not among the filters', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     await renderLoadedApp()
 
     const count = screen.getByText('19 of 19 applications shown')
@@ -306,6 +323,8 @@ describe('job applications tracker', () => {
   })
 
   it('copies one line per showing application, newest filter state included', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -361,6 +380,8 @@ describe('job applications tracker', () => {
   })
 
   it('marks a next action done from the board, recording it apart from the notes', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     const { unmount } = await renderLoadedApp()
     const before = readSavedDocument().applications.find(
@@ -402,6 +423,8 @@ describe('job applications tracker', () => {
   })
 
   it('marks an action done from the editor and lists it apart from the notes', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
     const before = readSavedDocument().applications.find(
@@ -448,6 +471,8 @@ describe('job applications tracker', () => {
   })
 
   it('removes a completed action recorded by mistake', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
     const before = readSavedDocument().applications.find(
@@ -1463,6 +1488,8 @@ describe('job applications tracker', () => {
   })
 
   it('folds headings and sub-points in the reading view without changing saved notes', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -1807,6 +1834,8 @@ describe('job applications tracker', () => {
   })
 
   it('honors deletion cancellation before deleting and saving an application', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     await renderLoadedApp()
@@ -1833,6 +1862,8 @@ describe('job applications tracker', () => {
   })
 
   it('resets to the same 19 examples only after confirmation and clears display filters', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     await renderLoadedApp()
@@ -1867,6 +1898,8 @@ describe('job applications tracker', () => {
   })
 
   it('replaces saved data from a valid import only after confirmation', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     await renderLoadedApp()
@@ -1912,6 +1945,8 @@ describe('job applications tracker', () => {
   })
 
   it('exposes form labels and prevents an orphaned next-action date', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
