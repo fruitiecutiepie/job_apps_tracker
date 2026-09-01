@@ -20,8 +20,19 @@ it('completes the primary tracker journey and persists it across reloads', async
   const user = userEvent.setup()
   const firstRender = await renderLoadedApp()
 
-  expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+  const contextBar = within(screen.getByRole('region', { name: 'View context and filters' }))
+
+  expect(contextBar.getByText('19 of 19 applications shown')).toBeInTheDocument()
   expect(readSavedDocument().applications).toHaveLength(19)
+
+  /*
+   * Scoped to the nav rather than searched for across the page. A role query walks the
+   * tree computing an accessible name per candidate, and each of those asks jsdom for a
+   * computed style — which costs about 30ms there whether or not any CSS is loaded. Over
+   * a thousand-node app that is most of what this journey spends its time on, and the
+   * six buttons it wants are all in one small landmark.
+   */
+  const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
 
   for (const view of [
     'Table',
@@ -30,12 +41,12 @@ it('completes the primary tracker journey and persists it across reloads', async
     'Stale',
     'Statistics',
   ]) {
-    const viewButton = screen.getByRole('button', { name: view })
+    const viewButton = views.getByRole('button', { name: view })
     await user.click(viewButton)
     expect(viewButton).toHaveAttribute('aria-current', 'page')
   }
 
-  await user.click(screen.getByRole('button', { name: 'Kanban' }))
+  await user.click(views.getByRole('button', { name: 'Kanban' }))
   expect(screen.getByRole('heading', { name: 'Applied' })).toBeInTheDocument()
 
   await user.click(screen.getByRole('button', { name: 'Add application' }))
@@ -48,7 +59,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   await user.click(within(addDialog).getByRole('button', { name: 'Add application' }))
 
   expect(screen.getByRole('status')).toHaveTextContent('Application added.')
-  await user.type(screen.getByRole('searchbox'), 'Smoke Test Co')
+  await user.type(contextBar.getByRole('searchbox'), 'Smoke Test Co')
 
   await user.click(
     screen.getByRole('button', { name: 'Open Smoke Test Co, Product Designer' }),
@@ -114,4 +125,15 @@ it('completes the primary tracker journey and persists it across reloads', async
       (application) => application.company === 'Smoke Test Co',
     ),
   ).toBe(false)
-})
+},
+/*
+ * This journey gets its own budget, past the 15s the rest of the suite runs on. It
+ * renders the whole app twice, walks all six views and opens three dialogs, and what
+ * costs is not the app: a role query asks jsdom for a computed style per candidate to
+ * decide what is visible, and jsdom answers in milliseconds rather than microseconds
+ * whether or not a stylesheet is loaded. Measured with `process.cpuUsage`, the journey
+ * is around 10s of CPU, so 15s left it no headroom and it failed whenever the machine
+ * had other work on. Trimming the journey would cost coverage for a saving the queries
+ * dominate anyway, so the budget is what moves.
+ */
+30_000)

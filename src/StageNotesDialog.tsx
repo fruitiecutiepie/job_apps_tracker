@@ -45,7 +45,7 @@ const EDITOR_POLL_MS = 1000
  * sentence is one write rather than one per key, short enough that closing the panel
  * straight after a thought is rare — and the flush on close catches it when it is not.
  */
-const AUTOSAVE_MS = 800
+export const AUTOSAVE_MS = 800
 
 interface StageNotesDialogProps {
   application: Application

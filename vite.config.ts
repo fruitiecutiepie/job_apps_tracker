@@ -12,11 +12,11 @@ export default defineConfig({
      * Vitest defaults a test to 5s, which is the wrong budget for this suite. The panel
      * autosaves `AUTOSAVE_MS` after the typing stops, so the tests that wait for a write
      * to land give `waitFor` 3-4s on its own — leaving barely a second for the render,
-     * the typing and the assertions wrapped around it. The smoke journey needs 2.3s of
-     * that even on an idle machine, so it was failing perhaps one run in five: not
-     * because anything was wrong, but because the inner wait and the outer limit were
-     * set against each other. Fake timers cannot shorten the wait, for the reason
-     * AGENTS.md gives about Testing Library's `waitFor`.
+     * the typing and the assertions wrapped around it. Fake timers cannot shorten the
+     * wait, for the reason AGENTS.md gives about Testing Library's `waitFor`.
+     *
+     * The smoke journey outgrew even this and carries its own budget, for the reason
+     * given where it sets one.
      */
     testTimeout: 15_000,
     css: true,

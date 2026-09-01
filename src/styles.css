@@ -92,6 +92,11 @@
   /* Page gutter */
   --gutter: clamp(var(--s4), 2vw, var(--s6));
 
+  /* Width of one application's card in the prep-notes comparison board, and how tall
+     its note may grow before it scrolls on its own rather than the whole card */
+  --compare-card: 22rem;
+  --compare-card-body: 20rem;
+
   color: var(--ink);
   background: var(--bg);
   font-family:
@@ -1445,6 +1450,106 @@ tbody tr:hover {
   font-weight: 600;
 }
 
+/* ------------------------------------------------------- compare notes --- */
+
+.compare-notes__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s5);
+}
+
+.compare-notes__stage-field {
+  min-width: 12rem;
+}
+
+.compare-notes__picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.compare-notes__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.compare-notes__chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: var(--surface);
+  font-size: var(--t2);
+  cursor: pointer;
+}
+
+.compare-notes__board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+  margin-top: var(--s5);
+}
+
+.compare-notes__group-heading {
+  margin: 0 0 var(--s3);
+  color: var(--ink);
+  font-size: var(--t4);
+  font-weight: 600;
+}
+
+.compare-notes__row {
+  display: flex;
+  gap: var(--s4);
+  overflow-x: auto;
+  padding-bottom: var(--s2);
+}
+
+.compare-notes__card {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 var(--compare-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r3);
+  background: var(--surface);
+}
+
+.compare-notes__card--current {
+  border-color: var(--accent);
+}
+
+.compare-notes__card-header {
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+
+.compare-notes__card-title {
+  margin: 0;
+  font-size: var(--t3);
+  font-weight: 600;
+}
+
+.compare-notes__card-role {
+  color: var(--ink-2);
+  font-weight: 400;
+}
+
+.compare-notes__card-body {
+  max-height: var(--compare-card-body);
+  padding: var(--s4);
+  overflow-y: auto;
+}
+
+.compare-notes__captured {
+  margin-top: var(--s4);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+}
+
 /* ------------------------------------------------------------- dialogs --- */
 
 .dialog-backdrop {
@@ -2404,7 +2509,15 @@ tbody tr:hover {
 .panel__pane {
   display: flex;
   flex: 1;
+  /*
+   * Both axes, because which one is the main axis changes with the width: the notes row
+   * lays panes out in a row until it runs out of room and stacks them in a column. A flex
+   * item will not shrink below its content along the main axis unless told to, so without
+   * the height here a stacked pane grew to its whole note, the card inside it never got a
+   * bounded height, and the note scrolled the page instead of itself.
+   */
   min-width: 0;
+  min-height: 0;
   padding: var(--s5);
   /* Transparent until focused, so marking a pane never shifts what is inside it. */
   border-top: 2px solid transparent;
