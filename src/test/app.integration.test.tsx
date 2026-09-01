@@ -2492,6 +2492,74 @@ describe('job applications tracker', () => {
     expect(tab.getAttribute('aria-keyshortcuts')).toContain('Alt+Meta+ArrowRight')
   })
 
+  it('resizes a split from the keyboard, since jsdom has no layout to drag against', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
+    expect(handle).toHaveAttribute('aria-orientation', 'vertical')
+    expect(handle).toHaveAttribute('aria-valuenow', '50')
+
+    const panes = () => within(dialog).getAllByRole('tabpanel')
+    const widthOf = (index: number) =>
+      (panes()[index].closest('.panel__split-child') as HTMLElement).style.flexBasis
+
+    expect(widthOf(0)).toBe('50%')
+
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    expect(widthOf(0)).toBe('52%')
+    expect(widthOf(1)).toBe('48%')
+
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    expect(widthOf(0)).toBe('48%')
+    expect(widthOf(1)).toBe('52%')
+  })
+
+  it('holds a pane at its minimum rather than letting a resize collapse it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
+    // Far more presses than it takes to cross the split, so the clamp is what stops it.
+    for (let press = 0; press < 40; press += 1) fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+
+    const first = within(dialog).getAllByRole('tabpanel')[0].closest('.panel__split-child')
+    expect((first as HTMLElement).style.flexBasis).toBe('15%')
+    // Still a pane, not a sliver: both notes are on screen.
+    expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(2)
+  })
+
+  it('keeps a resized pane’s width when a tab moves between panes', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+
+    const widthOf = (index: number) =>
+      (within(dialog).getAllByRole('tabpanel')[index].closest('.panel__split-child') as HTMLElement)
+        .style.flexBasis
+    expect(widthOf(0)).toBe('54%')
+
+    // Moving a tab across rearranges what is in the panes, not how wide they are.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+    expect(widthOf(0)).toBe('54%')
+  })
+
   it('groups existing prep notes from several applications under the stage they share', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

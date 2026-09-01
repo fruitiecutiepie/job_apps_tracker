@@ -203,6 +203,8 @@ The stage notes panel binds five shortcuts while it is open. They are bound to t
 
 Tabs can also be dragged: within a strip to reorder them, or onto another pane's strip to move them across. Every arrangement a drag can reach has a keyboard equivalent above, so the panel does not need a pointer.
 
+Panes are resizable. Drag the handle between two of them, or focus it and use the arrow keys — `←` and `→` between side-by-side panes, `↑` and `↓` between stacked ones. A pane is held at a readable minimum rather than being allowed to collapse out of sight. Widths last as long as the panel is open and are never saved: how you arranged the panes is not part of a note.
+
 Elsewhere, `Escape` closes any dialog, `Tab` cycles within it rather than escaping to the page behind, and the compensation amount fields take arrow keys to nudge a figure by 5,000—10,000 with `Shift`.
 
 ### Rate what you think of a role

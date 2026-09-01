@@ -44,6 +44,7 @@ import {
   noteRefKey,
   openInGroup,
   orderedRefs,
+  resizeSplit,
   splitWith,
   type LayoutNode,
   type NoteRef,
@@ -879,6 +880,17 @@ export function StageNotesDialog({
   }
 
   /**
+   * Moves one divider. Held in component state like everything else the panel arranges:
+   * how wide a pane was left is display state, and must not reach a saved note.
+   */
+  const resizePane = useCallback(
+    (splitId: string, dividerIndex: number, delta: number) => {
+      applyLayout(resizeSplit(layoutRef.current, splitId, dividerIndex, delta))
+    },
+    [applyLayout],
+  )
+
+  /**
    * Lands a dragged or arrowed tab in a pane. The keyboard and the pointer share this so
    * the two cannot drift: whatever a drag can arrange, the arrows can arrange too, which
    * is the whole reason the layout operations are pure.
@@ -1268,8 +1280,13 @@ export function StageNotesDialog({
    * rather than to the panel, which is what lets a note be moved from one pane to another
    * — a tab has somewhere to come from and somewhere to land.
    */
+  const paneNumberOf = useCallback(
+    (groupId: string) => groups.findIndex((entry) => entry.id === groupId) + 1,
+    [groups],
+  )
+
   const renderGroup = (group: TabGroup) => {
-    const paneNumber = groups.findIndex((entry) => entry.id === group.id) + 1
+    const paneNumber = paneNumberOf(group.id)
     const shown =
       group.tabs.find((tab) => noteRefKey(tab) === group.activeKey) ?? group.tabs[0]
     const shownKey = noteRefKey(shown)
@@ -1600,7 +1617,12 @@ export function StageNotesDialog({
               className={`panel__notes${isSplit ? ' panel__notes--split' : ''}`}
               ref={notesRef}
             >
-              <NotesLayoutView node={layout} renderGroup={renderGroup} />
+              <NotesLayoutView
+                node={layout}
+                onResize={resizePane}
+                paneNumber={paneNumberOf}
+                renderGroup={renderGroup}
+              />
             </div>
 
             <div className="panel__statusbar">

@@ -155,6 +155,11 @@ test cannot judge reliably:
    Do both again with `Ctrl`/`Cmd+Shift+←/→` and `Ctrl`/`Cmd+Alt+←/→` and confirm the keyboard
    reaches the same arrangements. Move the last tab out of a pane and confirm the pane goes and
    the split folds back.
+   Drag the handle between two panes and confirm both resize as you go and the notes reflow;
+   Tab to that handle and confirm the arrow keys move it too. Drag it as far as it will go in
+   each direction and confirm neither pane collapses out of sight. Move a tab across afterwards
+   and confirm the widths hold, then close the panel, reopen it, and confirm they are back to
+   even — pane widths are not saved.
    Scroll a long note and confirm the breadcrumbs name the heading you are inside, that the
    matching outline row is marked, that the rows above it on the trail are marked more quietly
    with their indent guide picked out, and that selecting an outline row scrolls to that heading.
