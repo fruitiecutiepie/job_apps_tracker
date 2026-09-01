@@ -2404,7 +2404,15 @@ tbody tr:hover {
 .panel__pane {
   display: flex;
   flex: 1;
+  /*
+   * Both axes, because which one is the main axis changes with the width: the notes row
+   * lays panes out in a row until it runs out of room and stacks them in a column. A flex
+   * item will not shrink below its content along the main axis unless told to, so without
+   * the height here a stacked pane grew to its whole note, the card inside it never got a
+   * bounded height, and the note scrolled the page instead of itself.
+   */
   min-width: 0;
+  min-height: 0;
   padding: var(--s5);
   /* Transparent until focused, so marking a pane never shifts what is inside it. */
   border-top: 2px solid transparent;
