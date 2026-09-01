@@ -911,7 +911,7 @@ describe('job applications tracker', () => {
       'Meta+K Control+K',
     )
 
-    // All five are listed together, reachable from the keyboard rather than on hover.
+    // All of them are listed together, reachable from the keyboard rather than on hover.
     const trigger = within(dialog).getByRole('button', { name: 'Keyboard shortcuts' })
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
     await user.click(trigger)
@@ -920,8 +920,21 @@ describe('job applications tracker', () => {
     const list = screen.getByRole('group', { name: 'Keyboard shortcuts' })
     expect(
       within(list).getAllByText(/^Ctrl\+/).map((key) => key.textContent),
-    ).toEqual(['Ctrl+\\', 'Ctrl+F', 'Ctrl+P', 'Ctrl+B', 'Ctrl+K'])
+    ).toEqual([
+      'Ctrl+\\',
+      'Ctrl+F',
+      'Ctrl+P',
+      'Ctrl+B',
+      'Ctrl+K',
+      // The two that arrange the panes carry a second modifier, and each covers the pair
+      // of arrows as one row rather than two that would have to be worded twice.
+      'Ctrl+Shift+←/→',
+      'Ctrl+Alt+←/→',
+    ])
     expect(within(list).getByText('Put the caret in the capture box')).toBeInTheDocument()
+    expect(
+      within(list).getByText('Move the tab you are reading to the pane beside it'),
+    ).toBeInTheDocument()
 
     // Escape closes the list before it closes the panel, the debt every overlay in here
     // owes the dialog's own Escape handler, and focus goes back to what opened it.

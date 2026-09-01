@@ -252,11 +252,13 @@ function ShortcutsHelp() {
           </p>
           <dl className="panel__shortcuts-list">
             {PANEL_SHORTCUTS.map((shortcut) => (
-              <div className="panel__shortcuts-row" key={shortcut.key}>
+              // Keyed by the label rather than the key: the two arrow bindings share `←/→`
+              // and are told apart by the modifier they add to it.
+              <div className="panel__shortcuts-row" key={shortcutLabel(shortcut)}>
                 {/* The key names the row, so it is the term and the sentence is the
                     definition — which is also the order a reader scans them in. */}
                 <dt>
-                  <kbd className="panel__shortcut-key">{shortcutLabel(shortcut.key)}</kbd>
+                  <kbd className="panel__shortcut-key">{shortcutLabel(shortcut)}</kbd>
                 </dt>
                 <dd>{shortcut.description}</dd>
               </div>
