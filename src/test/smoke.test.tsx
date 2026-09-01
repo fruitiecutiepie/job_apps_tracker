@@ -70,7 +70,10 @@ it('completes the primary tracker journey and persists it across reloads', async
 
   await user.click(screen.getByRole('button', { name: 'Add prep notes for Smoke Test Co' }))
   const prepDialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
-  await user.type(within(prepDialog).getByLabelText('Offer prep notes'), 'Confirm the review cycle')
+  await user.type(
+    within(prepDialog).getByLabelText('Smoke Test Co · Offer prep notes'),
+    'Confirm the review cycle',
+  )
   // Prep notes write themselves once the typing pauses; there is nothing to submit.
   await waitFor(
     () =>

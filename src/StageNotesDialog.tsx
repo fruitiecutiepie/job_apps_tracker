@@ -8,6 +8,7 @@ import {
   stateLabel,
   stateRank,
   type Application,
+  type StageNote,
   type StageNoteDraft,
   type StageNoteEditSession,
   type StateId,
@@ -31,12 +32,28 @@ import { FindWidget } from './FindWidget'
 import { jumpToLine, lineAtOffset } from './noteEditorJump'
 import { readHiddenRanges, toProjectedLine, toProjectedOffset, toSourceLine } from './noteFolds'
 import { headingAtScrollTop, readingTopLine } from './noteScrollSpy'
+import { NotesLayoutView } from './NotesLayoutView'
+import {
+  activateTab,
+  closeGroup,
+  closeTab,
+  groupHolding,
+  groupsOf,
+  makeGroup,
+  noteRefKey,
+  openInGroup,
+  orderedRefs,
+  splitWith,
+  type LayoutNode,
+  type NoteRef,
+  type TabGroup,
+} from './notesLayout'
 import { StageNotePane } from './StageNotePane'
 import { stageNotePanelId, stageTabId } from './stageNoteIds'
 import { useDialogKeyboard } from './useDialogKeyboard'
 
 /**
- * How often the scratch file is re-read while a stage is open in an external editor. The
+ * How often the scratch file is re-read while a note is open in an external editor. The
  * server writes nothing on its own, so this is the only way changes come back.
  */
 const EDITOR_POLL_MS = 1000
@@ -48,30 +65,46 @@ const EDITOR_POLL_MS = 1000
  */
 export const AUTOSAVE_MS = 800
 
+/** The pane the panel opens with. Named up front so no ref is read while rendering. */
+const FIRST_PANE_ID = 'pane-1'
+
+/**
+ * Drafts to store, grouped by the application they belong to. `applyStageNotes` allows one
+ * draft per state in a call, so a panel holding two companies' notes cannot send one flat
+ * list: the batches keep each application's stages apart.
+ */
+export interface StageNoteDraftBatch {
+  applicationId: string
+  drafts: StageNoteDraft[]
+}
+
 interface StageNotesDialogProps {
-  application: Application
+  /** Every application, so notes from any of them can be opened as a tab. */
+  applications: Application[]
+  /** The note the panel opens on, whose application's other noted stages open beside it. */
+  initialRef: NoteRef
   onClose: () => void
   /**
-   * Stores the stages whose drafts have changed since the last write. The panel writes
-   * as it is typed into, so this commits without closing it and without a notice.
-   * Resolves false when the write failed, which leaves those drafts pending for the next
-   * pause in typing, or for the flush as the panel closes, to try again.
+   * Stores the notes whose drafts have changed since the last write. The panel writes as
+   * it is typed into, so this commits without closing it and without a notice. Resolves
+   * false when the write failed, which leaves those drafts pending for the next pause in
+   * typing, or for the flush as the panel closes, to try again.
    */
-  onSaveDrafts: (drafts: StageNoteDraft[]) => Promise<boolean>
+  onSaveDrafts: (batches: StageNoteDraftBatch[]) => Promise<boolean>
   /** Commits a change that arrived from an external editor, which writes on its own. */
-  onExternalChange: (state: StateId, body: string) => Promise<void>
+  onExternalChange: (applicationId: string, state: StateId, body: string) => Promise<void>
   /**
    * Stores one captured line against a stage, the moment it is entered rather than at the
    * next pause in typing: it is answered mid-conversation, where Escape and a closed tab
    * are likelier than a lull the autosave could ride on.
    */
-  onCapture: (state: StateId, line: string) => Promise<void>
+  onCapture: (applicationId: string, state: StateId, line: string) => Promise<void>
   /**
    * Stores a rewritten captured line, or removes it when the text is blank. Like a
    * capture and unlike a draft, it is stored as it is entered: a correction to something
    * already written down has nothing a Save could still be waiting for.
    */
-  onRevise: (state: StateId, entryId: string, body: string) => Promise<void>
+  onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>
 }
 
 function errorMessage(error: unknown): string {
@@ -79,8 +112,8 @@ function errorMessage(error: unknown): string {
 }
 
 /**
- * Orders the stages on show with the application's current stage first, so the notes you
- * need during an interview are the first thing on screen.
+ * Orders the stages the panel opens with, the application's current stage first, so the
+ * notes you need during an interview are the first thing on screen.
  */
 function visibleStages(current: StateId, noted: StateId[]): StateId[] {
   const rest = [...new Set(noted)]
@@ -229,8 +262,15 @@ function wordCount(text: string): number {
   return trimmed ? trimmed.split(/\s+/).length : 0
 }
 
+/** One external editing session, with the note it belongs to. */
+interface OpenSession {
+  ref: NoteRef
+  session: StageNoteEditSession
+}
+
 export function StageNotesDialog({
-  application,
+  applications,
+  initialRef,
   onClose,
   onSaveDrafts,
   onExternalChange,
@@ -238,51 +278,89 @@ export function StageNotesDialog({
   onRevise,
 }: StageNotesDialogProps) {
   const dialogRef = useRef<HTMLElement>(null)
-  const [drafts, setDrafts] = useState<Partial<Record<StateId, string>>>(() =>
-    Object.fromEntries(application.stage_notes.map((note) => [note.state, note.body])),
+
+  const applicationsById = useMemo(
+    () => new Map(applications.map((application) => [application.id, application])),
+    [applications],
   )
+
+  /** Every stored note, keyed the way the panel keys everything else. */
+  const noteByKey = useMemo(() => {
+    const entries: [string, StageNote][] = []
+    for (const application of applications) {
+      for (const note of application.stage_notes) {
+        entries.push([noteRefKey({ applicationId: application.id, state: note.state }), note])
+      }
+    }
+    return new Map(entries)
+  }, [applications])
+
+  const labelOf = useCallback(
+    (ref: NoteRef) => {
+      const company = applicationsById.get(ref.applicationId)?.company ?? 'Unknown'
+      // The company leads because that is what tells two open notes apart; the stage is
+      // the same word in both. Always present, even with one application open: a name
+      // that grows a prefix when a second company arrives is not a stable name.
+      return `${company} · ${stateLabel(ref.state)}`
+    },
+    [applicationsById],
+  )
+
+  /**
+   * Ids for the panes this sitting creates. A counter rather than a uuid: it is only ever
+   * compared with its own siblings, and a readable id makes a layout easy to follow.
+   */
+  const paneCount = useRef(1)
+  const newId = useCallback(() => {
+    paneCount.current += 1
+    return `pane-${paneCount.current}`
+  }, [])
+
+  /**
+   * The arrangement: which notes are open, how they are grouped into panes, and how those
+   * panes are split. This replaces both the tab list and the pane list of the
+   * single-application panel — a tab is a note in a group, so there is one thing to keep
+   * right rather than two that had to agree.
+   */
+  const [layout, setLayout] = useState<LayoutNode>(() => {
+    const application = applicationsById.get(initialRef.applicationId)
+    const noted = application?.stage_notes.map((note) => note.state) ?? []
+    const tabs = visibleStages(initialRef.state, noted).map((state) => ({
+      applicationId: initialRef.applicationId,
+      state,
+    }))
+    return makeGroup(FIRST_PANE_ID, tabs, noteRefKey(initialRef))
+  })
+  const layoutRef = useRef(layout)
+  const [focusedGroupId, setFocusedGroupId] = useState<string>(FIRST_PANE_ID)
+
+  const [drafts, setDrafts] = useState<Record<string, string>>({})
   // The poll loop reads drafts outside of React's render cycle, so it needs a live copy.
   const draftsRef = useRef(drafts)
   /**
-   * The text last written for each stage, so a draft counts as pending only against what
+   * The text last written for each note, so a draft counts as pending only against what
    * actually reached the document. Compared against the draft rather than against the
    * stored note because `applyStageNotes` trims a body: a draft ending in a space would
    * otherwise never look written and would be re-sent at every pause in typing.
-   *
-   * State as well as a ref, the way the drafts themselves are: the write loop reads it
-   * outside a render, and the status bar reads it during one.
    */
-  const [stored, setStored] = useState<Partial<Record<StateId, string>>>(() => ({ ...drafts }))
+  const [stored, setStored] = useState<Record<string, string>>({})
   const storedRef = useRef(stored)
-  const [addedStages, setAddedStages] = useState<StateId[]>([])
-  /** Stages taken off the tab bar for this sitting. Their notes are left where they are. */
-  const [closedStages, setClosedStages] = useState<StateId[]>([])
-  // Stages that already hold notes open as readable outlines; empty ones open ready to type.
-  const [editing, setEditing] = useState<StateId[]>(() =>
-    application.stage_notes.length > 0 ? [] : [application.state],
-  )
+
+  // Notes that already hold text open as readable outlines; empty ones open ready to type.
+  const [editing, setEditing] = useState<string[]>([])
   /**
-   * Stages whose captured lines are open for correcting. Held here rather than in the pane
+   * Notes whose captured lines are open for correcting. Held here rather than in the pane
    * for the same reason `editing` is: the find has to know, because a line in a box has no
    * highlight to step onto.
    */
-  const [editingLines, setEditingLines] = useState<StateId[]>([])
-  const [sessions, setSessions] = useState<Partial<Record<StateId, StageNoteEditSession>>>({})
+  const [editingLines, setEditingLines] = useState<string[]>([])
+  const [sessions, setSessions] = useState<Record<string, OpenSession>>({})
   const sessionsRef = useRef(sessions)
   const [formError, setFormError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const savingRef = useRef(false)
   const mountedRef = useRef(true)
-
-  /**
-   * The stages on screen, one per pane. A single pane gets the whole width; splitting
-   * opens a second so two stages can be read against each other. A stage appears in at
-   * most one pane, which also keeps every rendered match id unique.
-   */
-  const [panes, setPanes] = useState<StateId[]>([application.state])
-  /** Index into `panes` of the one the outline, breadcrumbs, and find act on. */
-  const [focused, setFocused] = useState(0)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   // Find state. `findSeq` remounts the widget so a second Ctrl+F refocuses and selects
@@ -303,8 +381,9 @@ export function StageNotesDialog({
    */
   const pickedTrailRef = useRef<{ key: string; scrollTop: number } | null>(null)
   const notesRef = useRef<HTMLDivElement>(null)
-  const paneRefs = useRef<(HTMLDivElement | null)[]>([])
-  const tabRefs = useRef<Partial<Record<StateId, HTMLButtonElement | null>>>({})
+  /** Each pane's scrolling element, by the id of the group drawing it. */
+  const paneRefs = useRef<Record<string, HTMLDivElement | null>>({})
+  const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({})
 
   // Held in a ref so the poll interval below is not torn down and restarted on every
   // render: the parent recreates this callback each time, and a commit causes a render.
@@ -317,6 +396,11 @@ export function StageNotesDialog({
   useEffect(() => {
     saveDraftsRef.current = onSaveDrafts
   }, [onSaveDrafts])
+
+  const closeRef = useRef(onClose)
+  useEffect(() => {
+    closeRef.current = onClose
+  }, [onClose])
 
   useDialogKeyboard(dialogRef, onClose)
 
@@ -331,33 +415,80 @@ export function StageNotesDialog({
     }
   }, [])
 
-  const setDraft = (state: StateId, value: string) => {
-    draftsRef.current = { ...draftsRef.current, [state]: value }
+  /**
+   * Replaces the arrangement. Null means the last note just closed, which is the panel's
+   * cue to go: with no note left there is nothing for it to be open for.
+   */
+  const applyLayout = useCallback((next: LayoutNode | null, focusGroupId?: string) => {
+    if (!next) {
+      closeRef.current()
+      return
+    }
+    layoutRef.current = next
+    setLayout(next)
+    const ids = groupsOf(next).map((group) => group.id)
+    setFocusedGroupId((current) => {
+      if (focusGroupId && ids.includes(focusGroupId)) return focusGroupId
+      return ids.includes(current) ? current : ids[0]
+    })
+  }, [])
+
+  const openRefs = useMemo(() => orderedRefs(layout), [layout])
+
+  /**
+   * Seeds a draft for every note as it joins the panel, so what is typed is measured
+   * against what was stored rather than against nothing. A note already seeded is left
+   * alone: re-seeding it from the document would throw away the keystrokes that have not
+   * been written yet.
+   */
+  useEffect(() => {
+    const missing = openRefs.filter((ref) => draftsRef.current[noteRefKey(ref)] === undefined)
+    if (missing.length === 0) return
+    const nextDrafts = { ...draftsRef.current }
+    const nextStored = { ...storedRef.current }
+    for (const ref of missing) {
+      const key = noteRefKey(ref)
+      const body = noteByKey.get(key)?.body ?? ''
+      nextDrafts[key] = body
+      nextStored[key] = body
+    }
+    draftsRef.current = nextDrafts
+    storedRef.current = nextStored
+    setDrafts(nextDrafts)
+    setStored(nextStored)
+    // A note opened with nothing in it opens ready to type, the way an empty stage always has.
+    const blank = missing.filter((ref) => !(noteByKey.get(noteRefKey(ref))?.body ?? '').trim())
+    if (blank.length > 0) {
+      setEditing((current) => [...current, ...blank.map(noteRefKey).filter((key) => !current.includes(key))])
+    }
+  }, [noteByKey, openRefs])
+
+  const setDraft = (key: string, value: string) => {
+    draftsRef.current = { ...draftsRef.current, [key]: value }
     setDrafts(draftsRef.current)
   }
 
-  /**
-   * A draft the reader typed. Unlike one arriving from an external editor, the stage joins
-   * the tab bar for the life of the panel: emptying a note removes it from the document a
-   * moment later, and the pane must not disappear from under the caret that cleared it.
-   */
-  const editDraft = (state: StateId, value: string) => {
-    setDraft(state, value)
-    setAddedStages((current) => (current.includes(state) ? current : [...current, state]))
-  }
-
-  const markStored = (state: StateId, body: string) => {
-    storedRef.current = { ...storedRef.current, [state]: body }
+  const markStored = (key: string, body: string) => {
+    storedRef.current = { ...storedRef.current, [key]: body }
     if (mountedRef.current) setStored(storedRef.current)
   }
 
-  const pendingDrafts = (): StageNoteDraft[] =>
-    (Object.keys(draftsRef.current) as StateId[])
-      .filter((state) => draftsRef.current[state] !== storedRef.current[state])
-      .map((state) => ({ state, body: draftsRef.current[state] ?? '' }))
+  /** The open notes whose text differs from what was last written, by application. */
+  const pendingBatches = (): StageNoteDraftBatch[] => {
+    const byApplication = new Map<string, StageNoteDraft[]>()
+    for (const ref of orderedRefs(layoutRef.current)) {
+      const key = noteRefKey(ref)
+      const body = draftsRef.current[key]
+      if (body === undefined || body === storedRef.current[key]) continue
+      const batch = byApplication.get(ref.applicationId) ?? []
+      batch.push({ state: ref.state, body })
+      byApplication.set(ref.applicationId, batch)
+    }
+    return [...byApplication].map(([applicationId, batch]) => ({ applicationId, drafts: batch }))
+  }
 
   /**
-   * Writes the stages that have changed, one write at a time. Every save PUTs the whole
+   * Writes the notes that have changed, one write at a time. Every save PUTs the whole
    * document read from the parent's copy, so an overlapping one would be built on a
    * document the first has already replaced. Typing during a write is not lost: it is
    * still pending, so the loop picks it up before it lets go of the flag.
@@ -365,16 +496,20 @@ export function StageNotesDialog({
    * Reads only refs, so it never changes identity and never restarts the debounce below.
    */
   const flushDrafts = useCallback(async () => {
-    if (savingRef.current || pendingDrafts().length === 0) return
+    if (savingRef.current || pendingBatches().length === 0) return
     savingRef.current = true
     if (mountedRef.current) setSaving(true)
     try {
-      for (let batch = pendingDrafts(); batch.length > 0; batch = pendingDrafts()) {
-        const written = await saveDraftsRef.current(batch)
+      for (let batches = pendingBatches(); batches.length > 0; batches = pendingBatches()) {
+        const written = await saveDraftsRef.current(batches)
         // Left pending on failure, so the next pause in typing tries it again. The parent
         // raises the failure itself; a second notice here would say it twice.
         if (!written) break
-        for (const draft of batch) markStored(draft.state, draft.body)
+        for (const batch of batches) {
+          for (const draft of batch.drafts) {
+            markStored(noteRefKey({ applicationId: batch.applicationId, state: draft.state }), draft.body)
+          }
+        }
         if (mountedRef.current) setSavedAt(new Date())
       }
     } finally {
@@ -387,7 +522,7 @@ export function StageNotesDialog({
   // never on a re-render, and every write re-renders the parent — anything else in the
   // dependencies would restart the wait on the panel's own writes and it would never fire.
   useEffect(() => {
-    if (pendingDrafts().length === 0) return
+    if (pendingBatches().length === 0) return
     const timer = window.setTimeout(() => void flushDrafts(), AUTOSAVE_MS)
     return () => window.clearTimeout(timer)
   }, [drafts, flushDrafts])
@@ -411,14 +546,19 @@ export function StageNotesDialog({
     }
   }, [])
 
-  const openInEditor = async (state: StateId) => {
+  const openInEditor = async (ref: NoteRef) => {
+    const key = noteRefKey(ref)
     setFormError(null)
     try {
-      const session = await openStageNoteInEditor(application.id, state, draftsRef.current[state] ?? '')
-      sessionsRef.current = { ...sessionsRef.current, [state]: session }
+      const session = await openStageNoteInEditor(
+        ref.applicationId,
+        ref.state,
+        draftsRef.current[key] ?? '',
+      )
+      sessionsRef.current = { ...sessionsRef.current, [key]: { ref, session } }
       setSessions(sessionsRef.current)
-      // The external editor owns this stage while the session lasts.
-      setEditing((current) => current.filter((entry) => entry !== state))
+      // The external editor owns this note while the session lasts.
+      setEditing((current) => current.filter((entry) => entry !== key))
       // A scheme URL has to be opened by this browser: the server cannot reach an editor
       // on the machine looking at the page. The banner repeats it as a clickable fallback
       // in case the browser declines to follow a programmatic navigation.
@@ -428,13 +568,14 @@ export function StageNotesDialog({
     }
   }
 
-  const stopEditingExternally = async (state: StateId) => {
+  const stopEditingExternally = async (ref: NoteRef) => {
+    const key = noteRefKey(ref)
     const remaining = { ...sessionsRef.current }
-    delete remaining[state]
+    delete remaining[key]
     sessionsRef.current = remaining
     setSessions(remaining)
     try {
-      await closeStageNoteEditor(application.id, state)
+      await closeStageNoteEditor(ref.applicationId, ref.state)
     } catch (error) {
       setFormError(errorMessage(error))
     }
@@ -443,21 +584,23 @@ export function StageNotesDialog({
   const activeSessionKey = Object.keys(sessions).sort().join(',')
 
   useEffect(() => {
-    const states = activeSessionKey ? (activeSessionKey.split(',') as StateId[]) : []
-    if (states.length === 0) return
+    const keys = activeSessionKey ? activeSessionKey.split(',') : []
+    if (keys.length === 0) return
 
     let cancelled = false
     const pull = async () => {
-      for (const state of states) {
+      for (const key of keys) {
+        const open = sessionsRef.current[key]
+        if (!open) continue
         try {
-          const contents = await readStageNoteFromEditor(application.id, state)
+          const contents = await readStageNoteFromEditor(open.ref.applicationId, open.ref.state)
           if (cancelled || !contents) continue
-          if ((draftsRef.current[state] ?? '') === contents.body) continue
-          setDraft(state, contents.body)
-          await externalChangeRef.current(state, contents.body)
+          if ((draftsRef.current[key] ?? '') === contents.body) continue
+          setDraft(key, contents.body)
+          await externalChangeRef.current(open.ref.applicationId, open.ref.state, contents.body)
           // Stored by the line above, so the autosave has nothing left to write for this
-          // stage and the file coming back does not turn into a second write of itself.
-          markStored(state, contents.body)
+          // note and the file coming back does not turn into a second write of itself.
+          markStored(key, contents.body)
         } catch {
           // A transient read failure should not end the session; the next tick retries.
         }
@@ -469,113 +612,110 @@ export function StageNotesDialog({
       cancelled = true
       window.clearInterval(timer)
     }
-  }, [activeSessionKey, application.id])
+  }, [activeSessionKey])
 
   // Closing the dialog ends every session it started, so no scratch files are left behind.
   useEffect(() => {
-    const applicationId = application.id
     return () => {
-      for (const state of Object.keys(sessionsRef.current)) {
-        void closeStageNoteEditor(applicationId, state as StateId)
+      for (const open of Object.values(sessionsRef.current)) {
+        void closeStageNoteEditor(open.ref.applicationId, open.ref.state)
       }
     }
-  }, [application.id])
-
-  const stages = useMemo(
-    () =>
-      visibleStages(
-        application.state,
-        [...application.stage_notes.map((note) => note.state), ...addedStages].filter(
-          (state) => !closedStages.includes(state),
-        ),
-      ),
-    [addedStages, application.state, application.stage_notes, closedStages],
-  )
-
-  const noteByState = useMemo(
-    () => new Map(application.stage_notes.map((note) => [note.state, note])),
-    [application.stage_notes],
-  )
+  }, [])
 
   /**
-   * Each stage's captured lines, read as one note. Derived from what is stored rather than
+   * Each note's captured lines, read as one note. Derived from what is stored rather than
    * from `drafts`, because a capture is written as it is typed: there is no unsaved version
    * of it, and Save must not be able to put one back the way it was.
    */
+  const capturedByKey = useMemo(() => {
+    const entries: [string, string][] = []
+    for (const [key, note] of noteByKey) {
+      entries.push([key, capturedMarkdown(note.heard, formatShortDate, formatTimeOfDay)])
+    }
+    return new Map(entries)
+  }, [noteByKey])
+
   /** The same lines as records, with their stamps read, for correcting one at a time. */
-  const linesByState = useMemo(
-    () =>
-      new Map(
-        application.stage_notes.map((note) => [
-          note.state,
-          note.heard.map((entry) => ({
-            id: entry.id,
-            body: entry.body,
-            stamp: formatTimeOfDay(entry.at),
-          })),
-        ]),
-      ),
-    [application.stage_notes],
-  )
+  const linesByKey = useMemo(() => {
+    const entries: [string, { id: string; body: string; stamp: string }[]][] = []
+    for (const [key, note] of noteByKey) {
+      entries.push([
+        key,
+        note.heard.map((entry) => ({
+          id: entry.id,
+          body: entry.body,
+          stamp: formatTimeOfDay(entry.at),
+        })),
+      ])
+    }
+    return new Map(entries)
+  }, [noteByKey])
 
-  const capturedByState = useMemo(
-    () =>
-      new Map(
-        application.stage_notes.map((note) => [
-          note.state,
-          capturedMarkdown(note.heard, formatShortDate, formatTimeOfDay),
-        ]),
-      ),
-    [application.stage_notes],
-  )
+  const groups = useMemo(() => groupsOf(layout), [layout])
+  const activeGroup = groups.find((group) => group.id === focusedGroupId) ?? groups[0]
+  const activeRef =
+    activeGroup.tabs.find((tab) => noteRefKey(tab) === activeGroup.activeKey) ?? activeGroup.tabs[0]
+  const activeKey = noteRefKey(activeRef)
+  const activeBody = drafts[activeKey] ?? ''
+  const activeLabel = labelOf(activeRef)
+  const isSplit = groups.length > 1
 
-  const title = [application.company, application.role].filter(Boolean).join(' — ')
+  const activeApplication = applicationsById.get(activeRef.applicationId)
+  const title = activeApplication
+    ? [activeApplication.company, activeApplication.role].filter(Boolean).join(' — ')
+    : ''
   const query = findOpen ? findQuery : ''
 
+  const refByKey = useMemo(
+    () => new Map(openRefs.map((ref) => [noteRefKey(ref), ref])),
+    [openRefs],
+  )
+
   /**
-   * Where each stage's matches sit in one list running through the panel, in tab order,
-   * so stepping through the find crosses from one stage's note into the next. Every
-   * stage is searched, not only the one on screen: a match in a tab you are not looking
-   * at is the main thing a find is for. A stage open in the Markdown editor sits its
-   * written note out, because a textarea holds source and has no highlights to step onto
-   * — but its captured lines are read the whole time and stay in the list.
+   * Where each note's matches sit in one list running through the panel, in layout order,
+   * so stepping through the find crosses from one note into the next. Every open note is
+   * searched, not only the ones on screen: a match in a tab you are not looking at is the
+   * main thing a find is for. A note open in the Markdown editor sits its written text
+   * out, because a textarea holds source and has no highlights to step onto — but its
+   * captured lines are read the whole time and stay in the list.
    *
-   * A stage is counted as it renders: the written note first, then the captures below it,
-   * with `written` recording where the second starts. Two separate notes on screen, and
-   * the panel numbers them the way the reader's eye runs down them.
+   * A note is counted as it renders: the written text first, then the captures below it,
+   * with `written` recording where the second starts.
    */
   const findMatches = useCallback(
     (value: string) => {
-      const perStage = new Map<
-        StateId,
+      const perNote = new Map<
+        string,
         { base: number; count: number; written: number; inEditor: boolean }
       >()
-      const order: StateId[] = []
+      const order: string[] = []
       let total = 0
-      if (!value.trim()) return { perStage, order, total }
+      if (!value.trim()) return { perNote, order, total }
 
       const countIn = (source: string) =>
         source.trim() ? searchNote(buildSections(parseMarkdown(source)), value).count : 0
 
-      for (const state of stages) {
-        const inEditor = editing.includes(state) && !sessions[state]
-        const source = drafts[state] ?? ''
+      for (const ref of openRefs) {
+        const key = noteRefKey(ref)
+        const inEditor = editing.includes(key) && !sessions[key]
+        const source = drafts[key] ?? ''
         // A note being written is searched as the source it is. It carries no highlights,
         // so those matches are stepped onto by selecting them in the box instead — but
         // they are counted here with the rest, so one list runs through the whole panel.
         const written = inEditor ? matchOffsets(source, value).length : countIn(source)
         // Lines open for correcting still sit out: each is in a box of its own, and there
         // is no one place to send a caret that stands for all of them.
-        const said = editingLines.includes(state) ? 0 : countIn(capturedByState.get(state) ?? '')
+        const said = editingLines.includes(key) ? 0 : countIn(capturedByKey.get(key) ?? '')
         const count = written + said
         if (count === 0) continue
-        perStage.set(state, { base: total, count, written, inEditor })
-        order.push(state)
+        perNote.set(key, { base: total, count, written, inEditor })
+        order.push(key)
         total += count
       }
-      return { perStage, order, total }
+      return { perNote, order, total }
     },
-    [capturedByState, drafts, editing, editingLines, sessions, stages],
+    [capturedByKey, drafts, editing, editingLines, openRefs, sessions],
   )
 
   const matches = useMemo(() => findMatches(query), [findMatches, query])
@@ -585,42 +725,47 @@ export function StageNotesDialog({
     ? null
     : ((matchCursor % matches.total) + matches.total) % matches.total
 
-  /** The stage holding a given position in the panel-wide list of matches. */
-  const stageOfMatch = (position: number): StateId | undefined =>
-    matches.order.find((state) => {
-      const found = matches.perStage.get(state)
+  /** The note holding a given position in the panel-wide list of matches. */
+  const noteOfMatch = (position: number): string | undefined =>
+    matches.order.find((key) => {
+      const found = matches.perNote.get(key)
       return found ? position >= found.base && position < found.base + found.count : false
     })
-
-  /**
-   * Saving a cleared note drops its stage out of `stages`, which can leave a pane holding
-   * one that is no longer open. Derived rather than corrected in an effect, so there is no
-   * render where a pane shows a stage the tab bar has already forgotten.
-   */
-  const openPanes = useMemo(() => {
-    const kept = panes.filter((state) => stages.includes(state))
-    return kept.length > 0 ? kept : [stages[0]]
-  }, [panes, stages])
 
   useEffect(() => {
     if (currentMatch === null) return
     const target = notesRef.current?.querySelector<HTMLElement>(`[data-match-id="${currentMatch}"]`)
     // Guarded: jsdom has no layout, so it does not implement scrollIntoView.
     target?.scrollIntoView?.({ block: 'center' })
-  }, [currentMatch, openPanes, query])
+  }, [currentMatch, layout, query])
 
   /**
-   * Puts a stage on screen. A stage already in a pane brings that pane into focus rather
-   * than being opened twice, so the two panes never hold the same note.
+   * Puts a note on screen. One already open brings its pane into focus rather than being
+   * opened twice: two copies would give one match two ids, and the find would step onto
+   * whichever the DOM happened to return first.
    */
-  const showStage = (state: StateId) => {
-    const already = openPanes.indexOf(state)
-    if (already !== -1) {
-      setFocused(already)
-      return
-    }
-    setPanes((current) => current.map((entry, index) => (index === focused ? state : entry)))
-  }
+  const showRef = useCallback(
+    (ref: NoteRef) => {
+      const key = noteRefKey(ref)
+      const holding = groupHolding(layoutRef.current, key)
+      if (holding) {
+        applyLayout(activateTab(layoutRef.current, holding.id, key), holding.id)
+        return
+      }
+      const target = groupsOf(layoutRef.current).find((group) => group.id === focusedGroupId)
+        ?? groupsOf(layoutRef.current)[0]
+      applyLayout(openInGroup(layoutRef.current, target.id, ref), target.id)
+    },
+    [applyLayout, focusedGroupId],
+  )
+
+  const showKey = useCallback(
+    (key: string) => {
+      const ref = refByKey.get(key)
+      if (ref) showRef(ref)
+    },
+    [refByKey, showRef],
+  )
 
   /**
    * Brings a match that lives in a note being written into view. Focus stays in the find
@@ -631,30 +776,25 @@ export function StageNotesDialog({
    *
    * The selection is set all the same, unfocused and invisible, so clicking into the box
    * afterwards puts the caret on the hit rather than wherever it last was.
-   *
-   * Deferred a frame because the step may have just moved that stage into a pane. Done
-   * from the step rather than from an effect watching the cursor: typing into the find
-   * box moves the cursor on every keystroke, and following it would scroll the note
-   * about under someone who is still deciding what to search for.
    */
-  const revealInSource = (state: StateId | undefined, position: number) => {
-    const found = state ? matches.perStage.get(state) : undefined
-    if (!state || !found?.inEditor) return
+  const revealInSource = (key: string | undefined, position: number) => {
+    const found = key ? matches.perNote.get(key) : undefined
+    if (!key || !found?.inEditor) return
     const index = position - found.base
     // Past the written note is the captured log, which renders marks like any note.
     if (index >= found.written) return
-    const at = matchOffsets(drafts[state] ?? '', query)[index]
+    const at = matchOffsets(drafts[key] ?? '', query)[index]
     if (at === undefined) return
 
     requestAnimationFrame(() => {
       const pane = notesRef.current
-      const box = pane?.querySelector<HTMLTextAreaElement>(`[data-note-source="${state}"]`)
+      const box = pane?.querySelector<HTMLTextAreaElement>(`[data-note-source="${key}"]`)
       if (!box) return
       // The box holds the note with its folded lines taken out. A fold holding a match is
       // open while the find is running, so the match itself is in there — but the lines
       // above it that are still folded are not, and the offset has to allow for them.
       const folds = readHiddenRanges(box)
-      const start = toProjectedOffset(box.value, drafts[state] ?? '', folds, at)
+      const start = toProjectedOffset(box.value, drafts[key] ?? '', folds, at)
       box.setSelectionRange(start, start + query.length)
 
       const mark = pane?.querySelector<HTMLElement>(`[data-source-match-id="${position}"]`)
@@ -665,23 +805,23 @@ export function StageNotesDialog({
     })
   }
 
-  /** Steps the find, following it into whichever stage the next match lives in. */
+  /** Steps the find, following it into whichever note the next match lives in. */
   const stepMatch = (delta: number) => {
     if (matches.total === 0) return
     const next = matchCursor + delta
     setMatchCursor(next)
     const landing = ((next % matches.total) + matches.total) % matches.total
-    const stage = stageOfMatch(landing)
-    if (stage) showStage(stage)
-    revealInSource(stage, landing)
+    const key = noteOfMatch(landing)
+    if (key) showKey(key)
+    revealInSource(key, landing)
   }
 
-  /** A new query starts from its first match, in whichever stage that turns out to be. */
+  /** A new query starts from its first match, in whichever note that turns out to be. */
   const changeQuery = (value: string) => {
     setFindQuery(value)
     setMatchCursor(0)
     const [first] = findMatches(value).order
-    if (first) showStage(first)
+    if (first) showKey(first)
   }
 
   const closeFind = () => {
@@ -697,21 +837,26 @@ export function StageNotesDialog({
   }, [])
 
   /**
-   * Opens a second pane on the first stage not already on screen, or closes it again.
-   * Nothing to split into when only one stage is open, which is why the control says so.
+   * Opens a second pane on a note the focused pane is not showing, or folds the panes back
+   * into one. Unsplitting gathers every tab rather than dropping the panes it closes: a
+   * pane is where a note is shown, not what keeps it open.
    */
   const toggleSplit = useCallback(() => {
-    setPanes((current) => {
-      if (current.length > 1) return [current[0]]
-      const next = stages.find((state) => state !== current[0])
-      return next ? [current[0], next] : current
-    })
-    setFocused(0)
-  }, [stages])
+    const current = layoutRef.current
+    const list = groupsOf(current)
+    if (list.length > 1) {
+      const first = list[0]
+      applyLayout(makeGroup(first.id, list.flatMap((group) => group.tabs), first.activeKey), first.id)
+      return
+    }
+    const only = list[0]
+    const other = only.tabs.find((tab) => noteRefKey(tab) !== only.activeKey)
+    if (!other) return
+    applyLayout(splitWith(current, only.id, 'right', other, newId), only.id)
+  }, [applyLayout, newId])
 
-  const closePane = (index: number) => {
-    setPanes((current) => current.filter((_, entry) => entry !== index))
-    setFocused(0)
+  const closeNote = (groupId: string, key: string) => {
+    applyLayout(closeTab(layoutRef.current, groupId, key))
   }
 
   // Bound to the document rather than to the panel: the panel is modal, so nothing
@@ -753,41 +898,52 @@ export function StageNotesDialog({
   }, [openFind, toggleSplit])
 
   /**
-   * Takes a stage off the tab bar. It means off screen, not deleted: the note stays where
-   * it is and the stage is listed again the next time the panel opens. The application's
-   * own stage has no close control, so it is always somewhere to land.
+   * What the picker can reach: every note already written, every application's current
+   * stage, and — for the application being worked on — every stage it could still reach.
+   * Listing all nineteen stages for all of them would be hundreds of rows, nearly all of
+   * them notes nobody is going to write.
    */
-  const closeStage = (state: StateId) => {
-    setClosedStages((current) => (current.includes(state) ? current : [...current, state]))
-  }
-
-  const openStage = (state: StateId) => {
-    setClosedStages((current) => current.filter((entry) => entry !== state))
-    if (!stages.includes(state)) {
-      setAddedStages((current) => (current.includes(state) ? current : [...current, state]))
-      // A stage reached this way with nothing in it opens ready to type. One that was
-      // closed and picked again still has its note, so it opens to be read like the rest.
-      if (!(drafts[state] ?? '').trim()) setEditing((current) => [...current, state])
+  const pickable = useMemo(() => {
+    const found = new Map<string, { ref: NoteRef; label: string }>()
+    const add = (ref: NoteRef) => {
+      const key = noteRefKey(ref)
+      if (!found.has(key)) found.set(key, { ref, label: labelOf(ref) })
     }
-    showStage(state)
+    for (const application of applications) {
+      add({ applicationId: application.id, state: application.state })
+      for (const note of application.stage_notes) {
+        add({ applicationId: application.id, state: note.state })
+      }
+    }
+    for (const state of STATE_CONFIG) {
+      add({ applicationId: activeRef.applicationId, state: state.id })
+    }
+    return found
+  }, [activeRef.applicationId, applications, labelOf])
+
+  const quickOpenEntries: QuickOpenEntry[] = useMemo(
+    () =>
+      [...pickable].map(([key, entry]) => ({
+        id: key,
+        label: entry.label,
+        open: refByKey.has(key),
+      })),
+    [pickable, refByKey],
+  )
+
+  const openFromPicker = (key: string) => {
+    const ref = pickable.get(key)?.ref
+    if (ref) showRef(ref)
     setQuickOpen(false)
     dialogRef.current?.focus()
   }
 
-  const quickOpenEntries: QuickOpenEntry[] = STATE_CONFIG.map((state) => ({
-    id: state.id,
-    label: state.label,
-    open: stages.includes(state.id),
-  }))
+  const editDraft = (key: string, value: string) => {
+    setDraft(key, value)
+  }
 
-  // The focused pane is what the sidebar, breadcrumbs and status bar describe.
-  const paneIndex = Math.min(focused, openPanes.length - 1)
-  const activeStage = openPanes[paneIndex]
-  const activeBody = drafts[activeStage] ?? ''
-  const activeLabel = stateLabel(activeStage)
-  const isSplit = openPanes.length > 1
-
-  const toggleEditing = (state: StateId) => {
+  const toggleEditing = (ref: NoteRef) => {
+    const key = noteRefKey(ref)
     /*
      * Opening a note to write in it carries the place being read into the editor: someone
      * partway down a long note is reaching for the part they were reading, not the top.
@@ -797,28 +953,25 @@ export function StageNotesDialog({
      * the heading up to the header: the outline still marks the heading picked, which is
      * the one being read, while the pane still has an earlier one at the top.
      */
-    if (!editing.includes(state)) {
-      const container = paneRefs.current[openPanes.indexOf(state)]
-      const carried =
-        state === activeStage ? trailKey : container && headingAtScrollTop(container)
+    if (!editing.includes(key)) {
+      const holding = groupHolding(layout, key)
+      const container = holding ? paneRefs.current[holding.id] : null
+      const carried = key === activeKey ? trailKey : container && headingAtScrollTop(container)
       if (carried) setPendingJumpKey(carried)
     }
 
     setEditing((current) =>
-      current.includes(state) ? current.filter((entry) => entry !== state) : [...current, state],
+      current.includes(key) ? current.filter((entry) => entry !== key) : [...current, key],
     )
   }
 
-  const activeSection = useMemo(
-    () => buildSections(parseMarkdown(activeBody)),
-    [activeBody],
-  )
+  const activeSection = useMemo(() => buildSections(parseMarkdown(activeBody)), [activeBody])
   const outline = useMemo(() => outlineTree(activeSection), [activeSection])
   const trail = useMemo(() => sectionPath(activeSection, trailKey), [activeSection, trailKey])
   const trailKeys = useMemo(() => new Set(trail.map((entry) => entry.key)), [trail])
 
   /** Whether the pane the outline and breadcrumbs describe is being written in. */
-  const editingActive = editing.includes(activeStage) && !sessions[activeStage]
+  const editingActive = editing.includes(activeKey) && !sessions[activeKey]
 
   /**
    * Tracks the last heading scrolled past in the focused pane, for the breadcrumbs. Read
@@ -829,7 +982,7 @@ export function StageNotesDialog({
    * read a position off then, and the caret below says where the writer is instead.
    */
   useEffect(() => {
-    const container = paneRefs.current[paneIndex]
+    const container = paneRefs.current[activeGroup.id]
     if (!container || editingActive) return
 
     let frame = 0
@@ -858,7 +1011,7 @@ export function StageNotesDialog({
       container.removeEventListener('scroll', onScroll)
       if (frame) cancelAnimationFrame(frame)
     }
-  }, [activeBody, activeStage, editing, editingActive, paneIndex])
+  }, [activeBody, activeGroup.id, activeKey, editing, editingActive])
 
   /**
    * Follows the caret while a note is being written, so the outline keeps saying which
@@ -869,7 +1022,7 @@ export function StageNotesDialog({
    */
   useEffect(() => {
     if (!editingActive) return
-    const container = paneRefs.current[paneIndex]
+    const container = paneRefs.current[activeGroup.id]
     const editor = container?.querySelector<HTMLTextAreaElement>('.stage-note__editor textarea')
     if (!editor) return
 
@@ -897,7 +1050,7 @@ export function StageNotesDialog({
       editor.removeEventListener('input', onChange)
       if (frame) cancelAnimationFrame(frame)
     }
-  }, [activeBody, activeSection, editingActive, paneIndex])
+  }, [activeBody, activeGroup.id, activeSection, editingActive])
 
   const jumpToSection = (key: string) => {
     // A folded ancestor keeps the target heading out of the DOM entirely, so the scroll
@@ -909,11 +1062,11 @@ export function StageNotesDialog({
 
   useEffect(() => {
     if (!pendingJumpKey) return
-    const container = paneRefs.current[paneIndex]
+    const container = paneRefs.current[activeGroup.id]
     if (!container) return
 
     /*
-     * A stage open for writing has no rendered headings to scroll to: the heading exists
+     * A note open for writing has no rendered headings to scroll to: the heading exists
      * only as the line it was typed on. Scoped to the editor's own box, because the
      * capture line at the foot of a pane is a textarea as well.
      */
@@ -971,16 +1124,20 @@ export function StageNotesDialog({
     pickedTrailRef.current = { key: pendingJumpKey, scrollTop: container.scrollTop }
     setTrailKey(pendingJumpKey)
     setPendingJumpKey(null)
-  }, [activeBody, activeSection, pendingJumpKey, paneIndex])
+  }, [activeBody, activeGroup.id, activeSection, pendingJumpKey])
 
   const words = wordCount(activeBody)
+  const openCount = openRefs.length
 
   /**
    * What the writing is doing, in the corner the writing is already being watched from.
    * `Waiting to save` is what makes a failed write visible: the drafts stay pending and
    * are tried again, and until one lands the panel should not claim to have stored them.
    */
-  const pending = (Object.keys(drafts) as StateId[]).some((state) => drafts[state] !== stored[state])
+  const pending = openRefs.some((ref) => {
+    const key = noteRefKey(ref)
+    return drafts[key] !== undefined && drafts[key] !== stored[key]
+  })
   const saveLabel = saving
     ? 'Saving…'
     : pending
@@ -1011,6 +1168,134 @@ export function StageNotesDialog({
     </button>
   )
 
+  /**
+   * One pane: its own strip of tabs over the note on show. The tabs belong to the pane
+   * rather than to the panel, which is what lets a note be moved from one pane to another
+   * — a tab has somewhere to come from and somewhere to land.
+   */
+  const renderGroup = (group: TabGroup) => {
+    const paneNumber = groups.findIndex((entry) => entry.id === group.id) + 1
+    const shown =
+      group.tabs.find((tab) => noteRefKey(tab) === group.activeKey) ?? group.tabs[0]
+    const shownKey = noteRefKey(shown)
+    const open = sessions[shownKey]
+    const found = matches.perNote.get(shownKey)
+    const isFocusedGroup = group.id === activeGroup.id
+    const shownApplication = applicationsById.get(shown.applicationId)
+
+    return (
+      <div className="panel__group" key={group.id}>
+        <div
+          aria-label={`Prep note tabs, pane ${paneNumber}`}
+          className="panel__tabs"
+          role="tablist"
+        >
+          {group.tabs.map((tab) => {
+            const key = noteRefKey(tab)
+            const label = labelOf(tab)
+            const tabMatches = matches.perNote.get(key)
+            const isActive = key === shownKey
+            const application = applicationsById.get(tab.applicationId)
+            return (
+              // Presentational, so the tablist still owns the tabs themselves: a close
+              // control cannot sit inside a button, and it belongs beside its own tab.
+              <div className="panel__tab-slot" key={key} role="presentation">
+                <button
+                  aria-controls={isActive ? stageNotePanelId(tab) : undefined}
+                  aria-selected={isActive}
+                  className={[
+                    'panel__tab',
+                    isActive ? 'panel__tab--open panel__tab--active' : '',
+                  ]
+                    .filter(Boolean)
+                    .join(' ')}
+                  id={stageTabId(tab)}
+                  onClick={() => {
+                    applyLayout(activateTab(layoutRef.current, group.id, key), group.id)
+                  }}
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                    event.preventDefault()
+                    const step = event.key === 'ArrowRight' ? 1 : -1
+                    const index = group.tabs.findIndex((entry) => noteRefKey(entry) === key)
+                    const next = group.tabs[(index + step + group.tabs.length) % group.tabs.length]
+                    const nextKey = noteRefKey(next)
+                    applyLayout(activateTab(layoutRef.current, group.id, nextKey), group.id)
+                    // Focus follows the selection, or the next arrow key would be read
+                    // by the tab left behind and step from the wrong place.
+                    tabRefs.current[nextKey]?.focus()
+                  }}
+                  ref={(node) => {
+                    tabRefs.current[key] = node
+                  }}
+                  role="tab"
+                  tabIndex={isActive ? 0 : -1}
+                  type="button"
+                >
+                  {label}
+                  {application?.state === tab.state ? (
+                    <span className="panel__tab-badge">Current stage</span>
+                  ) : null}
+                  {tabMatches ? <span className="panel__tab-count">{tabMatches.count}</span> : null}
+                </button>
+                <button
+                  aria-label={`Close the ${label} tab`}
+                  className="icon-button panel__tab-close"
+                  onClick={() => closeNote(group.id, key)}
+                  title={`Close the ${label} tab. Its notes are kept.`}
+                  type="button"
+                >
+                  <X aria-hidden="true" size={12} />
+                </button>
+              </div>
+            )
+          })}
+        </div>
+
+        <StageNotePane
+          body={drafts[shownKey] ?? ''}
+          captured={capturedByKey.get(shownKey) ?? ''}
+          currentMatch={currentMatch}
+          formatDate={formatShortDate}
+          heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
+          isCurrentState={shownApplication?.state === shown.state}
+          isEditing={editing.includes(shownKey) && !open}
+          isEditingLines={editingLines.includes(shownKey)}
+          isFocused={isFocusedGroup}
+          label={labelOf(shown)}
+          lines={linesByKey.get(shownKey) ?? []}
+          matchBase={found?.base ?? 0}
+          noteRef={shown}
+          onCapture={(line) => onCapture(shown.applicationId, shown.state, line)}
+          onChange={(value) => editDraft(shownKey, value)}
+          onClose={isSplit ? () => applyLayout(closeGroup(layoutRef.current, group.id)) : null}
+          onFocus={() => setFocusedGroupId(group.id)}
+          // Only the focused pane, which is the one the jump scrolls; a link clicked in
+          // another pane focuses it first, so this is that pane by the time it lands.
+          onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
+          onOpenInEditor={() => openInEditor(shown)}
+          onRevise={(entryId, revised) =>
+            onRevise(shown.applicationId, shown.state, entryId, revised)}
+          onStopExternal={() => stopEditingExternally(shown)}
+          onToggleEditLines={() =>
+            setEditingLines((current) =>
+              current.includes(shownKey)
+                ? current.filter((entry) => entry !== shownKey)
+                : [...current, shownKey],
+            )}
+          onToggleEditing={() => toggleEditing(shown)}
+          paneRef={(node) => {
+            paneRefs.current[group.id] = node
+          }}
+          query={query}
+          revealKeys={isFocusedGroup ? (revealKeys ?? undefined) : undefined}
+          saved={noteByKey.get(shownKey)}
+          session={open?.session}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="dialog-backdrop dialog-backdrop--panel">
       {/* A panel fills the viewport, so there is no backdrop left to click away on. */}
@@ -1031,13 +1316,13 @@ export function StageNotesDialog({
             aria-keyshortcuts={shortcutKeys('\\')}
             aria-pressed={isSplit}
             className="button button--quiet panel__chrome-button"
-            disabled={!isSplit && stages.length < 2}
+            disabled={!isSplit && openCount < 2}
             onClick={toggleSplit}
             // Why it cannot be pressed outranks how to press it: a shortcut hint on a
             // dead control only invites the key that does nothing either.
             title={
-              stages.length < 2
-                ? 'Only one stage is open'
+              openCount < 2
+                ? 'Only one note is open'
                 : `${isSplit ? 'Close back to one pane' : 'Open a second pane'} (${shortcutLabel('\\')})`
             }
             type="button"
@@ -1049,7 +1334,7 @@ export function StageNotesDialog({
             aria-keyshortcuts={shortcutKeys('P')}
             className="button button--quiet panel__chrome-button"
             onClick={() => setQuickOpen(true)}
-            title={`Open the stage picker (${shortcutLabel('P')})`}
+            title={`Open the note picker (${shortcutLabel('P')})`}
             type="button"
           >
             <CornerDownLeft aria-hidden="true" size={14} />
@@ -1075,112 +1360,43 @@ export function StageNotesDialog({
           className={`panel__body${sidebarOpen ? '' : ' panel__body--rail'}`}
           // There is nothing to submit — the notes write themselves. The form element
           // stays because it carries the panel's layout, and because the capture box's
-          // Enter guard is written against the panel being one form around every stage.
+          // Enter guard is written against the panel being one form around every note.
           onSubmit={(event) => event.preventDefault()}
         >
           {sidebarOpen ? (
-          <aside className="panel__sidebar">
-            <div>
-              <div className="panel__sidebar-head">
-                <p className="panel__sidebar-title">Outline</p>
-                {outlineToggle}
+            <aside className="panel__sidebar">
+              <div>
+                <div className="panel__sidebar-head">
+                  <p className="panel__sidebar-title">Outline</p>
+                  {outlineToggle}
+                </div>
+                {outline.length > 0 ? (
+                  <OutlineList
+                    current={trailKey}
+                    depth={0}
+                    nodes={outline}
+                    onPick={jumpToSection}
+                    path={trailKeys}
+                  />
+                ) : (
+                  <p className="stage-notes__hint">
+                    {activeBody.trim()
+                      ? 'This note has no headings to outline.'
+                      : 'Nothing written for this stage yet.'}
+                  </p>
+                )}
               </div>
-              {outline.length > 0 ? (
-                <OutlineList
-                  current={trailKey}
-                  depth={0}
-                  nodes={outline}
-                  onPick={jumpToSection}
-                  path={trailKeys}
-                />
-              ) : (
-                <p className="stage-notes__hint">
-                  {activeBody.trim()
-                    ? 'This note has no headings to outline.'
-                    : 'Nothing written for this stage yet.'}
-                </p>
-              )}
-            </div>
 
-            <p className="stage-notes__hint">
-              Notes save as you type. Clearing a stage’s removes its note, but not what you
-              were told in it.
-            </p>
-          </aside>
+              <p className="stage-notes__hint">
+                Notes save as you type. Clearing a stage’s removes its note, but not what you
+                were told in it.
+              </p>
+            </aside>
           ) : (
             <div className="panel__rail">{outlineToggle}</div>
           )}
 
           <div className="panel__main">
-            <div
-              aria-label="Stages with prep notes"
-              aria-multiselectable={isSplit ? true : undefined}
-              className="panel__tabs"
-              role="tablist"
-            >
-              {stages.map((state) => {
-                const label = stateLabel(state)
-                const found = matches.perStage.get(state)
-                const onScreen = openPanes.includes(state)
-                const isActive = state === activeStage
-                // The application's own stage is always listed, so it carries no close
-                // control: the panel must have somewhere to land whatever else is shut.
-                const closable = state !== application.state
-                return (
-                  // Presentational, so the tablist still owns the tabs themselves: a close
-                  // control cannot sit inside a button, and it belongs beside its own tab.
-                  <div className="panel__tab-slot" key={state} role="presentation">
-                  <button
-                    aria-controls={onScreen ? stageNotePanelId(state) : undefined}
-                    aria-selected={onScreen}
-                    className={[
-                      'panel__tab',
-                      onScreen ? 'panel__tab--open' : '',
-                      isActive ? 'panel__tab--active' : '',
-                    ]
-                      .filter(Boolean)
-                      .join(' ')}
-                    id={stageTabId(state)}
-                    onClick={() => showStage(state)}
-                    onKeyDown={(event) => {
-                      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-                      event.preventDefault()
-                      const step = event.key === 'ArrowRight' ? 1 : -1
-                      const next = stages[(stages.indexOf(state) + step + stages.length) % stages.length]
-                      showStage(next)
-                      // Focus follows the selection, or the next arrow key would be read
-                      // by the tab left behind and step from the wrong place.
-                      tabRefs.current[next]?.focus()
-                    }}
-                    ref={(node) => {
-                      tabRefs.current[state] = node
-                    }}
-                    role="tab"
-                    tabIndex={isActive ? 0 : -1}
-                    type="button"
-                  >
-                    {label}
-                    {state === application.state ? (
-                      <span className="panel__tab-badge">Current stage</span>
-                    ) : null}
-                    {found ? <span className="panel__tab-count">{found.count}</span> : null}
-                  </button>
-                  {closable ? (
-                    <button
-                      aria-label={`Close the ${label} tab`}
-                      className="icon-button panel__tab-close"
-                      onClick={() => closeStage(state)}
-                      title={`Close the ${label} tab. Its notes are kept.`}
-                      type="button"
-                    >
-                      <X aria-hidden="true" size={12} />
-                    </button>
-                  ) : null}
-                  </div>
-                )
-              })}
-            </div>
-
             <p className="panel__breadcrumbs">
               <span className="panel__crumb">{activeLabel}</span>
               {trail.map((crumb) => (
@@ -1211,7 +1427,7 @@ export function StageNotesDialog({
                   setQuickOpen(false)
                   dialogRef.current?.focus()
                 }}
-                onPick={openStage}
+                onPick={openFromPicker}
               />
             ) : null}
 
@@ -1219,59 +1435,13 @@ export function StageNotesDialog({
               className={`panel__notes${isSplit ? ' panel__notes--split' : ''}`}
               ref={notesRef}
             >
-              {openPanes.map((state, index) => {
-                const session = sessions[state]
-                const found = matches.perStage.get(state)
-                return (
-                  <StageNotePane
-                    body={drafts[state] ?? ''}
-                    captured={capturedByState.get(state) ?? ''}
-                    isEditingLines={editingLines.includes(state)}
-                    lines={linesByState.get(state) ?? []}
-                    onRevise={(entryId, revised) => onRevise(state, entryId, revised)}
-                    onToggleEditLines={() =>
-                      setEditingLines((current) =>
-                        current.includes(state)
-                          ? current.filter((entry) => entry !== state)
-                          : [...current, state],
-                      )}
-                    currentMatch={currentMatch}
-                    formatDate={formatShortDate}
-                    heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
-                    isCurrentState={state === application.state}
-                    isEditing={editing.includes(state) && !session}
-                    isFocused={index === paneIndex}
-                    key={state}
-                    label={stateLabel(state)}
-                    matchBase={found?.base ?? 0}
-                    onCapture={(line) => onCapture(state, line)}
-                    onChange={(value) => editDraft(state, value)}
-                    onClose={isSplit ? () => closePane(index) : null}
-                    onFocus={() => setFocused(index)}
-                    // Only the focused pane, which is the one the jump scrolls; a link
-                    // clicked in the other pane focuses it first, so this is that pane by
-                    // the time the click lands.
-                    onJumpToSection={index === paneIndex ? jumpToSection : undefined}
-                    onOpenInEditor={() => openInEditor(state)}
-                    onStopExternal={() => stopEditingExternally(state)}
-                    onToggleEditing={() => toggleEditing(state)}
-                    paneRef={(node) => {
-                      paneRefs.current[index] = node
-                    }}
-                    query={query}
-                    revealKeys={index === paneIndex ? (revealKeys ?? undefined) : undefined}
-                    saved={noteByState.get(state)}
-                    session={session}
-                    state={state}
-                  />
-                )
-              })}
+              <NotesLayoutView node={layout} renderGroup={renderGroup} />
             </div>
 
             <div className="panel__statusbar">
               <p className="panel__status">
-                {words} {words === 1 ? 'word' : 'words'} in {activeLabel} · {stages.length}{' '}
-                {stages.length === 1 ? 'stage' : 'stages'} open
+                {words} {words === 1 ? 'word' : 'words'} in {activeLabel} · {openCount}{' '}
+                {openCount === 1 ? 'note' : 'notes'} open
               </p>
               {formError && <p className="form-error" role="alert">{formError}</p>}
               {/* Not a live region. It changes every few seconds while a note is being

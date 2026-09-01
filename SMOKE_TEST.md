@@ -27,8 +27,9 @@ with no start time are covered by the app integration tests.
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
 
-Finding text in the prep notes panel — counting matches across every stage, stepping through them
-into tabs that are not rendered and wrapping, opening a fold to show a hit and closing it again
+Finding text in the prep notes panel — counting matches across every open note including other
+applications', stepping through them into tabs that are not rendered and wrapping, opening a fold
+to show a hit and closing it again
 afterwards, and Escape closing the find bar before the panel — is covered by the app integration
 tests, along with the tab bar, its arrow keys, the outline and its hierarchy, quick open, and
 splitting into two panes.
@@ -137,7 +138,14 @@ test cannot judge reliably:
    further down the pipeline and confirm searching for that text finds the application.
    Clear a stage's notes and confirm they go on their own, while the stage keeps its tab and pane
    until the panel is closed. Close another stage's tab with its **X** and confirm the tab goes but
-   the note is back the next time the panel opens.
+   the note is back the next time the panel opens. Confirm every tab closes, the badged current
+   stage included, and that closing the last one closes the panel.
+   Open a second application's notes with `Ctrl`/`Cmd+P` — pick a company other than the one the
+   panel was opened from — and confirm it arrives as a tab in the pane you were in, named
+   `{Company} · {Stage}` like the rest. Split, and confirm one company's note can be read beside
+   another's. Confirm each pane carries its own strip of tabs, that **Unsplit** gathers every tab
+   into one pane rather than closing any, and that a note already open is brought into view rather
+   than opened a second time.
    Confirm the notes fill the screen: the title bar, tab bar, breadcrumbs, outline, and status row
    stay put while only the notes column scrolls, and a stage's header sticks to the top of that
    column as its note runs past, with the headings inside it sticking below the header.

@@ -1,24 +1,25 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import type { StateId } from './domain'
 import { fuzzyScore } from './quickOpenMatch'
 
 export interface QuickOpenEntry {
-  id: StateId
+  /** What picking this entry opens. A note's key, not a bare state: the picker spans
+   *  every application, so the same stage appears once per company. */
+  id: string
   label: string
-  /** Whether the panel is already showing this stage, so picking it only switches tab. */
+  /** Whether the panel is already showing this note, so picking it only switches tab. */
   open: boolean
 }
 
 interface QuickOpenProps {
   entries: readonly QuickOpenEntry[]
-  onPick: (state: StateId) => void
+  onPick: (id: string) => void
   onClose: () => void
 }
 
 /**
- * The stage picker, opened with Ctrl+P. It reaches every stage rather than only the ones
- * already on screen, which is how notes get written for a stage the application has not
- * reached yet.
+ * The note picker, opened with Ctrl+P. It reaches every stage of every application rather
+ * than only the ones already on screen, which is how notes get written for a stage an
+ * application has not reached yet, and how a second company's notes get into the panel.
  */
 export function QuickOpen({ entries, onPick, onClose }: QuickOpenProps) {
   const [query, setQuery] = useState('')

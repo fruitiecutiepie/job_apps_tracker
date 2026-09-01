@@ -2550,8 +2550,9 @@ tbody tr:hover {
 .panel__main {
   position: relative;
   display: grid;
-  /* Tab bar, breadcrumbs, the scrolling notes column, then the status bar. */
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  /* Breadcrumbs, the notes area, then the status bar. The tabs moved into the panes:
+     each one carries its own strip, so a note can be moved from one pane to another. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
 }
 
@@ -2563,6 +2564,53 @@ tbody tr:hover {
 .panel__notes {
   display: flex;
   min-height: 0;
+}
+
+/*
+ * A split's children, laid along its own axis. Both axes get min-0 for the reason the
+ * pane does: whichever way a split runs, its children must be allowed below their content
+ * or a note would push the panel's scrollbar out to the page.
+ */
+.panel__split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel__split--row {
+  flex-direction: row;
+}
+
+.panel__split--column {
+  flex-direction: column;
+}
+
+/* Sized by the fraction its split records, which is why grow and shrink are off: the
+   basis is the whole answer, and letting flex adjust it would undo a resize. */
+.panel__split-child {
+  display: flex;
+  flex-grow: 0;
+  flex-shrink: 0;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* One pane: its strip of tabs over the note on show. */
+.panel__group {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel__split--row > .panel__split-child + .panel__split-child > .panel__group {
+  border-left: 1px solid var(--line);
+}
+
+.panel__split--column > .panel__split-child + .panel__split-child > .panel__group {
+  border-top: 1px solid var(--line);
 }
 
 /*
@@ -2593,10 +2641,6 @@ tbody tr:hover {
    the button-like ring that focus-visible would otherwise draw around a whole column. */
 .panel__pane:focus-visible {
   outline: none;
-}
-
-.panel__pane + .panel__pane {
-  border-left: 1px solid var(--line);
 }
 
 /* Which pane the outline, breadcrumbs, and status bar are describing. Only worth
@@ -3531,18 +3575,28 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     max-height: 30dvh;
   }
 
-  /* No room for two columns, so a split panel stacks instead. */
-  .panel__notes {
+  /*
+   * No room to lay panes side by side, so every split stacks whichever way it was made.
+   * The tree keeps its shape — only the direction it draws in changes — so unstacking at
+   * a wider width puts the arrangement back exactly as it was.
+   */
+  .panel__split--row {
     flex-direction: column;
+  }
+
+  /* Stacked, the recorded fractions are heights nobody chose; let the panes share. */
+  .panel__split--row > .panel__split-child {
+    flex-basis: auto !important;
+    flex-grow: 1;
+  }
+
+  .panel__split--row > .panel__split-child + .panel__split-child > .panel__group {
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 
   .panel__pane {
     padding: var(--s4);
-  }
-
-  .panel__pane + .panel__pane {
-    border-top: 1px solid var(--line);
-    border-left: 0;
   }
 
   .find-widget {
