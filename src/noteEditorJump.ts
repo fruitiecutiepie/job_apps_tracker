@@ -59,13 +59,21 @@ const METRIC_PROPERTIES = [
 ] as const
 
 /**
- * How far down the text `offset` sits, in pixels.
+ * How far down the text each of `offsets` sits, in pixels.
  *
  * Measured against a copy of the box rather than counted as lines times a line height: the
  * editor soft-wraps, so one written line can stand several lines tall, and any note with a
- * paragraph in it would land somewhere short of the heading.
+ * paragraph in it would land somewhere short of the heading. One copy answers for every
+ * offset asked about, because the fold controls beside the box ask about all of them at
+ * once, on every keystroke.
  */
-function offsetTopWithin(textarea: HTMLTextAreaElement, text: string, offset: number): number {
+export function offsetTopsWithin(
+  textarea: HTMLTextAreaElement,
+  text: string,
+  offsets: readonly number[],
+): number[] {
+  if (offsets.length === 0) return []
+
   const styles = getComputedStyle(textarea)
   const mirror = document.createElement('div')
 
@@ -88,16 +96,36 @@ function offsetTopWithin(textarea: HTMLTextAreaElement, text: string, offset: nu
     - parseFloat(styles.paddingRight || '0')
   }px`
 
-  mirror.textContent = text.slice(0, offset)
-  // A marker rather than the height of the text before it: a run ending in a newline is
-  // not itself any taller, so its height would name the line above the one asked for.
-  const marker = document.createElement('span')
-  marker.textContent = 'x'
-  mirror.append(marker)
+  // Asked about in order, so the text between two offsets is written once rather than the
+  // whole run before each of them.
+  const ordered = [...offsets].map((offset, index) => ({ offset, index }))
+  ordered.sort((left, right) => left.offset - right.offset)
+
+  const markers: HTMLSpanElement[] = []
+  let written = 0
+  for (const entry of ordered) {
+    const clamped = Math.min(Math.max(entry.offset, 0), text.length)
+    mirror.append(text.slice(written, clamped))
+    written = clamped
+    // A marker rather than the height of the text before it: a run ending in a newline is
+    // not itself any taller, so its height would name the line above the one asked for.
+    // Taken out of the flow, so that several of them in one copy cannot themselves change
+    // where the text between them wraps — it keeps its static position either way.
+    const marker = document.createElement('span')
+    marker.style.position = 'absolute'
+    marker.textContent = 'x'
+    mirror.append(marker)
+    markers.push(marker)
+  }
+  mirror.append(text.slice(written))
 
   document.body.append(mirror)
   try {
-    return marker.offsetTop
+    const tops: number[] = new Array(offsets.length).fill(0)
+    ordered.forEach((entry, position) => {
+      tops[entry.index] = markers[position].offsetTop
+    })
+    return tops
   } finally {
     mirror.remove()
   }
@@ -118,6 +146,6 @@ export function jumpToLine(textarea: HTMLTextAreaElement, text: string, line: nu
   // jsdom implements neither selection nor layout, and the panel still has to render there.
   textarea.setSelectionRange?.(start, end)
   if (typeof getComputedStyle === 'function') {
-    textarea.scrollTop = offsetTopWithin(textarea, text, start)
+    textarea.scrollTop = offsetTopsWithin(textarea, text, [start])[0]
   }
 }

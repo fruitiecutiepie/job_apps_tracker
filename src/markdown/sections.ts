@@ -86,6 +86,92 @@ export function collectFoldableKeys(section: Section): string[] {
 }
 
 /**
+ * One place that folds, with the lines it hides. `key` is the same key the renderer and
+ * the search fold by, so a fold means the same thing in the editor as in the reading
+ * view; `line` is where its own header — the heading, point, quote, or fence — is
+ * written, and `start` through `end` are the lines it hides, inclusive.
+ */
+export interface FoldRegion {
+  key: string
+  line: number
+  start: number
+  end: number
+}
+
+/** Drops the blank lines off the end of a fold, so closing one leaves the gap after it. */
+function pushRegion(regions: FoldRegion[], lines: readonly string[], region: FoldRegion): void {
+  let end = Math.min(region.end, lines.length - 1)
+  while (end >= region.start && !lines[end].trim()) end -= 1
+  if (end >= region.start) regions.push({ ...region, end })
+}
+
+function collectBlockRegions(
+  blocks: BlockNode[],
+  path: string,
+  lines: readonly string[],
+  regions: FoldRegion[],
+): void {
+  blocks.forEach((block, index) => {
+    const key = blockKey(path, index)
+    if (block.type === 'code') {
+      pushRegion(regions, lines, { key, line: block.line, start: block.line + 1, end: block.endLine })
+      return
+    }
+    if (block.type === 'quote') {
+      pushRegion(regions, lines, { key, line: block.line, start: block.line + 1, end: block.endLine })
+      collectBlockRegions(block.children, key, lines, regions)
+      return
+    }
+    if (block.type === 'list') {
+      block.items.forEach((item, itemIndex) => {
+        if (item.childrenLine === null) return
+        const itemPath = itemKey(key, itemIndex)
+        pushRegion(regions, lines, {
+          key: itemPath,
+          line: item.line,
+          start: item.childrenLine,
+          end: item.endLine,
+        })
+        collectBlockRegions(item.children, itemPath, lines, regions)
+      })
+    }
+  })
+}
+
+/**
+ * Every fold in the note with the source lines it covers, in the order they are written.
+ * What the editor folds along: a note open for writing has no rendered heading or point
+ * to fold, only the lines it was typed as, so the fold has to be described in lines.
+ *
+ * A heading covers everything under it through to the next heading at its own level or
+ * above, which is the same reach it folds in the reading view.
+ */
+export function foldRegions(root: Section, lines: readonly string[]): FoldRegion[] {
+  const regions: FoldRegion[] = []
+
+  const walk = (section: Section, endLine: number) => {
+    if (section.heading) {
+      pushRegion(regions, lines, {
+        key: section.key,
+        line: section.heading.line,
+        start: section.heading.line + 1,
+        end: endLine,
+      })
+    }
+    collectBlockRegions(section.blocks, section.key, lines, regions)
+    section.children.forEach((child, index) => {
+      const next = section.children[index + 1]
+      // A section runs to the line before the next heading it does not contain, which for
+      // the last child is wherever its parent ends.
+      walk(child, next?.heading ? next.heading.line - 1 : endLine)
+    })
+  }
+  walk(root, lines.length - 1)
+
+  return regions
+}
+
+/**
  * The anchor a heading answers to, in the shape a generated table of contents writes:
  * lowercased, punctuation dropped, spaces turned into hyphens. Notes are written in an
  * editor and pasted in with their contents list already built, so the slugs here have to

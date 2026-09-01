@@ -5,6 +5,7 @@ export type { BlockNode, InlineNode, ListBlock, ListItem } from './parseMarkdown
 export {
   buildSections,
   collectFoldableKeys,
+  foldRegions,
   headingSlug,
   outlineTree,
   sectionAtLine,
@@ -12,6 +13,6 @@ export {
   sectionPath,
   sectionSlugs,
 } from './sections'
-export type { OutlineEntry, OutlineNode, Section } from './sections'
+export type { FoldRegion, OutlineEntry, OutlineNode, Section } from './sections'
 export { matchOffsets, searchNote, splitMatches } from './searchNote'
 export type { NoteSearch } from './searchNote'

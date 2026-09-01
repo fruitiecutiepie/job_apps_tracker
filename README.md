@@ -105,7 +105,7 @@ Select **Prep notes** on a Kanban card or table row to record what you need for 
 
 Add notes for a stage you have not reached yet with **Add notes for another stage**—useful for drafting offer questions while you are still interviewing. Clearing a stage's notes removes them when you save. Prep notes are searchable from the global search box.
 
-Notes are written in Markdown. A stage that already has notes opens as a rendered outline, ready to read; select **Edit** on it to change the text, and **Read** to go back. Empty stages open straight in the editor, which has a toolbar for bold, italic, heading, and bullet point.
+Notes are written in Markdown. A stage that already has notes opens as a rendered outline, ready to read; select **Edit** on it to change the text, and **Read** to go back. Empty stages open straight in the editor, which has a toolbar for bold, italic, heading, and bullet point, and **Collapse all**.
 
 ### Capture what you are told
 
@@ -140,6 +140,24 @@ A line that simply wraps a bullet stays part of that bullet. To give a point fol
 ```
 
 What you have folded is never saved—it resets each time you open the dialog.
+
+Notes fold while you are **writing** them as well as while you are reading them, along the same
+headings, points, quotes, and code blocks. The chevrons stand in a column beside the box, since a
+textarea has no room in its text for anything that is not text, and **Collapse all** sits in the
+formatting toolbar. What is folded is taken out of the box, not out of the note: it is still
+stored, still saved, still searched, and still counted by the word count.
+
+Two things follow from a folded note being smaller than the note itself:
+
+- An edit that would reach through a fold—backspacing the line break at the end of a folded
+  heading, say—opens that fold instead of making the edit. Quietly swallowing lines you cannot see
+  is worse than a keystroke that has to be pressed twice.
+- The find opens any fold holding a match while it is running, and picking a heading from the
+  outline opens whatever it is written inside, the same as in the reading view. Both close back up
+  afterwards, so the note keeps the shape you left it in.
+
+Folds follow the lines they belong to as you type: writing a new section above a folded one leaves
+it folded, and deleting a heading takes its fold with it.
 
 ### Write notes in your own editor
 
