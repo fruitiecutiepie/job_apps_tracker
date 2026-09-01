@@ -14,14 +14,6 @@ export default defineConfig({
      */
     globalSetup: './vite/suite-lock.ts',
     /*
-     * Half the cores rather than all of them. A suite whose tests each carry a wall-clock
-     * budget should not be the thing that makes the machine slow enough to miss it, and
-     * these tests are heavy enough — a jsdom environment and a rendered app apiece — that
-     * the last few workers cost more in contention than they return in parallelism. The
-     * rest of the machine is still running an editor and a dev server.
-     */
-    maxWorkers: '50%',
-    /*
      * Vitest defaults a test to 5s, which is the wrong budget for this suite. The panel
      * autosaves `AUTOSAVE_MS` after the typing stops, so the tests that wait for a write
      * to land give `waitFor` 3-4s on its own — leaving barely a second for the render,
