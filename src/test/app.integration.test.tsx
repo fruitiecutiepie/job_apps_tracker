@@ -2331,6 +2331,167 @@ describe('job applications tracker', () => {
     ).toHaveLength(0)
   })
 
+  /**
+   * jsdom implements no `DataTransfer`, so a drag is driven with a stub backed by a Map —
+   * the same shape the Kanban's drag tests use.
+   */
+  function dataTransferStub() {
+    const values = new Map<string, string>()
+    return {
+      effectAllowed: 'none',
+      dropEffect: 'none',
+      setData: (type: string, value: string) => values.set(type, value),
+      getData: (type: string) => values.get(type) ?? '',
+    }
+  }
+
+  const tabNames = (dialog: HTMLElement) =>
+    within(dialog).getAllByRole('tab').map((tab) => tab.textContent)
+
+  it('reorders a tab within its pane by dragging it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    expect(tabNames(dialog)).toEqual([
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Offer',
+    ])
+
+    const dataTransfer = dataTransferStub()
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    const first = within(dialog).getAllByRole('tab')[0].closest('.panel__tab-slot')
+
+    fireEvent.dragStart(offer, { dataTransfer })
+    fireEvent.dragOver(first!, { dataTransfer })
+    fireEvent.drop(first!, { dataTransfer })
+
+    expect(tabNames(dialog)).toEqual([
+      'Halcyon Maps · Offer',
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Interview 1',
+    ])
+    // Moving a tab is an arrangement, not an edit: the notes are untouched.
+    expect(
+      readSavedDocument()
+        .applications.find((application) => application.company === 'Halcyon Maps')!
+        .stage_notes.map((note) => note.state),
+    ).toEqual(['interview_1', 'interview_2', 'offer'])
+  })
+
+  it('moves a tab into the other pane by dragging it onto that pane’s strip', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    const strips = within(dialog).getAllByRole('tablist')
+    expect(strips).toHaveLength(2)
+    expect(within(strips[0]).getAllByRole('tab')).toHaveLength(2)
+    expect(within(strips[1]).getAllByRole('tab')).toHaveLength(1)
+
+    const dataTransfer = dataTransferStub()
+    const offer = within(strips[0]).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+
+    fireEvent.dragStart(offer, { dataTransfer })
+    fireEvent.dragOver(strips[1], { dataTransfer, target: strips[1] })
+    fireEvent.drop(strips[1], { dataTransfer, target: strips[1] })
+
+    const after = within(dialog).getAllByRole('tablist')
+    expect(within(after[0]).getAllByRole('tab')).toHaveLength(1)
+    expect(within(after[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Offer',
+    ])
+  })
+
+  it('moves a tab between panes with the keyboard, so a drag is not the only way', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    // The first pane is focused and reading Interview 2; send that tab to the pane beside it.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+
+    const strips = within(dialog).getAllByRole('tablist')
+    expect(within(strips[0]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Halcyon Maps · Offer',
+    ])
+    expect(within(strips[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Interview 1',
+    ])
+  })
+
+  it('reorders a tab within its pane with the keyboard', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    await user.keyboard('{Control>}{Alt>}{ArrowRight}{/Alt}{/Control}')
+    expect(tabNames(dialog)).toEqual([
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Offer',
+    ])
+
+    // Wraps rather than stopping, so the tab can reach either end from either end.
+    await user.keyboard('{Control>}{Alt>}{ArrowLeft}{/Alt}{/Control}')
+    expect(tabNames(dialog)).toEqual([
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Offer',
+    ])
+  })
+
+  it('collapses the split when the last tab is dragged out of a pane', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
+
+    // Splitting leaves the first pane focused, so reach for the second one before moving
+    // its tab: the arrow acts on the pane being read, like every other panel binding.
+    await user.click(within(dialog).getByRole('heading', { name: 'Halcyon Maps · Interview 1' }))
+
+    // That pane holds one tab; moving it out leaves nothing to show there.
+    await user.keyboard('{Control>}{Shift>}{ArrowLeft}{/Shift}{/Control}')
+
+    const strips = within(dialog).getAllByRole('tablist')
+    expect(strips).toHaveLength(1)
+    expect(within(strips[0]).getAllByRole('tab')).toHaveLength(3)
+  })
+
+  it('names the ways a tab can be moved, for a reader who cannot drag one', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    const strip = within(dialog).getAllByRole('tablist')[0]
+    const hint = document.getElementById(strip.getAttribute('aria-describedby')!)
+    expect(hint).toHaveTextContent(/Drag a tab to reorder it or move it to another pane/)
+    expect(hint).toHaveTextContent(/to move it between panes/)
+
+    // And the tab itself carries both bindings, so they are not only in the hint.
+    const tab = within(strip).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    expect(tab.getAttribute('aria-keyshortcuts')).toContain('Shift+ArrowRight')
+    expect(tab.getAttribute('aria-keyshortcuts')).toContain('Alt+Meta+ArrowRight')
+  })
+
   it('groups existing prep notes from several applications under the stage they share', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

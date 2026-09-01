@@ -40,6 +40,7 @@ import {
   groupHolding,
   groupsOf,
   makeGroup,
+  moveTab,
   noteRefKey,
   openInGroup,
   orderedRefs,
@@ -67,6 +68,13 @@ export const AUTOSAVE_MS = 800
 
 /** The pane the panel opens with. Named up front so no ref is read while rendering. */
 const FIRST_PANE_ID = 'pane-1'
+
+/** Names the sentence that tells a reader the tabs can be dragged or arrowed. */
+const TABS_HINT_ID = 'stage-notes-tabs-hint'
+
+/** The two bindings that arrange the panes, looked up rather than restated. */
+const MOVE_TAB_SHORTCUT = PANEL_SHORTCUTS.find((shortcut) => shortcut.shift)!
+const REORDER_TAB_SHORTCUT = PANEL_SHORTCUTS.find((shortcut) => shortcut.alt)!
 
 /**
  * Drafts to store, grouped by the application they belong to. `applyStageNotes` allows one
@@ -333,6 +341,7 @@ export function StageNotesDialog({
   })
   const layoutRef = useRef(layout)
   const [focusedGroupId, setFocusedGroupId] = useState<string>(FIRST_PANE_ID)
+  const focusedGroupRef = useRef(focusedGroupId)
 
   const [drafts, setDrafts] = useState<Record<string, string>>({})
   // The poll loop reads drafts outside of React's render cycle, so it needs a live copy.
@@ -362,6 +371,12 @@ export function StageNotesDialog({
   const savingRef = useRef(false)
   const mountedRef = useRef(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  /**
+   * The tab being dragged, and the slot it is hovering over. Both are display state: they
+   * exist for the length of one drag and describe nothing about the notes.
+   */
+  const [dragging, setDragging] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<{ groupId: string; index: number } | null>(null)
 
   // Find state. `findSeq` remounts the widget so a second Ctrl+F refocuses and selects
   // the query already in it, the way reopening find in an editor does.
@@ -432,6 +447,10 @@ export function StageNotesDialog({
       return ids.includes(current) ? current : ids[0]
     })
   }, [])
+
+  useEffect(() => {
+    focusedGroupRef.current = focusedGroupId
+  }, [focusedGroupId])
 
   const openRefs = useMemo(() => orderedRefs(layout), [layout])
 
@@ -859,6 +878,53 @@ export function StageNotesDialog({
     applyLayout(closeTab(layoutRef.current, groupId, key))
   }
 
+  /**
+   * Lands a dragged or arrowed tab in a pane. The keyboard and the pointer share this so
+   * the two cannot drift: whatever a drag can arrange, the arrows can arrange too, which
+   * is the whole reason the layout operations are pure.
+   */
+  const dropTab = useCallback(
+    (key: string, groupId: string, index: number) => {
+      applyLayout(moveTab(layoutRef.current, key, groupId, index), groupId)
+    },
+    [applyLayout],
+  )
+
+  /**
+   * Moves the tab being read into the pane beside it. Panes are stepped in layout order
+   * rather than by measuring where they sit: the order is the order the tabs and the find
+   * already run in, so the arrow agrees with what the reader has been stepping through.
+   */
+  const moveTabToNeighbour = useCallback(
+    (step: -1 | 1) => {
+      const tree = layoutRef.current
+      const list = groupsOf(tree)
+      const from = list.find((group) => group.id === focusedGroupRef.current) ?? list[0]
+      const key = from.activeKey
+      if (!key) return
+      const target = list[list.indexOf(from) + step]
+      // Nothing beside it to move into. Splitting one open here is what phase four adds.
+      if (!target) return
+      dropTab(key, target.id, step === 1 ? 0 : target.tabs.length)
+    },
+    [dropTab],
+  )
+
+  /** Reorders the tab being read within its own pane, wrapping at either end. */
+  const reorderActiveTab = useCallback(
+    (step: -1 | 1) => {
+      const tree = layoutRef.current
+      const list = groupsOf(tree)
+      const group = list.find((entry) => entry.id === focusedGroupRef.current) ?? list[0]
+      const key = group.activeKey
+      if (!key || group.tabs.length < 2) return
+      const index = group.tabs.findIndex((tab) => noteRefKey(tab) === key)
+      const next = (index + step + group.tabs.length) % group.tabs.length
+      dropTab(key, group.id, next)
+    },
+    [dropTab],
+  )
+
   // Bound to the document rather than to the panel: the panel is modal, so nothing
   // inside it need hold focus for these to be the right thing to do.
   useEffect(() => {
@@ -896,6 +962,35 @@ export function StageNotesDialog({
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
   }, [openFind, toggleSplit])
+
+  /*
+   * Arranging the panes from the keyboard. A drag is the obvious way to move a tab and the
+   * only way that is no way at all without a pointer, so every arrangement a drag can
+   * reach has an arrow that reaches it too — the same requirement the Kanban's Move select
+   * answers for dragging a card.
+   *
+   * Bound apart from the letter shortcuts because these carry a second modifier: folding
+   * them into that listener would mean checking for the absence of Shift and Alt on every
+   * one of the five, which is how Ctrl+Shift+F would quietly stop opening the find bar.
+   */
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return
+      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+      const step = event.key === 'ArrowRight' ? 1 : -1
+      if (event.shiftKey && !event.altKey) {
+        event.preventDefault()
+        moveTabToNeighbour(step)
+        return
+      }
+      if (event.altKey && !event.shiftKey) {
+        event.preventDefault()
+        reorderActiveTab(step)
+      }
+    }
+    document.addEventListener('keydown', onKeyDown)
+    return () => document.removeEventListener('keydown', onKeyDown)
+  }, [moveTabToNeighbour, reorderActiveTab])
 
   /**
    * What the picker can reach: every note already written, every application's current
@@ -1186,22 +1281,74 @@ export function StageNotesDialog({
     return (
       <div className="panel__group" key={group.id}>
         <div
+          aria-describedby={TABS_HINT_ID}
           aria-label={`Prep note tabs, pane ${paneNumber}`}
           className="panel__tabs"
+          onDragOver={(event) => {
+            if (!dragging) return
+            // Only the strip's own background: a slot handles its own hover, and letting
+            // this run as well would fight it for where the tab is about to land.
+            if (event.target !== event.currentTarget) return
+            event.preventDefault()
+            event.dataTransfer.dropEffect = 'move'
+            setDropTarget({ groupId: group.id, index: group.tabs.length })
+          }}
+          onDrop={(event) => {
+            if (event.target !== event.currentTarget) return
+            event.preventDefault()
+            const key = event.dataTransfer.getData('text/plain')
+            if (key) dropTab(key, group.id, group.tabs.length)
+            setDragging(null)
+            setDropTarget(null)
+          }}
           role="tablist"
         >
-          {group.tabs.map((tab) => {
+          {group.tabs.map((tab, tabIndex) => {
             const key = noteRefKey(tab)
             const label = labelOf(tab)
             const tabMatches = matches.perNote.get(key)
             const isActive = key === shownKey
             const application = applicationsById.get(tab.applicationId)
+            const isDropTarget =
+              dropTarget?.groupId === group.id && dropTarget.index === tabIndex
             return (
               // Presentational, so the tablist still owns the tabs themselves: a close
               // control cannot sit inside a button, and it belongs beside its own tab.
-              <div className="panel__tab-slot" key={key} role="presentation">
+              <div
+                className={[
+                  'panel__tab-slot',
+                  dragging === key ? 'panel__tab-slot--dragging' : '',
+                  isDropTarget ? 'panel__tab-slot--drop-target' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                key={key}
+                onDragLeave={(event) => {
+                  // Guarded against a child's own dragleave, which would otherwise clear
+                  // the highlight the moment the pointer crossed onto the tab's text.
+                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
+                  setDropTarget((current) =>
+                    current?.groupId === group.id && current.index === tabIndex ? null : current,
+                  )
+                }}
+                onDragOver={(event) => {
+                  if (!dragging) return
+                  event.preventDefault()
+                  event.dataTransfer.dropEffect = 'move'
+                  setDropTarget({ groupId: group.id, index: tabIndex })
+                }}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  const dropped = event.dataTransfer.getData('text/plain')
+                  if (dropped) dropTab(dropped, group.id, tabIndex)
+                  setDragging(null)
+                  setDropTarget(null)
+                }}
+                role="presentation"
+              >
                 <button
                   aria-controls={isActive ? stageNotePanelId(tab) : undefined}
+                  aria-keyshortcuts={`${shortcutKeys(MOVE_TAB_SHORTCUT)} ${shortcutKeys(REORDER_TAB_SHORTCUT)}`}
                   aria-selected={isActive}
                   className={[
                     'panel__tab',
@@ -1209,9 +1356,19 @@ export function StageNotesDialog({
                   ]
                     .filter(Boolean)
                     .join(' ')}
+                  draggable
                   id={stageTabId(tab)}
                   onClick={() => {
                     applyLayout(activateTab(layoutRef.current, group.id, key), group.id)
+                  }}
+                  onDragEnd={() => {
+                    setDragging(null)
+                    setDropTarget(null)
+                  }}
+                  onDragStart={(event) => {
+                    setDragging(key)
+                    event.dataTransfer.effectAllowed = 'move'
+                    event.dataTransfer.setData('text/plain', key)
                   }}
                   onKeyDown={(event) => {
                     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
@@ -1430,6 +1587,14 @@ export function StageNotesDialog({
                 onPick={openFromPicker}
               />
             ) : null}
+
+            {/* The only way a drag is discoverable without a pointer, and the only way
+                its keyboard equivalent is discoverable at all. */}
+            <p className="sr-only" id={TABS_HINT_ID}>
+              Drag a tab to reorder it or move it to another pane, or use
+              {' '}{shortcutLabel(MOVE_TAB_SHORTCUT)} to move it between panes and
+              {' '}{shortcutLabel(REORDER_TAB_SHORTCUT)} to reorder it.
+            </p>
 
             <div
               className={`panel__notes${isSplit ? ' panel__notes--split' : ''}`}

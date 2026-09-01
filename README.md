@@ -198,6 +198,10 @@ The stage notes panel binds five shortcuts while it is open. They are bound to t
 - `Ctrl`/`Cmd+P` opens the note picker. It reaches every stage of the application you are working on, plus every note already written and every application's current stage, so a second company's notes are a few keystrokes away. Type to narrow it, `ArrowUp` and `ArrowDown` move through the results, `Enter` opens the highlighted note—reopening one you had closed, or adding a stage you have not reached—and `Escape` dismisses it.
 - `Ctrl`/`Cmd+B` shows and hides the outline sidebar.
 - `Ctrl`/`Cmd+K` puts the caret in the capture box, and in a split panel it lands in the pane you are reading.
+- `Ctrl`/`Cmd+Shift+←` and `→` move the tab you are reading into the pane beside it. Moving the last tab out of a pane closes that pane and folds the split back.
+- `Ctrl`/`Cmd+Alt+←` and `→` reorder the tab you are reading within its own pane, wrapping at either end.
+
+Tabs can also be dragged: within a strip to reorder them, or onto another pane's strip to move them across. Every arrangement a drag can reach has a keyboard equivalent above, so the panel does not need a pointer.
 
 Elsewhere, `Escape` closes any dialog, `Tab` cycles within it rather than escaping to the page behind, and the compensation amount fields take arrow keys to nudge a figure by 5,000—10,000 with `Shift`.
 

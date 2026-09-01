@@ -1450,6 +1450,25 @@ tbody tr:hover {
   font-weight: 600;
 }
 
+/*
+ * A tab being dragged, and the slot it would land in. Both borrow the accent the Kanban's
+ * drop target uses, so a drag reads the same wherever it happens in the app.
+ */
+.panel__tab-slot {
+  transition: background 120ms ease;
+}
+
+.panel__tab-slot--dragging {
+  opacity: 0.5;
+}
+
+.panel__tab-slot--drop-target {
+  background: var(--accent-weak);
+  /* Marks the edge the tab lands on rather than filling the slot, so it reads as a place
+     between two tabs instead of as a selection of the one under the pointer. */
+  box-shadow: inset 2px 0 0 0 var(--accent);
+}
+
 /* ------------------------------------------------------- compare notes --- */
 
 .compare-notes__toolbar {

@@ -150,6 +150,11 @@ test cannot judge reliably:
    stay put while only the notes column scrolls, and a stage's header sticks to the top of that
    column as its note runs past, with the headings inside it sticking below the header.
    Move between stages with the tabs and with the arrow keys, confirming focus follows the tab.
+   Drag a tab within its strip and confirm it reorders, with the slot it would land in marked
+   as you go; drag one onto the other pane's strip in a split and confirm it moves across.
+   Do both again with `Ctrl`/`Cmd+Shift+←/→` and `Ctrl`/`Cmd+Alt+←/→` and confirm the keyboard
+   reaches the same arrangements. Move the last tab out of a pane and confirm the pane goes and
+   the split folds back.
    Scroll a long note and confirm the breadcrumbs name the heading you are inside, that the
    matching outline row is marked, that the rows above it on the trail are marked more quietly
    with their indent guide picked out, and that selecting an outline row scrolls to that heading.
