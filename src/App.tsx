@@ -4,6 +4,7 @@ import {
   CircleCheck,
   ChartNoAxesColumnIncreasing,
   ClipboardCopy,
+  Columns3,
   Download,
   KanbanSquare,
   Moon,
@@ -90,6 +91,7 @@ import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
 import {
   CalendarView,
+  CompareNotesView,
   FocusView,
   KanbanView,
   StaleView,
@@ -97,7 +99,7 @@ import {
   TableView,
 } from './views'
 
-type ViewId = 'kanban' | 'table' | 'focus' | 'calendar' | 'stale' | 'statistics'
+type ViewId = 'kanban' | 'table' | 'focus' | 'calendar' | 'stale' | 'statistics' | 'compare'
 
 const VIEW_OPTIONS = [
   { id: 'kanban', label: 'Kanban', icon: KanbanSquare },
@@ -106,6 +108,7 @@ const VIEW_OPTIONS = [
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
+  { id: 'compare', label: 'Compare', icon: Columns3 },
 ] as const
 
 /*
@@ -914,6 +917,16 @@ export default function App() {
         return <StaleView {...shared} onMove={move} />
       case 'statistics':
         return <StatisticsView applications={filteredApplications} />
+      case 'compare':
+        return (
+          <CompareNotesView
+            applications={filteredApplications}
+            onOpenStageNotes={openStageNotes}
+            onSaveStageNote={async (id, state, body) => {
+              await commit((current) => updateApplicationStageNotes(current, id, [{ state, body }], new Date()))
+            }}
+          />
+        )
       default:
         return (
           <KanbanView

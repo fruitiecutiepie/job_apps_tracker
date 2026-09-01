@@ -83,7 +83,9 @@ describe('markdown blocks', () => {
     const list = asList(parseMarkdown('- Snippet\n\n  ```ts\n  const x = 1\n  ```')[0])
 
     expect(list.items[0].children).toEqual([
-      { type: 'code', language: 'ts', value: 'const x = 1' },
+      // Lines 2 to 4 of the note: the fence, the code, and the closing fence, which is
+      // what the editor folds the block shut along.
+      { type: 'code', language: 'ts', value: 'const x = 1', line: 2, endLine: 4 },
     ])
   })
 
@@ -120,6 +122,8 @@ describe('markdown blocks', () => {
       type: 'code',
       language: 'ts',
       value: 'const answer = 1\n# not a heading',
+      line: 0,
+      endLine: 3,
     })
   })
 })

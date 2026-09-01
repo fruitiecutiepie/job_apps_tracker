@@ -92,6 +92,11 @@
   /* Page gutter */
   --gutter: clamp(var(--s4), 2vw, var(--s6));
 
+  /* Width of one application's card in the prep-notes comparison board, and how tall
+     its note may grow before it scrolls on its own rather than the whole card */
+  --compare-card: 22rem;
+  --compare-card-body: 20rem;
+
   color: var(--ink);
   background: var(--bg);
   font-family:
@@ -1445,6 +1450,106 @@ tbody tr:hover {
   font-weight: 600;
 }
 
+/* ------------------------------------------------------- compare notes --- */
+
+.compare-notes__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: var(--s5);
+}
+
+.compare-notes__stage-field {
+  min-width: 12rem;
+}
+
+.compare-notes__picker {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.compare-notes__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.compare-notes__chip {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  padding: var(--s2) var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  background: var(--surface);
+  font-size: var(--t2);
+  cursor: pointer;
+}
+
+.compare-notes__board {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s6);
+  margin-top: var(--s5);
+}
+
+.compare-notes__group-heading {
+  margin: 0 0 var(--s3);
+  color: var(--ink);
+  font-size: var(--t4);
+  font-weight: 600;
+}
+
+.compare-notes__row {
+  display: flex;
+  gap: var(--s4);
+  overflow-x: auto;
+  padding-bottom: var(--s2);
+}
+
+.compare-notes__card {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 var(--compare-card);
+  border: 1px solid var(--line);
+  border-radius: var(--r3);
+  background: var(--surface);
+}
+
+.compare-notes__card--current {
+  border-color: var(--accent);
+}
+
+.compare-notes__card-header {
+  padding: var(--s3) var(--s4);
+  border-bottom: 1px solid var(--line);
+}
+
+.compare-notes__card-title {
+  margin: 0;
+  font-size: var(--t3);
+  font-weight: 600;
+}
+
+.compare-notes__card-role {
+  color: var(--ink-2);
+  font-weight: 400;
+}
+
+.compare-notes__card-body {
+  max-height: var(--compare-card-body);
+  padding: var(--s4);
+  overflow-y: auto;
+}
+
+.compare-notes__captured {
+  margin-top: var(--s4);
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+}
+
 /* ------------------------------------------------------------- dialogs --- */
 
 .dialog-backdrop {
@@ -1972,9 +2077,74 @@ tbody tr:hover {
  * it, so the marks show through from underneath while the text stays on top. Its own text
  * is transparent — it exists to be measured and painted behind, never read.
  */
+/*
+ * The box, the layer of marks behind it, and the column of fold controls beside it. The
+ * controls stand outside the box because a textarea has no room in its text for anything
+ * that is not text, and the column is a real one rather than padding stolen from the box:
+ * a chevron over the text would sit on the words it folds.
+ */
 .stage-note__source {
   position: relative;
+  display: grid;
+  grid-template-columns: var(--fold-gutter) minmax(0, 1fr);
+  gap: var(--s2);
   min-height: 0;
+}
+
+.stage-note__box {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* Clips the controls to the box, so one belonging to a line scrolled out of view is not
+   left drawn against the pane's edge. */
+.stage-note__gutter {
+  position: relative;
+  overflow: hidden;
+}
+
+/*
+ * The controls are placed at measured distances into the text, so this starts where the
+ * text does — the box's own padding down from the top — and is moved by the box's scroll.
+ */
+.stage-note__gutter-lines {
+  position: absolute;
+  inset: var(--s3) 0 auto 0;
+}
+
+.stage-note__fold {
+  position: absolute;
+  right: 0;
+  display: grid;
+  padding: 0;
+  border: 0;
+  color: var(--ink-3);
+  background: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+.stage-note__fold svg {
+  transition: transform 120ms ease;
+  transform: rotate(90deg);
+}
+
+.stage-note__fold--folded svg {
+  transform: rotate(0deg);
+}
+
+.stage-note__fold:hover {
+  color: var(--accent);
+}
+
+.stage-note__fold-all {
+  min-height: 26px;
+  padding: 0 var(--s2);
+  margin-left: auto;
+  color: var(--ink-2);
+  font-size: var(--t2);
 }
 
 .stage-note__marks {
