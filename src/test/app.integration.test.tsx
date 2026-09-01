@@ -2560,6 +2560,120 @@ describe('job applications tracker', () => {
     expect(widthOf(0)).toBe('54%')
   })
 
+  it('splits a new pane open by dragging a tab onto the edge of one', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(1)
+
+    const dataTransfer = dataTransferStub()
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    fireEvent.dragStart(offer, { dataTransfer })
+
+    // The zones only exist while a drag is running, which is why this comes after it starts.
+    const right = dialog.querySelector('[data-drop-edge="right"]')
+    expect(right).not.toBeNull()
+    fireEvent.dragOver(right!, { dataTransfer })
+    fireEvent.drop(right!, { dataTransfer })
+
+    const strips = within(dialog).getAllByRole('tablist')
+    expect(strips).toHaveLength(2)
+    expect(within(strips[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Halcyon Maps · Offer',
+    ])
+    expect(within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' }))
+      .toHaveAttribute('aria-orientation', 'vertical')
+  })
+
+  it('stacks the new pane when the tab is dropped on a top or bottom edge', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    const dataTransfer = dataTransferStub()
+    fireEvent.dragStart(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }), {
+      dataTransfer,
+    })
+    const bottom = dialog.querySelector('[data-drop-edge="bottom"]')
+    fireEvent.dragOver(bottom!, { dataTransfer })
+    fireEvent.drop(bottom!, { dataTransfer })
+
+    // A column split, so its divider runs the other way.
+    expect(within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' }))
+      .toHaveAttribute('aria-orientation', 'horizontal')
+    expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(2)
+  })
+
+  it('raises no drop zones until a tab is actually being dragged', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
+
+    const dataTransfer = dataTransferStub()
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    fireEvent.dragStart(offer, { dataTransfer })
+    expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(4)
+
+    // Abandoning the drag puts them away again rather than leaving them over the note.
+    fireEvent.dragEnd(offer, { dataTransfer })
+    expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
+  })
+
+  it('splits from the keyboard when there is no pane in that direction yet', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(1)
+
+    // Nothing below to move into, so the same binding opens a pane there.
+    await user.keyboard('{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}')
+
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
+    expect(within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' }))
+      .toHaveAttribute('aria-orientation', 'horizontal')
+
+    // And with a pane there now, the same binding moves into it rather than splitting again.
+    await user.keyboard('{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}')
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
+  })
+
+  it('splits to any edge of a pane, nesting only where the axis changes', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // Split a pane off to the right, which leaves two.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
+
+    // The same binding now moves into the pane that is there rather than splitting again —
+    // one intent, put this note over there, whichever case the tree happens to be in.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
+
+    // From the far pane there is nothing to the right, so this one splits, and the new
+    // pane joins the row it is already in rather than nesting a second split inside it.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(3)
+    expect(
+      within(dialog).getAllByRole('separator').map((handle) => handle.getAttribute('aria-label')),
+    ).toEqual(['Resize pane 1 and pane 2', 'Resize pane 2 and pane 3'])
+    expect(dialog.querySelectorAll('.panel__split')).toHaveLength(1)
+  })
+
   it('groups existing prep notes from several applications under the stage they share', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

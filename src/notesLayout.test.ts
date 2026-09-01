@@ -10,6 +10,7 @@ import {
   isSplit,
   makeGroup,
   moveTab,
+  neighbourGroup,
   noteRefKey,
   openInGroup,
   orderedRefs,
@@ -349,6 +350,53 @@ describe('moveTab', () => {
   it('leaves the tree alone when the tab is not open', () => {
     const tree = singleGroup('g1', acme('applied'))
     expect(moveTab(tree, noteRefKey(globex('offer')), 'g1', 0)).toBe(tree)
+  })
+})
+
+describe('neighbourGroup', () => {
+  const row = (): LayoutNode =>
+    splitWith(singleGroup('g1', acme('applied')), 'g1', 'right', globex('offer'), ids('g2', 's1'))
+
+  it('names the pane on the far side of a divider', () => {
+    expect(neighbourGroup(row(), 'g1', 'right')).toBe('g2')
+    expect(neighbourGroup(row(), 'g2', 'left')).toBe('g1')
+  })
+
+  it('finds nothing past either end of a row', () => {
+    expect(neighbourGroup(row(), 'g1', 'left')).toBeNull()
+    expect(neighbourGroup(row(), 'g2', 'right')).toBeNull()
+  })
+
+  it('finds nothing across an axis the panes are not laid out on', () => {
+    expect(neighbourGroup(row(), 'g1', 'bottom')).toBeNull()
+  })
+
+  it('answers for a pane nested inside another split', () => {
+    let tree: LayoutNode = row()
+    tree = splitWith(tree, 'g2', 'bottom', globex('interview_1'), ids('g3', 's2'))
+
+    // g2 and g3 are stacked inside the right-hand half of the row.
+    expect(neighbourGroup(tree, 'g2', 'bottom')).toBe('g3')
+    expect(neighbourGroup(tree, 'g3', 'top')).toBe('g2')
+    // Going left from either of them leaves the column and lands in the row's other half.
+    expect(neighbourGroup(tree, 'g2', 'left')).toBe('g1')
+    expect(neighbourGroup(tree, 'g3', 'left')).toBe('g1')
+  })
+
+  it('reaches the nearest pane of a neighbouring split rather than its outermost', () => {
+    let tree: LayoutNode = row()
+    tree = splitWith(tree, 'g1', 'bottom', globex('interview_1'), ids('g3', 's2'))
+    // g1 over g3 on the left, g2 on the right. Coming left from g2, the nearest pane in
+    // that stack is the last one, not the first.
+    expect(neighbourGroup(tree, 'g2', 'left')).toBe('g3')
+  })
+
+  it('finds nothing for a pane that is not there', () => {
+    expect(neighbourGroup(row(), 'nowhere', 'left')).toBeNull()
+  })
+
+  it('finds nothing in a panel of one pane', () => {
+    expect(neighbourGroup(singleGroup('g1', acme('applied')), 'g1', 'right')).toBeNull()
   })
 })
 

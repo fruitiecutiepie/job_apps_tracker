@@ -317,6 +317,43 @@ function insertBeside(
 }
 
 /**
+ * The pane on a given side of another, or null when nothing is over there.
+ *
+ * Walks up from the pane rather than measuring the screen: the nearest ancestor split
+ * running along that axis is the one that decides what is beside it, and the answer holds
+ * however the tree is nested. Reaching for the pane physically nearest would mean
+ * measuring layout, which is both harder to reason about and unavailable before a render.
+ */
+export function neighbourGroup(tree: LayoutNode, groupId: string, edge: Edge): string | null {
+  const axis = axisFor(edge)
+  const back = isBefore(edge)
+
+  /** The chain of splits from the root down to the group, nearest last. */
+  const trail: { split: SplitNode; index: number }[] = []
+  const walk = (node: LayoutNode): boolean => {
+    if (isGroup(node)) return node.id === groupId
+    for (const [index, child] of node.children.entries()) {
+      if (!walk(child)) continue
+      trail.push({ split: node, index })
+      return true
+    }
+    return false
+  }
+  if (!walk(tree)) return null
+
+  for (const { split, index } of trail) {
+    if (split.direction !== axis) continue
+    const sibling = split.children[back ? index - 1 : index + 1]
+    if (!sibling) continue
+    // The nearest pane inside that sibling, which is its last one coming from the right
+    // and its first one coming from the left.
+    const panes = groupsOf(sibling)
+    return (back ? panes.at(-1) : panes[0])?.id ?? null
+  }
+  return null
+}
+
+/**
  * Moves one divider of a split. `delta` is a fraction of the whole split, positive
  * towards the later child. Both neighbours are held at `MIN_PANE_FRACTION`, so a drag
  * past the limit stops there rather than collapsing a pane out of sight.

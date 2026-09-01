@@ -2620,6 +2620,53 @@ tbody tr:hover {
 }
 
 /*
+ * Where a dragged tab would open a new pane. Only in the document while a drag is running,
+ * so nothing here is in the way the rest of the time.
+ */
+.panel__dropzones {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+}
+
+.panel__dropzone {
+  position: absolute;
+  /* A third of the pane, which is wide enough to aim at without swallowing the middle —
+     the centre is left clear so a drag can still be abandoned over the note itself. */
+  width: 33%;
+  height: 100%;
+}
+
+.panel__dropzone--left {
+  left: 0;
+}
+
+.panel__dropzone--right {
+  right: 0;
+}
+
+.panel__dropzone--top,
+.panel__dropzone--bottom {
+  width: 100%;
+  height: 33%;
+}
+
+.panel__dropzone--top {
+  top: 0;
+}
+
+.panel__dropzone--bottom {
+  bottom: 0;
+}
+
+/* The edge a drop would land on, shown as the pane it would open rather than as a border:
+   what the reader is choosing is a place for a note, not a line. */
+.panel__dropzone--over {
+  background: var(--accent-weak);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/*
  * The handle between two panes. A real separator rather than a border, because it is
  * focusable and answers the arrow keys: dragging is no way at all without a pointer.
  */
@@ -2645,8 +2692,10 @@ tbody tr:hover {
   outline: none;
 }
 
-/* One pane: its strip of tabs over the note on show. */
+/* One pane: its strip of tabs over the note on show. Positioned so the drop zones a drag
+   raises can be laid over it. */
 .panel__group {
+  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;

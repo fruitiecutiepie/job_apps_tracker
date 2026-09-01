@@ -155,6 +155,10 @@ test cannot judge reliably:
    Do both again with `Ctrl`/`Cmd+Shift+←/→` and `Ctrl`/`Cmd+Alt+←/→` and confirm the keyboard
    reaches the same arrangements. Move the last tab out of a pane and confirm the pane goes and
    the split folds back.
+   Drag a tab onto the left, right, top and bottom edge of a pane in turn and confirm each
+   splits a new pane open on that side, with the edge marked as you hover it and the zones
+   gone again once the drag ends. Confirm `Ctrl`/`Cmd+Shift+↑/↓` splits the same way when
+   nothing is stacked there yet, and moves into the pane instead once one is.
    Drag the handle between two panes and confirm both resize as you go and the notes reflow;
    Tab to that handle and confirm the arrow keys move it too. Drag it as far as it will go in
    each direction and confirm neither pane collapses out of sight. Move a tab across afterwards

@@ -41,11 +41,13 @@ import {
   groupsOf,
   makeGroup,
   moveTab,
+  neighbourGroup,
   noteRefKey,
   openInGroup,
   orderedRefs,
   resizeSplit,
   splitWith,
+  type Edge,
   type LayoutNode,
   type NoteRef,
   type TabGroup,
@@ -378,6 +380,8 @@ export function StageNotesDialog({
    */
   const [dragging, setDragging] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<{ groupId: string; index: number } | null>(null)
+  /** The pane edge a dragged tab is hovering, which would split a new pane open there. */
+  const [splitTarget, setSplitTarget] = useState<{ groupId: string; edge: Edge } | null>(null)
 
   // Find state. `findSeq` remounts the widget so a second Ctrl+F refocuses and selects
   // the query already in it, the way reopening find in an editor does.
@@ -902,24 +906,42 @@ export function StageNotesDialog({
     [applyLayout],
   )
 
+  /** Opens a new pane on one side of an existing one, holding the tab that was moved. */
+  const splitTabOff = useCallback(
+    (key: string, targetGroupId: string, edge: Edge) => {
+      const ref = groupHolding(layoutRef.current, key)?.tabs.find(
+        (tab) => noteRefKey(tab) === key,
+      )
+      if (!ref) return
+      applyLayout(splitWith(layoutRef.current, targetGroupId, edge, ref, newId))
+    },
+    [applyLayout, newId],
+  )
+
   /**
-   * Moves the tab being read into the pane beside it. Panes are stepped in layout order
-   * rather than by measuring where they sit: the order is the order the tabs and the find
-   * already run in, so the arrow agrees with what the reader has been stepping through.
+   * Sends the tab being read towards one edge: into the pane already over there, or into a
+   * new one when there is none. One binding for both because they are the same intent —
+   * put this note over there — and asking the reader to know which case they are in first
+   * would be asking them to hold the shape of the tree in their head.
    */
-  const moveTabToNeighbour = useCallback(
-    (step: -1 | 1) => {
+  const moveTabToEdge = useCallback(
+    (edge: Edge) => {
       const tree = layoutRef.current
-      const list = groupsOf(tree)
-      const from = list.find((group) => group.id === focusedGroupRef.current) ?? list[0]
+      const from = groupsOf(tree).find((group) => group.id === focusedGroupRef.current)
+        ?? groupsOf(tree)[0]
       const key = from.activeKey
       if (!key) return
-      const target = list[list.indexOf(from) + step]
-      // Nothing beside it to move into. Splitting one open here is what phase four adds.
-      if (!target) return
-      dropTab(key, target.id, step === 1 ? 0 : target.tabs.length)
+
+      const neighbour = neighbourGroup(tree, from.id, edge)
+      if (neighbour) {
+        const target = groupsOf(tree).find((group) => group.id === neighbour)!
+        // Landing nearest the edge it came from, so the tab arrives where it was aimed.
+        dropTab(key, neighbour, edge === 'right' || edge === 'bottom' ? 0 : target.tabs.length)
+        return
+      }
+      splitTabOff(key, from.id, edge)
     },
-    [dropTab],
+    [dropTab, splitTabOff],
   )
 
   /** Reorders the tab being read within its own pane, wrapping at either end. */
@@ -988,21 +1010,28 @@ export function StageNotesDialog({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey)) return
-      if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-      const step = event.key === 'ArrowRight' ? 1 : -1
+      const edges: Record<string, Edge> = {
+        ArrowLeft: 'left',
+        ArrowRight: 'right',
+        ArrowUp: 'top',
+        ArrowDown: 'bottom',
+      }
+      const edge = edges[event.key]
+      if (!edge) return
       if (event.shiftKey && !event.altKey) {
         event.preventDefault()
-        moveTabToNeighbour(step)
+        moveTabToEdge(edge)
         return
       }
-      if (event.altKey && !event.shiftKey) {
+      // Reordering runs along the strip, so only the two arrows that run along it.
+      if (event.altKey && !event.shiftKey && (edge === 'left' || edge === 'right')) {
         event.preventDefault()
-        reorderActiveTab(step)
+        reorderActiveTab(edge === 'right' ? 1 : -1)
       }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [moveTabToNeighbour, reorderActiveTab])
+  }, [moveTabToEdge, reorderActiveTab])
 
   /**
    * What the picker can reach: every note already written, every application's current
@@ -1381,6 +1410,7 @@ export function StageNotesDialog({
                   onDragEnd={() => {
                     setDragging(null)
                     setDropTarget(null)
+                    setSplitTarget(null)
                   }}
                   onDragStart={(event) => {
                     setDragging(key)
@@ -1425,6 +1455,53 @@ export function StageNotesDialog({
             )
           })}
         </div>
+
+        {/*
+          Where a dragged tab can land in this pane. Real elements per edge rather than a
+          reading of the pointer's position against the pane's box: the browser does the
+          hit-testing it is already good at, the zones can be styled and highlighted on
+          their own, and nothing here has to measure a layout that does not exist until it
+          has rendered. Only up during a drag, and hidden from assistive technology —
+          there is nothing here to operate without a pointer, and the arrows do the same
+          job for anyone who has not got one.
+        */}
+        {dragging ? (
+          <div aria-hidden="true" className="panel__dropzones">
+            {(['left', 'right', 'top', 'bottom'] as const).map((edge) => (
+              <div
+                className={[
+                  'panel__dropzone',
+                  `panel__dropzone--${edge}`,
+                  splitTarget?.groupId === group.id && splitTarget.edge === edge
+                    ? 'panel__dropzone--over'
+                    : '',
+                ]
+                  .filter(Boolean)
+                  .join(' ')}
+                data-drop-edge={edge}
+                data-drop-pane={group.id}
+                key={edge}
+                onDragLeave={() =>
+                  setSplitTarget((current) =>
+                    current?.groupId === group.id && current.edge === edge ? null : current,
+                  )}
+                onDragOver={(event) => {
+                  event.preventDefault()
+                  event.dataTransfer.dropEffect = 'move'
+                  setSplitTarget({ groupId: group.id, edge })
+                }}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  const key = event.dataTransfer.getData('text/plain')
+                  if (key) splitTabOff(key, group.id, edge)
+                  setDragging(null)
+                  setDropTarget(null)
+                  setSplitTarget(null)
+                }}
+              />
+            ))}
+          </div>
+        ) : null}
 
         <StageNotePane
           body={drafts[shownKey] ?? ''}
