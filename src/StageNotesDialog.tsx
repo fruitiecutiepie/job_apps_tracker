@@ -29,6 +29,7 @@ import {
 } from './markdown'
 import { FindWidget } from './FindWidget'
 import { jumpToLine, lineAtOffset } from './noteEditorJump'
+import { readHiddenRanges, toProjectedLine, toProjectedOffset, toSourceLine } from './noteFolds'
 import { headingAtScrollTop, readingTopLine } from './noteScrollSpy'
 import { StageNotePane } from './StageNotePane'
 import { stageNotePanelId, stageTabId } from './stageNoteIds'
@@ -649,7 +650,12 @@ export function StageNotesDialog({
       const pane = notesRef.current
       const box = pane?.querySelector<HTMLTextAreaElement>(`[data-note-source="${state}"]`)
       if (!box) return
-      box.setSelectionRange(at, at + query.length)
+      // The box holds the note with its folded lines taken out. A fold holding a match is
+      // open while the find is running, so the match itself is in there — but the lines
+      // above it that are still folded are not, and the offset has to allow for them.
+      const folds = readHiddenRanges(box)
+      const start = toProjectedOffset(box.value, drafts[state] ?? '', folds, at)
+      box.setSelectionRange(start, start + query.length)
 
       const mark = pane?.querySelector<HTMLElement>(`[data-source-match-id="${position}"]`)
       // Guarded: jsdom has no layout, so every offset it reports is 0.
@@ -873,7 +879,10 @@ export function StageNotesDialog({
       // Only while the writing itself has the caret: the capture line at the foot of a
       // pane is a textarea too, and typing into it says nothing about the note above.
       if (document.activeElement !== editor) return
-      setTrailKey(sectionAtLine(activeSection, lineAtOffset(editor.value, editor.selectionStart)))
+      // The box holds the note with its folded lines taken out, so the line the caret is
+      // on there is not the line it is on in the note the outline describes.
+      const line = toSourceLine(lineAtOffset(editor.value, editor.selectionStart), readHiddenRanges(editor))
+      setTrailKey(sectionAtLine(activeSection, line))
     }
     const onChange = () => {
       if (!frame) frame = requestAnimationFrame(update)
@@ -911,7 +920,12 @@ export function StageNotesDialog({
     const editor = container.querySelector<HTMLTextAreaElement>('.stage-note__editor textarea')
     if (editor) {
       const line = sectionHeadingLine(activeSection, pendingJumpKey)
-      if (line !== null) jumpToLine(editor, activeBody, line)
+      // The heading's own fold path was revealed alongside this jump being set, so the box
+      // is showing it by now — but the lines above it that are still folded away are not
+      // in the box, and the jump has to count in the lines the box actually has.
+      if (line !== null) {
+        jumpToLine(editor, editor.value, toProjectedLine(line, readHiddenRanges(editor)))
+      }
       pickedTrailRef.current = { key: pendingJumpKey, scrollTop: container.scrollTop }
       setTrailKey(pendingJumpKey)
       setPendingJumpKey(null)

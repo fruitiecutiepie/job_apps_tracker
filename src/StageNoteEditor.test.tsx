@@ -16,7 +16,8 @@
  * Alignment itself still needs a browser; this only holds the declarations level.
  */
 
-import { render } from '@testing-library/react'
+import { useState } from 'react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeAll, describe, expect, it } from 'vitest'
 
 import styles from './styles.css?raw'
@@ -132,5 +133,130 @@ describe('the layer behind a note being written', () => {
       />,
     )
     expect(getByLabelText('Interview 2 prep notes').tagName).toBe('TEXTAREA')
+  })
+})
+
+const FOLDABLE = [
+  '## Themes',
+  '',
+  'Growing seniors into leads.',
+  '',
+  '## Questions',
+  '',
+  '- On-call',
+  '',
+  '  How often is the weekend rotation?',
+].join('\n')
+
+/**
+ * The editor is controlled, and folding only means anything against a note that is being
+ * written back: what the box shows is a projection of the note, and the note is the prop.
+ */
+function Writing({ note = FOLDABLE }: { note?: string }) {
+  const [value, setValue] = useState(note)
+  return (
+    <StageNoteEditor label="Interview 2" onChange={setValue} sourceId="interview_2" value={value} />
+  )
+}
+
+function box() {
+  return screen.getByLabelText('Interview 2 prep notes') as HTMLTextAreaElement
+}
+
+describe('folding a note that is open for writing', () => {
+  it('closes a heading over what is written under it, and opens it again', () => {
+    render(<Writing />)
+
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    expect(box().value).not.toContain('Growing seniors into leads.')
+    expect(box().value).toContain('## Questions')
+
+    fireEvent.click(screen.getByLabelText('Expand Themes in Interview 2'))
+    expect(box().value).toBe(FOLDABLE)
+  })
+
+  it('folds a point onto the detail under it', () => {
+    render(<Writing />)
+
+    fireEvent.click(screen.getByLabelText('Collapse On-call in Interview 2'))
+    expect(box().value).not.toContain('weekend rotation')
+    expect(box().value).toContain('- On-call')
+  })
+
+  it('collapses the whole note at once, and says so on the same control', () => {
+    render(<Writing />)
+
+    fireEvent.click(screen.getByLabelText('Collapse all points in Interview 2'))
+    // What a folded heading holds is folded with it, the point under `## Questions`
+    // included, which is the shape Collapse all leaves in the reading view too.
+    expect(box().value).toBe('## Themes\n\n## Questions')
+
+    fireEvent.click(screen.getByLabelText('Expand all points in Interview 2'))
+    expect(box().value).toBe(FOLDABLE)
+  })
+
+  it('writes what is typed into the whole note, not just the part on show', () => {
+    render(<Writing />)
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+
+    const typed = box().value.replace('## Questions', '## Questions to ask')
+    // The caret is where typing left it, which is what says where the edit was: two
+    // strings alone cannot tell one deleted line break from another.
+    fireEvent.change(box(), {
+      target: { value: typed, selectionStart: typed.indexOf('## Questions to ask') + 19 },
+    })
+
+    // The heading is still folded, and what it folds is still in the note.
+    expect(box().value).not.toContain('Growing seniors into leads.')
+    fireEvent.click(screen.getByLabelText('Expand Themes in Interview 2'))
+    expect(box().value).toBe(FOLDABLE.replace('## Questions', '## Questions to ask'))
+  })
+
+  it('opens a fold an edit reaches into rather than writing through it', () => {
+    render(<Writing />)
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+
+    // Backspace at the end of the folded heading: in the box it joins two lines that have
+    // everything folded sitting between them.
+    fireEvent.change(box(), {
+      target: { value: box().value.replace('## Themes\n', '## Themes'), selectionStart: 9 },
+    })
+
+    expect(box().value).toBe(FOLDABLE)
+  })
+
+  it('opens the fold a jump from the outline lands in, and says so to the panel', () => {
+    const { rerender } = render(
+      <StageNoteEditor label="Interview 2" onChange={() => {}} value={FOLDABLE} />,
+    )
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    // The lines the box is not showing, which is how the panel counts a caret or a jump
+    // back into the note's own lines.
+    expect(box().getAttribute('data-fold-hidden')).toBe('[{"start":1,"end":2}]')
+
+    rerender(
+      <StageNoteEditor
+        label="Interview 2"
+        onChange={() => {}}
+        revealKeys={new Set(['root.h1'])}
+        value={FOLDABLE}
+      />,
+    )
+    expect(box().value).toBe(FOLDABLE)
+    expect(box().getAttribute('data-fold-hidden')).toBe('[]')
+  })
+
+  it('keeps a fold open while the find has a match inside it', () => {
+    const { rerender } = render(
+      <StageNoteEditor label="Interview 2" onChange={() => {}} query="" value={FOLDABLE} />,
+    )
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    expect(box().value).not.toContain('Growing seniors into leads.')
+
+    rerender(
+      <StageNoteEditor label="Interview 2" onChange={() => {}} query="seniors" value={FOLDABLE} />,
+    )
+    // A folded match would be one the find counts and cannot show.
+    expect(box().value).toContain('Growing seniors into leads.')
   })
 })

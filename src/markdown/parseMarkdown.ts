@@ -15,6 +15,14 @@ export type InlineNode =
 export interface ListItem {
   content: InlineNode[]
   children: BlockNode[]
+  /**
+   * Where the item is written, as source lines. The editor folds along these: a note
+   * being written has no rendered point to fold, only the lines it was typed as.
+   * `children` is where the detail under the item starts, and is null when it has none.
+   */
+  line: number
+  childrenLine: number | null
+  endLine: number
 }
 
 export interface HeadingBlock {
@@ -45,11 +53,17 @@ export interface CodeBlock {
   type: 'code'
   language: string | null
   value: string
+  /** The fence line and the closing fence, so the editor can fold the block shut. */
+  line: number
+  endLine: number
 }
 
 export interface QuoteBlock {
   type: 'quote'
   children: BlockNode[]
+  /** First and last line of the quote in the source, for folding it in the editor. */
+  line: number
+  endLine: number
 }
 
 export type TableAlign = 'left' | 'center' | 'right'
@@ -337,7 +351,7 @@ function dedent(lines: string[]): string[] {
  * Lines that simply wrap the item keep flowing into its text; anything after a blank line
  * or starting a block of its own becomes a child, which is what makes the item foldable.
  */
-function parseListItem(lines: string[]): ListItem {
+function parseListItem(lines: string[], offset: number): ListItem {
   const content: InlineNode[] = []
   let index = 0
 
@@ -350,10 +364,19 @@ function parseListItem(lines: string[]): ListItem {
     index += 1
   }
 
-  return { content, children: parseBlocks(lines.slice(index)) }
+  const children = parseBlocks(lines.slice(index), offset + index)
+  return {
+    content,
+    children,
+    line: offset,
+    // Where the detail starts, blank line included: folding a point has to take the gap
+    // above its detail with it, or closing one would leave the blank line behind.
+    childrenLine: children.length > 0 ? offset + index : null,
+    endLine: offset + lines.length - 1,
+  }
 }
 
-function parseList(lines: string[], start: number): { node: ListBlock; next: number } {
+function parseList(lines: string[], start: number, offset: number): { node: ListBlock; next: number } {
   const first = LIST_ITEM.exec(lines[start])!
   const markerIndent = first[1].length
   const ordered = first[3] !== undefined
@@ -380,7 +403,8 @@ function parseList(lines: string[], start: number): { node: ListBlock; next: num
       cursor += 1
     }
 
-    items.push(parseListItem([body[0], ...dedent(body.slice(1))]))
+    // `body` is the item's lines in source order, so dedenting cannot move any of them.
+    items.push(parseListItem([body[0], ...dedent(body.slice(1))], offset + index))
     index = cursor
 
     let lookahead = index
@@ -414,6 +438,7 @@ function parseBlocks(lines: string[], offset = 0): BlockNode[] {
     if (fence) {
       const marker = fence[1][0]
       const body: string[] = []
+      const fenceStart = index
       index += 1
       while (index < lines.length) {
         const closing = FENCE.exec(lines[index])
@@ -424,7 +449,13 @@ function parseBlocks(lines: string[], offset = 0): BlockNode[] {
         body.push(lines[index])
         index += 1
       }
-      blocks.push({ type: 'code', language: fence[2] ?? null, value: body.join('\n') })
+      blocks.push({
+        type: 'code',
+        language: fence[2] ?? null,
+        value: body.join('\n'),
+        line: offset + fenceStart,
+        endLine: offset + index - 1,
+      })
       continue
     }
 
@@ -443,7 +474,12 @@ function parseBlocks(lines: string[], offset = 0): BlockNode[] {
         body.push(lines[index].trim())
         index += 1
       }
-      blocks.push({ type: 'quote', children: parseBlocks(body, offset + quoteStart) })
+      blocks.push({
+        type: 'quote',
+        children: parseBlocks(body, offset + quoteStart),
+        line: offset + quoteStart,
+        endLine: offset + index - 1,
+      })
       continue
     }
 
@@ -483,7 +519,7 @@ function parseBlocks(lines: string[], offset = 0): BlockNode[] {
     }
 
     if (LIST_ITEM.test(line)) {
-      const { node, next } = parseList(lines, index)
+      const { node, next } = parseList(lines, index, offset)
       blocks.push(node)
       index = next
       continue

@@ -2077,9 +2077,74 @@ tbody tr:hover {
  * it, so the marks show through from underneath while the text stays on top. Its own text
  * is transparent — it exists to be measured and painted behind, never read.
  */
+/*
+ * The box, the layer of marks behind it, and the column of fold controls beside it. The
+ * controls stand outside the box because a textarea has no room in its text for anything
+ * that is not text, and the column is a real one rather than padding stolen from the box:
+ * a chevron over the text would sit on the words it folds.
+ */
 .stage-note__source {
   position: relative;
+  display: grid;
+  grid-template-columns: var(--fold-gutter) minmax(0, 1fr);
+  gap: var(--s2);
   min-height: 0;
+}
+
+.stage-note__box {
+  position: relative;
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  min-height: 0;
+}
+
+/* Clips the controls to the box, so one belonging to a line scrolled out of view is not
+   left drawn against the pane's edge. */
+.stage-note__gutter {
+  position: relative;
+  overflow: hidden;
+}
+
+/*
+ * The controls are placed at measured distances into the text, so this starts where the
+ * text does — the box's own padding down from the top — and is moved by the box's scroll.
+ */
+.stage-note__gutter-lines {
+  position: absolute;
+  inset: var(--s3) 0 auto 0;
+}
+
+.stage-note__fold {
+  position: absolute;
+  right: 0;
+  display: grid;
+  padding: 0;
+  border: 0;
+  color: var(--ink-3);
+  background: transparent;
+  place-items: center;
+  cursor: pointer;
+}
+
+.stage-note__fold svg {
+  transition: transform 120ms ease;
+  transform: rotate(90deg);
+}
+
+.stage-note__fold--folded svg {
+  transform: rotate(0deg);
+}
+
+.stage-note__fold:hover {
+  color: var(--accent);
+}
+
+.stage-note__fold-all {
+  min-height: 26px;
+  padding: 0 var(--s2);
+  margin-left: auto;
+  color: var(--ink-2);
+  font-size: var(--t2);
 }
 
 .stage-note__marks {
