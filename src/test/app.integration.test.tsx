@@ -73,9 +73,12 @@ describe('job applications tracker', () => {
    * a date rather than on a change — which is exactly what happened to the Kanban card names
    * below once Saffron Systems aged past DEFAULT_STALE_THRESHOLD_DAYS.
    *
-   * Only Date is faked. Faking the timers as well would hang every waitFor in this file:
-   * Testing Library's fake-timer support is gated on a global `jest`, which vitest does not
-   * define, so its polling would sit on a setInterval that nothing ever advances.
+   * Only Date is faked by default. Faking the timers as well used to hang every waitFor in
+   * this file, because Testing Library's fake-timer support is gated on a global `jest`
+   * that vitest does not define and its polling would sit on an interval nothing advanced.
+   * The setup file now points that name at `vi`, so a test can take the whole clock if
+   * waiting in real time is the slow part of it — see the one below that does. It has to
+   * re-pin the system time when it does, and hand user-event the same clock to wind on.
    */
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
@@ -539,7 +542,17 @@ describe('job applications tracker', () => {
   })
 
   it('keeps the last keystrokes when the panel is closed before they were written', async () => {
-    const user = userEvent.setup()
+    /*
+     * The one test on a fake clock, as a trial of it. The panel's autosave is the thing
+     * being waited for, so waiting for it in real time is time spent proving nothing.
+     * user-event schedules its own delays between keystrokes and needs the same clock
+     * wound on, or the typing never finishes.
+     */
+    vi.useFakeTimers()
+    // Re-pinned: installing the timers afresh drops the system time the beforeEach set,
+    // and the demo's stale, overdue and calendar dates are all read off that.
+    vi.setSystemTime(new Date(DEFAULT_DEMO_REFERENCE))
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
     await renderLoadedApp()
 
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
@@ -558,6 +571,7 @@ describe('job applications tracker', () => {
           .stage_notes,
       ).toEqual([expect.objectContaining({ state: 'applied', body: 'Salary band question' })]),
     )
+    vi.useRealTimers()
   })
 
   it('writes only the stage that changed, leaving the other stages as they were', async () => {
