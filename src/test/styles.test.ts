@@ -74,6 +74,41 @@ describe('collapsed outline', () => {
   })
 })
 
+describe('pane handles and drop zones', () => {
+  it('sizes the handle from a token and gives it a cursor for the axis it moves on', () => {
+    const handle = ruleBody('.panel__resize')
+
+    expect(handle).toMatch(/flex:\s*0 0 var\(--pane-handle\)/)
+    expect(handle).toMatch(/background:\s*var\(--line\)/)
+    // The pointer owns the handle for the length of a drag, or a touch drag scrolls the
+    // panel out from under it instead of moving the divider.
+    expect(handle).toMatch(/touch-action:\s*none/)
+    expect(handle.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
+    expect(handle).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+
+    expect(ruleBody('.panel__resize--vertical')).toMatch(/cursor:\s*col-resize/)
+    expect(ruleBody('.panel__resize--horizontal')).toMatch(/cursor:\s*row-resize/)
+  })
+
+  it('lays the drop zones over the pane without covering its middle', () => {
+    expect(ruleBody('.panel__dropzones')).toMatch(/position:\s*absolute/)
+    // Over the note, and over the sticky header and dock the pane pins at z-index 2.
+    expect(ruleBody('.panel__dropzones')).toMatch(/z-index:\s*3/)
+    // The pane has to be a containing block, or the zones would size to the panel.
+    expect(ruleBody('.panel__group')).toMatch(/position:\s*relative/)
+
+    const zone = ruleBody('.panel__dropzone')
+    // A third a side leaves the middle clear, so a drag can still be abandoned over the
+    // note rather than every pointer-up somewhere in the pane splitting a pane open.
+    expect(zone).toMatch(/width:\s*33%/)
+    expect(zone).toMatch(/height:\s*100%/)
+
+    // The edge being aimed at reads in the accent, like every other drop target here.
+    expect(ruleBody('.panel__dropzone--over')).toMatch(/background:\s*var\(--accent-weak\)/)
+    expect(ruleBody('.panel__dropzone--over')).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  })
+})
+
 describe('context bar buttons', () => {
   it('keeps every filter-row button label on one line', () => {
     // A flex item shrinks below its content by default, and a button narrower than its

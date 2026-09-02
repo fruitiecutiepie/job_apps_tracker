@@ -2687,6 +2687,49 @@ describe('job applications tracker', () => {
     expect(dialog.querySelectorAll('.panel__split')).toHaveLength(1)
   })
 
+  /**
+   * The keyboard tests above drive `onResize` directly; this drives the pointer path that
+   * reaches it, which is the half a real mouse uses. jsdom has no layout, so the split's
+   * box is stubbed — without a width the handler's own guard returns early and the
+   * arithmetic under test never runs.
+   */
+  it('resizes by dragging the handle, against a stubbed box jsdom cannot measure', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
+    const split = handle.parentElement as HTMLElement
+    split.getBoundingClientRect = () => ({ width: 1000, height: 600, top: 0, left: 0, right: 1000, bottom: 600, x: 0, y: 0, toJSON: () => ({}) })
+
+    const widthOf = (index: number) =>
+      (within(dialog).getAllByRole('tabpanel')[index].closest('.panel__split-child') as HTMLElement)
+        .style.flexBasis
+
+    expect(widthOf(0)).toBe('50%')
+
+    // A tenth of the split to the right is a tenth of its width, not a tenth of a pane.
+    fireEvent.mouseDown(handle, { clientX: 500 })
+    fireEvent.mouseMove(window, { clientX: 600 })
+    expect(widthOf(0)).toBe('60%')
+    expect(widthOf(1)).toBe('40%')
+
+    // Measured from where the pointer last was, so a continued drag tracks it rather than
+    // accelerating away — two more steps of 50px move it 5% each, not 15% and 20%.
+    fireEvent.mouseMove(window, { clientX: 650 })
+    expect(widthOf(0)).toBe('65%')
+    fireEvent.mouseMove(window, { clientX: 700 })
+    expect(widthOf(0)).toBe('70%')
+
+    // Letting go stops it following the pointer.
+    fireEvent.mouseUp(window)
+    fireEvent.mouseMove(window, { clientX: 900 })
+    expect(widthOf(0)).toBe('70%')
+  })
+
   it('groups existing prep notes from several applications under the stage they share', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
