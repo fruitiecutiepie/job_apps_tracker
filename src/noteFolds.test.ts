@@ -127,7 +127,7 @@ describe('typing into a folded note', () => {
 
     const result = applyProjectedEdit(NOTE, projected, typed, ranges, new Set([0]), regions, typed.length)
 
-    expect(result.blocked).toEqual([])
+    expect(result.opened).toEqual([])
     expect(result.text).toBe(NOTE.replace('Ask about the timeline.', 'Ask about the timeline today.'))
     // The fold is above the edit, so it has not moved.
     expect([...result.anchors]).toEqual([0])
@@ -139,11 +139,11 @@ describe('typing into a folded note', () => {
 
     const result = applyProjectedEdit(NOTE, projected, typed, ranges, new Set([12]), regions, typed.indexOf('Started today.') + 'Started today.\n'.length)
 
-    expect(result.blocked).toEqual([])
+    expect(result.opened).toEqual([])
     expect([...result.anchors]).toEqual([13])
   })
 
-  it('opens a fold an edit reaches into rather than writing through it', () => {
+  it('opens a fold an edit would delete, and leaves the note alone', () => {
     const { ranges, projected, regions } = fold(NOTE, 0)
     // Backspace at the end of the folded heading: in the box it joins the two lines the
     // box is showing, which in the note means swallowing everything folded between them.
@@ -153,8 +153,43 @@ describe('typing into a folded note', () => {
     // breaks it took: the one at the end of the folded heading.
     const result = applyProjectedEdit(NOTE, projected, typed, ranges, new Set([0]), regions, '## Themes'.length)
 
-    expect(result.blocked).toEqual([0])
+    expect(result.applied).toBe(false)
+    expect(result.opened).toEqual([0])
     expect(result.text).toBe(NOTE)
     expect([...result.anchors]).toEqual([])
+    // The caret stays where the key was pressed, which is now the end of a heading with
+    // everything it was folding open below it.
+    expect(result.caret).toBe('## Themes'.length)
+  })
+
+  it('opens the fold a new line is typed into, and makes the edit', () => {
+    const { ranges, projected, regions } = fold(NOTE, 0)
+    // Enter at the end of the folded heading. The line it starts is the first line that
+    // heading folds, so leaving the fold shut would put it where it cannot be seen.
+    const at = '## Themes'.length
+    const typed = `${projected.slice(0, at)}\n${projected.slice(at)}`
+
+    const result = applyProjectedEdit(NOTE, projected, typed, ranges, new Set([0]), regions, at + 1)
+
+    expect(result.applied).toBe(true)
+    expect(result.opened).toEqual([0])
+    expect([...result.anchors]).toEqual([])
+    expect(result.text).toBe(`${NOTE.slice(0, at)}\n${NOTE.slice(at)}`)
+    // Where Enter leaves the caret anywhere else: on the line it just started.
+    expect(result.caret).toBe(at + 1)
+  })
+
+  it('leaves a fold shut for a word typed into the heading it folds by', () => {
+    const { ranges, projected, regions } = fold(NOTE, 0)
+    const at = '## Themes'.length
+    const typed = projected.replace('## Themes', '## Themes and threads')
+
+    const result = applyProjectedEdit(NOTE, projected, typed, ranges, new Set([0]), regions, '## Themes and threads'.length)
+
+    expect(result.applied).toBe(true)
+    // Nothing was written into the folded lines, so there is nothing to see inside them.
+    expect(result.opened).toEqual([])
+    expect([...result.anchors]).toEqual([0])
+    expect(result.caret).toBe(at + ' and threads'.length)
   })
 })

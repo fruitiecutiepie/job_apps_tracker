@@ -231,7 +231,7 @@ export function StageNoteEditor({
     return () => observer.disconnect()
   }, [measure])
 
-  /** Puts the caret back where it was in the note once the box has been reprojected. */
+  /** Puts the caret back where it belongs in the note once the box has been reprojected. */
   useLayoutEffect(() => {
     const offset = pendingCaret.current
     if (offset === null) return
@@ -239,6 +239,10 @@ export function StageNoteEditor({
     const textarea = textareaRef.current
     if (!textarea || document.activeElement !== textarea) return
     const position = toProjectedOffset(projected, value, ranges, offset)
+    // Only when the box is actually holding the caret somewhere else. Typing already
+    // leaves it in the right place, and setting a selection under a composing input
+    // method — where every keystroke is provisional — would commit it early.
+    if (position === textarea.selectionStart && position === textarea.selectionEnd) return
     // jsdom implements no selection, and the panel still has to render there.
     textarea.setSelectionRange?.(position, position)
   }, [projected, ranges, value])
@@ -259,14 +263,12 @@ export function StageNoteEditor({
 
   const edit = (next: string, caret: number) => {
     const result = applyProjectedEdit(value, projected, next, ranges, effective, regions, caret)
-    setFolded((current) => {
-      // Only the folds this edit moved or opened change; the rest are left as they were.
-      const kept = new Set(current)
-      for (const line of result.blocked) kept.delete(line)
-      if (result.blocked.length > 0) return kept
-      return result.anchors
-    })
-    if (result.blocked.length === 0 && result.text !== value) onChange(result.text)
+    // The caret is put back by the note's own offset rather than left where the box put
+    // it: opening a fold moves every line below it, and the box would otherwise be
+    // holding a caret that has quietly become a position in a different place.
+    pendingCaret.current = result.caret
+    setFolded(result.anchors)
+    if (result.applied && result.text !== value) onChange(result.text)
   }
 
   const format = (entry: Format) => {

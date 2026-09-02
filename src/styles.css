@@ -2018,10 +2018,17 @@ tbody tr:hover {
   inset: var(--s3) 0 auto 0;
 }
 
+/*
+ * One line of the box tall, so the chevron sits centred on the line it folds. Measuring
+ * gives the top of that line, and a control only as tall as its own icon hangs from that
+ * top — which against text set at 1.5 line-height reads as sitting above its heading.
+ */
 .stage-note__fold {
   position: absolute;
   right: 0;
   display: grid;
+  width: var(--fold-gutter);
+  height: calc(var(--t3) * 1.5);
   padding: 0;
   border: 0;
   color: var(--ink-3);

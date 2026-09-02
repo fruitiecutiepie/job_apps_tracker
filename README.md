@@ -150,9 +150,12 @@ stored, still saved, still searched, and still counted by the word count.
 
 Two things follow from a folded note being smaller than the note itself:
 
-- An edit that would reach through a fold—backspacing the line break at the end of a folded
-  heading, say—opens that fold instead of making the edit. Quietly swallowing lines you cannot see
-  is worse than a keystroke that has to be pressed twice.
+- An edit at the edge of a fold opens it. Pressing Enter at the end of a folded heading writes a
+  line into the lines that heading is folding, so the fold opens and the caret lands on the new
+  line—what pressing Enter anywhere else does. The one edit not made is one that would *delete*
+  folded lines, such as a backspace joining a folded heading to the line after it: that opens the
+  fold and leaves the note alone, so pressing the key again does what it looks like with the lines
+  it would take in plain view.
 - The find opens any fold holding a match while it is running, and picking a heading from the
   outline opens whatever it is written inside, the same as in the reading view. Both close back up
   afterwards, so the note keeps the shape you left it in.

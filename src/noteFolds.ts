@@ -112,10 +112,14 @@ export function toProjectedOffset(
 export interface ProjectedEdit {
   /** The whole note after the edit, folds and all. */
   text: string
-  /** Folds the edit reached into, which are opened rather than written through. */
-  blocked: number[]
+  /** Whether the edit was made. False only where making it would delete folded lines. */
+  applied: boolean
+  /** Folds the edit landed in or reached across, which open so its result is on screen. */
+  opened: number[]
   /** Fold anchors moved along by however many lines the edit added or removed. */
   anchors: Set<number>
+  /** Where the caret belongs in the note afterwards: the end of what was just typed. */
+  caret: number
 }
 
 /** How many source lines a fold's own header line has moved, or `null` if it was edited away. */
@@ -130,9 +134,17 @@ function movedAnchor(anchor: number, from: number, to: number, delta: number): n
  *
  * The box only ever holds the visible lines, so an edit is found by comparing the two
  * projections — what the box had and what it has now — and then written to the source at
- * the same place. An edit that reaches across a fold, which is what a backspace at the end
- * of a folded heading does, opens the folds it reached into and changes nothing: silently
- * swallowing the lines the reader cannot see is the one outcome worth ruling out.
+ * the same place.
+ *
+ * An edit at the edge of a fold opens it. Pressing Enter at the end of a folded heading
+ * writes a line into the very lines that heading is folding, so leaving the fold shut
+ * would put what was just typed somewhere it cannot be seen; the fold opens and the caret
+ * lands on the new line, which is what pressing Enter anywhere else does.
+ *
+ * The one edit not made is one that would delete folded lines — a backspace joining a
+ * folded heading to the line after it. That opens the fold and leaves the note alone:
+ * pressing the key again then does what it looks like, with the lines it would take in
+ * plain view.
  *
  * Folds are anchored to the line their header is written on, so they are moved by whatever
  * the edit added or removed above them rather than left pointing at lines that have since
@@ -148,7 +160,9 @@ export function applyProjectedEdit(
   caret?: number,
 ): ProjectedEdit {
   const anchors = new Set(folded)
-  if (previous === next) return { text: source, blocked: [], anchors }
+  if (previous === next) {
+    return { text: source, applied: false, opened: [], anchors, caret: source.length }
+  }
 
   /*
    * Where the edit was is read from the caret rather than guessed at, because comparing
@@ -177,22 +191,28 @@ export function applyProjectedEdit(
   const sourceStartLine = toSourceLine(startLine, ranges)
   const sourceEndLine = toSourceLine(endLine, ranges)
 
-  // The two ends are both on visible lines, so the only way folded lines are caught
-  // between them is if the source spans more lines than the box did.
-  if (sourceEndLine - sourceStartLine !== endLine - startLine) {
-    const blocked = regions
-      .filter(
-        (region) =>
-          folded.has(region.line) && region.start <= sourceEndLine && region.end >= sourceStartLine,
-      )
-      .map((region) => region.line)
-    for (const line of blocked) anchors.delete(line)
-    return { text: source, blocked, anchors }
-  }
-
   const from = toSourceOffset(previous, source, ranges, prefix)
   const to = toSourceOffset(previous, source, ranges, previous.length - suffix)
   const inserted = next.slice(prefix, next.length - suffix)
+
+  // The two ends are both on visible lines, so the only way folded lines are caught
+  // between them is if the source spans more lines than the box did.
+  const across = sourceEndLine - sourceStartLine !== endLine - startLine
+  const opened = regions
+    .filter((region) => {
+      if (!folded.has(region.line)) return false
+      // Reached across, or written into: a line typed at the end of a fold's own header
+      // starts inside what that fold hides.
+      if (region.start <= sourceEndLine && region.end >= sourceStartLine) return true
+      return !across && region.line === sourceStartLine && inserted.includes('\n')
+    })
+    .map((region) => region.line)
+
+  if (across) {
+    for (const line of opened) anchors.delete(line)
+    return { text: source, applied: false, opened, anchors, caret: from }
+  }
+
   const removed = source.slice(from, to)
   const delta = inserted.split('\n').length - removed.split('\n').length
 
@@ -202,10 +222,14 @@ export function applyProjectedEdit(
     if (line !== null) moved.add(line)
   }
 
+  for (const line of opened) moved.delete(line)
+
   return {
     text: `${source.slice(0, from)}${inserted}${source.slice(to)}`,
-    blocked: [],
+    applied: true,
+    opened,
     anchors: moved,
+    caret: from + inserted.length,
   }
 }
 

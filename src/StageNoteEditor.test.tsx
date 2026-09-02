@@ -212,7 +212,7 @@ describe('folding a note that is open for writing', () => {
     expect(box().value).toBe(FOLDABLE.replace('## Questions', '## Questions to ask'))
   })
 
-  it('opens a fold an edit reaches into rather than writing through it', () => {
+  it('opens a fold an edit would delete, and leaves the note alone', () => {
     render(<Writing />)
     fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
 
@@ -223,6 +223,22 @@ describe('folding a note that is open for writing', () => {
     })
 
     expect(box().value).toBe(FOLDABLE)
+  })
+
+  it('opens the fold a new line is typed into, and keeps the line', () => {
+    render(<Writing />)
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+
+    // Enter at the end of the folded heading starts the first line that heading folds.
+    const at = '## Themes'.length
+    fireEvent.change(box(), {
+      target: { value: `${box().value.slice(0, at)}\n${box().value.slice(at)}`, selectionStart: at + 1 },
+    })
+
+    // The new line is on screen with the note it was written into, not hidden inside the
+    // fold it began — and the heading is open, so the chevron says so too.
+    expect(box().value).toBe(`${FOLDABLE.slice(0, at)}\n${FOLDABLE.slice(at)}`)
+    expect(screen.getByLabelText('Collapse Themes in Interview 2')).toBeTruthy()
   })
 
   it('opens the fold a jump from the outline lands in, and says so to the panel', () => {
