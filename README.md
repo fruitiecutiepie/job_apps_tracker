@@ -142,8 +142,9 @@ A line that simply wraps a bullet stays part of that bullet. To give a point fol
 What you have folded is never saved—it resets each time you open the dialog.
 
 Notes fold while you are **writing** them as well as while you are reading them, along the same
-headings, points, quotes, and code blocks. The chevrons stand in a column beside the box, since a
-textarea has no room in its text for anything that is not text, and **Collapse all** sits in the
+headings, points, quotes, and code blocks. The chevrons stand inside the box, down its left edge
+against the lines they fold—a textarea has no room in its text for anything that is not text, so
+they are drawn over the padding the text is already held off by—and **Collapse all** sits in the
 formatting toolbar. What is folded is taken out of the box, not out of the note: it is still
 stored, still saved, still searched, and still counted by the word count.
 

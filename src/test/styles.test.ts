@@ -87,3 +87,24 @@ describe('context bar buttons', () => {
     expect(body).toMatch(/flex:\s*none/)
   })
 })
+
+describe('folds in a note being written', () => {
+  it('keeps the controls inside the box, over padding rather than over the text', () => {
+    // The note is what folds, so the chevrons belong against the lines they fold rather
+    // than in a column of their own beside the box. A textarea has no room in its text
+    // for anything that is not text, so they are drawn over its left padding — which the
+    // text is held off by exactly as far, on the box and on the mirror behind it alike.
+    const gutter = ruleBody('.stage-note__gutter')
+
+    expect(gutter).toMatch(/position:\s*absolute/)
+    expect(gutter).toMatch(/width:\s*var\(--fold-gutter\)/)
+    expect(gutter).toMatch(/overflow:\s*hidden/)
+    expect(ruleBody('.stage-note__box')).toMatch(/position:\s*relative/)
+
+    // --fold-indent is --fold-gutter plus a gap, so the text starts clear of the strip.
+    expect(ruleBody('.stage-note__marks')).toMatch(/padding-left:\s*var\(--fold-indent\)/)
+    expect(ruleBody('.stage-note__source textarea')).toMatch(/padding-left:\s*var\(--fold-indent\)/)
+    // A control is a chevron, not a state: no accent, no danger, and no raw values.
+    expect(gutter.replace(/1px/g, '')).not.toMatch(/\d+px/)
+  })
+})

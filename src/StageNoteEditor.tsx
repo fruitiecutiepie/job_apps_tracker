@@ -327,32 +327,33 @@ export function StageNoteEditor({
         trailing line break keeps a note ending in a newline as tall as its mirror.
       */}
       <div className="stage-note__source">
-        {/*
-          The fold controls stand in their own column beside the box rather than inside it:
-          a textarea has no room in its text for anything that is not text. They scroll with
-          it, which is what keeps each one against the line it folds.
-        */}
-        <div aria-label={`Folds in ${label}`} className="stage-note__gutter" role="group">
-          <div className="stage-note__gutter-lines" ref={gutterRef}>
-            {controls.map((region, index) => {
-              const isFolded = folded.has(region.line)
-              return (
-                <button
-                  aria-expanded={!isFolded}
-                  aria-label={`${isFolded ? 'Expand' : 'Collapse'} ${summary(lines[region.line])} in ${label}`}
-                  className={`stage-note__fold${isFolded ? ' stage-note__fold--folded' : ''}`}
-                  key={region.line}
-                  onClick={() => toggle(region.line)}
-                  style={{ top: `${tops[index] ?? 0}px` }}
-                  type="button"
-                >
-                  <ChevronRight aria-hidden="true" size={14} />
-                </button>
-              )
-            })}
-          </div>
-        </div>
         <div className="stage-note__box">
+          {/*
+            The fold controls stand inside the box, down its left edge, against the lines
+            they fold. A textarea has no room in its text for anything that is not text,
+            so they are drawn over the padding the text is already held off by, and
+            scrolled with it — which is what keeps each one level with its own line.
+          */}
+          <div aria-label={`Folds in ${label}`} className="stage-note__gutter" role="group">
+            <div className="stage-note__gutter-lines" ref={gutterRef}>
+              {controls.map((region, index) => {
+                const isFolded = folded.has(region.line)
+                return (
+                  <button
+                    aria-expanded={!isFolded}
+                    aria-label={`${isFolded ? 'Expand' : 'Collapse'} ${summary(lines[region.line])} in ${label}`}
+                    className={`stage-note__fold${isFolded ? ' stage-note__fold--folded' : ''}`}
+                    key={region.line}
+                    onClick={() => toggle(region.line)}
+                    style={{ top: `${tops[index] ?? 0}px` }}
+                    type="button"
+                  >
+                    <ChevronRight aria-hidden="true" size={14} />
+                  </button>
+                )
+              })}
+            </div>
+          </div>
           <div aria-hidden="true" className="stage-note__marks" ref={marksRef}>
             {marks}
             {'\n'}
@@ -364,8 +365,8 @@ export function StageNoteEditor({
               data-note-source={sourceId}
               {...{ [FOLD_DATA]: JSON.stringify(ranges) }}
               onChange={(event) => edit(event.target.value, event.target.selectionStart)}
-              // The mirror behind the box and the folds beside it only line up while they
-              // are scrolled with it.
+              // The mirror behind the text and the fold controls down the box's edge only
+              // line up with it while they are scrolled with it.
               onScroll={(event) => {
                 const layer = marksRef.current
                 const gutter = gutterRef.current
@@ -390,8 +391,9 @@ export function StageNoteEditor({
         {' '}<code>https://…</code> URL or email address links itself, and
         {' '}<code>[to a heading](#heading)</code> jumps within the note.
         Headings, bullets with sub-points, quotes, and code blocks fold here as they do in
-        the reading view — from the chevrons beside them, or all at once. A line straight
-        after a <code>&gt;</code> joins that quote — leave a blank line to end it.
+        the reading view — from the chevrons down the edge of the box, or all at once. A
+        line straight after a <code>&gt;</code> joins that quote — leave a blank line to
+        end it.
       </p>
     </div>
   )

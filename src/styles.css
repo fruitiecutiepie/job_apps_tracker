@@ -1973,16 +1973,17 @@ tbody tr:hover {
  * is transparent — it exists to be measured and painted behind, never read.
  */
 /*
- * The box, the layer of marks behind it, and the column of fold controls beside it. The
- * controls stand outside the box because a textarea has no room in its text for anything
- * that is not text, and the column is a real one rather than padding stolen from the box:
- * a chevron over the text would sit on the words it folds.
+ * The box, the layer of marks behind it, and the fold controls down its inside edge. The
+ * controls are in the box rather than beside it — the note is what folds, so the chevrons
+ * belong against the lines they fold. A textarea has no room in its text for anything
+ * that is not text, so they are drawn over the box's own left padding, widened to hold
+ * them: over the padding they cover nothing, where over the text they would sit on the
+ * words they fold.
  */
 .stage-note__source {
   position: relative;
   display: grid;
-  grid-template-columns: var(--fold-gutter) minmax(0, 1fr);
-  gap: var(--s2);
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -1993,10 +1994,18 @@ tbody tr:hover {
   min-height: 0;
 }
 
-/* Clips the controls to the box, so one belonging to a line scrolled out of view is not
-   left drawn against the pane's edge. */
+/*
+ * The strip the controls stand in, inside the box's border and no wider than the padding
+ * the text is already held off by. Clipped, so a control belonging to a line scrolled out
+ * of view is not left drawn over the box's edge.
+ */
 .stage-note__gutter {
-  position: relative;
+  position: absolute;
+  z-index: 2;
+  top: 1px;
+  bottom: 1px;
+  left: 1px;
+  width: var(--fold-gutter);
   overflow: hidden;
 }
 
@@ -2047,6 +2056,10 @@ tbody tr:hover {
   z-index: 0;
   inset: 0;
   padding: var(--s3);
+  /* Left padding holds the fold controls. Written the same way on both layers — the
+     shorthand and then this — or the two would resolve it differently and the mirror
+     would wrap a column away from the box in front of it. */
+  padding-left: var(--fold-indent);
   /* Scrolls like the box so it reserves the same gutter and wraps at the same column. */
   overflow-y: scroll;
   overflow-x: hidden;
@@ -2071,6 +2084,7 @@ tbody tr:hover {
 .stage-note__source textarea {
   position: relative;
   z-index: 1;
+  padding-left: var(--fold-indent);
   background: transparent;
   /*
    * Wrapping is stated on both sides rather than left to the browser's own textarea
