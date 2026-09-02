@@ -55,7 +55,14 @@ the breadcrumb trail, and the scroll to each hit need real layout, so they stay 
 ## Manual browser-only checks
 
 These checks cover visual and native-browser behavior that the automated component
-test cannot judge reliably:
+test cannot judge reliably.
+
+Some of the panel's layout is no longer only here. `pnpm test:browser` measures, in
+Chromium, Firefox and WebKit, that split panes sit side by side and stay wide enough to
+read a note in, that dragging the divider resizes both and holds a pane at its minimum,
+that a narrow window stacks a row, and that a long note scrolls inside its card rather
+than the page. Dragging a **tab** is still a manual check: it is HTML5 drag-and-drop,
+which no browser automation can drive.
 
 1. Run `pnpm dev` and open the address shown in the terminal. Confirm `data/tracker.json`
    is created empty on first launch and that **More actions** offers Import and Export

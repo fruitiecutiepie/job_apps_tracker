@@ -321,6 +321,15 @@ pnpm test:smoke
 pnpm build
 ```
 
+A browser suite covers what jsdom cannot judge: where the panel's panes actually end up,
+whether a pane stays wide enough to read a note in, and how a narrow window rearranges
+them. It runs in Chromium, Firefox and WebKit, and needs those browsers once:
+
+```sh
+npx playwright install chromium firefox webkit
+pnpm test:browser
+```
+
 Use `pnpm test:watch` while developing. The automated smoke test and optional browser checklist are documented in [SMOKE_TEST.md](./SMOKE_TEST.md).
 
 Contributor architecture, invariants, and common traps are documented in [AGENTS.md](./AGENTS.md).

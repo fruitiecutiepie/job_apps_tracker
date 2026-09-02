@@ -29,6 +29,16 @@ export default defineConfig({
       VITE_TRACKER_PROFILE: 'demo',
     },
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
-    exclude: ['**/node_modules/**', '**/.claude/**', '**/dist/**'],
+    /*
+     * The browser suite runs under `vitest.browser.config.ts`, in a real browser. Its
+     * files match the `include` above, so without this they would also be started here
+     * and fail on the browser context they expect and jsdom cannot give them.
+     */
+    exclude: [
+      '**/node_modules/**',
+      '**/.claude/**',
+      '**/dist/**',
+      'src/**/*.browser.test.tsx',
+    ],
   },
 })
