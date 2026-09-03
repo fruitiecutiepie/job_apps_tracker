@@ -53,6 +53,13 @@ import {
   type TabGroup,
 } from './notesLayout'
 import { StageNotePane } from './StageNotePane'
+import {
+  DROP_EDGE,
+  DROP_EDGE_PANE,
+  DROP_SLOT_GROUP,
+  DROP_SLOT_INDEX,
+  useTabDrag,
+} from './useTabDrag'
 import { stageNotePanelId, stageTabId } from './stageNoteIds'
 import { useDialogKeyboard } from './useDialogKeyboard'
 
@@ -376,15 +383,6 @@ export function StageNotesDialog({
   const savingRef = useRef(false)
   const mountedRef = useRef(true)
   const [sidebarOpen, setSidebarOpen] = useState(true)
-  /**
-   * The tab being dragged, and the slot it is hovering over. Both are display state: they
-   * exist for the length of one drag and describe nothing about the notes.
-   */
-  const [dragging, setDragging] = useState<string | null>(null)
-  const [dropTarget, setDropTarget] = useState<{ groupId: string; index: number } | null>(null)
-  /** The pane edge a dragged tab is hovering, which would split a new pane open there. */
-  const [splitTarget, setSplitTarget] = useState<{ groupId: string; edge: Edge } | null>(null)
-
   // Find state. `findSeq` remounts the widget so a second Ctrl+F refocuses and selects
   // the query already in it, the way reopening find in an editor does.
   const [findOpen, setFindOpen] = useState(false)
@@ -946,6 +944,16 @@ export function StageNotesDialog({
     [dropTab, splitTabOff],
   )
 
+  /**
+   * Dragging a tab with a pointer of any kind, mouse or finger. Display state that lasts
+   * one gesture and describes nothing about the notes. Both landings go to the same places
+   * the arrow keys do, so a drag can reach no arrangement the keyboard cannot.
+   */
+  const drag = useTabDrag({
+    onDropInSlot: (key, groupId, index) => dropTab(key, groupId, index),
+    onDropOnEdge: (key, groupId, edge) => splitTabOff(key, groupId, edge),
+  })
+
   /** Reorders the tab being read within its own pane, wrapping at either end. */
   const reorderActiveTab = useCallback(
     (step: -1 | 1) => {
@@ -1332,24 +1340,11 @@ export function StageNotesDialog({
           aria-describedby={TABS_HINT_ID}
           aria-label={`Prep note tabs, pane ${paneNumber}`}
           className="panel__tabs"
-          onDragOver={(event) => {
-            if (!dragging) return
-            // Only the strip's own background: a slot handles its own hover, and letting
-            // this run as well would fight it for where the tab is about to land.
-            if (event.target !== event.currentTarget) return
-            event.preventDefault()
-            event.dataTransfer.dropEffect = 'move'
-            setDropTarget({ groupId: group.id, index: group.tabs.length })
-          }}
-          onDrop={(event) => {
-            if (event.target !== event.currentTarget) return
-            event.preventDefault()
-            const key = event.dataTransfer.getData('text/plain')
-            if (key) dropTab(key, group.id, group.tabs.length)
-            setDragging(null)
-            setDropTarget(null)
-          }}
           role="tablist"
+          // The strip itself is the last drop place, so a tab let go on the bare end of it
+          // joins the end. A slot is a nearer ancestor of its own tab, so a drop over one
+          // still finds the slot rather than this.
+          {...{ [DROP_SLOT_GROUP]: group.id, [DROP_SLOT_INDEX]: group.tabs.length }}
         >
           {group.tabs.map((tab, tabIndex) => {
             const key = noteRefKey(tab)
@@ -1358,41 +1353,26 @@ export function StageNotesDialog({
             const isActive = key === shownKey
             const application = applicationsById.get(tab.applicationId)
             const isDropTarget =
-              dropTarget?.groupId === group.id && dropTarget.index === tabIndex
+              drag.target?.kind === 'slot'
+              && drag.target.groupId === group.id
+              && drag.target.index === tabIndex
             return (
               // Presentational, so the tablist still owns the tabs themselves: a close
               // control cannot sit inside a button, and it belongs beside its own tab.
+              // It is also the drop place, named by attributes rather than by handlers:
+              // a captured pointer sends no enter or leave events, so the drag finds where
+              // it is over by hit-testing the document instead.
               <div
                 className={[
                   'panel__tab-slot',
-                  dragging === key ? 'panel__tab-slot--dragging' : '',
+                  drag.key === key ? 'panel__tab-slot--dragging' : '',
                   isDropTarget ? 'panel__tab-slot--drop-target' : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
                 key={key}
-                onDragLeave={(event) => {
-                  // Guarded against a child's own dragleave, which would otherwise clear
-                  // the highlight the moment the pointer crossed onto the tab's text.
-                  if (event.currentTarget.contains(event.relatedTarget as Node | null)) return
-                  setDropTarget((current) =>
-                    current?.groupId === group.id && current.index === tabIndex ? null : current,
-                  )
-                }}
-                onDragOver={(event) => {
-                  if (!dragging) return
-                  event.preventDefault()
-                  event.dataTransfer.dropEffect = 'move'
-                  setDropTarget({ groupId: group.id, index: tabIndex })
-                }}
-                onDrop={(event) => {
-                  event.preventDefault()
-                  const dropped = event.dataTransfer.getData('text/plain')
-                  if (dropped) dropTab(dropped, group.id, tabIndex)
-                  setDragging(null)
-                  setDropTarget(null)
-                }}
                 role="presentation"
+                {...{ [DROP_SLOT_GROUP]: group.id, [DROP_SLOT_INDEX]: tabIndex }}
               >
                 <button
                   aria-controls={isActive ? stageNotePanelId(tab) : undefined}
@@ -1404,21 +1384,14 @@ export function StageNotesDialog({
                   ]
                     .filter(Boolean)
                     .join(' ')}
-                  draggable
                   id={stageTabId(tab)}
                   onClick={() => {
+                    // The browser sends a click after any pointer sequence, this one
+                    // included. Dropping a tab somewhere is not also a request to read it.
+                    if (drag.wasDragged()) return
                     applyLayout(activateTab(layoutRef.current, group.id, key), group.id)
                   }}
-                  onDragEnd={() => {
-                    setDragging(null)
-                    setDropTarget(null)
-                    setSplitTarget(null)
-                  }}
-                  onDragStart={(event) => {
-                    setDragging(key)
-                    event.dataTransfer.effectAllowed = 'move'
-                    event.dataTransfer.setData('text/plain', key)
-                  }}
+                  onPointerDown={(event) => drag.start(event, key)}
                   onKeyDown={(event) => {
                     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
                     event.preventDefault()
@@ -1467,39 +1440,24 @@ export function StageNotesDialog({
           there is nothing here to operate without a pointer, and the arrows do the same
           job for anyone who has not got one.
         */}
-        {dragging ? (
+        <div className="panel__group-body">
+        {drag.key ? (
           <div aria-hidden="true" className="panel__dropzones">
             {(['left', 'right', 'top', 'bottom'] as const).map((edge) => (
               <div
                 className={[
                   'panel__dropzone',
                   `panel__dropzone--${edge}`,
-                  splitTarget?.groupId === group.id && splitTarget.edge === edge
+                  drag.target?.kind === 'edge'
+                  && drag.target.groupId === group.id
+                  && drag.target.edge === edge
                     ? 'panel__dropzone--over'
                     : '',
                 ]
                   .filter(Boolean)
                   .join(' ')}
-                data-drop-edge={edge}
-                data-drop-pane={group.id}
                 key={edge}
-                onDragLeave={() =>
-                  setSplitTarget((current) =>
-                    current?.groupId === group.id && current.edge === edge ? null : current,
-                  )}
-                onDragOver={(event) => {
-                  event.preventDefault()
-                  event.dataTransfer.dropEffect = 'move'
-                  setSplitTarget({ groupId: group.id, edge })
-                }}
-                onDrop={(event) => {
-                  event.preventDefault()
-                  const key = event.dataTransfer.getData('text/plain')
-                  if (key) splitTabOff(key, group.id, edge)
-                  setDragging(null)
-                  setDropTarget(null)
-                  setSplitTarget(null)
-                }}
+                {...{ [DROP_EDGE]: edge, [DROP_EDGE_PANE]: group.id }}
               />
             ))}
           </div>
@@ -1545,6 +1503,7 @@ export function StageNotesDialog({
           saved={noteByKey.get(shownKey)}
           session={open?.session}
         />
+        </div>
       </div>
     )
   }

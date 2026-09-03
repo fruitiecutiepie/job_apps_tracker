@@ -94,8 +94,13 @@ describe('pane handles and drop zones', () => {
     expect(ruleBody('.panel__dropzones')).toMatch(/position:\s*absolute/)
     // Over the note, and over the sticky header and dock the pane pins at z-index 2.
     expect(ruleBody('.panel__dropzones')).toMatch(/z-index:\s*3/)
-    // The pane has to be a containing block, or the zones would size to the panel.
-    expect(ruleBody('.panel__group')).toMatch(/position:\s*relative/)
+    /*
+     * The note half of the pane is the containing block, not the whole pane. Measured from
+     * the pane the zones covered its tab strip too, and since they sit on top of
+     * everything, a drop aimed at a tab found an edge zone instead of the tab's own slot.
+     */
+    expect(ruleBody('.panel__group-body')).toMatch(/position:\s*relative/)
+    expect(ruleBody('.panel__group')).not.toMatch(/position:\s*relative/)
 
     const zone = ruleBody('.panel__dropzone')
     // A third a side leaves the middle clear, so a drag can still be abandoned over the

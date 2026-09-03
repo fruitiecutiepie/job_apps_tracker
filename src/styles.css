@@ -2620,6 +2620,19 @@ tbody tr:hover {
 }
 
 /*
+ * The note half of a pane, below its tabs. It exists to be the box the drop zones are laid
+ * over: measured from the group itself they would cover the tab strip too, and since they
+ * sit on top of everything, a drop aimed at a tab would find an edge instead.
+ */
+.panel__group-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
  * Where a dragged tab would open a new pane. Only in the document while a drag is running,
  * so nothing here is in the way the rest of the time.
  */
@@ -2692,10 +2705,8 @@ tbody tr:hover {
   outline: none;
 }
 
-/* One pane: its strip of tabs over the note on show. Positioned so the drop zones a drag
-   raises can be laid over it. */
+/* One pane: its strip of tabs over the note on show. */
 .panel__group {
-  position: relative;
   display: flex;
   flex: 1;
   flex-direction: column;

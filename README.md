@@ -201,7 +201,7 @@ The stage notes panel binds five shortcuts while it is open. They are bound to t
 - `Ctrl`/`Cmd+Shift+←`, `→`, `↑` and `↓` send the tab you are reading towards that edge: into the pane already there, or into a new one split open when there is none. Moving the last tab out of a pane closes that pane and folds the split back.
 - `Ctrl`/`Cmd+Alt+←` and `→` reorder the tab you are reading within its own pane, wrapping at either end.
 
-Tabs can also be dragged: within a strip to reorder them, onto another pane's strip to move them across, or onto the edge of any pane to split a new one open there. Every arrangement a drag can reach has a keyboard equivalent above, so the panel does not need a pointer.
+Tabs can also be dragged: within a strip to reorder them, onto another pane's strip to move them across, or onto the edge of any pane to split a new one open there. This works with a finger as well as a mouse — hold a tab for a moment to pick it up, the way any list you can reorder on a phone works, then carry it where you want it. A swipe that starts moving straight away scrolls the strip instead. Every arrangement a drag can reach has a keyboard equivalent above, so the panel does not need a pointer.
 
 Panes are resizable. Drag the handle between two of them, or focus it and use the arrow keys — `←` and `→` between side-by-side panes, `↑` and `↓` between stacked ones. A pane is held at a readable minimum rather than being allowed to collapse out of sight. Widths last as long as the panel is open and are never saved: how you arranged the panes is not part of a note.
 
@@ -322,8 +322,9 @@ pnpm build
 ```
 
 A browser suite covers what jsdom cannot judge: where the panel's panes actually end up,
-whether a pane stays wide enough to read a note in, and how a narrow window rearranges
-them. It runs in Chromium, Firefox and WebKit, and needs those browsers once:
+whether a pane stays wide enough to read a note in, how a narrow window rearranges them,
+and whether a tab can be dragged with a finger. It runs in Chromium, Firefox and WebKit,
+and needs those browsers once:
 
 ```sh
 npx playwright install chromium firefox webkit

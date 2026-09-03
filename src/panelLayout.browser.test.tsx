@@ -204,30 +204,94 @@ describe('the panel in a real browser', () => {
   })
 
   /*
-   * The two below are skipped, and the reason is worth writing down, because it is a
-   * property of the tooling rather than of the panel.
-   *
-   * Playwright drives a drag with synthetic mouse events, and a synthetic mouse does not
-   * start a native HTML5 drag session: `dragstart` never fires, so the drop zones never
-   * appear, the drop is never accepted, and the call waits until the test times out.
-   * Retargeting does not help, and was tried against the tab, its slot and the strip.
-   * Playwright Test would fare no better, being the same browser automation underneath,
-   * which is part of why it was not the tool for this job.
-   *
-   * The divider above resizes from a plain mousedown and window mousemove, which is why
-   * that drag is drivable here and these are not.
-   *
-   * So the tab drag is covered where it can be: the jsdom suite drives it with a
-   * `DataTransfer` stub, exercising every handler and every layout call, but not the
-   * browser's own drag machinery. The same gap applies to the Kanban card drag, which is
-   * HTML5 drag-and-drop as well. Moving either to pointer events would make it drivable
-   * here, and would incidentally make it work on touch, but that is a change to the app
-   * rather than to its tests and not one to make on the way past.
-   *
-   * Kept rather than deleted: they say what should be true, and they are ready the day the
-   * implementation can be driven.
+   * These two could not be driven at all while the tabs used HTML5 drag-and-drop: a
+   * synthetic mouse does not start a native drag session in any engine, so `dragstart`
+   * never fired and the call hung until the test timed out. They are pointer events now,
+   * which is what made a finger work as well, and a pointer is something a test can send.
    */
-  it.skip('reorders a tab dragged within its own strip', async () => {
+  /**
+   * A finger, on the instance that has one.
+   *
+   * Vitest's `userEvent` drives a mouse, so the gesture itself is dispatched here: real
+   * `PointerEvent`s with `pointerType: 'touch'`, at coordinates read from real boxes, hit
+   * tested by the real document. What that leaves synthetic is the trust bit on the event,
+   * which nothing in the panel reads. What it exercises is everything that used to be
+   * impossible: the hold that tells carrying a tab from scrolling the strip, and the drop
+   * landing where the finger actually was.
+   */
+  async function touchDrag(source: Element, over: Element) {
+    const at = (element: Element) => {
+      const box = element.getBoundingClientRect()
+      return { clientX: box.left + box.width / 2, clientY: box.top + box.height / 2 }
+    }
+    const send = (target: EventTarget, type: string, point: { clientX: number; clientY: number }) =>
+      target.dispatchEvent(
+        new PointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          pointerId: 7,
+          pointerType: 'touch',
+          isPrimary: true,
+          ...point,
+        }),
+      )
+
+    send(source, 'pointerdown', at(source))
+    // Past TOUCH_HOLD_MS, which is the whole point: a finger has to stay put to pick a tab
+    // up, or every swipe along the strip would carry one off instead of scrolling.
+    await new Promise((resolve) => setTimeout(resolve, 450))
+    send(window, 'pointermove', at(over))
+    send(window, 'pointerup', at(over))
+  }
+
+  it('picks a tab up with a held finger and carries it, on a phone-sized screen', async () => {
+      await page.viewport(420, 860)
+      renderPanel()
+
+      const names = () => screen.getAllByRole('tab').map((tab) => tab.textContent)
+      const before = names()
+      expect(before).toHaveLength(3)
+
+      const offer = screen.getByRole('tab', { name: 'Halcyon Maps · Offer' })
+      const first = screen.getAllByRole('tab')[0].closest('.panel__tab-slot')!
+      await touchDrag(offer, first)
+
+      // Carried to the front, by a gesture a mouse cannot make.
+    expect(names()[0]).toBe(before[2])
+    expect(names()).toHaveLength(3)
+  })
+
+  it('leaves a finger that moves straight away to the scroller', async () => {
+      await page.viewport(420, 860)
+      renderPanel()
+
+      const before = screen.getAllByRole('tab').map((tab) => tab.textContent)
+      const offer = screen.getByRole('tab', { name: 'Halcyon Maps · Offer' })
+      const box = offer.getBoundingClientRect()
+      const point = (x: number) => ({ clientX: x, clientY: box.top + box.height / 2 })
+      const send = (target: EventTarget, type: string, x: number) =>
+        target.dispatchEvent(
+          new PointerEvent(type, {
+            bubbles: true,
+            cancelable: true,
+            pointerId: 8,
+            pointerType: 'touch',
+            isPrimary: true,
+            ...point(x),
+          }),
+        )
+
+      // No hold: straight into a swipe, which on a strip that scrolls sideways is what
+      // scrolling looks like. Nothing should have been picked up.
+      send(offer, 'pointerdown', box.left + box.width / 2)
+      send(window, 'pointermove', box.left + box.width / 2 - 80)
+      expect(document.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
+      send(window, 'pointerup', box.left + box.width / 2 - 80)
+
+    expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(before)
+  })
+
+  it('reorders a tab dragged within its own strip', async () => {
     renderPanel()
 
     const names = () => screen.getAllByRole('tab').map((tab) => tab.textContent)
@@ -245,7 +309,7 @@ describe('the panel in a real browser', () => {
     expect(after[0]).toBe(before[2])
   })
 
-  it.skip('moves a tab dragged onto another pane’s strip', async () => {
+  it('moves a tab dragged onto another pane’s strip', async () => {
     renderPanel()
     await userEvent.click(screen.getByRole('button', { name: 'Split' }))
 

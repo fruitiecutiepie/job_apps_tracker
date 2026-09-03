@@ -44,9 +44,22 @@ function readSavedDocument() {
   return loadTrackerDocument(testTrackerStore)
 }
 
+/**
+ * Renders the app and waits for its first load.
+ *
+ * The wait carries its own budget because the default is one second, and one second is not
+ * a measurement of this app — it is a measurement of the machine. The first render walks a
+ * thousand nodes and reads the document behind a stubbed fetch, and on a loaded laptop that
+ * takes longer than a second often enough to be the single largest source of failures that
+ * say nothing about the code. Bounded by the test's own timeout either way, so a genuine
+ * hang still fails; what this stops is a slow start reading as a broken one.
+ */
 async function renderLoadedApp() {
   const view = render(<App />)
-  await waitFor(() => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument())
+  await waitFor(
+    () => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument(),
+    { timeout: 15_000 },
+  )
   return view
 }
 
@@ -2345,16 +2358,45 @@ describe('job applications tracker', () => {
   })
 
   /**
-   * jsdom implements no `DataTransfer`, so a drag is driven with a stub backed by a Map —
-   * the same shape the Kanban's drag tests use.
+   * Drags a tab with a pointer, the way the panel's own drag works.
+   *
+   * The one thing supplied rather than driven is what the pointer is over: the drag asks
+   * `document.elementFromPoint`, and jsdom has no layout to answer with. Everything else is
+   * the real path — the movement threshold that tells a drag from a click, the pointer
+   * capture, and the commit read at the release. The hit testing is covered for real in
+   * `panelLayout.browser.test.tsx`, which is the half of this jsdom cannot do at all.
    */
-  function dataTransferStub() {
-    const values = new Map<string, string>()
-    return {
-      effectAllowed: 'none',
-      dropEffect: 'none',
-      setData: (type: string, value: string) => values.set(type, value),
-      getData: (type: string) => values.get(type) ?? '',
+  function pointerDrag(source: Element, over: Element) {
+    const found = document.elementFromPoint
+    document.elementFromPoint = () => over as Element
+    try {
+      const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+      fireEvent.pointerDown(source, { ...pointer, clientX: 0, clientY: 0 })
+      // Past MOUSE_THRESHOLD_PX, which is what makes this a drag rather than a click.
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
+    } finally {
+      document.elementFromPoint = found
+    }
+  }
+
+  const slotOf = (tab: HTMLElement) => tab.closest('.panel__tab-slot')!
+
+  /** The same, but landing on one of the pane edges that a drag raises. */
+  function pointerDragToEdge(source: Element, edge: 'left' | 'right' | 'top' | 'bottom') {
+    const found = document.elementFromPoint
+    // Resolved on each ask rather than captured once: the zones are not in the document
+    // until the drag has taken hold, which happens partway through this gesture.
+    document.elementFromPoint = () =>
+      document.querySelector(`[data-drop-edge="${edge}"]`) as Element
+    try {
+      const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+      fireEvent.pointerDown(source, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 80, clientY: 0 })
+      fireEvent.pointerUp(window, { ...pointer, clientX: 80, clientY: 0 })
+    } finally {
+      document.elementFromPoint = found
     }
   }
 
@@ -2373,13 +2415,8 @@ describe('job applications tracker', () => {
       'Halcyon Maps · Offer',
     ])
 
-    const dataTransfer = dataTransferStub()
     const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
-    const first = within(dialog).getAllByRole('tab')[0].closest('.panel__tab-slot')
-
-    fireEvent.dragStart(offer, { dataTransfer })
-    fireEvent.dragOver(first!, { dataTransfer })
-    fireEvent.drop(first!, { dataTransfer })
+    pointerDrag(offer, slotOf(within(dialog).getAllByRole('tab')[0]))
 
     expect(tabNames(dialog)).toEqual([
       'Halcyon Maps · Offer',
@@ -2407,12 +2444,9 @@ describe('job applications tracker', () => {
     expect(within(strips[0]).getAllByRole('tab')).toHaveLength(2)
     expect(within(strips[1]).getAllByRole('tab')).toHaveLength(1)
 
-    const dataTransfer = dataTransferStub()
     const offer = within(strips[0]).getByRole('tab', { name: 'Halcyon Maps · Offer' })
-
-    fireEvent.dragStart(offer, { dataTransfer })
-    fireEvent.dragOver(strips[1], { dataTransfer, target: strips[1] })
-    fireEvent.drop(strips[1], { dataTransfer, target: strips[1] })
+    // Onto the bare end of the other pane's strip, which is its last drop place.
+    pointerDrag(offer, strips[1])
 
     const after = within(dialog).getAllByRole('tablist')
     expect(within(after[0]).getAllByRole('tab')).toHaveLength(1)
@@ -2581,15 +2615,10 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
     expect(within(dialog).getAllByRole('tablist')).toHaveLength(1)
 
-    const dataTransfer = dataTransferStub()
     const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
-    fireEvent.dragStart(offer, { dataTransfer })
-
-    // The zones only exist while a drag is running, which is why this comes after it starts.
-    const right = dialog.querySelector('[data-drop-edge="right"]')
-    expect(right).not.toBeNull()
-    fireEvent.dragOver(right!, { dataTransfer })
-    fireEvent.drop(right!, { dataTransfer })
+    // The zones only exist while a drag is running, so the drop place is named by where
+    // the pointer ends up rather than found before the gesture starts.
+    pointerDragToEdge(offer, 'right')
 
     const strips = within(dialog).getAllByRole('tablist')
     expect(strips).toHaveLength(2)
@@ -2607,13 +2636,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
-    const dataTransfer = dataTransferStub()
-    fireEvent.dragStart(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }), {
-      dataTransfer,
-    })
-    const bottom = dialog.querySelector('[data-drop-edge="bottom"]')
-    fireEvent.dragOver(bottom!, { dataTransfer })
-    fireEvent.drop(bottom!, { dataTransfer })
+    pointerDragToEdge(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }), 'bottom')
 
     // A column split, so its divider runs the other way.
     expect(within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' }))
@@ -2630,14 +2653,70 @@ describe('job applications tracker', () => {
 
     expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
 
-    const dataTransfer = dataTransferStub()
     const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
-    fireEvent.dragStart(offer, { dataTransfer })
+    const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+
+    // A press on its own is not a drag: it is how a tab is selected, and raising the zones
+    // under every click would put them over the note the reader is trying to read.
+    fireEvent.pointerDown(offer, { ...pointer, clientX: 0, clientY: 0 })
+    expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
+
+    // Moving past the threshold is what takes hold of the tab.
+    fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
     expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(4)
 
     // Abandoning the drag puts them away again rather than leaving them over the note.
-    fireEvent.dragEnd(offer, { dataTransfer })
+    fireEvent.pointerCancel(window, pointer)
     expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
+  })
+
+  it('leaves a short press as a click, so selecting a tab still selects it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // A mouse commits to a drag on distance, so a press that does not travel is a click.
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }))
+
+    expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Offer')
+    expect(within(dialog).getByRole('tabpanel')).toHaveAccessibleName('Halcyon Maps · Offer')
+    // And no drag was ever in progress, so nothing was left over the note.
+    expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
+  })
+
+  it('picks a tab up on a long touch, and leaves a short one to the scroller', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    const touch = { pointerId: 2, pointerType: 'touch' }
+    const zones = () => dialog.querySelectorAll('[data-drop-edge]')
+
+    // A finger that moves straight away is scrolling the strip, not carrying a tab.
+    fireEvent.pointerDown(offer, { ...touch, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(window, { ...touch, clientX: 60, clientY: 0 })
+    expect(zones()).toHaveLength(0)
+    fireEvent.pointerUp(window, { ...touch, clientX: 60, clientY: 0 })
+
+    /*
+     * Held still, it takes hold: the gesture every native list-reorder uses, and the only
+     * one a strip that scrolls sideways can also be rearranged by.
+     *
+     * Waited out for real rather than with fake timers. Widening the fakes past `Date` in
+     * this file is what AGENTS.md warns against — Testing Library's fake-timer support is
+     * gated on a global `jest` vitest does not define, so `waitFor` would poll a timer
+     * nothing advances. It was tried, and it hung exactly as described.
+     */
+    fireEvent.pointerDown(offer, { ...touch, clientX: 0, clientY: 0 })
+    expect(zones()).toHaveLength(0)
+    await waitFor(() => expect(zones()).toHaveLength(4), { timeout: 4000 })
+
+    fireEvent.pointerCancel(window, touch)
+    expect(zones()).toHaveLength(0)
   })
 
   it('splits from the keyboard when there is no pane in that direction yet', async () => {

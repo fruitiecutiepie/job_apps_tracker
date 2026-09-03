@@ -23,11 +23,14 @@ export default defineConfig({
     include: ['src/**/*.browser.test.tsx'],
     setupFiles: './src/test/setup.browser.ts',
     /*
-     * The same machine-wide lock the jsdom suite takes, for the reason AGENTS.md gives:
-     * this repo is a dozen worktrees on one laptop, and three browsers are heavier company
-     * than another jsdom run, not lighter.
+     * Preflight first, then the lock. The order is the point: the preflight says what the
+     * machine is doing before anything has been waited for, so a browser that turns out to
+     * be slow to start is readable rather than a mystery. Then the same machine-wide lock
+     * the jsdom suite takes, for the reason AGENTS.md gives — this repo is a dozen
+     * worktrees on one laptop, and three browsers are heavier company than another jsdom
+     * run, not lighter.
      */
-    globalSetup: './vite/suite-lock.ts',
+    globalSetup: ['./vite/machine-preflight.ts', './vite/suite-lock.ts'],
     browser: {
       enabled: true,
       headless: true,
@@ -40,9 +43,11 @@ export default defineConfig({
        */
       viewport: { width: 1280, height: 800 },
       /*
-       * All three, because the thing most likely to differ between them is exactly what
-       * this suite is for: HTML5 drag-and-drop is implemented differently in each, and
-       * WebKit is where it has historically been weakest.
+       * All three, because layout is the subject and the three engines are where layout
+       * differs. Touch is covered inside the tests rather than by a fourth instance:
+       * per-instance context options are not expressible here, and Playwright's Firefox
+       * does not support touch emulation at all, so asking for it provider-wide would cost
+       * a whole engine to gain what a dispatched `pointerType: 'touch'` already gives.
        */
       instances: [{ browser: 'chromium' }, { browser: 'firefox' }, { browser: 'webkit' }],
       /*

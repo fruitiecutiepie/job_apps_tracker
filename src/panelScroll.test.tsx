@@ -33,6 +33,7 @@ const CHAIN = [
   '.panel__split',
   '.panel__split-child',
   '.panel__group',
+  '.panel__group-body',
   '.panel__pane',
   '.stage-note',
   '.stage-note__body',
@@ -55,12 +56,14 @@ function panel() {
               <div className="panel__split-child">
                 <div className="panel__group">
                   <div className="panel__tabs" />
+                  <div className="panel__group-body">
                   <div className="panel__pane">
                     <section className="stage-note">
                       <header className="stage-note__header" />
                       <div className="stage-note__body" />
                       <div className="stage-note__dock" />
                     </section>
+                  </div>
                   </div>
                 </div>
               </div>
@@ -90,7 +93,13 @@ describe('the chain a note scrolls inside', () => {
    */
   it('lets every flex item in a row shrink sideways too', () => {
     const container = panel()
-    const inRow = ['.panel__split', '.panel__split-child', '.panel__group', '.panel__pane']
+    const inRow = [
+      '.panel__split',
+      '.panel__split-child',
+      '.panel__group',
+      '.panel__group-body',
+      '.panel__pane',
+    ]
     const stuck = inRow.filter(
       (selector) => getComputedStyle(container.querySelector(selector)!).minWidth !== '0px',
     )

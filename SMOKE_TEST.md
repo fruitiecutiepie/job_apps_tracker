@@ -61,8 +61,10 @@ Some of the panel's layout is no longer only here. `pnpm test:browser` measures,
 Chromium, Firefox and WebKit, that split panes sit side by side and stay wide enough to
 read a note in, that dragging the divider resizes both and holds a pane at its minimum,
 that a narrow window stacks a row, and that a long note scrolls inside its card rather
-than the page. Dragging a **tab** is still a manual check: it is HTML5 drag-and-drop,
-which no browser automation can drive.
+than the page. Dragging a **tab** is covered there too, by mouse and by
+finger, now that it is built on pointer events rather than HTML5 drag-and-drop. Dragging a
+Kanban **card** is still a manual check: that one is HTML5 drag-and-drop, which works with
+neither a finger nor any browser automation.
 
 1. Run `pnpm dev` and open the address shown in the terminal. Confirm `data/tracker.json`
    is created empty on first launch and that **More actions** offers Import and Export
@@ -159,6 +161,8 @@ which no browser automation can drive.
    Move between stages with the tabs and with the arrow keys, confirming focus follows the tab.
    Drag a tab within its strip and confirm it reorders, with the slot it would land in marked
    as you go; drag one onto the other pane's strip in a split and confirm it moves across.
+   On a phone or with touch emulation, confirm a short swipe along the strip scrolls it while
+   a tab held for a moment is picked up and can be carried to another slot or pane edge.
    Do both again with `Ctrl`/`Cmd+Shift+←/→` and `Ctrl`/`Cmd+Alt+←/→` and confirm the keyboard
    reaches the same arrangements. Move the last tab out of a pane and confirm the pane goes and
    the split folds back.
