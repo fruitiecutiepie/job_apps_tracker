@@ -2361,14 +2361,14 @@ describe('job applications tracker', () => {
    * Drags a tab with a pointer, the way the panel's own drag works.
    *
    * The one thing supplied rather than driven is what the pointer is over: the drag asks
-   * `document.elementFromPoint`, and jsdom has no layout to answer with. Everything else is
+   * `document.elementsFromPoint`, and jsdom has no layout to answer with. Everything else is
    * the real path — the movement threshold that tells a drag from a click, the pointer
    * capture, and the commit read at the release. The hit testing is covered for real in
    * `panelLayout.browser.test.tsx`, which is the half of this jsdom cannot do at all.
    */
   function pointerDrag(source: Element, over: Element) {
-    const found = document.elementFromPoint
-    document.elementFromPoint = () => over as Element
+    const found = document.elementsFromPoint
+    document.elementsFromPoint = () => [over as Element]
     try {
       const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
       fireEvent.pointerDown(source, { ...pointer, clientX: 0, clientY: 0 })
@@ -2376,7 +2376,7 @@ describe('job applications tracker', () => {
       fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
       fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
     } finally {
-      document.elementFromPoint = found
+      document.elementsFromPoint = found
     }
   }
 
@@ -2384,11 +2384,11 @@ describe('job applications tracker', () => {
 
   /** The same, but landing on one of the pane edges that a drag raises. */
   function pointerDragToEdge(source: Element, edge: 'left' | 'right' | 'top' | 'bottom') {
-    const found = document.elementFromPoint
+    const found = document.elementsFromPoint
     // Resolved on each ask rather than captured once: the zones are not in the document
     // until the drag has taken hold, which happens partway through this gesture.
-    document.elementFromPoint = () =>
-      document.querySelector(`[data-drop-edge="${edge}"]`) as Element
+    document.elementsFromPoint = () =>
+      [document.querySelector(`[data-drop-edge="${edge}"]`)].filter(Boolean) as Element[]
     try {
       const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
       fireEvent.pointerDown(source, { ...pointer, clientX: 0, clientY: 0 })
@@ -2396,7 +2396,7 @@ describe('job applications tracker', () => {
       fireEvent.pointerMove(window, { ...pointer, clientX: 80, clientY: 0 })
       fireEvent.pointerUp(window, { ...pointer, clientX: 80, clientY: 0 })
     } finally {
-      document.elementFromPoint = found
+      document.elementsFromPoint = found
     }
   }
 
