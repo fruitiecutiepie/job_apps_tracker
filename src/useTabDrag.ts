@@ -74,6 +74,15 @@ export interface TabDrag {
  * pointer, which is exactly what a drag has.
  */
 function targetAt(x: number, y: number): TabDropTarget | null {
+  /*
+   * Guarded because hit testing is not universal: jsdom implements no
+   * `elementFromPoint`, having no layout to test against. An environment that cannot say
+   * what is under a point has no drop target, which is the honest answer — and far better
+   * than a `TypeError` thrown from inside a pointer listener, where nothing is waiting to
+   * catch it. Tests that need a particular target stub this method; tests that merely
+   * start a drag should not have to.
+   */
+  if (typeof document.elementFromPoint !== 'function') return null
   const element = document.elementFromPoint(x, y)
   if (!element) return null
 
