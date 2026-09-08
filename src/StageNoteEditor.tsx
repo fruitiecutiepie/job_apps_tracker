@@ -4,6 +4,7 @@ import { buildSections, foldRegions, parseMarkdown, splitMatches } from './markd
 import { lineStartOffset, offsetTopsWithin } from './noteEditorJump'
 import {
   applyProjectedEdit,
+  changedLines,
   FOLD_DATA,
   hiddenRanges,
   isHidden,
@@ -12,6 +13,22 @@ import {
   toProjectedOffset,
   toSourceOffset,
 } from './noteFolds'
+
+/**
+ * One step of the note's own undo, holding the folds it was written under: undo is a move
+ * back to how the note was, and how it was includes what was open.
+ */
+interface Snapshot {
+  text: string
+  folded: ReadonlySet<number>
+  caret: number
+}
+
+/** How long a run of typing keeps adding to the same undo step. */
+const UNDO_RUN_MS = 800
+
+/** How many steps back the note remembers. Long enough to be a safety net, not a log. */
+const UNDO_DEPTH = 200
 
 interface StageNoteEditorProps {
   label: string
@@ -120,6 +137,25 @@ export function StageNoteEditor({
   const [folded, setFolded] = useState<ReadonlySet<number>>(() => new Set())
   /** Where the caret has to be put once a fold has opened or closed under it. */
   const pendingCaret = useRef<number | null>(null)
+
+  /**
+   * The note's own undo, rather than the box's.
+   *
+   * The box has only ever held the lines on screen, so its history has no entry with a
+   * folded line in it: undoing an edit that deleted through a fold would restore the box
+   * and leave what it was hiding gone. This keeps whole notes instead, so a step back is a
+   * step back through the note.
+   *
+   * `run` is the typing this step is still collecting — a word goes back as a word rather
+   * than a letter at a time — and `value` is the note as this stack last left it, which is
+   * how a change from somewhere else is told apart from one of ours.
+   */
+  const history = useRef<{
+    past: Snapshot[]
+    future: Snapshot[]
+    run: { at: number; caret: number } | null
+    value: string
+  }>({ past: [], future: [], run: null, value })
 
   const lines = useMemo(() => value.split('\n'), [value])
   const regions = useMemo(
@@ -261,8 +297,121 @@ export function StageNoteEditor({
 
   const allFolded = controls.length > 0 && regions.every((region) => folded.has(region.line))
 
+  /**
+   * The note as it stands, for the step that will bring it back. The caret is read off the
+   * box because that is where it has been moved to since the last edit.
+   */
+  const snapshot = useCallback((): Snapshot => {
+    const textarea = textareaRef.current
+    const at = textarea ? toSourceOffset(projected, value, ranges, textarea.selectionStart) : 0
+    return { text: value, folded, caret: at }
+  }, [folded, projected, ranges, value])
+
+  /**
+   * Goes back to a step, opening whatever folds would hide the difference. A step back
+   * that changes nothing on screen is one the writer has no way to tell happened — which
+   * is exactly the case undo exists for here, where what came back was folded away.
+   */
+  const restore = useCallback(
+    (step: Snapshot) => {
+      const span = changedLines(value, step.text)
+      const open = new Set(step.folded)
+      if (span) {
+        const written = step.text.split('\n')
+        for (const region of foldRegions(buildSections(parseMarkdown(step.text)), written)) {
+          if (open.has(region.line) && region.start <= span.end && region.end >= span.start) {
+            open.delete(region.line)
+          }
+        }
+      }
+      history.current.run = null
+      history.current.value = step.text
+      pendingCaret.current = step.caret
+      setFolded(open)
+      onChange(step.text)
+    },
+    [onChange, value],
+  )
+
+  const undo = useCallback(() => {
+    const step = history.current.past.pop()
+    if (!step) return
+    history.current.future.push(snapshot())
+    restore(step)
+  }, [restore, snapshot])
+
+  const redo = useCallback(() => {
+    const step = history.current.future.pop()
+    if (!step) return
+    history.current.past.push(snapshot())
+    restore(step)
+  }, [restore, snapshot])
+
+  /**
+   * A note that changed without this box changing it — a stage swapped into the pane, or a
+   * save pulled back from an external editor — is a different note, and the steps behind
+   * it are not steps back through this one.
+   */
+  useEffect(() => {
+    const state = history.current
+    if (state.value === value) return
+    state.past = []
+    state.future = []
+    state.run = null
+    state.value = value
+  }, [value])
+
+  /**
+   * The box's own undo is taken over rather than left to run alongside: it would restore
+   * the note to a state this one never recorded. Both the shortcut and the menu's Undo
+   * arrive here — the shortcut as a key, and the menu as `beforeinput`.
+   */
+  useEffect(() => {
+    const textarea = textareaRef.current
+    if (!textarea) return
+    const onBeforeInput = (event: Event) => {
+      const type = (event as InputEvent).inputType
+      if (type !== 'historyUndo' && type !== 'historyRedo') return
+      event.preventDefault()
+      if (type === 'historyUndo') undo()
+      else redo()
+    }
+    textarea.addEventListener('beforeinput', onBeforeInput)
+    return () => textarea.removeEventListener('beforeinput', onBeforeInput)
+  }, [redo, undo])
+
   const edit = (next: string, caret: number) => {
     const result = applyProjectedEdit(value, projected, next, ranges, effective, regions, caret)
+
+    if (result.text !== value) {
+      const state = history.current
+      const now = Date.now()
+      const run = state.run
+      /*
+       * A run of typing is one step. It ends where the writing stops being a continuation
+       * of itself: at a pause, at a line break, when insertion turns into deletion, or
+       * when the caret is put somewhere else and started again.
+       */
+      const continues =
+        run !== null
+        && now - run.at <= UNDO_RUN_MS
+        && !result.inserted.includes('\n')
+        && !result.removed.includes('\n')
+        && (result.removed.length === 0
+          ? result.inserted.length > 0 && result.from === run.caret
+          : result.inserted.length === 0 && result.from + result.removed.length === run.caret)
+
+      if (!continues) {
+        // The note as it was before this step, with the caret where the writing began.
+        state.past.push({ text: value, folded, caret: result.from })
+        if (state.past.length > UNDO_DEPTH) state.past.shift()
+      }
+      // Anything typed after going back is a new course; there is nothing left to redo.
+      state.future = []
+      state.run = { at: now, caret: result.caret }
+      state.value = result.text
+    }
+
     // The caret is put back by the note's own offset rather than left where the box put
     // it: opening a fold moves every line below it, and the box would otherwise be
     // holding a caret that has quietly become a position in a different place.
@@ -367,6 +516,17 @@ export function StageNoteEditor({
               data-note-source={sourceId}
               {...{ [FOLD_DATA]: JSON.stringify(ranges) }}
               onChange={(event) => edit(event.target.value, event.target.selectionStart)}
+              onKeyDown={(event) => {
+                if (!(event.metaKey || event.ctrlKey) || event.altKey) return
+                const key = event.key.toLowerCase()
+                if (key === 'z' && !event.shiftKey) {
+                  event.preventDefault()
+                  undo()
+                } else if ((key === 'z' && event.shiftKey) || key === 'y') {
+                  event.preventDefault()
+                  redo()
+                }
+              }}
               // The mirror behind the text and the fold controls down the box's edge only
               // line up with it while they are scrolled with it.
               onScroll={(event) => {

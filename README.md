@@ -152,9 +152,13 @@ Two things follow from a folded note being smaller than the note itself:
 
 - Every edit is made, folded lines included. A backspace joining a folded heading to the line
   after it takes everything that heading was folding with it—that is what joining those two lines
-  means. Open the fold first if you meant to delete only part of it. Note that the box's own undo
-  cannot bring those lines back: it only ever held the lines you could see, so undo restores the
-  note as the box had it, without them.
+  means. Open the fold first if you meant to delete only part of it.
+- `Ctrl`/`Cmd+Z` steps back through the **note**, not through the box. The box has only ever held
+  the lines on screen, so its own history has no entry with a folded line in it; the editor keeps
+  whole notes instead, and a step back brings the folded lines with it, opening whatever fold would
+  hide what came back. `Shift+Ctrl`/`Cmd+Z` steps forward again. A run of typing goes back as a run
+  rather than a letter at a time, and the stack is per stage, per editing session—switching to Read
+  and back starts it over.
 - An edit at the edge of a fold opens it, so what it did is on screen rather than behind a chevron.
   Pressing Enter at the end of a folded heading writes a line into the lines that heading is
   folding, and the caret lands on the new line—what pressing Enter anywhere else does.

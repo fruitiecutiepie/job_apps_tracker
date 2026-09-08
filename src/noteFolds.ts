@@ -118,6 +118,32 @@ export interface ProjectedEdit {
   anchors: Set<number>
   /** Where the caret belongs in the note afterwards: the end of what was just typed. */
   caret: number
+  /** Where the edit starts in the note, and what it put there and took away. */
+  from: number
+  inserted: string
+  removed: string
+}
+
+/**
+ * The lines of `after` that differ from `before`, or null where they do not. What undo
+ * uses to decide which folds to open: what an undo brings back has to be on screen, or it
+ * looks like nothing happened.
+ */
+export function changedLines(before: string, after: string): { start: number; end: number } | null {
+  if (before === after) return null
+
+  const limit = Math.min(before.length, after.length)
+  let prefix = 0
+  while (prefix < limit && before[prefix] === after[prefix]) prefix += 1
+  let suffix = 0
+  while (
+    suffix < limit - prefix
+    && before[before.length - 1 - suffix] === after[after.length - 1 - suffix]
+  ) {
+    suffix += 1
+  }
+
+  return { start: lineAtOffset(after, prefix), end: lineAtOffset(after, after.length - suffix) }
 }
 
 /** How many source lines a fold's own header line has moved, or `null` if it was edited away. */
@@ -158,7 +184,9 @@ export function applyProjectedEdit(
   caret?: number,
 ): ProjectedEdit {
   const anchors = new Set(folded)
-  if (previous === next) return { text: source, opened: [], anchors, caret: source.length }
+  if (previous === next) {
+    return { text: source, opened: [], anchors, caret: source.length, from: 0, inserted: '', removed: '' }
+  }
 
   /*
    * Where the edit was is read from the caret rather than guessed at, because comparing
@@ -218,6 +246,9 @@ export function applyProjectedEdit(
     opened,
     anchors: moved,
     caret: from + inserted.length,
+    from,
+    inserted,
+    removed,
   }
 }
 

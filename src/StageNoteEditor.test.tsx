@@ -262,6 +262,56 @@ describe('folding a note that is open for writing', () => {
     expect(box().getAttribute('data-fold-hidden')).toBe('[]')
   })
 
+  it('brings back what an edit through a fold deleted, folded lines and all', () => {
+    render(<Writing />)
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    fireEvent.change(box(), {
+      target: { value: box().value.replace('## Themes\n', '## Themes'), selectionStart: 9 },
+    })
+    expect(box().value).not.toContain('Growing seniors into leads.')
+
+    fireEvent.keyDown(box(), { key: 'z', metaKey: true })
+
+    // The whole note is back, and the fold that was hiding those lines is open — a step
+    // back that left them folded away would look like nothing had happened.
+    expect(box().value).toBe(FOLDABLE)
+
+    fireEvent.keyDown(box(), { key: 'z', metaKey: true, shiftKey: true })
+    expect(box().value).not.toContain('Growing seniors into leads.')
+  })
+
+  it('takes a run of typing back as one step, and the pause before it as another', () => {
+    render(<Writing />)
+    const at = FOLDABLE.indexOf('\n')
+
+    // Two characters typed one after the other, then the caret put somewhere else and a
+    // third typed there: two steps, not three.
+    fireEvent.change(box(), { target: { value: `${FOLDABLE.slice(0, at)}!${FOLDABLE.slice(at)}`, selectionStart: at + 1 } })
+    fireEvent.change(box(), { target: { value: `${FOLDABLE.slice(0, at)}!?${FOLDABLE.slice(at)}`, selectionStart: at + 2 } })
+    const typed = box().value
+    fireEvent.change(box(), { target: { value: `${typed}.`, selectionStart: typed.length + 1 } })
+
+    fireEvent.keyDown(box(), { key: 'z', metaKey: true })
+    expect(box().value).toBe(typed)
+
+    fireEvent.keyDown(box(), { key: 'z', metaKey: true })
+    expect(box().value).toBe(FOLDABLE)
+  })
+
+  it('answers the editor menu\u2019s Undo as well as the shortcut', () => {
+    render(<Writing />)
+    const at = FOLDABLE.indexOf('\n')
+    fireEvent.change(box(), { target: { value: `${FOLDABLE.slice(0, at)}!${FOLDABLE.slice(at)}`, selectionStart: at + 1 } })
+
+    // The box's own undo would restore a note this stack never recorded, so it is taken
+    // over rather than left to run alongside.
+    const undone = new InputEvent('beforeinput', { bubbles: true, cancelable: true, inputType: 'historyUndo' })
+    fireEvent(box(), undone)
+
+    expect(undone.defaultPrevented).toBe(true)
+    expect(box().value).toBe(FOLDABLE)
+  })
+
   it('keeps a fold open while the find has a match inside it', () => {
     const { rerender } = render(
       <StageNoteEditor label="Interview 2" onChange={() => {}} query="" value={FOLDABLE} />,

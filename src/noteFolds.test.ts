@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest'
 import { buildSections, foldRegions, parseMarkdown } from './markdown'
 import {
   applyProjectedEdit,
+  changedLines,
   hiddenRanges,
   projectText,
   toProjectedLine,
@@ -189,5 +190,27 @@ describe('typing into a folded note', () => {
     expect(result.opened).toEqual([])
     expect([...result.anchors]).toEqual([0])
     expect(result.caret).toBe(at + ' and threads'.length)
+  })
+})
+
+describe('what a step back changes', () => {
+  it('names the lines two versions of a note differ over', () => {
+    const edited = NOTE.replace('Ask about the timeline.', 'Ask about the timeline today.')
+
+    expect(changedLines(NOTE, edited)).toEqual({ start: 14, end: 14 })
+  })
+
+  it('names the lines a deletion brings back, so the folds over them can open', () => {
+    // The note as it was, against the note with everything under its first heading gone:
+    // undo has to open that heading, or what it brought back is hidden behind it. The
+    // heading line itself never changed, so the span starts under it — which is exactly
+    // the run of lines that heading folds.
+    const deleted = ['## Themes', '## Questions', '', '- On-call', '', '  How often is the weekend rotation?', '', '- Comp', '', '## Close', '', 'Ask about the timeline.'].join('\n')
+
+    expect(changedLines(deleted, NOTE)).toEqual({ start: 1, end: 4 })
+  })
+
+  it('has nothing to say about a note that did not change', () => {
+    expect(changedLines(NOTE, NOTE)).toBeNull()
   })
 })
