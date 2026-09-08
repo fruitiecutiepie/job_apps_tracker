@@ -2,11 +2,25 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
-import { createDemoDocument } from '../domain/demo'
 import { loadTrackerDocument, resetTrackerDocument, saveTrackerDocument } from '../domain/storage'
+import { seedNamedCompanies } from './fixture'
 import { handleTestAttachmentFetch, wipeTestAttachments } from './attachmentStore'
 import { handleTestNoteEditFetch, wipeTestEditorSessions } from './noteEditStore'
 import { testTrackerStore } from './trackerStore'
+
+/*
+ * Testing Library decides whether fake timers are running by looking for a global `jest`
+ * and then calling `jest.advanceTimersByTime` to drive its own polling. Vitest defines no
+ * such global, so `waitFor` concludes the clock is real: switch the timers off underneath
+ * it and it polls an interval nothing advances, and the test hangs until its budget runs
+ * out. Pointing the name at `vi` is what the ecosystem settled on, and it is enough —
+ * vitest's faked `setTimeout` already carries the `clock` property the same check reads,
+ * and `vi` already has the method it calls.
+ *
+ * Inert until a test asks for fake timers: with a real clock the check finds no `clock`
+ * on `setTimeout` and answers false, exactly as it does without this.
+ */
+;(globalThis as typeof globalThis & { jest?: unknown }).jest = vi
 
 afterEach(() => {
   cleanup()
@@ -18,7 +32,7 @@ beforeEach(() => {
   testTrackerStore.clear()
   wipeTestAttachments()
   wipeTestEditorSessions()
-  saveTrackerDocument(createDemoDocument(), testTrackerStore)
+  seedNamedCompanies()
 
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input.toString()

@@ -6,6 +6,7 @@ import { DEFAULT_DEMO_REFERENCE } from '../domain/demo'
 import { loadTrackerDocument } from '../domain/storage'
 import { formatShortDate, formatTimeOfDay } from '../views/viewUtils'
 import App from '../App'
+import { seedFullDemo } from './fixture'
 import { testTrackerStore } from './trackerStore'
 import {
   readTestEditorNote,
@@ -43,9 +44,22 @@ function readSavedDocument() {
   return loadTrackerDocument(testTrackerStore)
 }
 
+/**
+ * Renders the app and waits for its first load.
+ *
+ * The wait carries its own budget because the default is one second, and one second is not
+ * a measurement of this app — it is a measurement of the machine. The first render walks a
+ * thousand nodes and reads the document behind a stubbed fetch, and on a loaded laptop that
+ * takes longer than a second often enough to be the single largest source of failures that
+ * say nothing about the code. Bounded by the test's own timeout either way, so a genuine
+ * hang still fails; what this stops is a slow start reading as a broken one.
+ */
 async function renderLoadedApp() {
   const view = render(<App />)
-  await waitFor(() => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument())
+  await waitFor(
+    () => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument(),
+    { timeout: 15_000 },
+  )
   return view
 }
 
@@ -72,9 +86,12 @@ describe('job applications tracker', () => {
    * a date rather than on a change — which is exactly what happened to the Kanban card names
    * below once Saffron Systems aged past DEFAULT_STALE_THRESHOLD_DAYS.
    *
-   * Only Date is faked. Faking the timers as well would hang every waitFor in this file:
-   * Testing Library's fake-timer support is gated on a global `jest`, which vitest does not
-   * define, so its polling would sit on a setInterval that nothing ever advances.
+   * Only Date is faked by default. Faking the timers as well used to hang every waitFor in
+   * this file, because Testing Library's fake-timer support is gated on a global `jest`
+   * that vitest does not define and its polling would sit on an interval nothing advanced.
+   * The setup file now points that name at `vi`, so a test can take the whole clock if
+   * waiting in real time is the slow part of it — see the one below that does. It has to
+   * re-pin the system time when it does, and hand user-event the same clock to wind on.
    */
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] })
@@ -93,6 +110,8 @@ describe('job applications tracker', () => {
   })
 
   it('starts with every configured state represented in the Kanban', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     await renderLoadedApp()
 
     for (const state of states) {
@@ -135,6 +154,8 @@ describe('job applications tracker', () => {
   }, 30_000)
 
   it('creates an application through the accessible form and can find it globally', async () => {
+    // Counts the whole corpus after adding to it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -173,6 +194,8 @@ describe('job applications tracker', () => {
   })
 
   it('filters the Kanban by state without changing saved applications', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -186,6 +209,8 @@ describe('job applications tracker', () => {
   })
 
   it('filters to every rejection at once, and to everything that is not one', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -209,6 +234,8 @@ describe('job applications tracker', () => {
   })
 
   it('filters to the applications that have gone quiet, whatever stage they sit at', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -235,6 +262,8 @@ describe('job applications tracker', () => {
   })
 
   it('copies the roles of a whole outcome, not just one state', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -250,6 +279,8 @@ describe('job applications tracker', () => {
   })
 
   it('filters views by company without changing saved applications', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -261,6 +292,8 @@ describe('job applications tracker', () => {
   })
 
   it('filters views by source without changing saved applications', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -272,6 +305,8 @@ describe('job applications tracker', () => {
   })
 
   it('puts search on the count row, not among the filters', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     await renderLoadedApp()
 
     const count = screen.getByText('19 of 19 applications shown')
@@ -306,6 +341,8 @@ describe('job applications tracker', () => {
   })
 
   it('copies one line per showing application, newest filter state included', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -323,6 +360,8 @@ describe('job applications tracker', () => {
   })
 
   it('persists edits across reloads and appends history only when state changes', async () => {
+    // Counts the whole corpus, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     const { unmount } = await renderLoadedApp()
     const before = readSavedDocument().applications.find(
@@ -361,6 +400,8 @@ describe('job applications tracker', () => {
   })
 
   it('marks a next action done from the board, recording it apart from the notes', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     const { unmount } = await renderLoadedApp()
     const before = readSavedDocument().applications.find(
@@ -402,6 +443,8 @@ describe('job applications tracker', () => {
   })
 
   it('marks an action done from the editor and lists it apart from the notes', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
     const before = readSavedDocument().applications.find(
@@ -448,6 +491,8 @@ describe('job applications tracker', () => {
   })
 
   it('removes a completed action recorded by mistake', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
     const before = readSavedDocument().applications.find(
@@ -477,11 +522,13 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
 
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
-    expect(within(dialog).getByRole('heading', { name: 'Applied' })).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('heading', { name: 'Marble & Finch · Applied' }),
+    ).toBeInTheDocument()
     expect(within(dialog).getByText('Current stage')).toBeInTheDocument()
 
     await user.type(
-      within(dialog).getByLabelText('Applied prep notes'),
+      within(dialog).getByLabelText('Marble & Finch · Applied prep notes'),
       'Ask about the rebrand project',
     )
 
@@ -514,12 +561,22 @@ describe('job applications tracker', () => {
   })
 
   it('keeps the last keystrokes when the panel is closed before they were written', async () => {
-    const user = userEvent.setup()
+    /*
+     * The one test on a fake clock, as a trial of it. The panel's autosave is the thing
+     * being waited for, so waiting for it in real time is time spent proving nothing.
+     * user-event schedules its own delays between keystrokes and needs the same clock
+     * wound on, or the typing never finishes.
+     */
+    vi.useFakeTimers()
+    // Re-pinned: installing the timers afresh drops the system time the beforeEach set,
+    // and the demo's stale, overdue and calendar dates are all read off that.
+    vi.setSystemTime(new Date(DEFAULT_DEMO_REFERENCE))
+    const user = userEvent.setup({ advanceTimers: (ms) => vi.advanceTimersByTime(ms) })
     await renderLoadedApp()
 
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
-    await user.type(within(dialog).getByLabelText('Applied prep notes'), 'Salary band question')
+    await user.type(within(dialog).getByLabelText('Marble & Finch · Applied prep notes'), 'Salary band question')
 
     // Closed straight away, well inside the wait: the keystrokes just before the panel
     // goes are the ones the wait has not run out on, and the ones worth keeping.
@@ -533,6 +590,7 @@ describe('job applications tracker', () => {
           .stage_notes,
       ).toEqual([expect.objectContaining({ state: 'applied', body: 'Salary band question' })]),
     )
+    vi.useRealTimers()
   })
 
   it('writes only the stage that changed, leaving the other stages as they were', async () => {
@@ -548,9 +606,9 @@ describe('job applications tracker', () => {
       )!.stage_notes
     const stamps = new Map(notes().map((note) => [note.state, note.updated_at]))
 
-    await user.click(within(dialog).getByRole('tab', { name: 'Offer' }))
-    await user.click(within(dialog).getByRole('button', { name: 'Edit Offer' }))
-    await user.type(within(dialog).getByLabelText('Offer prep notes'), ' and the review cycle')
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Offer' }))
+    await user.type(within(dialog).getByLabelText('Halcyon Maps · Offer prep notes'), ' and the review cycle')
 
     // The clock is pinned, so a rewritten note is stamped now and an untouched one keeps
     // the date it was seeded with — which is what tells the two apart.
@@ -572,13 +630,14 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
-    // The application's own stage is always listed, so only the others can be closed.
-    expect(within(dialog).queryByRole('button', { name: 'Close the Interview 2 tab' }))
-      .not.toBeInTheDocument()
+    // Every tab closes, the current stage's included: with notes from several
+    // applications in one panel there is no single stage it must always keep.
+    expect(within(dialog).getByRole('button', { name: 'Close the Halcyon Maps · Interview 2 tab' }))
+      .toBeInTheDocument()
 
-    await user.click(within(dialog).getByRole('button', { name: 'Close the Offer tab' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Close the Halcyon Maps · Offer tab' }))
     expect(within(dialog).getAllByRole('tab').map((tab) => tab.textContent))
-      .toEqual(['Interview 2Current stage', 'Interview 1'])
+      .toEqual(['Halcyon Maps · Interview 2Current stage', 'Halcyon Maps · Interview 1'])
 
     // Off screen, not deleted: the note is untouched and the tab is back next time.
     expect(
@@ -592,7 +651,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     expect(
       within(screen.getByRole('dialog', { name: 'Stage prep notes' }))
-        .getByRole('tab', { name: 'Offer' }),
+        .getByRole('tab', { name: 'Halcyon Maps · Offer' }),
     ).toBeInTheDocument()
   })
 
@@ -608,19 +667,19 @@ describe('job applications tracker', () => {
     expect(within(notes).getByText('Cutting cycle time')).toBeInTheDocument()
 
     await user.type(
-      within(notes).getByLabelText('Capture a line in Interview 2'),
+      within(notes).getByLabelText('Capture a line in Halcyon Maps · Interview 2'),
       'Two more rounds after this{Enter}',
     )
 
     // Enter files the line rather than submitting the panel around it, so the note is
     // still open to be read from and captured into again.
     expect(within(dialog).getByRole('tabpanel')).toBeInTheDocument()
-    expect(within(notes).getByLabelText('Capture a line in Interview 2')).toHaveValue('')
+    expect(within(notes).getByLabelText('Capture a line in Halcyon Maps · Interview 2')).toHaveValue('')
     expect(screen.getByRole('status')).toHaveTextContent('Note captured.')
 
     // It reads in the docked log, under today, and only there: the prep note above is
     // a different field and does not gain a copy of it.
-    const log = within(notes).getByRole('log', { name: 'Heard in Interview 2' })
+    const log = within(notes).getByRole('log', { name: 'Heard in Halcyon Maps · Interview 2' })
     expect(within(log).getByText('Two more rounds after this')).toBeInTheDocument()
     expect(within(notes).getAllByText('Two more rounds after this')).toHaveLength(1)
 
@@ -663,14 +722,14 @@ describe('job applications tracker', () => {
 
     // Captures are their own field, so writing the prep note cannot race them: the log
     // and its capture line stay put rather than being replaced by the editor.
-    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
-    expect(within(dialog).getByLabelText('Interview 2 prep notes')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
+    expect(within(dialog).getByLabelText('Halcyon Maps · Interview 2 prep notes')).toBeInTheDocument()
 
-    const log = within(dialog).getByRole('log', { name: 'Heard in Interview 2' })
+    const log = within(dialog).getByRole('log', { name: 'Heard in Halcyon Maps · Interview 2' })
     expect(within(log).getByText('Team is 40 engineers across four squads')).toBeInTheDocument()
 
     await user.type(
-      within(dialog).getByLabelText('Capture a line in Interview 2'),
+      within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 2'),
       'Offer decision sits with the VP{Enter}',
     )
 
@@ -688,8 +747,8 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
-    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
-    await user.clear(within(dialog).getByLabelText('Interview 2 prep notes'))
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
+    await user.clear(within(dialog).getByLabelText('Halcyon Maps · Interview 2 prep notes'))
 
     // A blank body drops a note that holds nothing else. This one was told things.
     const captured = () =>
@@ -712,11 +771,11 @@ describe('job applications tracker', () => {
     )!
     const [first] = before.stage_notes.find((note) => note.state === 'interview_2')!.heard
 
-    await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Interview 2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Halcyon Maps · Interview 2' }))
 
-    const rows = within(dialog).getByRole('list', { name: 'Captured lines in Interview 2' })
+    const rows = within(dialog).getByRole('list', { name: 'Captured lines in Halcyon Maps · Interview 2' })
     const box = within(rows).getByLabelText(
-      `Captured at ${formatTimeOfDay(first.at)} in Interview 2`,
+      `Captured at ${formatTimeOfDay(first.at)} in Halcyon Maps · Interview 2`,
     )
     expect(box).toHaveValue('Team is 40 engineers across four squads')
 
@@ -734,8 +793,8 @@ describe('job applications tracker', () => {
     expect(line.at).toBe(first.at)
 
     // Read it back: the log shows the corrected line, under the day it was captured on.
-    await user.click(within(dialog).getByRole('button', { name: 'Read the captured lines in Interview 2' }))
-    const log = within(dialog).getByRole('log', { name: 'Heard in Interview 2' })
+    await user.click(within(dialog).getByRole('button', { name: 'Read the captured lines in Halcyon Maps · Interview 2' }))
+    const log = within(dialog).getByRole('log', { name: 'Heard in Halcyon Maps · Interview 2' })
     expect(within(log).getByText('Team is 42 engineers across four squads')).toBeInTheDocument()
   })
 
@@ -752,9 +811,9 @@ describe('job applications tracker', () => {
     const heard = before.stage_notes.find((note) => note.state === 'interview_2')!.heard
     expect(heard).toHaveLength(3)
 
-    await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Interview 2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Halcyon Maps · Interview 2' }))
     await user.click(within(dialog).getByRole('button', {
-      name: `Remove the line captured at ${formatTimeOfDay(heard[1].at)} in Interview 2`,
+      name: `Remove the line captured at ${formatTimeOfDay(heard[1].at)} in Halcyon Maps · Interview 2`,
     }))
 
     expect(screen.getByRole('status')).toHaveTextContent('Note removed.')
@@ -794,12 +853,12 @@ describe('job applications tracker', () => {
       return store(input, init)
     }))
 
-    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
-    await user.type(within(dialog).getByLabelText('Interview 2 prep notes'), ' Ask about on-call.')
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
+    await user.type(within(dialog).getByLabelText('Halcyon Maps · Interview 2 prep notes'), ' Ask about on-call.')
     await waitFor(() => expect(inFlight).toBe(true), { timeout: 3000 })
 
     await user.type(
-      within(dialog).getByLabelText('Capture a line in Interview 2'),
+      within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 2'),
       'Decision comes back Friday{Enter}',
     )
     release()
@@ -824,14 +883,14 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
     await user.keyboard('{Control>}k{/Control}')
-    expect(within(dialog).getByLabelText('Capture a line in Interview 2')).toHaveFocus()
+    expect(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 2')).toHaveFocus()
 
     // Split, then read the second pane: capture follows the pane being read rather than
     // the one that was open first.
     await user.keyboard('{Control>}\\{/Control}')
-    await user.click(within(dialog).getByRole('heading', { name: 'Interview 1' }))
+    await user.click(within(dialog).getByRole('heading', { name: 'Halcyon Maps · Interview 1' }))
     await user.keyboard('{Control>}k{/Control}')
-    expect(within(dialog).getByLabelText('Capture a line in Interview 1')).toHaveFocus()
+    expect(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 1')).toHaveFocus()
   })
 
   it('names its shortcuts on the controls that share them and in a list of their own', async () => {
@@ -848,7 +907,7 @@ describe('job applications tracker', () => {
     expect(find).toHaveAttribute('title', 'Open the find bar (Ctrl+F)')
     expect(within(dialog).getByRole('button', { name: 'Go to stage' })).toHaveAttribute(
       'title',
-      'Open the stage picker (Ctrl+P)',
+      'Open the note picker (Ctrl+P)',
     )
     // This one lives in the sidebar beside the outline it collapses, not in the title bar.
     expect(within(dialog).getByRole('button', { name: 'Hide the outline' })).toHaveAttribute(
@@ -860,12 +919,12 @@ describe('job applications tracker', () => {
       'Open a second pane (Ctrl+\\)',
     )
     // Ctrl+K has no button in the title bar, so the box it lands in carries it instead.
-    expect(within(dialog).getByLabelText('Capture a line in Interview 2')).toHaveAttribute(
+    expect(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 2')).toHaveAttribute(
       'aria-keyshortcuts',
       'Meta+K Control+K',
     )
 
-    // All five are listed together, reachable from the keyboard rather than on hover.
+    // All of them are listed together, reachable from the keyboard rather than on hover.
     const trigger = within(dialog).getByRole('button', { name: 'Keyboard shortcuts' })
     expect(trigger).toHaveAttribute('aria-expanded', 'false')
     await user.click(trigger)
@@ -874,8 +933,21 @@ describe('job applications tracker', () => {
     const list = screen.getByRole('group', { name: 'Keyboard shortcuts' })
     expect(
       within(list).getAllByText(/^Ctrl\+/).map((key) => key.textContent),
-    ).toEqual(['Ctrl+\\', 'Ctrl+F', 'Ctrl+P', 'Ctrl+B', 'Ctrl+K'])
+    ).toEqual([
+      'Ctrl+\\',
+      'Ctrl+F',
+      'Ctrl+P',
+      'Ctrl+B',
+      'Ctrl+K',
+      // The two that arrange the panes carry a second modifier, and each covers the pair
+      // of arrows as one row rather than two that would have to be worded twice.
+      'Ctrl+Shift+←/→',
+      'Ctrl+Alt+←/→',
+    ])
     expect(within(list).getByText('Put the caret in the capture box')).toBeInTheDocument()
+    expect(
+      within(list).getByText('Move the tab you are reading to the pane beside it'),
+    ).toBeInTheDocument()
 
     // Escape closes the list before it closes the panel, the debt every overlay in here
     // owes the dialog's own Escape handler, and focus goes back to what opened it.
@@ -893,19 +965,23 @@ describe('job applications tracker', () => {
 
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
     const tabs = within(dialog).getAllByRole('tab').map((tab) => tab.textContent)
-    expect(tabs).toEqual(['Interview 2Current stage', 'Interview 1', 'Offer'])
+    expect(tabs).toEqual([
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Offer',
+    ])
 
     // The current stage is the tab on show, and its saved notes render rather than
     // opening in a textarea.
     const notes = within(dialog).getByRole('tabpanel')
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Interview 2')
-    expect(within(notes).queryByLabelText('Interview 2 prep notes')).not.toBeInTheDocument()
+    expect(within(notes).queryByLabelText('Halcyon Maps · Interview 2 prep notes')).not.toBeInTheDocument()
     expect(within(notes).getByText('Cutting cycle time')).toBeInTheDocument()
 
     // Another stage's note is one tab away, and clearing it drops the note on its own.
-    await user.click(within(dialog).getByRole('tab', { name: 'Interview 1' }))
-    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 1' }))
-    await user.clear(within(dialog).getByLabelText('Interview 1 prep notes'))
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Interview 1' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 1' }))
+    await user.clear(within(dialog).getByLabelText('Halcyon Maps · Interview 1 prep notes'))
 
     const savedStates = () =>
       readSavedDocument()
@@ -915,8 +991,8 @@ describe('job applications tracker', () => {
 
     // The stage keeps its tab and its pane: the note went, but the caret that emptied it
     // is still in the box, and a stage typed into must not vanish from under it.
-    expect(within(dialog).getByRole('tab', { name: 'Interview 1' })).toBeInTheDocument()
-    expect(within(dialog).getByLabelText('Interview 1 prep notes')).toBeInTheDocument()
+    expect(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Interview 1' })).toBeInTheDocument()
+    expect(within(dialog).getByLabelText('Halcyon Maps · Interview 1 prep notes')).toBeInTheDocument()
   })
 
   it('finds text across every stage and follows the matches from tab to tab', async () => {
@@ -961,9 +1037,9 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
-    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
-    const box = within(dialog).getByLabelText('Interview 2 prep notes') as HTMLTextAreaElement
-    expect(box).toHaveAttribute('data-note-source', 'interview_2')
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
+    const box = within(dialog).getByLabelText('Halcyon Maps · Interview 2 prep notes') as HTMLTextAreaElement
+    expect(box.dataset.noteSource).toMatch(/::interview_2$/)
 
     // The note is source now, not an outline, but it is still searched.
     await user.keyboard('{Control>}f{/Control}')
@@ -993,9 +1069,9 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
     // A capture holding the same word as the note being written.
-    await user.type(within(dialog).getByLabelText('Capture a line in Interview 2'), 'More on leads')
+    await user.type(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 2'), 'More on leads')
     await user.keyboard('{Enter}')
-    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
 
     await user.keyboard('{Control>}f{/Control}')
     await user.type(within(dialog).getByLabelText('Find in notes'), 'leads')
@@ -1009,7 +1085,7 @@ describe('job applications tracker', () => {
     expect(within(dialog).getAllByText('leads').some((node) => node.tagName === 'MARK')).toBe(true)
 
     // Wrapping back reaches the source match, marked on the layer behind the box.
-    const box = within(dialog).getByLabelText('Interview 2 prep notes') as HTMLTextAreaElement
+    const box = within(dialog).getByLabelText('Halcyon Maps · Interview 2 prep notes') as HTMLTextAreaElement
     await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
     expect(within(dialog).getByText('1 of 2')).toBeInTheDocument()
     await waitFor(() =>
@@ -1099,7 +1175,7 @@ describe('job applications tracker', () => {
     expect(active()).toHaveTextContent('Interview 1')
 
     // The breadcrumbs name the stage on show, so switching tabs re-labels them.
-    expect(within(dialog).getByText('Interview 1', { selector: '.panel__crumb' })).toBeInTheDocument()
+    expect(within(dialog).getByText('Halcyon Maps · Interview 1', { selector: '.panel__crumb' })).toBeInTheDocument()
 
     await user.keyboard('{ArrowLeft}')
     expect(active()).toHaveTextContent('Interview 2')
@@ -1146,7 +1222,7 @@ describe('job applications tracker', () => {
     }
 
     // The outline follows the tab: Interview 1's note is prose with no headings at all.
-    await user.click(within(dialog).getByRole('tab', { name: 'Interview 1' }))
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Interview 1' }))
     expect(
       within(dialog).queryByRole('button', { name: 'Go to Leadership themes' }),
     ).not.toBeInTheDocument()
@@ -1162,9 +1238,9 @@ describe('job applications tracker', () => {
 
     // Writing rather than reading: there is no rendered heading to scroll to, only the
     // line the heading was typed on.
-    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
     const editor = within(dialog).getByRole('textbox', {
-      name: 'Interview 2 prep notes',
+      name: 'Halcyon Maps · Interview 2 prep notes',
     }) as HTMLTextAreaElement
 
     await user.click(within(dialog).getByRole('button', { name: 'Go to Questions to ask' }))
@@ -1198,9 +1274,9 @@ describe('job applications tracker', () => {
       )
     })
 
-    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
     const editor = within(dialog).getByRole('textbox', {
-      name: 'Interview 2 prep notes',
+      name: 'Halcyon Maps · Interview 2 prep notes',
     }) as HTMLTextAreaElement
 
     await waitFor(() => {
@@ -1216,9 +1292,9 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Edit Interview 2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
     const editor = within(dialog).getByRole('textbox', {
-      name: 'Interview 2 prep notes',
+      name: 'Halcyon Maps · Interview 2 prep notes',
     }) as HTMLTextAreaElement
 
     // Writing under the first heading marks it, wherever the editor was opened.
@@ -1258,7 +1334,7 @@ describe('job applications tracker', () => {
     })
   })
 
-  it('drops a pane whose stage stops being open while the panel is up', async () => {
+  it('keeps a pane open when its note is emptied from an external editor', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -1270,26 +1346,31 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
     await user.click(within(dialog).getByRole('button', { name: 'Split' }))
-    expect(within(dialog).getAllByRole('tabpanel')[1]).toHaveAccessibleName('Interview 1')
+    expect(within(dialog).getAllByRole('tabpanel')[1]).toHaveAccessibleName('Halcyon Maps · Interview 1')
 
     // Emptying the note in an external editor commits straight away, with the panel still
-    // up: the stage leaves the tab bar, so the pane holding it cannot stay open either.
-    await user.click(within(dialog).getByRole('button', { name: 'Open Interview 1 in an editor' }))
+    // up. What is open is the panel's own arrangement rather than a reading of which notes
+    // exist, so the tab stays where it was: clearing a note is not a reason to rearrange
+    // the panes around whoever cleared it.
+    await user.click(within(dialog).getByRole('button', { name: 'Open Halcyon Maps · Interview 1 in an editor' }))
     writeTestEditorNote(target.id, 'interview_1', '')
 
     await waitFor(
       () => {
-        expect(within(dialog).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-          'Interview 2Current stage',
-          'Offer',
-        ])
+        expect(
+          readSavedDocument()
+            .applications.find((application) => application.id === target.id)!
+            .stage_notes.map((note) => note.state),
+        ).toEqual(['interview_2', 'offer'])
       },
       // The scratch file is re-read once a second, so this cannot land any sooner.
       { timeout: 4000 },
     )
+
     const panes = within(dialog).getAllByRole('tabpanel')
-    expect(panes).toHaveLength(1)
-    expect(panes[0]).toHaveAccessibleName('Interview 2')
+    expect(panes).toHaveLength(2)
+    expect(panes[1]).toHaveAccessibleName('Halcyon Maps · Interview 1')
+    expect(within(dialog).getAllByRole('tab')).toHaveLength(3)
   })
 
   it('splits into two panes, each reading a different stage, and unsplits again', async () => {
@@ -1306,8 +1387,8 @@ describe('job applications tracker', () => {
     expect(panes).toHaveLength(2)
 
     // The second pane opens on a different stage, and each names the tab it is showing.
-    expect(panes[0]).toHaveAccessibleName('Interview 2')
-    expect(panes[1]).toHaveAccessibleName('Interview 1')
+    expect(panes[0]).toHaveAccessibleName('Halcyon Maps · Interview 2')
+    expect(panes[1]).toHaveAccessibleName('Halcyon Maps · Interview 1')
     expect(within(panes[0]).getByText('Leadership themes')).toBeInTheDocument()
     expect(within(panes[1]).getByText('incident response', { exact: false })).toBeInTheDocument()
 
@@ -1333,8 +1414,8 @@ describe('job applications tracker', () => {
 
     const panes = within(dialog).getAllByRole('tabpanel')
     expect(panes).toHaveLength(2)
-    expect(panes[0]).toHaveAccessibleName('Interview 2')
-    expect(panes[1]).toHaveAccessibleName('Interview 1')
+    expect(panes[0]).toHaveAccessibleName('Halcyon Maps · Interview 2')
+    expect(panes[1]).toHaveAccessibleName('Halcyon Maps · Interview 1')
   })
 
   it('closes one pane of a split without touching the other', async () => {
@@ -1348,11 +1429,11 @@ describe('job applications tracker', () => {
     expect(within(dialog).queryByRole('button', { name: /pane$/ })).not.toBeInTheDocument()
 
     await user.click(within(dialog).getByRole('button', { name: 'Split' }))
-    await user.click(within(dialog).getByRole('button', { name: 'Close the Interview 1 pane' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Close the Halcyon Maps · Interview 1 pane' }))
 
     const panes = within(dialog).getAllByRole('tabpanel')
     expect(panes).toHaveLength(1)
-    expect(panes[0]).toHaveAccessibleName('Interview 2')
+    expect(panes[0]).toHaveAccessibleName('Halcyon Maps · Interview 2')
   })
 
   it('takes the find into a pane and hides the outline on request', async () => {
@@ -1369,8 +1450,8 @@ describe('job applications tracker', () => {
     // Offer is in neither pane, so the find puts it in the focused one.
     expect(within(dialog).getByText('1 of 1')).toBeInTheDocument()
     const panes = within(dialog).getAllByRole('tabpanel')
-    expect(panes[0]).toHaveAccessibleName('Offer')
-    expect(panes[1]).toHaveAccessibleName('Interview 1')
+    expect(panes[0]).toHaveAccessibleName('Halcyon Maps · Offer')
+    expect(panes[1]).toHaveAccessibleName('Halcyon Maps · Interview 1')
 
     // The outline collapses away to give the notes the full width, and comes back. The
     // control that does it sits with the outline it acts on, not up in the title bar
@@ -1401,9 +1482,9 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
-    await user.click(within(dialog).getByLabelText('Applied prep notes'))
+    await user.click(within(dialog).getByLabelText('Marble & Finch · Applied prep notes'))
     await user.paste('# Panel\n\n## Case study\n\n### The numbers\n\n# Questions')
-    await user.click(within(dialog).getByRole('button', { name: 'Read Applied' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Read Marble & Finch · Applied' }))
 
     // The hierarchy is in the markup, not only in the indentation: each heading's
     // children hang off its own row, so the shape is there for a reader and a reader's
@@ -1436,14 +1517,17 @@ describe('job applications tracker', () => {
     const picker = within(dialog).getByLabelText('Go to stage')
     const choices = () => within(within(dialog).getByRole('list', { name: 'Stages' }))
 
-    // Every stage is reachable, and the ones already open say so.
-    expect(choices().getAllByRole('button')).toHaveLength(19)
+    // Every stage of this application is reachable, and the ones already open say so.
+    // The other seeded applications contribute their own current stage, since the picker
+    // is how a second company's notes get into the panel.
+    const labels = () => choices().getAllByRole('button').map((entry) => entry.textContent)
+    expect(labels().filter((label) => label?.startsWith('Halcyon Maps · '))).toHaveLength(19)
+    expect(labels().some((label) => label?.startsWith('Echo Robotics · '))).toBe(true)
     // Exact, because "Interview 2" is also the start of "Interview 2 — Rejected".
-    const interviewTwo = choices().getByText('Interview 2', { selector: '.quick-open__label' })
+    const interviewTwo = choices().getByText('Halcyon Maps · Interview 2', { selector: '.quick-open__label' })
     expect(interviewTwo.closest('button')).toHaveTextContent('Open')
 
     await user.type(picker, 'takeh')
-    expect(choices().getAllByRole('button')).toHaveLength(2)
     expect(choices().getAllByRole('button')[0]).toHaveTextContent('Take-home assessment')
 
     // Escape leaves the picker without opening anything.
@@ -1459,10 +1543,14 @@ describe('job applications tracker', () => {
 
     expect(within(dialog).getAllByRole('tab')).toHaveLength(4)
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Take-home assessment')
-    expect(within(dialog).getByLabelText('Take-home assessment prep notes')).toBeInTheDocument()
+    expect(
+      within(dialog).getByLabelText('Halcyon Maps · Take-home assessment prep notes'),
+    ).toBeInTheDocument()
   })
 
   it('folds headings and sub-points in the reading view without changing saved notes', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -1489,7 +1577,7 @@ describe('job applications tracker', () => {
     ).not.toBeInTheDocument()
     expect(within(dialog).getByText('Cutting cycle time')).toBeInTheDocument()
 
-    await user.click(within(dialog).getByRole('button', { name: 'Collapse all points in Interview 2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Collapse all points in Halcyon Maps · Interview 2' }))
     expect(within(dialog).queryByText('Cutting cycle time')).not.toBeInTheDocument()
 
     // Folding is display state only.
@@ -1510,13 +1598,13 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
-    const textarea = within(dialog).getByLabelText('Applied prep notes')
+    const textarea = within(dialog).getByLabelText('Marble & Finch · Applied prep notes')
     await user.type(textarea, 'Rehearse the rebrand story')
-    await user.click(within(dialog).getByRole('button', { name: 'Bullet point in Applied' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Bullet point in Marble & Finch · Applied' }))
 
     expect(textarea).toHaveValue('- Rehearse the rebrand story')
 
-    await user.click(within(dialog).getByRole('button', { name: 'Read Applied' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Read Marble & Finch · Applied' }))
     expect(within(dialog).getByText('Rehearse the rebrand story')).toBeInTheDocument()
 
     const savedBody = () =>
@@ -1541,7 +1629,7 @@ describe('job applications tracker', () => {
 
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Interview 1')
     await user.type(
-      within(dialog).getByLabelText('Interview 1 prep notes'),
+      within(dialog).getByLabelText('Orbit & Oak · Interview 1 prep notes'),
       'Prepare two operations stories',
     )
 
@@ -1567,7 +1655,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
-    await user.click(within(dialog).getByLabelText('Applied prep notes'))
+    await user.click(within(dialog).getByLabelText('Marble & Finch · Applied prep notes'))
     await user.paste(
       [
         '## Compensation',
@@ -1584,7 +1672,7 @@ describe('job applications tracker', () => {
         '```',
       ].join('\n'),
     )
-    await user.click(within(dialog).getByRole('button', { name: 'Read Applied' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Read Marble & Finch · Applied' }))
 
     // Nested spans mean a phrase can match several ancestors, and a code block's tokens
     // split a line across siblings entirely; a plain substring check over the dialog's
@@ -1614,14 +1702,14 @@ describe('job applications tracker', () => {
     expect(shows('const answer = 1')).toBe(false)
 
     // Collapse all reaches every fold, including ones nested inside others.
-    await user.click(within(dialog).getByRole('button', { name: 'Collapse all points in Applied' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Collapse all points in Marble & Finch · Applied' }))
     for (const text of [...detail, 'Base', 'Timeline']) expect(shows(text), text).toBe(false)
     expect(within(dialog).getByRole('button', { name: 'Compensation' })).toHaveAttribute(
       'aria-expanded',
       'false',
     )
 
-    await user.click(within(dialog).getByRole('button', { name: 'Expand all points in Applied' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Expand all points in Marble & Finch · Applied' }))
     for (const text of [...detail, 'Base', 'Timeline']) expect(shows(text), text).toBe(true)
   })
 
@@ -1650,7 +1738,7 @@ describe('job applications tracker', () => {
     expect(shows('Cutting cycle time')).toBe(false)
 
     // A point without sub-points has nothing to fold and no control to press.
-    await user.click(within(dialog).getByRole('tab', { name: 'Offer' }))
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }))
     await user.click(notes().getByText('Remote expectations'))
     expect(shows('Remote expectations')).toBe(true)
   })
@@ -1663,9 +1751,9 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
     const shows = (text: string) => within(dialog).queryAllByText(text, { exact: false }).length > 0
 
-    await user.click(within(dialog).getByLabelText('Applied prep notes'))
+    await user.click(within(dialog).getByLabelText('Marble & Finch · Applied prep notes'))
     await user.paste('- See the [job ad](https://example.com/ad)\n  - Salary band is listed')
-    await user.click(within(dialog).getByRole('button', { name: 'Read Applied' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Read Marble & Finch · Applied' }))
 
     // The link is a real link, not a button nested inside one.
     const link = within(dialog).getByRole('link', { name: 'job ad' })
@@ -1702,9 +1790,9 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
-    await user.click(within(dialog).getByLabelText('Applied prep notes'))
+    await user.click(within(dialog).getByLabelText('Marble & Finch · Applied prep notes'))
     await user.paste('Draft from the app')
-    await user.click(within(dialog).getByRole('button', { name: 'Open Applied in an editor' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Open Marble & Finch · Applied in an editor' }))
 
     // The current draft is what gets handed over, not the last saved value.
     expect(readTestEditorNote(target.id, 'applied')).toBe('Draft from the app')
@@ -1712,7 +1800,7 @@ describe('job applications tracker', () => {
     expect(within(dialog).getByText('data/editing/', { exact: false })).toBeInTheDocument()
 
     // While the editor owns the stage, the in-app textarea steps aside.
-    expect(within(dialog).queryByLabelText('Applied prep notes')).not.toBeInTheDocument()
+    expect(within(dialog).queryByLabelText('Marble & Finch · Applied prep notes')).not.toBeInTheDocument()
 
     // Stand in for saving the file in the editor.
     writeTestEditorNote(target.id, 'applied', '## Rewritten\n\n- In my editor')
@@ -1740,9 +1828,9 @@ describe('job applications tracker', () => {
     await new Promise((resolve) => setTimeout(resolve, AUTOSAVE_SETTLE_MS))
     expect(writes()).toBe(before)
 
-    await user.click(within(dialog).getByRole('button', { name: 'Stop editing Applied externally' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Stop editing Marble & Finch · Applied externally' }))
     expect(testEditorSessionCount()).toBe(0)
-    expect(within(dialog).getByRole('button', { name: 'Edit Applied' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Edit Marble & Finch · Applied' })).toBeInTheDocument()
   })
 
   it('ends every editing session when the prep notes dialog closes', async () => {
@@ -1752,10 +1840,10 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
-    await user.click(within(dialog).getByRole('button', { name: 'Open Interview 2 in an editor' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Open Halcyon Maps · Interview 2 in an editor' }))
     // A session outlives the tab that started it, so both are still open at the end.
-    await user.click(within(dialog).getByRole('tab', { name: 'Offer' }))
-    await user.click(within(dialog).getByRole('button', { name: 'Open Offer in an editor' }))
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Open Halcyon Maps · Offer in an editor' }))
     expect(testEditorSessionCount()).toBe(2)
 
     await user.click(within(dialog).getByRole('button', { name: 'Close dialog' }))
@@ -1775,7 +1863,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Open Applied in an editor' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Open Marble & Finch · Applied in an editor' }))
 
     // The browser is the one that opens it, so the URL is offered as a link too.
     const link = within(dialog).getByRole('link', { name: 'cursor' })
@@ -1799,7 +1887,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Open Applied in an editor' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Open Marble & Finch · Applied in an editor' }))
 
     const banner = within(dialog).getByRole('status')
     expect(banner).toHaveTextContent('on devbox')
@@ -1807,6 +1895,8 @@ describe('job applications tracker', () => {
   })
 
   it('honors deletion cancellation before deleting and saving an application', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     await renderLoadedApp()
@@ -1833,6 +1923,8 @@ describe('job applications tracker', () => {
   })
 
   it('resets to the same 19 examples only after confirmation and clears display filters', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     await renderLoadedApp()
@@ -1867,6 +1959,8 @@ describe('job applications tracker', () => {
   })
 
   it('replaces saved data from a valid import only after confirmation', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     await renderLoadedApp()
@@ -1912,6 +2006,8 @@ describe('job applications tracker', () => {
   })
 
   it('exposes form labels and prevents an orphaned next-action date', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -1932,6 +2028,8 @@ describe('job applications tracker', () => {
   })
 
   it('imports a calendar invite against a state and replaces it when it is rescheduled', async () => {
+    // Reads the shown-of-total count, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -2259,6 +2357,460 @@ describe('job applications tracker', () => {
     ).toHaveLength(0)
   })
 
+  /**
+   * Drags a tab with a pointer, the way the panel's own drag works.
+   *
+   * The one thing supplied rather than driven is what the pointer is over: the drag asks
+   * `document.elementsFromPoint`, and jsdom has no layout to answer with. Everything else is
+   * the real path — the movement threshold that tells a drag from a click, the pointer
+   * capture, and the commit read at the release. The hit testing is covered for real in
+   * `panelLayout.browser.test.tsx`, which is the half of this jsdom cannot do at all.
+   */
+  function pointerDrag(source: Element, over: Element) {
+    const found = document.elementsFromPoint
+    document.elementsFromPoint = () => [over as Element]
+    try {
+      const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+      fireEvent.pointerDown(source, { ...pointer, clientX: 0, clientY: 0 })
+      // Past MOUSE_THRESHOLD_PX, which is what makes this a drag rather than a click.
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
+    } finally {
+      document.elementsFromPoint = found
+    }
+  }
+
+  const slotOf = (tab: HTMLElement) => tab.closest('.panel__tab-slot')!
+
+  /** The same, but landing on one of the pane edges that a drag raises. */
+  function pointerDragToEdge(source: Element, edge: 'left' | 'right' | 'top' | 'bottom') {
+    const found = document.elementsFromPoint
+    // Resolved on each ask rather than captured once: the zones are not in the document
+    // until the drag has taken hold, which happens partway through this gesture.
+    document.elementsFromPoint = () =>
+      [document.querySelector(`[data-drop-edge="${edge}"]`)].filter(Boolean) as Element[]
+    try {
+      const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+      fireEvent.pointerDown(source, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 80, clientY: 0 })
+      fireEvent.pointerUp(window, { ...pointer, clientX: 80, clientY: 0 })
+    } finally {
+      document.elementsFromPoint = found
+    }
+  }
+
+  const tabNames = (dialog: HTMLElement) =>
+    within(dialog).getAllByRole('tab').map((tab) => tab.textContent)
+
+  it('reorders a tab within its pane by dragging it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    expect(tabNames(dialog)).toEqual([
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Offer',
+    ])
+
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    pointerDrag(offer, slotOf(within(dialog).getAllByRole('tab')[0]))
+
+    expect(tabNames(dialog)).toEqual([
+      'Halcyon Maps · Offer',
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Interview 1',
+    ])
+    // Moving a tab is an arrangement, not an edit: the notes are untouched.
+    expect(
+      readSavedDocument()
+        .applications.find((application) => application.company === 'Halcyon Maps')!
+        .stage_notes.map((note) => note.state),
+    ).toEqual(['interview_1', 'interview_2', 'offer'])
+  })
+
+  it('moves a tab into the other pane by dragging it onto that pane’s strip', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    const strips = within(dialog).getAllByRole('tablist')
+    expect(strips).toHaveLength(2)
+    expect(within(strips[0]).getAllByRole('tab')).toHaveLength(2)
+    expect(within(strips[1]).getAllByRole('tab')).toHaveLength(1)
+
+    const offer = within(strips[0]).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    // Onto the bare end of the other pane's strip, which is its last drop place.
+    pointerDrag(offer, strips[1])
+
+    const after = within(dialog).getAllByRole('tablist')
+    expect(within(after[0]).getAllByRole('tab')).toHaveLength(1)
+    expect(within(after[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Offer',
+    ])
+  })
+
+  it('moves a tab between panes with the keyboard, so a drag is not the only way', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    // The first pane is focused and reading Interview 2; send that tab to the pane beside it.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+
+    const strips = within(dialog).getAllByRole('tablist')
+    expect(within(strips[0]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Halcyon Maps · Offer',
+    ])
+    expect(within(strips[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Interview 1',
+    ])
+  })
+
+  it('reorders a tab within its pane with the keyboard', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    await user.keyboard('{Control>}{Alt>}{ArrowRight}{/Alt}{/Control}')
+    expect(tabNames(dialog)).toEqual([
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Offer',
+    ])
+
+    // Wraps rather than stopping, so the tab can reach either end from either end.
+    await user.keyboard('{Control>}{Alt>}{ArrowLeft}{/Alt}{/Control}')
+    expect(tabNames(dialog)).toEqual([
+      'Halcyon Maps · Interview 2Current stage',
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Offer',
+    ])
+  })
+
+  it('collapses the split when the last tab is dragged out of a pane', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
+
+    // Splitting leaves the first pane focused, so reach for the second one before moving
+    // its tab: the arrow acts on the pane being read, like every other panel binding.
+    await user.click(within(dialog).getByRole('heading', { name: 'Halcyon Maps · Interview 1' }))
+
+    // That pane holds one tab; moving it out leaves nothing to show there.
+    await user.keyboard('{Control>}{Shift>}{ArrowLeft}{/Shift}{/Control}')
+
+    const strips = within(dialog).getAllByRole('tablist')
+    expect(strips).toHaveLength(1)
+    expect(within(strips[0]).getAllByRole('tab')).toHaveLength(3)
+  })
+
+  it('names the ways a tab can be moved, for a reader who cannot drag one', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    const strip = within(dialog).getAllByRole('tablist')[0]
+    const hint = document.getElementById(strip.getAttribute('aria-describedby')!)
+    expect(hint).toHaveTextContent(/Drag a tab to reorder it or move it to another pane/)
+    expect(hint).toHaveTextContent(/to move it between panes/)
+
+    // And the tab itself carries both bindings, so they are not only in the hint.
+    const tab = within(strip).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    expect(tab.getAttribute('aria-keyshortcuts')).toContain('Shift+ArrowRight')
+    expect(tab.getAttribute('aria-keyshortcuts')).toContain('Alt+Meta+ArrowRight')
+  })
+
+  it('resizes a split from the keyboard, since jsdom has no layout to drag against', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
+    expect(handle).toHaveAttribute('aria-orientation', 'vertical')
+    expect(handle).toHaveAttribute('aria-valuenow', '50')
+
+    const panes = () => within(dialog).getAllByRole('tabpanel')
+    const widthOf = (index: number) =>
+      (panes()[index].closest('.panel__split-child') as HTMLElement).style.flexBasis
+
+    expect(widthOf(0)).toBe('50%')
+
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    expect(widthOf(0)).toBe('52%')
+    expect(widthOf(1)).toBe('48%')
+
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+    expect(widthOf(0)).toBe('48%')
+    expect(widthOf(1)).toBe('52%')
+  })
+
+  it('holds a pane at its minimum rather than letting a resize collapse it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
+    // Far more presses than it takes to cross the split, so the clamp is what stops it.
+    for (let press = 0; press < 40; press += 1) fireEvent.keyDown(handle, { key: 'ArrowLeft' })
+
+    const first = within(dialog).getAllByRole('tabpanel')[0].closest('.panel__split-child')
+    expect((first as HTMLElement).style.flexBasis).toBe('15%')
+    // Still a pane, not a sliver: both notes are on screen.
+    expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(2)
+  })
+
+  it('keeps a resized pane’s width when a tab moves between panes', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+    fireEvent.keyDown(handle, { key: 'ArrowRight' })
+
+    const widthOf = (index: number) =>
+      (within(dialog).getAllByRole('tabpanel')[index].closest('.panel__split-child') as HTMLElement)
+        .style.flexBasis
+    expect(widthOf(0)).toBe('54%')
+
+    // Moving a tab across rearranges what is in the panes, not how wide they are.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+    expect(widthOf(0)).toBe('54%')
+  })
+
+  it('splits a new pane open by dragging a tab onto the edge of one', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(1)
+
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    // The zones only exist while a drag is running, so the drop place is named by where
+    // the pointer ends up rather than found before the gesture starts.
+    pointerDragToEdge(offer, 'right')
+
+    const strips = within(dialog).getAllByRole('tablist')
+    expect(strips).toHaveLength(2)
+    expect(within(strips[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
+      'Halcyon Maps · Offer',
+    ])
+    expect(within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' }))
+      .toHaveAttribute('aria-orientation', 'vertical')
+  })
+
+  it('stacks the new pane when the tab is dropped on a top or bottom edge', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    pointerDragToEdge(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }), 'bottom')
+
+    // A column split, so its divider runs the other way.
+    expect(within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' }))
+      .toHaveAttribute('aria-orientation', 'horizontal')
+    expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(2)
+  })
+
+  it('raises no drop zones until a tab is actually being dragged', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
+
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+
+    // A press on its own is not a drag: it is how a tab is selected, and raising the zones
+    // under every click would put them over the note the reader is trying to read.
+    fireEvent.pointerDown(offer, { ...pointer, clientX: 0, clientY: 0 })
+    expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
+
+    // Moving past the threshold is what takes hold of the tab.
+    fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+    expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(4)
+
+    // Abandoning the drag puts them away again rather than leaving them over the note.
+    fireEvent.pointerCancel(window, pointer)
+    expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
+  })
+
+  it('leaves a short press as a click, so selecting a tab still selects it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // A mouse commits to a drag on distance, so a press that does not travel is a click.
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }))
+
+    expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Offer')
+    expect(within(dialog).getByRole('tabpanel')).toHaveAccessibleName('Halcyon Maps · Offer')
+    // And no drag was ever in progress, so nothing was left over the note.
+    expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
+  })
+
+  it('picks a tab up on a long touch, and leaves a short one to the scroller', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    const touch = { pointerId: 2, pointerType: 'touch' }
+    const zones = () => dialog.querySelectorAll('[data-drop-edge]')
+
+    // A finger that moves straight away is scrolling the strip, not carrying a tab.
+    fireEvent.pointerDown(offer, { ...touch, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(window, { ...touch, clientX: 60, clientY: 0 })
+    expect(zones()).toHaveLength(0)
+    fireEvent.pointerUp(window, { ...touch, clientX: 60, clientY: 0 })
+
+    /*
+     * Held still, it takes hold: the gesture every native list-reorder uses, and the only
+     * one a strip that scrolls sideways can also be rearranged by.
+     *
+     * Waited out for real, though it no longer has to be: the setup file points the global
+     * `jest` that Testing Library looks for at `vi`, so a test here can take the whole
+     * clock. This one does not, because what that buys is the wait and the wait is not what
+     * costs — the hold is a third of a second against a render measured in seconds — and
+     * taking the clock would mean re-pinning the system time and handing user-event a clock
+     * to wind on for that third of a second back.
+     */
+    fireEvent.pointerDown(offer, { ...touch, clientX: 0, clientY: 0 })
+    expect(zones()).toHaveLength(0)
+    await waitFor(() => expect(zones()).toHaveLength(4), { timeout: 4000 })
+
+    fireEvent.pointerCancel(window, touch)
+    expect(zones()).toHaveLength(0)
+  })
+
+  it('splits from the keyboard when there is no pane in that direction yet', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(1)
+
+    // Nothing below to move into, so the same binding opens a pane there.
+    await user.keyboard('{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}')
+
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
+    expect(within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' }))
+      .toHaveAttribute('aria-orientation', 'horizontal')
+
+    // And with a pane there now, the same binding moves into it rather than splitting again.
+    await user.keyboard('{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}')
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
+  })
+
+  it('splits to any edge of a pane, nesting only where the axis changes', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+
+    // Split a pane off to the right, which leaves two.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
+
+    // The same binding now moves into the pane that is there rather than splitting again —
+    // one intent, put this note over there, whichever case the tree happens to be in.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
+
+    // From the far pane there is nothing to the right, so this one splits, and the new
+    // pane joins the row it is already in rather than nesting a second split inside it.
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+
+    expect(within(dialog).getAllByRole('tablist')).toHaveLength(3)
+    expect(
+      within(dialog).getAllByRole('separator').map((handle) => handle.getAttribute('aria-label')),
+    ).toEqual(['Resize pane 1 and pane 2', 'Resize pane 2 and pane 3'])
+    expect(dialog.querySelectorAll('.panel__split')).toHaveLength(1)
+  })
+
+  /**
+   * The keyboard tests above drive `onResize` directly; this drives the pointer path that
+   * reaches it, which is the half a real mouse uses. jsdom has no layout, so the split's
+   * box is stubbed — without a width the handler's own guard returns early and the
+   * arithmetic under test never runs.
+   */
+  it('resizes by dragging the handle, against a stubbed box jsdom cannot measure', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+
+    const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
+    const split = handle.parentElement as HTMLElement
+    split.getBoundingClientRect = () => ({ width: 1000, height: 600, top: 0, left: 0, right: 1000, bottom: 600, x: 0, y: 0, toJSON: () => ({}) })
+
+    const widthOf = (index: number) =>
+      (within(dialog).getAllByRole('tabpanel')[index].closest('.panel__split-child') as HTMLElement)
+        .style.flexBasis
+
+    expect(widthOf(0)).toBe('50%')
+
+    // A tenth of the split to the right is a tenth of its width, not a tenth of a pane.
+    fireEvent.mouseDown(handle, { clientX: 500 })
+    fireEvent.mouseMove(window, { clientX: 600 })
+    expect(widthOf(0)).toBe('60%')
+    expect(widthOf(1)).toBe('40%')
+
+    // Measured from where the pointer last was, so a continued drag tracks it rather than
+    // accelerating away — two more steps of 50px move it 5% each, not 15% and 20%.
+    fireEvent.mouseMove(window, { clientX: 650 })
+    expect(widthOf(0)).toBe('65%')
+    fireEvent.mouseMove(window, { clientX: 700 })
+    expect(widthOf(0)).toBe('70%')
+
+    // Letting go stops it following the pointer.
+    fireEvent.mouseUp(window)
+    fireEvent.mouseMove(window, { clientX: 900 })
+    expect(widthOf(0)).toBe('70%')
+  })
+
   it('groups existing prep notes from several applications under the stage they share', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
@@ -2381,6 +2933,8 @@ describe('job applications tracker', () => {
     )
 
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
-    expect(within(dialog).getByRole('heading', { name: 'Interview 2' })).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('heading', { name: 'Halcyon Maps · Interview 2' }),
+    ).toBeInTheDocument()
   })
 })

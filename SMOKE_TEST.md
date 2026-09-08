@@ -27,8 +27,9 @@ with no start time are covered by the app integration tests.
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
 
-Finding text in the prep notes panel — counting matches across every stage, stepping through them
-into tabs that are not rendered and wrapping, opening a fold to show a hit and closing it again
+Finding text in the prep notes panel — counting matches across every open note including other
+applications', stepping through them into tabs that are not rendered and wrapping, opening a fold
+to show a hit and closing it again
 afterwards, and Escape closing the find bar before the panel — is covered by the app integration
 tests, along with the tab bar, its arrow keys, the outline and its hierarchy, quick open, and
 splitting into two panes.
@@ -54,7 +55,16 @@ the breadcrumb trail, and the scroll to each hit need real layout, so they stay 
 ## Manual browser-only checks
 
 These checks cover visual and native-browser behavior that the automated component
-test cannot judge reliably:
+test cannot judge reliably.
+
+Some of the panel's layout is no longer only here. `pnpm test:browser` measures, in
+Chromium, Firefox and WebKit, that split panes sit side by side and stay wide enough to
+read a note in, that dragging the divider resizes both and holds a pane at its minimum,
+that a narrow window stacks a row, and that a long note scrolls inside its card rather
+than the page. Dragging a **tab** is covered there too, by mouse and by
+finger, now that it is built on pointer events rather than HTML5 drag-and-drop. Dragging a
+Kanban **card** is still a manual check: that one is HTML5 drag-and-drop, which works with
+neither a finger nor any browser automation.
 
 1. Run `pnpm dev` and open the address shown in the terminal. Confirm `data/tracker.json`
    is created empty on first launch and that **More actions** offers Import and Export
@@ -137,11 +147,34 @@ test cannot judge reliably:
    further down the pipeline and confirm searching for that text finds the application.
    Clear a stage's notes and confirm they go on their own, while the stage keeps its tab and pane
    until the panel is closed. Close another stage's tab with its **X** and confirm the tab goes but
-   the note is back the next time the panel opens.
+   the note is back the next time the panel opens. Confirm every tab closes, the badged current
+   stage included, and that closing the last one closes the panel.
+   Open a second application's notes with `Ctrl`/`Cmd+P` — pick a company other than the one the
+   panel was opened from — and confirm it arrives as a tab in the pane you were in, named
+   `{Company} · {Stage}` like the rest. Split, and confirm one company's note can be read beside
+   another's. Confirm each pane carries its own strip of tabs, that **Unsplit** gathers every tab
+   into one pane rather than closing any, and that a note already open is brought into view rather
+   than opened a second time.
    Confirm the notes fill the screen: the title bar, tab bar, breadcrumbs, outline, and status row
    stay put while only the notes column scrolls, and a stage's header sticks to the top of that
    column as its note runs past, with the headings inside it sticking below the header.
    Move between stages with the tabs and with the arrow keys, confirming focus follows the tab.
+   Drag a tab within its strip and confirm it reorders, with the slot it would land in marked
+   as you go; drag one onto the other pane's strip in a split and confirm it moves across.
+   On a phone or with touch emulation, confirm a short swipe along the strip scrolls it while
+   a tab held for a moment is picked up and can be carried to another slot or pane edge.
+   Do both again with `Ctrl`/`Cmd+Shift+←/→` and `Ctrl`/`Cmd+Alt+←/→` and confirm the keyboard
+   reaches the same arrangements. Move the last tab out of a pane and confirm the pane goes and
+   the split folds back.
+   Drag a tab onto the left, right, top and bottom edge of a pane in turn and confirm each
+   splits a new pane open on that side, with the edge marked as you hover it and the zones
+   gone again once the drag ends. Confirm `Ctrl`/`Cmd+Shift+↑/↓` splits the same way when
+   nothing is stacked there yet, and moves into the pane instead once one is.
+   Drag the handle between two panes and confirm both resize as you go and the notes reflow;
+   Tab to that handle and confirm the arrow keys move it too. Drag it as far as it will go in
+   each direction and confirm neither pane collapses out of sight. Move a tab across afterwards
+   and confirm the widths hold, then close the panel, reopen it, and confirm they are back to
+   even — pane widths are not saved.
    Scroll a long note and confirm the breadcrumbs name the heading you are inside, that the
    matching outline row is marked, that the rows above it on the trail are marked more quietly
    with their indent guide picked out, and that selecting an outline row scrolls to that heading.

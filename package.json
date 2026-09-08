@@ -14,6 +14,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:smoke": "vitest run src/test/smoke.test.tsx",
+    "test:browser": "vitest run -c vitest.browser.config.ts",
     "test:watch": "vitest"
   },
   "dependencies": {
@@ -31,11 +32,14 @@
     "@types/react": "latest",
     "@types/react-dom": "latest",
     "@vitejs/plugin-react": "latest",
+    "@vitest/browser": "latest",
+    "@vitest/browser-playwright": "latest",
     "eslint": "latest",
     "eslint-plugin-react-hooks": "latest",
     "eslint-plugin-react-refresh": "latest",
     "globals": "latest",
     "jsdom": "latest",
+    "playwright": "latest",
     "typescript": "^5.9.3",
     "typescript-eslint": "latest",
     "vite": "latest",

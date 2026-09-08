@@ -7,7 +7,7 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 ## Features
 
 - Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, the next upcoming invite and attachment filenames on cards, a state-selector fallback, and muted styling with an `Idle 30 days` label for live applications that have not changed stage in 30 days
-- Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first
+- Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first — and the panel holds notes from several applications at once, in panes you can split
 - Captured lines per stage, recording what an interviewer tells you as you are told it, stored the moment they are entered and pinned on screen under the prep note however far it scrolls
 - Optional deadline per application, recording an external closing or decision date separately from your own next action
 - Preference ranking from four subjective ratings, discounted for what you have not judged yet, with the weakest dimension named so a healthy average cannot hide a dealbreaker, shown on the table row and the Kanban card, summarised across the collection on Statistics, and used to break ties within a Focus group
@@ -101,7 +101,9 @@ Google Calendar or Outlook when you edit an invite here.
 
 ### Prepare for a stage
 
-Select **Prep notes** on a Kanban card or table row to record what you need for a stage: questions to ask, stories to tell, names to remember. Each stage of the pipeline holds its own notes, and the dialog opens with the application's current stage first so it is the first thing on screen during the interview.
+Select **Prep notes** on a Kanban card or table row to record what you need for a stage: questions to ask, stories to tell, names to remember. Each stage of the pipeline holds its own notes, and the panel opens with the application's current stage first so it is the first thing on screen during the interview.
+
+The panel is not limited to the application you opened it from. `Ctrl`/`Cmd+P` reaches every application's notes, so you can put one company's Interview 1 beside another's and prepare them together. Every tab is named for the company it belongs to, and each pane carries its own strip of tabs.
 
 Add notes for a stage you have not reached yet with **Add notes for another stage**—useful for drafting offer questions while you are still interviewing. Clearing a stage's notes removes them when you save. Prep notes are searchable from the global search box.
 
@@ -191,11 +193,17 @@ When nothing is configured and the server looks like it is on a remote host, the
 
 The stage notes panel binds five shortcuts while it is open. They are bound to the document rather than to a particular field, so they work wherever the caret is in the panel. You do not have to come back here for them: the keyboard button in the panel's title bar lists all five, and the **Split**, **Go to stage**, **Find**, and outline controls each name the shortcut they share, in a tooltip and to a screen reader. The panel answers `Ctrl` and `Cmd` alike whatever you are on; the labels show the one your own platform writes.
 
-- `Ctrl`/`Cmd+\` opens a second pane beside the one you are reading, on the first other stage the application has, and closes back to one pane when pressed again. An application with only one stage has nothing to split to, so nothing happens.
+- `Ctrl`/`Cmd+\` opens a second pane beside the one you are reading, on the first other note that is open, and folds the panes back into one when pressed again. Unsplitting gathers the tabs rather than closing them: a pane is where a note is shown, not what keeps it open. With only one note open there is nothing to split to, so nothing happens.
 - `Ctrl`/`Cmd+F` opens the find bar. It deliberately takes over the browser's own find, which cannot see text inside a folded note. `Enter` steps to the next match and `Shift+Enter` to the previous; `Escape` closes the bar rather than the panel.
-- `Ctrl`/`Cmd+P` opens the stage picker. Type to narrow it, `ArrowUp` and `ArrowDown` move through the results, `Enter` opens the highlighted stage—reopening one you had closed, or adding one you have not reached—and `Escape` dismisses it.
+- `Ctrl`/`Cmd+P` opens the note picker. It reaches every stage of the application you are working on, plus every note already written and every application's current stage, so a second company's notes are a few keystrokes away. Type to narrow it, `ArrowUp` and `ArrowDown` move through the results, `Enter` opens the highlighted note—reopening one you had closed, or adding a stage you have not reached—and `Escape` dismisses it.
 - `Ctrl`/`Cmd+B` shows and hides the outline sidebar.
 - `Ctrl`/`Cmd+K` puts the caret in the capture box, and in a split panel it lands in the pane you are reading.
+- `Ctrl`/`Cmd+Shift+←`, `→`, `↑` and `↓` send the tab you are reading towards that edge: into the pane already there, or into a new one split open when there is none. Moving the last tab out of a pane closes that pane and folds the split back.
+- `Ctrl`/`Cmd+Alt+←` and `→` reorder the tab you are reading within its own pane, wrapping at either end.
+
+Tabs can also be dragged: within a strip to reorder them, onto another pane's strip to move them across, or onto the edge of any pane to split a new one open there. This works with a finger as well as a mouse — hold a tab for a moment to pick it up, the way any list you can reorder on a phone works, then carry it where you want it. A swipe that starts moving straight away scrolls the strip instead. Every arrangement a drag can reach has a keyboard equivalent above, so the panel does not need a pointer.
+
+Panes are resizable. Drag the handle between two of them, or focus it and use the arrow keys — `←` and `→` between side-by-side panes, `↑` and `↓` between stacked ones. A pane is held at a readable minimum rather than being allowed to collapse out of sight. Widths last as long as the panel is open and are never saved: how you arranged the panes is not part of a note.
 
 Elsewhere, `Escape` closes any dialog, `Tab` cycles within it rather than escaping to the page behind, and the compensation amount fields take arrow keys to nudge a figure by 5,000—10,000 with `Shift`.
 
@@ -311,6 +319,16 @@ pnpm lint
 pnpm test
 pnpm test:smoke
 pnpm build
+```
+
+A browser suite covers what jsdom cannot judge: where the panel's panes actually end up,
+whether a pane stays wide enough to read a note in, how a narrow window rearranges them,
+and whether a tab can be dragged with a finger. It runs in Chromium, Firefox and WebKit,
+and needs those browsers once:
+
+```sh
+npx playwright install chromium firefox webkit
+pnpm test:browser
 ```
 
 Use `pnpm test:watch` while developing. The automated smoke test and optional browser checklist are documented in [SMOKE_TEST.md](./SMOKE_TEST.md).
