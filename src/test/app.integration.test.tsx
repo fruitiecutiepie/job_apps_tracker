@@ -2706,10 +2706,12 @@ describe('job applications tracker', () => {
      * Held still, it takes hold: the gesture every native list-reorder uses, and the only
      * one a strip that scrolls sideways can also be rearranged by.
      *
-     * Waited out for real rather than with fake timers. Widening the fakes past `Date` in
-     * this file is what AGENTS.md warns against — Testing Library's fake-timer support is
-     * gated on a global `jest` vitest does not define, so `waitFor` would poll a timer
-     * nothing advances. It was tried, and it hung exactly as described.
+     * Waited out for real, though it no longer has to be: the setup file points the global
+     * `jest` that Testing Library looks for at `vi`, so a test here can take the whole
+     * clock. This one does not, because what that buys is the wait and the wait is not what
+     * costs — the hold is a third of a second against a render measured in seconds — and
+     * taking the clock would mean re-pinning the system time and handing user-event a clock
+     * to wind on for that third of a second back.
      */
     fireEvent.pointerDown(offer, { ...touch, clientX: 0, clientY: 0 })
     expect(zones()).toHaveLength(0)
