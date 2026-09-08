@@ -212,17 +212,17 @@ describe('folding a note that is open for writing', () => {
     expect(box().value).toBe(FOLDABLE.replace('## Questions', '## Questions to ask'))
   })
 
-  it('opens a fold an edit would delete, and leaves the note alone', () => {
+  it('takes the folded lines with an edit that deletes through the fold', () => {
     render(<Writing />)
     fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
 
     // Backspace at the end of the folded heading: in the box it joins two lines that have
-    // everything folded sitting between them.
+    // everything folded sitting between them, so that is what it takes.
     fireEvent.change(box(), {
       target: { value: box().value.replace('## Themes\n', '## Themes'), selectionStart: 9 },
     })
 
-    expect(box().value).toBe(FOLDABLE)
+    expect(box().value).toBe('## Themes\n## Questions\n\n- On-call\n\n  How often is the weekend rotation?')
   })
 
   it('opens the fold a new line is typed into, and keeps the line', () => {

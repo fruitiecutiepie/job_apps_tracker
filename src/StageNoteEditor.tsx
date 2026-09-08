@@ -268,7 +268,7 @@ export function StageNoteEditor({
     // holding a caret that has quietly become a position in a different place.
     pendingCaret.current = result.caret
     setFolded(result.anchors)
-    if (result.applied && result.text !== value) onChange(result.text)
+    if (result.text !== value) onChange(result.text)
   }
 
   const format = (entry: Format) => {

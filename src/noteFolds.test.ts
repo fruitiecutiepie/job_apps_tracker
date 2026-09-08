@@ -143,22 +143,22 @@ describe('typing into a folded note', () => {
     expect([...result.anchors]).toEqual([13])
   })
 
-  it('opens a fold an edit would delete, and leaves the note alone', () => {
+  it('takes the folded lines with an edit that deletes through the fold', () => {
     const { ranges, projected, regions } = fold(NOTE, 0)
     // Backspace at the end of the folded heading: in the box it joins the two lines the
-    // box is showing, which in the note means swallowing everything folded between them.
+    // box is showing, and in the note that means everything folded between them goes.
     const typed = projected.replace('## Themes\n', '## Themes')
 
     // The caret is left where the backspace was, which is what says which of the two line
     // breaks it took: the one at the end of the folded heading.
     const result = applyProjectedEdit(NOTE, projected, typed, ranges, new Set([0]), regions, '## Themes'.length)
 
-    expect(result.applied).toBe(false)
+    expect(result.text).toBe(
+      ['## Themes', '## Questions', '', '- On-call', '', '  How often is the weekend rotation?', '', '- Comp', '', '## Close', '', 'Ask about the timeline.'].join('\n'),
+    )
+    // Nothing is left folded there to hide what just happened.
     expect(result.opened).toEqual([0])
-    expect(result.text).toBe(NOTE)
     expect([...result.anchors]).toEqual([])
-    // The caret stays where the key was pressed, which is now the end of a heading with
-    // everything it was folding open below it.
     expect(result.caret).toBe('## Themes'.length)
   })
 
@@ -171,7 +171,6 @@ describe('typing into a folded note', () => {
 
     const result = applyProjectedEdit(NOTE, projected, typed, ranges, new Set([0]), regions, at + 1)
 
-    expect(result.applied).toBe(true)
     expect(result.opened).toEqual([0])
     expect([...result.anchors]).toEqual([])
     expect(result.text).toBe(`${NOTE.slice(0, at)}\n${NOTE.slice(at)}`)
@@ -186,7 +185,6 @@ describe('typing into a folded note', () => {
 
     const result = applyProjectedEdit(NOTE, projected, typed, ranges, new Set([0]), regions, '## Themes and threads'.length)
 
-    expect(result.applied).toBe(true)
     // Nothing was written into the folded lines, so there is nothing to see inside them.
     expect(result.opened).toEqual([])
     expect([...result.anchors]).toEqual([0])
