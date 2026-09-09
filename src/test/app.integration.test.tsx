@@ -141,6 +141,8 @@ describe('job applications tracker', () => {
   }, 30_000)
 
   it('creates an application through the accessible form and can find it globally', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -345,6 +347,8 @@ describe('job applications tracker', () => {
   })
 
   it('persists edits across reloads and appends history only when state changes', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     const { unmount } = await renderLoadedApp()
     const before = readSavedDocument().applications.find(
@@ -1981,6 +1985,8 @@ describe('job applications tracker', () => {
   })
 
   it('imports a calendar invite against a state and replaces it when it is rescheduled', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
