@@ -4,7 +4,7 @@ import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_SECTION, MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
-import type { StageNote, StageNoteEditSession } from './domain'
+import { STATE_CONFIG, type StageNote, type StageNoteEditSession, type StateId } from './domain'
 import { noteRefKey, type NoteRef } from './notesLayout'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
 import { shortcutKeys } from './shortcuts'
@@ -13,8 +13,19 @@ interface StageNotePaneProps {
   /** Which application's note, and for which stage. */
   noteRef: NoteRef
   label: string
+  /** The application's own name, for naming the stage-move control after it rather than
+   *  after whichever of its stages happens to be open here. */
+  company: string
   /** Whether this is the application's own stage, which the panel tints. */
   isCurrentState: boolean
+  /**
+   * Where the application actually stands, which is not necessarily the stage this pane
+   * is showing — an older or a not-yet-reached stage can be open for notes without being
+   * where the application is.
+   */
+  applicationState: StateId
+  /** Moves the application straight to a stage, from wherever its notes are open. */
+  onMoveState: (state: StateId) => void
   body: string
   saved: StageNote | undefined
   session: StageNoteEditSession | undefined
@@ -79,7 +90,10 @@ interface StageNotePaneProps {
 export function StageNotePane({
   noteRef,
   label,
+  company,
   isCurrentState,
+  applicationState,
+  onMoveState,
   body,
   saved,
   session,
@@ -174,6 +188,20 @@ export function StageNotePane({
       >
         <header className="stage-note__header">
           <h3 id={stageNoteHeadingId(noteRef)}>{label}</h3>
+          <label className="stage-note__state">
+            <span className="sr-only">Move {company} to a different stage</span>
+            <select
+              className={`stage-note__state-select${isCurrentState ? ' stage-note__state-select--current' : ''}`}
+              onChange={(event) => onMoveState(event.target.value as StateId)}
+              value={applicationState}
+            >
+              {STATE_CONFIG.map((state) => (
+                <option key={state.id} value={state.id}>
+                  {state.label}
+                </option>
+              ))}
+            </select>
+          </label>
           {saved ? (
             <small className="stage-note__meta">
               Updated <time dateTime={saved.updated_at}>{formatDate(saved.updated_at)}</time>

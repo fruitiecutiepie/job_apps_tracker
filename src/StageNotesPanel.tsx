@@ -134,6 +134,8 @@ interface StageNotesPanelProps {
    * already written down has nothing a Save could still be waiting for.
    */
   onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>
+  /** Moves an application straight to a stage, from wherever its notes are open. */
+  onMove: (applicationId: string, state: StateId) => void
 }
 
 function errorMessage(error: unknown): string {
@@ -297,6 +299,7 @@ export function StageNotesPanel({
   onExternalChange,
   onCapture,
   onRevise,
+  onMove,
 }: StageNotesPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -1535,8 +1538,10 @@ export function StageNotesPanel({
         ) : null}
 
         <StageNotePane
+          applicationState={shownApplication?.state ?? shown.state}
           body={drafts[shownKey] ?? ''}
           captured={capturedByKey.get(shownKey) ?? ''}
+          company={shownApplication?.company ?? ''}
           currentMatch={currentMatch}
           formatDate={formatShortDate}
           heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
@@ -1556,6 +1561,7 @@ export function StageNotesPanel({
           // Only the focused pane, which is the one the jump scrolls; a link clicked in
           // another pane focuses it first, so this is that pane by the time it lands.
           onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
+          onMoveState={(state) => onMove(shown.applicationId, state)}
           onOpenInEditor={() => openInEditor(shown)}
           onRevise={(entryId, revised) =>
             onRevise(shown.applicationId, shown.state, entryId, revised)}

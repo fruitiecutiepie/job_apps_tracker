@@ -2079,6 +2079,28 @@ tbody tr:hover {
   font-weight: 600;
 }
 
+/* Where the application actually stands, changeable without leaving the note: reading as
+   a pill until it is touched, the pipeline's own vocabulary rather than a form field's. */
+.stage-note__state-select {
+  min-height: 22px;
+  padding: 0 var(--s5) 0 var(--s2);
+  border: 1px solid transparent;
+  border-radius: var(--pill);
+  color: var(--ink-2);
+  background: var(--surface-3);
+  font-size: var(--t1);
+  font-weight: 600;
+}
+
+.stage-note__state-select:hover {
+  border-color: var(--line-strong);
+}
+
+.stage-note__state-select--current {
+  color: var(--surface);
+  background: var(--accent);
+}
+
 .stage-note__meta {
   margin-left: auto;
   color: var(--ink-3);

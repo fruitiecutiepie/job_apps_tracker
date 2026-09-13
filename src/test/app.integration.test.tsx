@@ -764,6 +764,44 @@ describe('job applications tracker', () => {
     }
   })
 
+  it('moves an application to a different stage from its own prep notes', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // Reading the current stage's own tab, where the control reads as the pipeline's own
+    // pill rather than as a form field.
+    const select = within(dialog).getByRole('combobox', {
+      name: 'Move Halcyon Maps to a different stage',
+    }) as HTMLSelectElement
+    expect(select.value).toBe('interview_2')
+
+    await user.selectOptions(select, 'Offer')
+
+    expect(screen.getByRole('status')).toHaveTextContent('Halcyon Maps moved to Offer.')
+    expect(
+      readSavedDocument().applications.find((application) => application.company === 'Halcyon Maps')!
+        .state,
+    ).toBe('offer')
+
+    // The tab that carries the "Current" badge follows the move on its own: it is derived
+    // from the application's state rather than tracked separately.
+    expect(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Offer/ })).toHaveTextContent('Current')
+    expect(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Interview 2$/ }))
+      .not.toHaveTextContent('Current')
+
+    // Every open tab's own select reads the same, moved-to state — not just the one used
+    // to move it.
+    await user.click(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Interview 1$/ }))
+    expect(
+      (within(dialog).getByRole('combobox', {
+        name: 'Move Halcyon Maps to a different stage',
+      }) as HTMLSelectElement).value,
+    ).toBe('offer')
+  })
+
   it('takes a stage off the tab bar without deleting the note behind it', async () => {
     const user = userEvent.setup()
     const { unmount } = await renderLoadedApp()
