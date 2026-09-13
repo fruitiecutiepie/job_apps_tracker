@@ -48,7 +48,7 @@ beforeAll(() => {
 /** The classes the panel puts on the page, rendered fresh: the DOM is cleaned between tests. */
 function panel() {
   return render(
-    <div className="dialog dialog--panel">
+    <div className="panel">
       <div className="panel__body">
         <div className="panel__main">
           <div className="panel__notes">

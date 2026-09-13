@@ -56,6 +56,7 @@ it('completes the primary tracker journey and persists it across reloads', async
     'Calendar',
     'Stale',
     'Statistics',
+    'Prep notes',
   ]) {
     const viewButton = views.getByRole('button', { name: view })
     await user.click(viewButton)
@@ -82,7 +83,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   expect(screen.getByRole('status')).toHaveTextContent('Application updated.')
 
   await user.click(screen.getByRole('button', { name: 'Add prep notes for Smoke Test Co' }))
-  const prepDialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+  const prepDialog = screen.getByRole('region', { name: 'Stage prep notes' })
   await user.type(
     within(prepDialog).getByLabelText('Smoke Test Co · Offer prep notes'),
     'Confirm the review cycle',
@@ -97,7 +98,7 @@ it('completes the primary tracker journey and persists it across reloads', async
       ).toHaveLength(1),
     { timeout: 4000 },
   )
-  await user.click(within(prepDialog).getByRole('button', { name: 'Close dialog' }))
+  await user.click(views.getByRole('button', { name: 'Kanban' }))
 
   const savedAfterEdit = readSavedDocument()
   const smokeApplication = savedAfterEdit.applications.find(

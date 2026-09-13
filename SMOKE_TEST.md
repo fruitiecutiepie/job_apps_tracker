@@ -127,10 +127,13 @@ neither a finger nor any browser automation.
    import and confirm the saved data is unchanged; try a valid zip or JSON import and
    confirm the replacement prompt appears.
 8. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
+   app goes to the **Prep notes** view rather than opening a dialog over the board, that the
    application's current stage appears first and is badged, and that saved notes render as an outline
-   rather than raw text. Fold a heading, a bullet with sub-points, a bullet with a detail paragraph,
+   rather than raw text. Open a second company's notes from the picker, split the panes, then leave
+   for another view and come back — and reload the page — and confirm the same arrangement is there.
+   Close every tab and confirm the view stays, showing its empty state. Fold a heading, a bullet with sub-points, a bullet with a detail paragraph,
    a quote, and a code block by clicking their text rather than their chevron, use **Collapse all**
-   and **Expand all**, then reopen the dialog and confirm nothing about the folding was saved.
+   and **Expand all**, then reopen the view and confirm nothing about the folding was saved.
    Select a sentence inside a foldable point with the mouse and confirm it does not fold, and that
    the text can be copied.
    Select **Edit** on a stage, use the bold and bullet toolbar buttons, switch back with **Read**, and

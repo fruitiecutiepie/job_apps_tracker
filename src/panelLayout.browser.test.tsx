@@ -20,8 +20,8 @@ import { page, userEvent } from '@vitest/browser/context'
 
 import { createDemoDocument } from './domain/demo'
 import type { Application } from './domain'
-import { StageNotesDialog } from './StageNotesDialog'
-import type { NoteRef } from './notesLayout'
+import { StageNotesPanel } from './StageNotesPanel'
+import { openingLayout } from './notesArrangement'
 
 /** Two companies with notes between them, which is all any of these tests needs. */
 const COMPANIES = ['Halcyon Maps', 'Echo Robotics']
@@ -53,17 +53,39 @@ function withLongNote(applications: Application[]): Application[] {
 
 function renderPanel(applications = fixtureApplications()) {
   const halcyon = applications.find((application) => application.company === 'Halcyon Maps')!
-  const initialRef: NoteRef = { applicationId: halcyon.id, state: halcyon.state }
+  const layout = openingLayout(halcyon, halcyon.state)
   render(
-    <StageNotesDialog
-      applications={applications}
-      initialRef={initialRef}
-      onCapture={async () => {}}
-      onClose={() => {}}
-      onExternalChange={async () => {}}
-      onRevise={async () => {}}
-      onSaveDrafts={async () => true}
-    />,
+    /*
+     * Mounted inside the page structure it lives in — the shell column, a stand-in for the
+     * chrome above it, and the view surface — because the panel's height now comes from
+     * that column rather than from a viewport measurement. A bare mount would size itself
+     * correctly whatever the chain above it did.
+     */
+    <div className="app-shell">
+      <header className="topbar">
+        <span>Chrome above the panel</span>
+      </header>
+      <main>
+        <div className="context-bar">
+          <h1>Prep notes</h1>
+        </div>
+        <section className="view-surface view-surface--panel">
+          <section aria-label="Stage prep notes" className="panel-view">
+            <StageNotesPanel
+              applications={applications}
+              initial={{ layout, focusedGroupId: layout.id }}
+              onArrange={() => {}}
+              onCapture={async () => {}}
+              onEmpty={() => {}}
+              onExternalChange={async () => {}}
+              onRevise={async () => {}}
+              onSaveDrafts={async () => true}
+              request={null}
+            />
+          </section>
+        </section>
+      </main>
+    </div>,
   )
   return { halcyon }
 }
@@ -102,6 +124,49 @@ describe('the panel in a real browser', () => {
     // A pane nobody could read a note in would satisfy every assertion above.
     expect(left.width).toBeGreaterThan(200)
     expect(left.height).toBeGreaterThan(200)
+  })
+
+  it('ends inside the viewport, under the chrome above it', async () => {
+    renderPanel()
+
+    const panel = document.querySelector('.panel')!.getBoundingClientRect()
+    const status = document.querySelector('.panel__statusbar')!.getBoundingClientRect()
+    const chrome = document.querySelector('.topbar')!.getBoundingClientRect()
+
+    // Below the header rather than under it, and ending on screen rather than past it:
+    // the status bar is the last row of the panel's grid, so it is what falls off first.
+    expect(panel.top).toBeGreaterThanOrEqual(chrome.bottom - 1)
+    expect(panel.bottom).toBeLessThanOrEqual(WIDE.height + 1)
+    expect(status.bottom).toBeLessThanOrEqual(WIDE.height + 1)
+    // And tall enough to read a note in, not merely inside the window.
+    expect(panel.height).toBeGreaterThan(300)
+  })
+
+  it('keeps the panel inside a narrow window, where the chrome above it wraps', async () => {
+    renderPanel()
+    await page.viewport(480, 800)
+
+    const panel = document.querySelector('.panel')!.getBoundingClientRect()
+    expect(panel.bottom).toBeLessThanOrEqual(801)
+    expect(document.querySelector('.panel__statusbar')!.getBoundingClientRect().bottom)
+      .toBeLessThanOrEqual(801)
+  })
+
+  it('leaves the page nothing to scroll, at a tall window and a short one', async () => {
+    renderPanel()
+
+    // The panel pins its title bar and its status bar, so a page that scrolled behind it
+    // would carry both off screen — the arrangement would still be there, just not where
+    // it says it is.
+    for (const height of [WIDE.height, 480]) {
+      await page.viewport(WIDE.width, height)
+      const shell = document.querySelector('.app-shell')!
+      expect(shell.scrollHeight).toBeLessThanOrEqual(height + 1)
+      expect(document.documentElement.scrollHeight)
+        .toBeLessThanOrEqual(document.documentElement.clientHeight + 1)
+      expect(document.querySelector('.panel')!.getBoundingClientRect().bottom)
+        .toBeLessThanOrEqual(height + 1)
+    }
   })
 
   it('stacks the panes when the split runs the other way', async () => {

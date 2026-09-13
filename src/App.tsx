@@ -9,6 +9,7 @@ import {
   KanbanSquare,
   Moon,
   MoreHorizontal,
+  NotebookPen,
   Plus,
   RotateCcw,
   Search,
@@ -84,7 +85,8 @@ import {
   inviteRowsFor,
   type InviteRow,
 } from './invites'
-import { StageNotesDialog, type StageNoteDraftBatch } from './StageNotesDialog'
+import type { StageNoteDraftBatch } from './StageNotesPanel'
+import type { NoteRequest } from './notesLayout'
 import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
@@ -93,12 +95,13 @@ import {
   CompareNotesView,
   FocusView,
   KanbanView,
+  PrepNotesView,
   StaleView,
   StatisticsView,
   TableView,
 } from './views'
 
-type ViewId = 'kanban' | 'table' | 'focus' | 'calendar' | 'stale' | 'statistics' | 'compare'
+type ViewId = 'kanban' | 'table' | 'focus' | 'calendar' | 'stale' | 'statistics' | 'compare' | 'notes'
 
 const VIEW_OPTIONS = [
   { id: 'kanban', label: 'Kanban', icon: KanbanSquare },
@@ -108,6 +111,7 @@ const VIEW_OPTIONS = [
   { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
   { id: 'compare', label: 'Compare', icon: Columns3 },
+  { id: 'notes', label: 'Prep notes', icon: NotebookPen },
 ] as const
 
 /*
@@ -643,13 +647,19 @@ export default function App() {
   const [companyFilter, setCompanyFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
   const [editor, setEditor] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
-  const [stageNotesId, setStageNotesId] = useState<string | null>(null)
+  /**
+   * The note a card or a row asked for, waiting to be opened into the prep notes view. The
+   * nonce is what makes asking twice for the same note two requests: the second would
+   * otherwise be no change at all, and nothing would bring the note back on show.
+   */
+  const [notesRequest, setNotesRequest] = useState<NoteRequest | null>(null)
+  const notesNonce = useRef(0)
   const [notice, setNotice] = useState<string | null>(null)
   const addButtonRef = useRef<HTMLButtonElement>(null)
   const dialogOpenerRef = useRef<HTMLElement | null>(null)
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
-  const dialogIsOpen = editor !== null || stageNotesId !== null
+  const dialogIsOpen = editor !== null
   const [theme, toggleTheme] = useTheme()
 
   useEffect(() => {
@@ -840,10 +850,6 @@ export default function App() {
     ? tracker.applications.find((application) => application.id === editor.id) ?? null
     : null
 
-  const stageNotesApplication = stageNotesId
-    ? tracker.applications.find((application) => application.id === stageNotesId) ?? null
-    : null
-
   /**
    * Stores one stage's note on its own, for a file coming back from an external editor.
    * Only the stage named is touched, so the other stages' drafts are left alone.
@@ -857,6 +863,44 @@ export default function App() {
     await commit(
       (current) => updateApplicationStageNotes(current, applicationId, [{ state, body }], new Date()),
       message,
+    )
+  }
+
+  const captureStageLine = async (applicationId: string, state: StateId, line: string) => {
+    await commit(
+      (current) => updateApplicationStageCapture(current, applicationId, state, line, new Date()),
+      'Note captured.',
+    )
+  }
+
+  const reviseStageLine = async (
+    applicationId: string,
+    state: StateId,
+    entryId: string,
+    revised: string,
+  ) => {
+    await commit(
+      (current) =>
+        reviseApplicationStageCapture(current, applicationId, state, entryId, revised, new Date()),
+      revised.trim() ? 'Note updated.' : 'Note removed.',
+    )
+  }
+
+  const saveStageDrafts = async (batches: StageNoteDraftBatch[]) => {
+    // One mutation for the lot, so a panel holding two companies' notes still writes once.
+    // Folding rather than a call each keeps `commit`'s contract: it takes a mutation and
+    // hands it the document, which each step passes along.
+    //
+    // No notice: the panel writes while it is being typed into, and a toast per pause
+    // would sit permanently over the notes it is describing. The panel's status bar says
+    // the same thing where the writing is already being watched.
+    const at = new Date()
+    return commit((current) =>
+      batches.reduce(
+        (document, batch) =>
+          updateApplicationStageNotes(document, batch.applicationId, batch.drafts, at),
+        current,
+      ),
     )
   }
 
@@ -876,9 +920,25 @@ export default function App() {
     setEditor({ mode: 'add' })
   }
 
+  /**
+   * Prep notes are a view rather than a dialog, so opening them is navigation: there is no
+   * opener to return focus to afterwards, and a stale one would aim at a card the view
+   * switch has already unmounted.
+   */
   const openStageNotes = (id: string) => {
-    rememberDialogOpener()
-    setStageNotesId(id)
+    const application = tracker.applications.find((candidate) => candidate.id === id)
+    if (!application) return
+    dialogOpenerRef.current = null
+    // Nothing to restore focus to either: coming here from the application editor is the
+    // editor handing over, and the note it opens onto takes the caret. Without this the
+    // editor closing would fire the restore and pull focus back out to the topbar.
+    dialogWasOpenRef.current = false
+    notesNonce.current += 1
+    setNotesRequest({
+      ref: { applicationId: id, state: application.state },
+      nonce: notesNonce.current,
+    })
+    setActiveView('notes')
   }
 
   const closeEditor = () => setEditor(null)
@@ -919,6 +979,20 @@ export default function App() {
         return <StaleView {...shared} onMove={move} />
       case 'statistics':
         return <StatisticsView applications={filteredApplications} />
+      case 'notes':
+        return (
+          <PrepNotesView
+            // Every application, not the filtered set: see `PrepNotesView`.
+            applications={tracker.applications}
+            onCapture={captureStageLine}
+            onExternalChange={(applicationId: string, state: StateId, body: string) =>
+              commitStageNote(applicationId, state, body, 'Prep notes saved from your editor.')}
+            onRequested={() => setNotesRequest(null)}
+            onRevise={reviseStageLine}
+            onSaveDrafts={saveStageDrafts}
+            request={notesRequest}
+          />
+        )
       case 'compare':
         return (
           <CompareNotesView
@@ -1196,7 +1270,9 @@ export default function App() {
             </button>
           </div>
         )}
-        <section className="view-surface">{currentView}</section>
+        <section className={`view-surface${activeView === 'notes' ? ' view-surface--panel' : ''}`}>
+          {currentView}
+        </section>
       </main>
 
       {editor && (editor.mode === 'add' || editingApplication) && (
@@ -1273,53 +1349,6 @@ export default function App() {
         />
       )}
 
-      {stageNotesApplication && (
-        <StageNotesDialog
-          applications={tracker.applications}
-          initialRef={{
-            applicationId: stageNotesApplication.id,
-            state: stageNotesApplication.state,
-          }}
-          onClose={() => setStageNotesId(null)}
-          onCapture={async (applicationId: string, state: StateId, line: string) => {
-            await commit(
-              (current) => updateApplicationStageCapture(current, applicationId, state, line, new Date()),
-              'Note captured.',
-            )
-          }}
-          onRevise={async (
-            applicationId: string,
-            state: StateId,
-            entryId: string,
-            revised: string,
-          ) => {
-            await commit(
-              (current) =>
-                reviseApplicationStageCapture(current, applicationId, state, entryId, revised, new Date()),
-              revised.trim() ? 'Note updated.' : 'Note removed.',
-            )
-          }}
-          onExternalChange={(applicationId: string, state: StateId, body: string) =>
-            commitStageNote(applicationId, state, body, 'Prep notes saved from your editor.')}
-          onSaveDrafts={async (batches: StageNoteDraftBatch[]) => {
-            // One mutation for the lot, so a panel holding two companies' notes still
-            // writes once. Folding rather than a call each keeps `commit`'s contract: it
-            // takes a mutation and hands it the document, which each step passes along.
-            //
-            // No notice: the panel writes while it is being typed into, and a toast per
-            // pause would sit permanently over the notes it is describing. The panel's
-            // status bar says the same thing where the writing is already being watched.
-            const at = new Date()
-            return commit((current) =>
-              batches.reduce(
-                (document, batch) =>
-                  updateApplicationStageNotes(document, batch.applicationId, batch.drafts, at),
-                current,
-              ),
-            )
-          }}
-        />
-      )}
     </div>
   )
 }

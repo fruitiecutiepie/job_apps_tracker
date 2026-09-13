@@ -127,3 +127,44 @@ describe('context bar buttons', () => {
     expect(body).toMatch(/flex:\s*none/)
   })
 })
+
+describe('prep notes view', () => {
+  it('sizes the panel against the header rather than the whole viewport', () => {
+    const body = ruleBody('.panel-view')
+
+    // The panel sits under the topbar and the context bar now. It takes what they leave
+    // through the column above it, rather than a viewport height minus a guess at theirs.
+    expect(body).toMatch(/height:\s*100%/)
+    // Its own height, that is — the `max-height` beside it is the cap, not the sizing.
+    expect(body).not.toMatch(/(?<!max-)height:\s*100(?:d|l)?vh/)
+    expect(ruleBody('.app-shell')).toMatch(/flex-direction:\s*column/)
+    expect(ruleBody('.app-shell > main')).toMatch(/flex:\s*1/)
+
+    // The panel's own chrome is the frame; the surface around it adds nothing.
+    const surface = ruleBody('.view-surface--panel')
+    expect(surface).toMatch(/flex:\s*1/)
+    expect(surface).toMatch(/padding:\s*0/)
+    expect(surface).not.toMatch(/\d+px|#[0-9a-fA-F]{3,8}/)
+  })
+
+  it('holds the panel inside the viewport rather than letting the page grow past it', () => {
+    // The panel pins its own chrome, so a page scrolling behind it would carry the title
+    // bar and the status bar off screen. The shell is pinned to the viewport instead.
+    // Matched straight off the file: `ruleBody` names a rule by a plain class selector,
+    // and this one is a functional pseudo-class with its own parentheses.
+    const shell = css.match(/\n\.app-shell:has\(\.view-surface--panel\) \{([^}]*)\}/)![1]
+    expect(shell).toMatch(/height:\s*100dvh/)
+    expect(shell).toMatch(/overflow:\s*hidden/)
+    // A minimum outranks a maximum, so the shell's own `min-height: 100vh` has to go with
+    // it or it would win over the cap on exactly the viewports the cap exists for.
+    expect(shell).toMatch(/min-height:\s*0/)
+    expect(ruleBody('.panel-view')).toMatch(/max-height:\s*100dvh/)
+  })
+
+  it('sizes the panel buttons before the chrome narrows them again', () => {
+    // Both rules are one class deep, so source order is what decides between them: the
+    // dense chrome has to come after the panel-wide rule it is undoing.
+    expect(ruleBody('.panel .button')).toMatch(/min-height:\s*var\(--control-form\)/)
+    expect(css.indexOf('.panel .button')).toBeLessThan(css.indexOf('.panel__titlebar .button'))
+  })
+})

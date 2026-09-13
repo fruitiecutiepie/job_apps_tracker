@@ -26,6 +26,17 @@ export interface NoteRef {
  */
 export const noteRefKey = (ref: NoteRef): string => `${ref.applicationId}::${ref.state}`
 
+/**
+ * A note asked for from somewhere outside the panel — a card, a table row, the editor.
+ * The nonce is what tells a second request for the same note from the request already
+ * handled: without it, asking twice for the note you are already on is no change at all,
+ * and the second ask does nothing.
+ */
+export interface NoteRequest {
+  ref: NoteRef
+  nonce: number
+}
+
 export function sameRef(left: NoteRef, right: NoteRef): boolean {
   return left.applicationId === right.applicationId && left.state === right.state
 }
@@ -89,6 +100,26 @@ export function groupsOf(node: LayoutNode): TabGroup[] {
  */
 export function orderedRefs(node: LayoutNode): NoteRef[] {
   return groupsOf(node).flatMap((group) => group.tabs)
+}
+
+/**
+ * The pane a panel opens with. Named here rather than in the panel because restoring an
+ * arrangement has to mint pane ids past the ones it read back, and both halves of that
+ * have to agree on where the numbering starts.
+ */
+export const FIRST_PANE_ID = 'pane-1'
+
+/**
+ * The largest `pane-N` in the tree, or 0 when none of the ids are numbered panes. A panel
+ * handed a restored arrangement counts from here: minting `pane-2` again beside a
+ * restored one would give two panes one id, and every operation that names a pane would
+ * then act on both.
+ */
+export function highestPaneNumber(node: LayoutNode): number {
+  return groupsOf(node).reduce((highest, group) => {
+    const match = /^pane-(\d+)$/.exec(group.id)
+    return match ? Math.max(highest, Number(match[1])) : highest
+  }, 0)
 }
 
 export function findGroup(node: LayoutNode, groupId: string): TabGroup | null {

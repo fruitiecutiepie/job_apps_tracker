@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
-import { AUTOSAVE_MS } from "../StageNotesDialog";
+import { AUTOSAVE_MS } from "../StageNotesPanel";
 import { StageNoteEditor } from "../StageNoteEditor";
 import { CAPTURE_SECTION, MarkdownNotes, capturedMarkdown } from "../markdown";
 import { stageNoteFor, stateLabel } from "../domain";

@@ -39,6 +39,7 @@ import {
   closeTab,
   groupHolding,
   groupsOf,
+  highestPaneNumber,
   makeGroup,
   moveTab,
   neighbourGroup,
@@ -50,8 +51,10 @@ import {
   type Edge,
   type LayoutNode,
   type NoteRef,
+  type NoteRequest,
   type TabGroup,
 } from './notesLayout'
+import type { Arrangement } from './notesArrangement'
 import { StageNotePane } from './StageNotePane'
 import {
   DROP_EDGE,
@@ -61,7 +64,6 @@ import {
   useTabDrag,
 } from './useTabDrag'
 import { stageNotePanelId, stageTabId } from './stageNoteIds'
-import { useDialogKeyboard } from './useDialogKeyboard'
 
 /**
  * How often the scratch file is re-read while a note is open in an external editor. The
@@ -75,9 +77,6 @@ const EDITOR_POLL_MS = 1000
  * straight after a thought is rare — and the flush on close catches it when it is not.
  */
 export const AUTOSAVE_MS = 800
-
-/** The pane the panel opens with. Named up front so no ref is read while rendering. */
-const FIRST_PANE_ID = 'pane-1'
 
 /** Names the sentence that tells a reader the tabs can be dragged or arrowed. */
 const TABS_HINT_ID = 'stage-notes-tabs-hint'
@@ -96,12 +95,24 @@ export interface StageNoteDraftBatch {
   drafts: StageNoteDraft[]
 }
 
-interface StageNotesDialogProps {
+interface StageNotesPanelProps {
   /** Every application, so notes from any of them can be opened as a tab. */
   applications: Application[]
-  /** The note the panel opens on, whose application's other noted stages open beside it. */
-  initialRef: NoteRef
-  onClose: () => void
+  /**
+   * The arrangement to open with: what was restored from a previous sitting, or what the
+   * view built for the note it was asked for. The panel takes it as given — where the
+   * arrangement comes from is the view's business, not the panel's.
+   */
+  initial: Arrangement
+  /**
+   * A note to show, from a card or a table row. The nonce is what makes a second request
+   * for the same note arrive as a second request rather than as no change at all.
+   */
+  request: NoteRequest | null
+  /** Reports the arrangement after every change, so the view can remember it. */
+  onArrange: (layout: LayoutNode, focusedGroupId: string) => void
+  /** The last tab just closed: there is nothing left for the panel to show. */
+  onEmpty: () => void
   /**
    * Stores the notes whose drafts have changed since the last write. The panel writes as
    * it is typed into, so this commits without closing it and without a notice. Resolves
@@ -127,17 +138,6 @@ interface StageNotesDialogProps {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
-}
-
-/**
- * Orders the stages the panel opens with, the application's current stage first, so the
- * notes you need during an interview are the first thing on screen.
- */
-function visibleStages(current: StateId, noted: StateId[]): StateId[] {
-  const rest = [...new Set(noted)]
-    .filter((state) => state !== current)
-    .sort((left, right) => stateRank(left) - stateRank(right))
-  return [current, ...rest]
 }
 
 interface OutlineListProps {
@@ -201,13 +201,13 @@ function OutlineList({ nodes, depth, path, current, onPick }: OutlineListProps) 
 
 /*
  * The shortcuts the panel binds, listed where they are used. They are bound to the
- * document because the panel is modal, so there is no one control to hang them off and
- * nothing else on screen that would otherwise name them.
+ * document because the panel fills its view, so there is no one control to hang them off
+ * and nothing else on screen that would otherwise name them.
  *
  * A disclosure holding a plain list, the same shape as the topbar's More actions: Escape
- * closes it before the panel, an outside pointer dismisses it, and focus returns to the
- * trigger. Escape is stopped here rather than left to bubble, which is the debt every
- * overlay inside this panel owes `useDialogKeyboard`, as the find bar already pays.
+ * closes it, an outside pointer dismisses it, and focus returns to the trigger. Escape is
+ * stopped here rather than left to bubble, as the find bar already does, so one key press
+ * closes one thing.
  */
 function ShortcutsHelp() {
   const [open, setOpen] = useState(false)
@@ -228,9 +228,8 @@ function ShortcutsHelp() {
       className="panel__shortcuts"
       onKeyDown={(event) => {
         if (!open || event.key !== 'Escape') return
-        // Handled on the way up from the trigger, not from a second document listener:
-        // `useDialogKeyboard` is already bound to the document and was bound first, so
-        // nothing added there could stop it. React's own handler runs before it does.
+        // Handled on the way up from the trigger rather than from a document listener,
+        // so it closes this disclosure and nothing else that happens to be listening.
         event.preventDefault()
         event.stopPropagation()
         setOpen(false)
@@ -288,16 +287,18 @@ interface OpenSession {
   session: StageNoteEditSession
 }
 
-export function StageNotesDialog({
+export function StageNotesPanel({
   applications,
-  initialRef,
-  onClose,
+  initial,
+  request,
+  onArrange,
+  onEmpty,
   onSaveDrafts,
   onExternalChange,
   onCapture,
   onRevise,
-}: StageNotesDialogProps) {
-  const dialogRef = useRef<HTMLElement>(null)
+}: StageNotesPanelProps) {
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const applicationsById = useMemo(
     () => new Map(applications.map((application) => [application.id, application])),
@@ -337,7 +338,7 @@ export function StageNotesDialog({
    * Ids for the panes this sitting creates. A counter rather than a uuid: it is only ever
    * compared with its own siblings, and a readable id makes a layout easy to follow.
    */
-  const paneCount = useRef(1)
+  const paneCount = useRef(highestPaneNumber(initial.layout))
   const newId = useCallback(() => {
     paneCount.current += 1
     return `pane-${paneCount.current}`
@@ -349,17 +350,9 @@ export function StageNotesDialog({
    * single-application panel — a tab is a note in a group, so there is one thing to keep
    * right rather than two that had to agree.
    */
-  const [layout, setLayout] = useState<LayoutNode>(() => {
-    const application = applicationsById.get(initialRef.applicationId)
-    const noted = application?.stage_notes.map((note) => note.state) ?? []
-    const tabs = visibleStages(initialRef.state, noted).map((state) => ({
-      applicationId: initialRef.applicationId,
-      state,
-    }))
-    return makeGroup(FIRST_PANE_ID, tabs, noteRefKey(initialRef))
-  })
+  const [layout, setLayout] = useState<LayoutNode>(initial.layout)
   const layoutRef = useRef(layout)
-  const [focusedGroupId, setFocusedGroupId] = useState<string>(FIRST_PANE_ID)
+  const [focusedGroupId, setFocusedGroupId] = useState<string>(initial.focusedGroupId)
   const focusedGroupRef = useRef(focusedGroupId)
 
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -424,31 +417,23 @@ export function StageNotesDialog({
     saveDraftsRef.current = onSaveDrafts
   }, [onSaveDrafts])
 
-  const closeRef = useRef(onClose)
+  const emptyRef = useRef(onEmpty)
   useEffect(() => {
-    closeRef.current = onClose
-  }, [onClose])
+    emptyRef.current = onEmpty
+  }, [onEmpty])
 
-  useDialogKeyboard(dialogRef, onClose)
-
-  // The panel covers the viewport and scrolls its own notes column, but the page behind
-  // it can still be taller than the viewport. Without this the body keeps its own
-  // scrollbar, doing nothing since the fixed panel blocks it, right beside the pane's.
+  const arrangeRef = useRef(onArrange)
   useEffect(() => {
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previous
-    }
-  }, [])
+    arrangeRef.current = onArrange
+  }, [onArrange])
 
   /**
-   * Replaces the arrangement. Null means the last note just closed, which is the panel's
-   * cue to go: with no note left there is nothing for it to be open for.
+   * Replaces the arrangement. Null means the last note just closed, which leaves the view
+   * holding the panel with nothing to show — its cue to offer the empty state instead.
    */
   const applyLayout = useCallback((next: LayoutNode | null, focusGroupId?: string) => {
     if (!next) {
-      closeRef.current()
+      emptyRef.current()
       return
     }
     layoutRef.current = next
@@ -790,6 +775,29 @@ export function StageNotesDialog({
     [applyLayout, focusedGroupId],
   )
 
+  /*
+   * The arrangement reported out after every change, so the view holding the panel can
+   * remember it. Through a ref because the view re-renders on every write the notes make:
+   * depending on the callback itself would restart this on writes that did not move a
+   * tab.
+   */
+  useEffect(() => {
+    arrangeRef.current(layout, focusedGroupId)
+  }, [focusedGroupId, layout])
+
+  /*
+   * A note asked for from outside the panel. Only the nonce is watched: the ref alone
+   * cannot tell a second ask for the note already on show from no ask at all, and the
+   * request prop stays put between them.
+   */
+  const handledNonce = useRef(request?.nonce ?? null)
+  useEffect(() => {
+    if (!request || request.nonce === handledNonce.current) return
+    handledNonce.current = request.nonce
+    showRef(request.ref)
+    panelRef.current?.focus()
+  }, [request, showRef])
+
   const showKey = useCallback(
     (key: string) => {
       const ref = refByKey.get(key)
@@ -858,7 +866,7 @@ export function StageNotesDialog({
   const closeFind = () => {
     setFindOpen(false)
     setFindQuery('')
-    dialogRef.current?.focus()
+    panelRef.current?.focus()
   }
 
   /** Bumping the sequence remounts the widget, which refocuses and selects the query. */
@@ -1108,7 +1116,7 @@ export function StageNotesDialog({
     const ref = pickable.get(key)?.ref
     if (ref) showRef(ref)
     setQuickOpen(false)
-    dialogRef.current?.focus()
+    panelRef.current?.focus()
   }
 
   const editDraft = (key: string, value: string) => {
@@ -1440,7 +1448,7 @@ export function StageNotesDialog({
                 >
                   {label}
                   {application?.state === tab.state ? (
-                    <span className="panel__tab-badge">Current stage</span>
+                    <span className="panel__tab-badge">Current</span>
                   ) : null}
                   {tabMatches ? <span className="panel__tab-count">{tabMatches.count}</span> : null}
                 </button>
@@ -1546,21 +1554,15 @@ export function StageNotesDialog({
   }
 
   return (
-    <div className="dialog-backdrop dialog-backdrop--panel">
-      {/* A panel fills the viewport, so there is no backdrop left to click away on. */}
-      <section
-        aria-labelledby="stage-notes-dialog-title"
-        aria-modal="true"
-        className="dialog dialog--panel"
-        ref={dialogRef}
-        role="dialog"
-        tabIndex={-1}
-      >
+    /*
+     * Focusable, but not a tab stop: the panel is where focus lands after the find bar or
+     * the picker closes, and after a note is opened into it from another view.
+     */
+    <div className="panel" ref={panelRef} tabIndex={-1}>
         <div className="panel__titlebar">
-          <div className="panel__title">
-            <p className="dialog__subject">{title}</p>
-            <h2 id="stage-notes-dialog-title">Stage prep notes</h2>
-          </div>
+          {/* The view is already named by the tab that reached it and by the heading over
+              it, so the title bar carries only what the panel itself is showing. */}
+          <p className="panel__subject">{title}</p>
           <button
             aria-keyshortcuts={shortcutKeys('\\')}
             aria-pressed={isSplit}
@@ -1590,9 +1592,6 @@ export function StageNotesDialog({
             Find
           </button>
           <ShortcutsHelp />
-          <button aria-label="Close dialog" className="icon-button" onClick={onClose} type="button">
-            <X aria-hidden="true" size={20} />
-          </button>
         </div>
 
         <form
@@ -1664,7 +1663,7 @@ export function StageNotesDialog({
                 entries={quickOpenEntries}
                 onClose={() => {
                   setQuickOpen(false)
-                  dialogRef.current?.focus()
+                  panelRef.current?.focus()
                 }}
                 onPick={openFromPicker}
               />
@@ -1703,7 +1702,6 @@ export function StageNotesDialog({
             </div>
           </div>
         </form>
-      </section>
     </div>
   )
 }

@@ -239,8 +239,35 @@ p {
 
 /* ---------------------------------------------------------------- shell --- */
 
+/* A column, so the prep notes view can take the height the header and the context bar
+   leave rather than a measurement of them that would have to be kept in step. */
 .app-shell {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
+}
+
+/*
+ * The prep notes view is a workspace rather than a document: the panel pins its own chrome
+ * and scrolls only the notes column, so a page that scrolls behind it would move the
+ * pinned parts off screen and leave the status bar somewhere below the fold.
+ *
+ * Pinning the shell to the viewport is what keeps that from happening at every width. The
+ * `min-height` above is dropped rather than left to fight this: a minimum outranks a
+ * maximum, so `100vh` would win over `100dvh` on a phone with its browser chrome showing —
+ * which is exactly the case the cap is for.
+ */
+.app-shell:has(.view-surface--panel) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell > main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .topbar {
@@ -1620,12 +1647,6 @@ tbody tr:hover {
 }
 
 /* The stage notes dialog puts the company and role here — it is content. */
-.dialog__subject {
-  margin: 0 0 var(--s1);
-  color: var(--ink-2);
-  font-size: var(--t3);
-}
-
 .dialog .button {
   min-height: var(--control-form);
 }
@@ -2377,29 +2398,49 @@ tbody tr:hover {
 /* ------------------------------------------------------ notes panel --- */
 
 /*
- * Stage prep notes open as a full-viewport panel rather than a centred dialog: a note
- * is read while an interview is happening, so it gets the whole screen. The chrome is
- * pinned and only the notes column scrolls, which keeps the stage list, the find bar,
- * and Save in place however long the notes run.
+ * Stage prep notes are a view of their own rather than a dialog over the board: a note is
+ * read while an interview is happening, and something you keep coming back to is not
+ * something to dismiss. The panel takes what the viewport has left under the header, pins
+ * its chrome, and scrolls only the notes column, so the stage list, the find bar and the
+ * write state stay in place however long the notes run.
  */
 
-.dialog-backdrop--panel {
-  padding: 0;
-  overflow: hidden;
-  place-items: stretch;
+.panel-view {
+  display: grid;
+  min-height: 0;
+  height: 100%;
+  /* The cap stated on the panel itself as well as on the shell around it. The shell rule
+     is what stops the page scrolling; this is what bounds the panel, and it holds even
+     where the shell's own height does not reach it. */
+  max-height: 100dvh;
 }
 
-.dialog--panel {
+.panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  width: 100%;
-  max-width: none;
-  height: 100dvh;
-  max-height: none;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.panel-view__empty {
+  margin: auto;
+  max-width: 42ch;
+  padding: var(--s6);
+  color: var(--ink-2);
+  font-size: var(--t4);
+  text-align: center;
+}
+
+/* The panel meets the surface's own border: its chrome is already a frame, and a second
+   one inside the first only narrows the notes. It takes the height the rest of the page
+   leaves, which is what keeps the pinned chrome pinned and the notes column the only
+   thing that scrolls. */
+.view-surface--panel {
+  flex: 1;
+  min-height: 0;
   padding: 0;
   overflow: hidden;
-  border: 0;
-  border-radius: 0;
 }
 
 .panel__titlebar {
@@ -2411,24 +2452,24 @@ tbody tr:hover {
   background: var(--surface-2);
 }
 
-.panel__title {
+.panel__subject {
   flex: 1;
   min-width: 0;
-}
-
-.panel__title h2 {
   margin: 0;
   color: var(--ink);
   font-size: var(--t5);
   font-weight: 600;
 }
 
-.panel__title .dialog__subject {
-  margin: 0;
+/* The panel's buttons are sized here rather than inherited from `.dialog .button`, which
+   the panel sat under while it was a dialog. */
+.panel .button {
+  min-height: var(--control-form);
 }
 
-/* Dense controls in the chrome: .dialog .button sizes buttons for forms, which is
-   taller than a title bar or a stage header wants. */
+/* Dense controls in the chrome: the rule above sizes buttons for forms, which is taller
+   than a title bar or a stage header wants. Same specificity, so source order decides —
+   this must stay below it. */
 .panel__titlebar .button,
 .panel__notes .stage-note__mode {
   min-height: var(--control);
@@ -3728,12 +3769,8 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     border-radius: var(--r3) var(--r3) 0 0;
   }
 
-  /* The panel already fills the viewport; the sheet treatment above must not
-     reintroduce a height cap or rounded corners on it. */
-  .dialog--panel {
-    max-height: none;
-    border-radius: 0;
-  }
+  /* The panel takes what the page leaves at every width, so the sheet treatment above
+     has nothing left to undo on it. */
 
   /* Too narrow for a sidebar column, so the outline becomes a strip above the notes
      rather than disappearing: it is the only place the headings are listed together. */
