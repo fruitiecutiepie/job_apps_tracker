@@ -46,6 +46,7 @@ import {
   noteRefKey,
   openInGroup,
   orderedRefs,
+  replaceTab,
   resizeSplit,
   splitWith,
   type Edge,
@@ -788,22 +789,19 @@ export function StageNotesPanel({
   )
 
   /**
-   * What the stage-switch dropdown on a pane picks: like `showRef`, except a note already
-   * open elsewhere still switches to wherever it is, but one not open yet opens in this
-   * pane's own group specifically — the group the dropdown that was touched belongs to —
-   * rather than in whichever pane happens to be focused.
+   * What the stage-switch dropdown on a pane picks: swaps the tab it sits on for the
+   * stage chosen, in that tab's own place — "show me this stage instead" rather than
+   * "also open this one". A stage already open elsewhere is focused there instead of
+   * opening a second copy of it, closing the tab it was swapped out from.
    */
   const switchStage = useCallback(
-    (groupId: string, ref: NoteRef) => {
-      const key = noteRefKey(ref)
-      const holding = groupHolding(layoutRef.current, key)
-      const target = holding?.id ?? groupId
-      applyLayout(
-        holding
-          ? activateTab(layoutRef.current, target, key)
-          : openInGroup(layoutRef.current, target, ref),
-        target,
-      )
+    (groupId: string, fromKey: string, ref: NoteRef) => {
+      const next = replaceTab(layoutRef.current, groupId, fromKey, ref)
+      // Not necessarily `groupId` any more: swapping onto a stage already open elsewhere
+      // closes this pane's own tab and focuses that one instead, which can take the pane
+      // itself with it if that tab was the only one here.
+      const target = groupHolding(next, noteRefKey(ref))?.id ?? groupId
+      applyLayout(next, target)
     },
     [applyLayout],
   )
@@ -1587,7 +1585,8 @@ export function StageNotesPanel({
           onRevise={(entryId, revised) =>
             onRevise(shown.applicationId, shown.state, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}
-          onSwitchStage={(state) => switchStage(group.id, { applicationId: shown.applicationId, state })}
+          onSwitchStage={(state) =>
+            switchStage(group.id, shownKey, { applicationId: shown.applicationId, state })}
           onToggleCapture={() =>
             setCaptureOpen((current) =>
               current.includes(shownKey)

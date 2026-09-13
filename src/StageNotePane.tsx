@@ -23,9 +23,9 @@ interface StageNotePaneProps {
   /** Whether this is the application's own stage, which the panel tints. */
   isCurrentState: boolean
   /**
-   * Shows a different one of this application's stages — the same note picked from a
-   * tab or the "Go to stage" picker, not a change to the application itself. Opens it if
-   * it is not already a tab here, or switches to it if it is.
+   * Swaps this pane's own tab for a different one of the application's stages — a change
+   * to what this tab is showing, not a change to the application itself, and not a second
+   * tab opened alongside it.
    */
   onSwitchStage: (state: StateId) => void
   body: string

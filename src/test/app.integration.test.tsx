@@ -764,7 +764,7 @@ describe('job applications tracker', () => {
     }
   })
 
-  it('switches which stage is open from a pane’s own stage dropdown', async () => {
+  it('swaps a pane’s own tab for a different stage from its stage dropdown', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -781,27 +781,28 @@ describe('job applications tracker', () => {
     expect(select().value).toBe('interview_2')
     expect(within(dialog).getAllByRole('tab')).toHaveLength(3)
 
-    // A stage already open as a tab: picking it switches to that tab, the same as
-    // clicking it would, rather than opening a second one — and leaves the application's
-    // own state untouched, since this is not the same action as moving it on the board.
+    // A stage already open as a tab: picking it focuses that tab rather than opening a
+    // second copy of it, and closes the tab it was picked from — the reader asked to see
+    // a different stage, not to have both open. Leaves the application's own state
+    // untouched either way, since this is not the same action as moving it on the board.
     await user.selectOptions(select(), 'Offer')
 
-    expect(within(dialog).getAllByRole('tab')).toHaveLength(3)
+    expect(within(dialog).getAllByRole('tab')).toHaveLength(2)
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Offer')
+    expect(
+      within(dialog).queryByRole('tab', { name: /^Halcyon Maps · Engineering Manager · Interview 2/ }),
+    ).not.toBeInTheDocument()
     expect(
       readSavedDocument().applications.find((application) => application.company === 'Halcyon Maps')!
         .state,
     ).toBe('interview_2')
-    // "Current" still marks the application's real stage, not the one just switched to.
-    expect(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Engineering Manager · Interview 2/ }))
-      .toHaveTextContent('Current')
     expect(select().value).toBe('offer')
 
-    // A stage with no tab yet: picking it opens one, in the same pane the dropdown sits
-    // in, rather than needing the "Go to stage" picker for a stage this close at hand.
+    // A stage with no tab yet: picking it swaps the current tab for it in place, the tab
+    // count unchanged, rather than adding a fresh one alongside it.
     await user.selectOptions(select(), 'Applied')
 
-    expect(within(dialog).getAllByRole('tab')).toHaveLength(4)
+    expect(within(dialog).getAllByRole('tab')).toHaveLength(2)
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Applied')
   })
 

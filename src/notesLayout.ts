@@ -219,6 +219,32 @@ export function activateTab(tree: LayoutNode, groupId: string, key: string): Lay
 }
 
 /**
+ * Swaps one tab for a different stage of the same application, in the tab's own place:
+ * the position it held and its focus both carry over, rather than the new stage arriving
+ * as a fresh tab at the end of the strip. Used for the stage picked from a note's own
+ * header, where the reader means "show me this stage instead", not "also open this one".
+ *
+ * If that stage is already open somewhere else, a note cannot end up open twice: that
+ * tab is focused instead, and the one being swapped out closes.
+ */
+export function replaceTab(tree: LayoutNode, groupId: string, fromKey: string, ref: NoteRef): LayoutNode {
+  const toKey = noteRefKey(ref)
+  if (fromKey === toKey) return tree
+
+  const elsewhere = groupHolding(tree, toKey)
+  if (elsewhere) {
+    const focused = activateTab(tree, elsewhere.id, toKey)
+    return closeTab(focused, groupId, fromKey) ?? focused
+  }
+
+  return mapGroup(tree, groupId, (group) => ({
+    ...group,
+    tabs: group.tabs.map((tab) => (noteRefKey(tab) === fromKey ? ref : tab)),
+    activeKey: toKey,
+  }))
+}
+
+/**
  * Closes one tab. Null means the last note in the panel just closed.
  *
  * Unlike the single-application panel, no tab is exempt: with several applications open

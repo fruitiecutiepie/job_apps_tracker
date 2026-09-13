@@ -15,6 +15,7 @@ import {
   openInGroup,
   orderedRefs,
   prune,
+  replaceTab,
   resizeSplit,
   singleGroup,
   splitWith,
@@ -88,6 +89,42 @@ describe('openInGroup', () => {
 
     expect(refKeys(reopened)).toEqual([noteRefKey(acme('applied')), noteRefKey(globex('offer'))])
     expect(findGroup(reopened, 'g2')!.activeKey).toBe(noteRefKey(globex('offer')))
+  })
+})
+
+describe('replaceTab', () => {
+  it('swaps the tab for a different stage in the same place, and focuses it', () => {
+    const group = makeGroup('g1', [acme('applied'), acme('interview_1'), acme('offer')])
+    const swapped = replaceTab(group, 'g1', noteRefKey(acme('interview_1')), acme('interview_2'))
+
+    expect(refKeys(swapped)).toEqual([
+      noteRefKey(acme('applied')),
+      noteRefKey(acme('interview_2')),
+      noteRefKey(acme('offer')),
+    ])
+    expect(findGroup(swapped, 'g1')!.activeKey).toBe(noteRefKey(acme('interview_2')))
+  })
+
+  it('does nothing when the stage picked is the tab already showing', () => {
+    const group = makeGroup('g1', [acme('applied')])
+    expect(replaceTab(group, 'g1', noteRefKey(acme('applied')), acme('applied'))).toBe(group)
+  })
+
+  it('focuses a stage already open elsewhere instead of opening a second copy, and closes the tab it was swapped from', () => {
+    const split = splitWith(
+      singleGroup('g1', acme('applied')),
+      'g1',
+      'right',
+      acme('offer'),
+      ids('g2', 's1'),
+    )
+    const swapped = replaceTab(split, 'g1', noteRefKey(acme('applied')), acme('offer'))
+
+    // The tab it was swapped from is gone rather than left open beside the one it now
+    // matches — a stage does not end up open twice — which takes its own pane with it.
+    expect(isSplit(swapped)).toBe(false)
+    expect(refKeys(swapped)).toEqual([noteRefKey(acme('offer'))])
+    expect(findGroup(swapped, 'g2')!.activeKey).toBe(noteRefKey(acme('offer')))
   })
 })
 
