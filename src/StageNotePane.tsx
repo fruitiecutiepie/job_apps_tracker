@@ -15,15 +15,19 @@ interface StageNotePaneProps {
   label: string
   /**
    * The application's own name and role, not restated per stage: the header names the
-   * application once, and the stage-move dropdown beside it — not a second line of text —
-   * is what says which of its stages this is.
+   * application once, and the stage-switch dropdown beside it — not a second line of
+   * text — is what says which of its stages this is.
    */
   company: string
   role: string
   /** Whether this is the application's own stage, which the panel tints. */
   isCurrentState: boolean
-  /** Moves the application straight to the stage picked, from wherever its notes are open. */
-  onMoveState: (state: StateId) => void
+  /**
+   * Shows a different one of this application's stages — the same note picked from a
+   * tab or the "Go to stage" picker, not a change to the application itself. Opens it if
+   * it is not already a tab here, or switches to it if it is.
+   */
+  onSwitchStage: (state: StateId) => void
   body: string
   saved: StageNote | undefined
   session: StageNoteEditSession | undefined
@@ -91,7 +95,7 @@ export function StageNotePane({
   company,
   role,
   isCurrentState,
-  onMoveState,
+  onSwitchStage,
   body,
   saved,
   session,
@@ -190,10 +194,10 @@ export function StageNotePane({
         <header className="stage-note__header">
           <h3 id={stageNoteHeadingId(noteRef)}>{company} · {role}</h3>
           <label className="stage-note__state">
-            <span className="sr-only">Move {company} to a different stage</span>
+            <span className="sr-only">Go to a different stage for {company}</span>
             <select
               className={`stage-note__state-select${isCurrentState ? ' stage-note__state-select--current' : ''}`}
-              onChange={(event) => onMoveState(event.target.value as StateId)}
+              onChange={(event) => onSwitchStage(event.target.value as StateId)}
               value={noteRef.state}
             >
               {STATE_CONFIG.map((state) => (

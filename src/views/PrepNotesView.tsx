@@ -26,8 +26,6 @@ interface PrepNotesViewProps {
   onExternalChange: (applicationId: string, state: StateId, body: string) => Promise<void>;
   onCapture: (applicationId: string, state: StateId, line: string) => Promise<void>;
   onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>;
-  /** Moves an application straight to a stage, from wherever its notes are open. */
-  onMove: (applicationId: string, state: StateId) => void;
 }
 
 /**
@@ -46,7 +44,6 @@ export function PrepNotesView({
   onExternalChange,
   onCapture,
   onRevise,
-  onMove,
 }: PrepNotesViewProps) {
   /**
    * What the panel mounts with. Set once per sitting: the panel owns the arrangement from
@@ -126,7 +123,6 @@ export function PrepNotesView({
           onCapture={onCapture}
           onEmpty={empty}
           onExternalChange={onExternalChange}
-          onMove={onMove}
           onRevise={onRevise}
           onSaveDrafts={onSaveDrafts}
           request={request}

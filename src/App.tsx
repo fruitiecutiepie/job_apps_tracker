@@ -987,7 +987,6 @@ export default function App() {
             onCapture={captureStageLine}
             onExternalChange={(applicationId: string, state: StateId, body: string) =>
               commitStageNote(applicationId, state, body, 'Prep notes saved from your editor.')}
-            onMove={move}
             onRequested={() => setNotesRequest(null)}
             onRevise={reviseStageLine}
             onSaveDrafts={saveStageDrafts}

@@ -134,8 +134,6 @@ interface StageNotesPanelProps {
    * already written down has nothing a Save could still be waiting for.
    */
   onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>
-  /** Moves an application straight to a stage, from wherever its notes are open. */
-  onMove: (applicationId: string, state: StateId) => void
 }
 
 function errorMessage(error: unknown): string {
@@ -299,7 +297,6 @@ export function StageNotesPanel({
   onExternalChange,
   onCapture,
   onRevise,
-  onMove,
 }: StageNotesPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -788,6 +785,27 @@ export function StageNotesPanel({
       applyLayout(openInGroup(layoutRef.current, target.id, ref), target.id)
     },
     [applyLayout, focusedGroupId],
+  )
+
+  /**
+   * What the stage-switch dropdown on a pane picks: like `showRef`, except a note already
+   * open elsewhere still switches to wherever it is, but one not open yet opens in this
+   * pane's own group specifically — the group the dropdown that was touched belongs to —
+   * rather than in whichever pane happens to be focused.
+   */
+  const switchStage = useCallback(
+    (groupId: string, ref: NoteRef) => {
+      const key = noteRefKey(ref)
+      const holding = groupHolding(layoutRef.current, key)
+      const target = holding?.id ?? groupId
+      applyLayout(
+        holding
+          ? activateTab(layoutRef.current, target, key)
+          : openInGroup(layoutRef.current, target, ref),
+        target,
+      )
+    },
+    [applyLayout],
   )
 
   /*
@@ -1565,11 +1583,11 @@ export function StageNotesPanel({
           // Only the focused pane, which is the one the jump scrolls; a link clicked in
           // another pane focuses it first, so this is that pane by the time it lands.
           onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
-          onMoveState={(state) => onMove(shown.applicationId, state)}
           onOpenInEditor={() => openInEditor(shown)}
           onRevise={(entryId, revised) =>
             onRevise(shown.applicationId, shown.state, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}
+          onSwitchStage={(state) => switchStage(group.id, { applicationId: shown.applicationId, state })}
           onToggleCapture={() =>
             setCaptureOpen((current) =>
               current.includes(shownKey)
