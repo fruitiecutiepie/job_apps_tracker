@@ -402,7 +402,12 @@ export function StageNotesPanel({
   const [findSeq, setFindSeq] = useState(0)
   const [findQuery, setFindQuery] = useState('')
   const [matchCursor, setMatchCursor] = useState(0)
-  const [quickOpen, setQuickOpen] = useState(false)
+  /**
+   * The pane the picker was opened from, or null when it is closed. A pane rather than a
+   * flag because the + that opens it sits in a pane's own tab strip: what it opens belongs
+   * beside the tabs it was pressed among, not in whichever pane happened to be read last.
+   */
+  const [quickOpen, setQuickOpen] = useState<string | null>(null)
   /** The section the breadcrumbs name: the last heading scrolled past. */
   const [trailKey, setTrailKey] = useState<string | null>(null)
   /** Ancestors of an outline pick, force-opened so the jump lands somewhere folded open. */
@@ -774,14 +779,20 @@ export function StageNotesPanel({
    * whichever the DOM happened to return first.
    */
   const showRef = useCallback(
-    (ref: NoteRef) => {
+    /**
+     * `intoGroupId` names the pane to open into, for a caller that belongs to one — the +
+     * in a pane's tab strip. Without it the note goes to the pane being read, which is
+     * what a request from outside the panel and the keyboard shortcut both want.
+     */
+    (ref: NoteRef, intoGroupId?: string) => {
       const key = noteRefKey(ref)
       const holding = groupHolding(layoutRef.current, key)
       if (holding) {
         applyLayout(activateTab(layoutRef.current, holding.id, key), holding.id)
         return
       }
-      const target = groupsOf(layoutRef.current).find((group) => group.id === focusedGroupId)
+      const wanted = intoGroupId ?? focusedGroupId
+      const target = groupsOf(layoutRef.current).find((group) => group.id === wanted)
         ?? groupsOf(layoutRef.current)[0]
       applyLayout(openInGroup(layoutRef.current, target.id, ref), target.id)
     },
@@ -1034,7 +1045,10 @@ export function StageNotesPanel({
       }
       if (key === 'p') {
         event.preventDefault()
-        setQuickOpen(true)
+        // The shortcut has no strip of its own, so it opens into the pane being read. Read
+        // from the ref so this listener is not rebound every time focus moves between
+        // panes, the same reason the capture shortcut finds its box in the DOM.
+        setQuickOpen(focusedGroupRef.current)
         return
       }
       if (key === 'b') {
@@ -1159,8 +1173,8 @@ export function StageNotesPanel({
 
   const openFromPicker = (key: string) => {
     const ref = pickable.get(key)?.ref
-    if (ref) showRef(ref)
-    setQuickOpen(false)
+    if (ref) showRef(ref, quickOpen ?? undefined)
+    setQuickOpen(null)
     panelRef.current?.focus()
   }
 
@@ -1518,7 +1532,7 @@ export function StageNotesPanel({
             aria-keyshortcuts={shortcutKeys('P')}
             aria-label="Go to stage"
             className="icon-button panel__tab-add"
-            onClick={() => setQuickOpen(true)}
+            onClick={() => setQuickOpen(group.id)}
             title={`Open the note picker (${shortcutLabel('P')})`}
             type="button"
           >
@@ -1719,11 +1733,11 @@ export function StageNotesPanel({
               />
             ) : null}
 
-            {quickOpen ? (
+            {quickOpen !== null ? (
               <QuickOpen
                 entries={quickOpenEntries}
                 onClose={() => {
-                  setQuickOpen(false)
+                  setQuickOpen(null)
                   panelRef.current?.focus()
                 }}
                 onPick={openFromPicker}

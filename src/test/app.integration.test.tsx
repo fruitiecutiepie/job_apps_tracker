@@ -1713,6 +1713,38 @@ describe('job applications tracker', () => {
     expect(within(top).getByRole('button', { name: 'Go to The numbers' })).toHaveAttribute('data-depth', '2')
   })
 
+  it('opens a picked note into the pane whose + was pressed', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(within(panel).getByRole('button', { name: 'Split' }))
+
+    const strip = (paneNumber: number) =>
+      within(within(panel).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` }))
+    const choices = () => within(within(panel).getByRole('list', { name: 'Applications' }))
+
+    // The second pane is the one being read, so its tab is the one the picker would have
+    // opened beside if the + were the panel's rather than this strip's.
+    await user.click(strip(2).getAllByRole('tab')[0])
+
+    await user.click(strip(1).getByRole('button', { name: 'Go to stage' }))
+    await user.click(choices().getByRole('button', { name: /^Human Factors Researcher/ }))
+
+    expect(strip(1).getByRole('tab', { name: /Echo Robotics/ })).toBeInTheDocument()
+    expect(strip(2).queryByRole('tab', { name: /Echo Robotics/ })).not.toBeInTheDocument()
+
+    // And the other way round: reading the first pane, the second pane's + still opens
+    // into the second pane.
+    await user.click(strip(1).getAllByRole('tab')[0])
+    await user.click(strip(2).getByRole('button', { name: 'Go to stage' }))
+    await user.click(choices().getByRole('button', { name: /^Operations Lead/ }))
+
+    expect(strip(2).getByRole('tab', { name: /Orbit & Oak/ })).toBeInTheDocument()
+    expect(strip(1).queryByRole('tab', { name: /Orbit & Oak/ })).not.toBeInTheDocument()
+  })
+
   it('opens any stage from the quick open picker, and closes it with Escape', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
