@@ -543,7 +543,7 @@ describe('job applications tracker', () => {
     expect(screen.getByRole('button', { name: 'Prep notes' })).toHaveAttribute('aria-current', 'page')
     expect(
       within(screen.getByRole('region', { name: 'Stage prep notes' })).getByRole('heading', {
-        name: 'Marble & Finch · Applied',
+        name: 'Marble & Finch · Product Manager',
       }),
     ).toBeInTheDocument()
   })
@@ -664,7 +664,7 @@ describe('job applications tracker', () => {
 
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
     expect(
-      within(dialog).getByRole('heading', { name: 'Marble & Finch · Applied' }),
+      within(dialog).getByRole('heading', { name: 'Marble & Finch · Product Manager' }),
     ).toBeInTheDocument()
     expect(within(dialog).getByText('Current')).toBeInTheDocument()
 
@@ -747,7 +747,7 @@ describe('job applications tracker', () => {
       )!.stage_notes
     const stamps = new Map(notes().map((note) => [note.state, note.updated_at]))
 
-    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }))
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' }))
     await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Offer' }))
     await user.type(within(dialog).getByLabelText('Halcyon Maps · Offer prep notes'), ' and the review cycle')
 
@@ -791,15 +791,15 @@ describe('job applications tracker', () => {
     // The tab that carries the "Current" badge follows the move on its own: it is derived
     // from the application's state rather than tracked separately. The tab just picked
     // from is untouched — moving the application is not the same as switching tabs.
-    expect(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Offer/ })).toHaveTextContent('Current')
-    expect(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Interview 2$/ }))
+    expect(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Engineering Manager · Offer/ })).toHaveTextContent('Current')
+    expect(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Engineering Manager · Interview 2$/ }))
       .not.toHaveTextContent('Current')
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Interview 2')
     expect(select().value).toBe('interview_2')
 
     // Switching tabs reads a different one back: each pane's control is its own stage,
     // not a single value shared by the whole panel.
-    await user.click(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Interview 1$/ }))
+    await user.click(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Engineering Manager · Interview 1$/ }))
     expect(select().value).toBe('interview_1')
   })
 
@@ -817,7 +817,7 @@ describe('job applications tracker', () => {
 
     await user.click(within(dialog).getByRole('button', { name: 'Close the Halcyon Maps · Offer tab' }))
     expect(within(dialog).getAllByRole('tab').map((tab) => tab.textContent))
-      .toEqual(['Halcyon Maps · Interview 2Current', 'Halcyon Maps · Interview 1'])
+      .toEqual(['Halcyon Maps · Engineering Manager · Interview 2Current', 'Halcyon Maps · Engineering Manager · Interview 1'])
 
     // Off screen, not deleted: the note itself is untouched.
     expect(
@@ -833,7 +833,7 @@ describe('job applications tracker', () => {
     await renderLoadedApp()
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const reopened = screen.getByRole('region', { name: 'Stage prep notes' })
-    expect(within(reopened).queryByRole('tab', { name: 'Halcyon Maps · Offer' })).not.toBeInTheDocument()
+    expect(within(reopened).queryByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })).not.toBeInTheDocument()
 
     await user.click(within(reopened).getByRole('button', { name: 'Go to stage' }))
     await user.selectOptions(
@@ -842,7 +842,7 @@ describe('job applications tracker', () => {
       }),
       'Offer',
     )
-    expect(within(reopened).getByRole('tab', { name: /Halcyon Maps · Offer/ })).toBeInTheDocument()
+    expect(within(reopened).getByRole('tab', { name: /Halcyon Maps · Engineering Manager · Offer/ })).toBeInTheDocument()
   })
 
   it('captures a line into the note being read and stores it without Save', async () => {
@@ -1082,9 +1082,13 @@ describe('job applications tracker', () => {
     expect(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 2')).toHaveFocus()
 
     // Split, then read the second pane: capture follows the pane being read rather than
-    // the one that was open first.
+    // the one that was open first. Both panes now show the same "Company · Role" heading
+    // once the state is dropped from it, so scope to the pane holding Interview 1.
     await user.keyboard('{Control>}\\{/Control}')
-    await user.click(within(dialog).getByRole('heading', { name: 'Halcyon Maps · Interview 1' }))
+    const interview1Pane = within(dialog)
+      .getAllByRole('tabpanel')
+      .find((pane) => pane.id.endsWith('--interview_1'))!
+    await user.click(within(interview1Pane).getByRole('heading', { name: 'Halcyon Maps · Engineering Manager' }))
     await user.keyboard('{Control>}k{/Control}')
     expect(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 1')).toHaveFocus()
   })
@@ -1163,9 +1167,9 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
     const tabs = within(dialog).getAllByRole('tab').map((tab) => tab.textContent)
     expect(tabs).toEqual([
-      'Halcyon Maps · Interview 2Current',
-      'Halcyon Maps · Interview 1',
-      'Halcyon Maps · Offer',
+      'Halcyon Maps · Engineering Manager · Interview 2Current',
+      'Halcyon Maps · Engineering Manager · Interview 1',
+      'Halcyon Maps · Engineering Manager · Offer',
     ])
 
     // The current stage is the tab on show, and its saved notes render rather than
@@ -1176,7 +1180,7 @@ describe('job applications tracker', () => {
     expect(within(notes).getByText('Cutting cycle time')).toBeInTheDocument()
 
     // Another stage's note is one tab away, and clearing it drops the note on its own.
-    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Interview 1' }))
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Interview 1' }))
     await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 1' }))
     await user.clear(within(dialog).getByLabelText('Halcyon Maps · Interview 1 prep notes'))
 
@@ -1188,7 +1192,7 @@ describe('job applications tracker', () => {
 
     // The stage keeps its tab and its pane: the note went, but the caret that emptied it
     // is still in the box, and a stage typed into must not vanish from under it.
-    expect(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Interview 1' })).toBeInTheDocument()
+    expect(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Interview 1' })).toBeInTheDocument()
     expect(within(dialog).getByLabelText('Halcyon Maps · Interview 1 prep notes')).toBeInTheDocument()
   })
 
@@ -1422,7 +1426,7 @@ describe('job applications tracker', () => {
     }
 
     // The outline follows the tab: Interview 1's note is prose with no headings at all.
-    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Interview 1' }))
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Interview 1' }))
     expect(
       within(dialog).queryByRole('button', { name: 'Go to Leadership themes' }),
     ).not.toBeInTheDocument()
@@ -1952,7 +1956,7 @@ describe('job applications tracker', () => {
     expect(shows('Cutting cycle time')).toBe(false)
 
     // A point without sub-points has nothing to fold and no control to press.
-    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }))
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' }))
     await user.click(notes().getByText('Remote expectations'))
     expect(shows('Remote expectations')).toBe(true)
   })
@@ -2056,7 +2060,7 @@ describe('job applications tracker', () => {
 
     await user.click(within(dialog).getByRole('button', { name: 'Open Halcyon Maps · Interview 2 in an editor' }))
     // A session outlives the tab that started it, so both are still open at the end.
-    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }))
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' }))
     await user.click(within(dialog).getByRole('button', { name: 'Open Halcyon Maps · Offer in an editor' }))
     expect(testEditorSessionCount()).toBe(2)
 
@@ -2624,18 +2628,18 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
     expect(tabNames(dialog)).toEqual([
-      'Halcyon Maps · Interview 2Current',
-      'Halcyon Maps · Interview 1',
-      'Halcyon Maps · Offer',
+      'Halcyon Maps · Engineering Manager · Interview 2Current',
+      'Halcyon Maps · Engineering Manager · Interview 1',
+      'Halcyon Maps · Engineering Manager · Offer',
     ])
 
-    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })
     pointerDrag(offer, slotOf(within(dialog).getAllByRole('tab')[0]))
 
     expect(tabNames(dialog)).toEqual([
-      'Halcyon Maps · Offer',
-      'Halcyon Maps · Interview 2Current',
-      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Engineering Manager · Offer',
+      'Halcyon Maps · Engineering Manager · Interview 2Current',
+      'Halcyon Maps · Engineering Manager · Interview 1',
     ])
     // Moving a tab is an arrangement, not an edit: the notes are untouched.
     expect(
@@ -2658,15 +2662,15 @@ describe('job applications tracker', () => {
     expect(within(strips[0]).getAllByRole('tab')).toHaveLength(2)
     expect(within(strips[1]).getAllByRole('tab')).toHaveLength(1)
 
-    const offer = within(strips[0]).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    const offer = within(strips[0]).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })
     // Onto the bare end of the other pane's strip, which is its last drop place.
     pointerDrag(offer, strips[1])
 
     const after = within(dialog).getAllByRole('tablist')
     expect(within(after[0]).getAllByRole('tab')).toHaveLength(1)
     expect(within(after[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Halcyon Maps · Interview 1',
-      'Halcyon Maps · Offer',
+      'Halcyon Maps · Engineering Manager · Interview 1',
+      'Halcyon Maps · Engineering Manager · Offer',
     ])
   })
 
@@ -2683,11 +2687,11 @@ describe('job applications tracker', () => {
 
     const strips = within(dialog).getAllByRole('tablist')
     expect(within(strips[0]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Halcyon Maps · Offer',
+      'Halcyon Maps · Engineering Manager · Offer',
     ])
     expect(within(strips[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Halcyon Maps · Interview 2Current',
-      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Engineering Manager · Interview 2Current',
+      'Halcyon Maps · Engineering Manager · Interview 1',
     ])
   })
 
@@ -2700,17 +2704,17 @@ describe('job applications tracker', () => {
 
     await user.keyboard('{Control>}{Alt>}{ArrowRight}{/Alt}{/Control}')
     expect(tabNames(dialog)).toEqual([
-      'Halcyon Maps · Interview 1',
-      'Halcyon Maps · Interview 2Current',
-      'Halcyon Maps · Offer',
+      'Halcyon Maps · Engineering Manager · Interview 1',
+      'Halcyon Maps · Engineering Manager · Interview 2Current',
+      'Halcyon Maps · Engineering Manager · Offer',
     ])
 
     // Wraps rather than stopping, so the tab can reach either end from either end.
     await user.keyboard('{Control>}{Alt>}{ArrowLeft}{/Alt}{/Control}')
     expect(tabNames(dialog)).toEqual([
-      'Halcyon Maps · Interview 2Current',
-      'Halcyon Maps · Interview 1',
-      'Halcyon Maps · Offer',
+      'Halcyon Maps · Engineering Manager · Interview 2Current',
+      'Halcyon Maps · Engineering Manager · Interview 1',
+      'Halcyon Maps · Engineering Manager · Offer',
     ])
   })
 
@@ -2725,7 +2729,12 @@ describe('job applications tracker', () => {
 
     // Splitting leaves the first pane focused, so reach for the second one before moving
     // its tab: the arrow acts on the pane being read, like every other panel binding.
-    await user.click(within(dialog).getByRole('heading', { name: 'Halcyon Maps · Interview 1' }))
+    // Both panes now show the same "Company · Role" heading once the state is dropped
+    // from it, so scope to the pane holding Interview 1.
+    const interview1Pane = within(dialog)
+      .getAllByRole('tabpanel')
+      .find((pane) => pane.id.endsWith('--interview_1'))!
+    await user.click(within(interview1Pane).getByRole('heading', { name: 'Halcyon Maps · Engineering Manager' }))
 
     // That pane holds one tab; moving it out leaves nothing to show there.
     await user.keyboard('{Control>}{Shift>}{ArrowLeft}{/Shift}{/Control}')
@@ -2748,7 +2757,7 @@ describe('job applications tracker', () => {
     expect(hint).toHaveTextContent(/to move it between panes/)
 
     // And the tab itself carries both bindings, so they are not only in the hint.
-    const tab = within(strip).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    const tab = within(strip).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })
     expect(tab.getAttribute('aria-keyshortcuts')).toContain('Shift+ArrowRight')
     expect(tab.getAttribute('aria-keyshortcuts')).toContain('Alt+Meta+ArrowRight')
   })
@@ -2829,7 +2838,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
     expect(within(dialog).getAllByRole('tablist')).toHaveLength(1)
 
-    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })
     // The zones only exist while a drag is running, so the drop place is named by where
     // the pointer ends up rather than found before the gesture starts.
     pointerDragToEdge(offer, 'right')
@@ -2837,7 +2846,7 @@ describe('job applications tracker', () => {
     const strips = within(dialog).getAllByRole('tablist')
     expect(strips).toHaveLength(2)
     expect(within(strips[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Halcyon Maps · Offer',
+      'Halcyon Maps · Engineering Manager · Offer',
     ])
     expect(within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' }))
       .toHaveAttribute('aria-orientation', 'vertical')
@@ -2850,7 +2859,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
 
-    pointerDragToEdge(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }), 'bottom')
+    pointerDragToEdge(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' }), 'bottom')
 
     // A column split, so its divider runs the other way.
     expect(within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' }))
@@ -2867,7 +2876,7 @@ describe('job applications tracker', () => {
 
     expect(dialog.querySelectorAll('[data-drop-edge]')).toHaveLength(0)
 
-    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })
     const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
 
     // A press on its own is not a drag: it is how a tab is selected, and raising the zones
@@ -2892,7 +2901,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
 
     // A mouse commits to a drag on distance, so a press that does not travel is a click.
-    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' }))
+    await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' }))
 
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Offer')
     expect(within(dialog).getByRole('tabpanel')).toHaveAccessibleName('Halcyon Maps · Offer')
@@ -2906,7 +2915,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Offer' })
+    const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })
     const touch = { pointerId: 2, pointerType: 'touch' }
     const zones = () => dialog.querySelectorAll('[data-drop-edge]')
 
@@ -3148,7 +3157,7 @@ describe('job applications tracker', () => {
 
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
     expect(
-      within(dialog).getByRole('heading', { name: 'Halcyon Maps · Interview 2' }),
+      within(dialog).getByRole('heading', { name: 'Halcyon Maps · Engineering Manager' }),
     ).toBeInTheDocument()
   })
 })

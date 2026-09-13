@@ -1416,6 +1416,11 @@ export function StageNotesPanel({
             const tabMatches = matches.perNote.get(key)
             const isActive = key === shownKey
             const application = applicationsById.get(tab.applicationId)
+            // Company and stage alone read the same for two roles at the same company; the
+            // tab is where that has to be told apart, so it carries the role as well.
+            const tabLabel = application
+              ? `${application.company} · ${applicationRole(application)} · ${stateLabel(tab.state)}`
+              : label
             const isDropTarget =
               drag.target?.kind === 'slot'
               && drag.target.groupId === group.id
@@ -1475,7 +1480,7 @@ export function StageNotesPanel({
                   tabIndex={isActive ? 0 : -1}
                   type="button"
                 >
-                  {label}
+                  {tabLabel}
                   {application?.state === tab.state ? (
                     <span className="panel__tab-badge">Current</span>
                   ) : null}
@@ -1583,6 +1588,7 @@ export function StageNotesPanel({
           }}
           query={query}
           revealKeys={isFocusedGroup ? (revealKeys ?? undefined) : undefined}
+          role={shownApplication ? applicationRole(shownApplication) : 'No role'}
           saved={noteByKey.get(shownKey)}
           session={open?.session}
         />

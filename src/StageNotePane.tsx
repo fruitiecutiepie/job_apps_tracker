@@ -13,9 +13,13 @@ interface StageNotePaneProps {
   /** Which application's note, and for which stage. */
   noteRef: NoteRef
   label: string
-  /** The application's own name, for naming the stage-move control after it rather than
-   *  after whichever of its stages happens to be open here. */
+  /**
+   * The application's own name and role, not restated per stage: the header names the
+   * application once, and the stage-move dropdown beside it — not a second line of text —
+   * is what says which of its stages this is.
+   */
   company: string
+  role: string
   /** Whether this is the application's own stage, which the panel tints. */
   isCurrentState: boolean
   /** Moves the application straight to the stage picked, from wherever its notes are open. */
@@ -85,6 +89,7 @@ export function StageNotePane({
   noteRef,
   label,
   company,
+  role,
   isCurrentState,
   onMoveState,
   body,
@@ -174,13 +179,16 @@ export function StageNotePane({
       }}
     >
       <section
-        aria-labelledby={stageNoteHeadingId(noteRef)}
+        // Named by the stage explicitly rather than by the heading below: two open panes
+        // for the same application's different stages would otherwise share a heading —
+        // "Halcyon Maps · Engineering Manager" — and read as the same region twice.
+        aria-label={label}
         className={`stage-note${isCurrentState ? ' stage-note--current' : ''}`}
         id={stageNotePanelId(noteRef)}
         role="tabpanel"
       >
         <header className="stage-note__header">
-          <h3 id={stageNoteHeadingId(noteRef)}>{label}</h3>
+          <h3 id={stageNoteHeadingId(noteRef)}>{company} · {role}</h3>
           <label className="stage-note__state">
             <span className="sr-only">Move {company} to a different stage</span>
             <select
