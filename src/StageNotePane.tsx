@@ -4,12 +4,14 @@ import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_SECTION, MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
-import type { StageNote, StageNoteEditSession, StateId } from './domain'
+import type { StageNote, StageNoteEditSession } from './domain'
+import { noteRefKey, type NoteRef } from './notesLayout'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
 import { shortcutKeys } from './shortcuts'
 
 interface StageNotePaneProps {
-  state: StateId
+  /** Which application's note, and for which stage. */
+  noteRef: NoteRef
   label: string
   /** Whether this is the application's own stage, which the panel tints. */
   isCurrentState: boolean
@@ -66,7 +68,7 @@ interface StageNotePaneProps {
  * each with its own scrollbar, so a long note in one does not drag the other along.
  */
 export function StageNotePane({
-  state,
+  noteRef,
   label,
   isCurrentState,
   body,
@@ -154,13 +156,13 @@ export function StageNotePane({
       }}
     >
       <section
-        aria-labelledby={stageNoteHeadingId(state)}
+        aria-labelledby={stageNoteHeadingId(noteRef)}
         className={`stage-note${isCurrentState ? ' stage-note--current' : ''}`}
-        id={stageNotePanelId(state)}
+        id={stageNotePanelId(noteRef)}
         role="tabpanel"
       >
         <header className="stage-note__header">
-          <h3 id={stageNoteHeadingId(state)}>{label}</h3>
+          <h3 id={stageNoteHeadingId(noteRef)}>{label}</h3>
           {saved ? (
             <small className="stage-note__meta">
               Updated <time dateTime={saved.updated_at}>{formatDate(saved.updated_at)}</time>
@@ -251,13 +253,13 @@ export function StageNotePane({
             // Only the focused pane may take the caret, or two panes would fight over it.
             autoFocus={isFocused}
             currentMatch={currentMatch}
-            key={state}
+            key={noteRefKey(noteRef)}
             label={label}
             matchBase={matchBase}
             onChange={onChange}
             query={query}
             revealKeys={revealKeys}
-            sourceId={state}
+            sourceId={noteRefKey(noteRef)}
             value={body}
           />
         ) : body.trim() ? (

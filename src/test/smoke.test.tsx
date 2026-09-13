@@ -11,9 +11,22 @@ function readSavedDocument() {
   return loadTrackerDocument(testTrackerStore)
 }
 
+/**
+ * Renders the app and waits for its first load.
+ *
+ * The wait carries its own budget because the default is one second, and one second is not
+ * a measurement of this app — it is a measurement of the machine. The first render walks a
+ * thousand nodes and reads the document behind a stubbed fetch, and on a loaded laptop that
+ * takes longer than a second often enough to be the single largest source of failures that
+ * say nothing about the code. Bounded by the test's own timeout either way, so a genuine
+ * hang still fails; what this stops is a slow start reading as a broken one.
+ */
 async function renderLoadedApp() {
   const view = render(<App />)
-  await waitFor(() => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument())
+  await waitFor(
+    () => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument(),
+    { timeout: 15_000 },
+  )
   return view
 }
 
@@ -70,7 +83,10 @@ it('completes the primary tracker journey and persists it across reloads', async
 
   await user.click(screen.getByRole('button', { name: 'Add prep notes for Smoke Test Co' }))
   const prepDialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
-  await user.type(within(prepDialog).getByLabelText('Offer prep notes'), 'Confirm the review cycle')
+  await user.type(
+    within(prepDialog).getByLabelText('Smoke Test Co · Offer prep notes'),
+    'Confirm the review cycle',
+  )
   // Prep notes write themselves once the typing pauses; there is nothing to submit.
   await waitFor(
     () =>

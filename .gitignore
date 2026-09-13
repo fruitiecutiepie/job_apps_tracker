@@ -11,3 +11,5 @@ data/attachments/
 data/editing/
 data/demo/
 .claude/settings.local.json
+__screenshots__/
+.vitest-attachments/

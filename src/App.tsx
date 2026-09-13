@@ -59,7 +59,6 @@ import {
   type ApplicationInput,
   type Attachment,
   type CompletedActionDraft,
-  type StageNoteDraft,
   type StateEventDraft,
   type StateFilter,
   type StateId,
@@ -85,7 +84,7 @@ import {
   inviteRowsFor,
   type InviteRow,
 } from './invites'
-import { StageNotesDialog } from './StageNotesDialog'
+import { StageNotesDialog, type StageNoteDraftBatch } from './StageNotesDialog'
 import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
@@ -849,11 +848,14 @@ export default function App() {
    * Stores one stage's note on its own, for a file coming back from an external editor.
    * Only the stage named is touched, so the other stages' drafts are left alone.
    */
-  const commitStageNote = async (state: StateId, body: string, message: string) => {
-    if (!stageNotesApplication) return
-    const id = stageNotesApplication.id
+  const commitStageNote = async (
+    applicationId: string,
+    state: StateId,
+    body: string,
+    message: string,
+  ) => {
     await commit(
-      (current) => updateApplicationStageNotes(current, id, [{ state, body }], new Date()),
+      (current) => updateApplicationStageNotes(current, applicationId, [{ state, body }], new Date()),
       message,
     )
   }
@@ -1273,30 +1275,48 @@ export default function App() {
 
       {stageNotesApplication && (
         <StageNotesDialog
-          application={stageNotesApplication}
+          applications={tracker.applications}
+          initialRef={{
+            applicationId: stageNotesApplication.id,
+            state: stageNotesApplication.state,
+          }}
           onClose={() => setStageNotesId(null)}
-          onCapture={async (state: StateId, line: string) => {
-            const id = stageNotesApplication.id
+          onCapture={async (applicationId: string, state: StateId, line: string) => {
             await commit(
-              (current) => updateApplicationStageCapture(current, id, state, line, new Date()),
+              (current) => updateApplicationStageCapture(current, applicationId, state, line, new Date()),
               'Note captured.',
             )
           }}
-          onRevise={async (state: StateId, entryId: string, revised: string) => {
-            const id = stageNotesApplication.id
+          onRevise={async (
+            applicationId: string,
+            state: StateId,
+            entryId: string,
+            revised: string,
+          ) => {
             await commit(
-              (current) => reviseApplicationStageCapture(current, id, state, entryId, revised, new Date()),
+              (current) =>
+                reviseApplicationStageCapture(current, applicationId, state, entryId, revised, new Date()),
               revised.trim() ? 'Note updated.' : 'Note removed.',
             )
           }}
-          onExternalChange={(state: StateId, body: string) =>
-            commitStageNote(state, body, 'Prep notes saved from your editor.')}
-          onSaveDrafts={async (drafts: StageNoteDraft[]) => {
-            const id = stageNotesApplication.id
+          onExternalChange={(applicationId: string, state: StateId, body: string) =>
+            commitStageNote(applicationId, state, body, 'Prep notes saved from your editor.')}
+          onSaveDrafts={async (batches: StageNoteDraftBatch[]) => {
+            // One mutation for the lot, so a panel holding two companies' notes still
+            // writes once. Folding rather than a call each keeps `commit`'s contract: it
+            // takes a mutation and hands it the document, which each step passes along.
+            //
             // No notice: the panel writes while it is being typed into, and a toast per
             // pause would sit permanently over the notes it is describing. The panel's
             // status bar says the same thing where the writing is already being watched.
-            return commit((current) => updateApplicationStageNotes(current, id, drafts, new Date()))
+            const at = new Date()
+            return commit((current) =>
+              batches.reduce(
+                (document, batch) =>
+                  updateApplicationStageNotes(document, batch.applicationId, batch.drafts, at),
+                current,
+              ),
+            )
           }}
         />
       )}

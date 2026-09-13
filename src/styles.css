@@ -92,6 +92,9 @@
   /* Page gutter */
   --gutter: clamp(var(--s4), 2vw, var(--s6));
 
+  /* The grab strip between two panes of the prep notes panel */
+  --pane-handle: 6px;
+
   /* Width of one application's card in the prep-notes comparison board, and how tall
      its note may grow before it scrolls on its own rather than the whole card */
   --compare-card: 22rem;
@@ -1450,6 +1453,25 @@ tbody tr:hover {
   font-weight: 600;
 }
 
+/*
+ * A tab being dragged, and the slot it would land in. Both borrow the accent the Kanban's
+ * drop target uses, so a drag reads the same wherever it happens in the app.
+ */
+.panel__tab-slot {
+  transition: background 120ms ease;
+}
+
+.panel__tab-slot--dragging {
+  opacity: 0.5;
+}
+
+.panel__tab-slot--drop-target {
+  background: var(--accent-weak);
+  /* Marks the edge the tab lands on rather than filling the slot, so it reads as a place
+     between two tabs instead of as a selection of the one under the pointer. */
+  box-shadow: inset 2px 0 0 0 var(--accent);
+}
+
 /* ------------------------------------------------------- compare notes --- */
 
 .compare-notes__toolbar {
@@ -2550,8 +2572,9 @@ tbody tr:hover {
 .panel__main {
   position: relative;
   display: grid;
-  /* Tab bar, breadcrumbs, the scrolling notes column, then the status bar. */
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  /* Breadcrumbs, the notes area, then the status bar. The tabs moved into the panes:
+     each one carries its own strip, so a note can be moved from one pane to another. */
+  grid-template-rows: auto minmax(0, 1fr) auto;
   min-height: 0;
 }
 
@@ -2563,6 +2586,140 @@ tbody tr:hover {
 .panel__notes {
   display: flex;
   min-height: 0;
+}
+
+/*
+ * A split's children, laid along its own axis. Both axes get min-0 for the reason the
+ * pane does: whichever way a split runs, its children must be allowed below their content
+ * or a note would push the panel's scrollbar out to the page.
+ */
+.panel__split {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel__split--row {
+  flex-direction: row;
+}
+
+.panel__split--column {
+  flex-direction: column;
+}
+
+/* Sized by the fraction its split records, which is why grow is off: letting flex hand
+   out the spare space would undo a resize. Shrink stays on so the dividers' own width
+   comes out of the panes in proportion, rather than pushing the last one out of view. */
+.panel__split-child {
+  display: flex;
+  flex-grow: 0;
+  flex-shrink: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * The note half of a pane, below its tabs. It exists to be the box the drop zones are laid
+ * over: measured from the group itself they would cover the tab strip too, and since they
+ * sit on top of everything, a drop aimed at a tab would find an edge instead.
+ */
+.panel__group-body {
+  position: relative;
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+/*
+ * Where a dragged tab would open a new pane. Only in the document while a drag is running,
+ * so nothing here is in the way the rest of the time.
+ */
+.panel__dropzones {
+  position: absolute;
+  z-index: 3;
+  inset: 0;
+}
+
+.panel__dropzone {
+  position: absolute;
+  /* A third of the pane, which is wide enough to aim at without swallowing the middle —
+     the centre is left clear so a drag can still be abandoned over the note itself. */
+  width: 33%;
+  height: 100%;
+}
+
+.panel__dropzone--left {
+  left: 0;
+}
+
+.panel__dropzone--right {
+  right: 0;
+}
+
+.panel__dropzone--top,
+.panel__dropzone--bottom {
+  width: 100%;
+  height: 33%;
+}
+
+.panel__dropzone--top {
+  top: 0;
+}
+
+.panel__dropzone--bottom {
+  bottom: 0;
+}
+
+/* The edge a drop would land on, shown as the pane it would open rather than as a border:
+   what the reader is choosing is a place for a note, not a line. */
+.panel__dropzone--over {
+  background: var(--accent-weak);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+/*
+ * The handle between two panes. A real separator rather than a border, because it is
+ * focusable and answers the arrow keys: dragging is no way at all without a pointer.
+ */
+.panel__resize {
+  flex: 0 0 var(--pane-handle);
+  background: var(--line);
+  /* The pointer owns this element for the length of a drag; without it a touch drag
+     scrolls the panel instead of moving the divider. */
+  touch-action: none;
+}
+
+.panel__resize--vertical {
+  cursor: col-resize;
+}
+
+.panel__resize--horizontal {
+  cursor: row-resize;
+}
+
+.panel__resize:hover,
+.panel__resize:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
+
+/* One pane: its strip of tabs over the note on show. */
+.panel__group {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.panel__split--row > .panel__split-child + .panel__split-child > .panel__group {
+  border-left: 1px solid var(--line);
+}
+
+.panel__split--column > .panel__split-child + .panel__split-child > .panel__group {
+  border-top: 1px solid var(--line);
 }
 
 /*
@@ -2593,10 +2750,6 @@ tbody tr:hover {
    the button-like ring that focus-visible would otherwise draw around a whole column. */
 .panel__pane:focus-visible {
   outline: none;
-}
-
-.panel__pane + .panel__pane {
-  border-left: 1px solid var(--line);
 }
 
 /* Which pane the outline, breadcrumbs, and status bar are describing. Only worth
@@ -3531,18 +3684,28 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     max-height: 30dvh;
   }
 
-  /* No room for two columns, so a split panel stacks instead. */
-  .panel__notes {
+  /*
+   * No room to lay panes side by side, so every split stacks whichever way it was made.
+   * The tree keeps its shape — only the direction it draws in changes — so unstacking at
+   * a wider width puts the arrangement back exactly as it was.
+   */
+  .panel__split--row {
     flex-direction: column;
+  }
+
+  /* Stacked, the recorded fractions are heights nobody chose; let the panes share. */
+  .panel__split--row > .panel__split-child {
+    flex-basis: auto !important;
+    flex-grow: 1;
+  }
+
+  .panel__split--row > .panel__split-child + .panel__split-child > .panel__group {
+    border-top: 1px solid var(--line);
+    border-left: 0;
   }
 
   .panel__pane {
     padding: var(--s4);
-  }
-
-  .panel__pane + .panel__pane {
-    border-top: 1px solid var(--line);
-    border-left: 0;
   }
 
   .find-widget {

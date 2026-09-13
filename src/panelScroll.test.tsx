@@ -22,10 +22,18 @@ import { beforeAll, describe, expect, it } from 'vitest'
 
 import styles from './styles.css?raw'
 
-/** The boxes between the panel and the scrolling note, outermost first. */
+/**
+ * The boxes between the panel and the scrolling note, outermost first. A split adds three
+ * more links — the split, the child holding one side of it, and the pane's own group — and
+ * each has to shrink for the same reason the rest do.
+ */
 const CHAIN = [
   '.panel__main',
   '.panel__notes',
+  '.panel__split',
+  '.panel__split-child',
+  '.panel__group',
+  '.panel__group-body',
   '.panel__pane',
   '.stage-note',
   '.stage-note__body',
@@ -44,12 +52,21 @@ function panel() {
       <div className="panel__body">
         <div className="panel__main">
           <div className="panel__notes">
-            <div className="panel__pane">
-              <section className="stage-note">
-                <header className="stage-note__header" />
-                <div className="stage-note__body" />
-                <div className="stage-note__dock" />
-              </section>
+            <div className="panel__split panel__split--row">
+              <div className="panel__split-child">
+                <div className="panel__group">
+                  <div className="panel__tabs" />
+                  <div className="panel__group-body">
+                  <div className="panel__pane">
+                    <section className="stage-note">
+                      <header className="stage-note__header" />
+                      <div className="stage-note__body" />
+                      <div className="stage-note__dock" />
+                    </section>
+                  </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -69,8 +86,24 @@ describe('the chain a note scrolls inside', () => {
     expect(stuck).toEqual([])
   })
 
-  it('lets a pane shrink sideways too, since a row is the other way it is laid out', () => {
-    expect(style('.panel__pane').minWidth).toBe('0px')
+  /*
+   * Sideways only matters for the boxes that are flex items in a row: the split, the child
+   * holding one side of it, the group, and the pane. Above them the panel is a grid whose
+   * tracks are already `minmax(0, 1fr)`, and the card below is bounded by the pane.
+   */
+  it('lets every flex item in a row shrink sideways too', () => {
+    const container = panel()
+    const inRow = [
+      '.panel__split',
+      '.panel__split-child',
+      '.panel__group',
+      '.panel__group-body',
+      '.panel__pane',
+    ]
+    const stuck = inRow.filter(
+      (selector) => getComputedStyle(container.querySelector(selector)!).minWidth !== '0px',
+    )
+    expect(stuck).toEqual([])
   })
 
   it('scrolls at the note and nowhere above it', () => {
