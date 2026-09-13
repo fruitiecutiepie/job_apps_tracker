@@ -2294,6 +2294,47 @@ tbody tr:hover {
   gap: var(--s3);
 }
 
+/* Collapsed by default, so what you were told stays out of the way of what you prepared
+   until there is a reason to look at it. */
+.stage-note__dock-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-self: start;
+  min-height: 26px;
+  padding: 0 var(--s2);
+  border: 0;
+  border-radius: var(--r1);
+  color: var(--ink-2);
+  background: transparent;
+  font-size: var(--t2);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stage-note__dock-toggle:hover {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+
+.stage-note__dock-toggle svg {
+  transition: transform 120ms ease;
+  transform: rotate(90deg);
+}
+
+.stage-note__dock-toggle--collapsed svg {
+  transform: rotate(0deg);
+}
+
+.stage-note__dock-count {
+  padding: 0 var(--s2);
+  border-radius: var(--pill);
+  color: var(--ink-3);
+  background: var(--surface-3);
+  font-size: var(--t1);
+  font-variant-numeric: tabular-nums;
+}
+
 .stage-note__log {
   max-height: var(--capture-log);
   overflow-y: auto;

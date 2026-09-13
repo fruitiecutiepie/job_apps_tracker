@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { CornerDownLeft, ExternalLink, PencilLine, X } from 'lucide-react'
+import { ChevronRight, CornerDownLeft, ExternalLink, PencilLine, X } from 'lucide-react'
 import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_SECTION, MarkdownNotes } from './markdown'
@@ -40,6 +40,15 @@ interface StageNotePaneProps {
   /** Whether the captured lines are open for correcting rather than being read. */
   isEditingLines: boolean
   onToggleEditLines: () => void
+  /**
+   * Whether the whole capture dock — the log and the box you type into — is open.
+   * Collapsed by default: what you were told is not what you are looking at most of the
+   * time you have a note open. Held by the panel rather than in here, the same way
+   * `isEditingLines` is, so it survives this pane unmounting when its tab is switched
+   * away from and back to.
+   */
+  isCaptureOpen: boolean
+  onToggleCapture: () => void
   /** Stores a rewritten captured line, or removes it when the text is blank. */
   onRevise: (id: string, body: string) => Promise<void>
   /**
@@ -86,6 +95,8 @@ export function StageNotePane({
   lines,
   isEditingLines,
   onToggleEditLines,
+  isCaptureOpen,
+  onToggleCapture,
   onRevise,
   onJumpToSection,
   onChange,
@@ -289,79 +300,100 @@ export function StageNotePane({
           write for a second caret here to race.
         */}
         <div className="stage-note__dock">
-          {captured && !isEditingLines ? (
-            <div
-              aria-label={`${CAPTURE_SECTION} in ${label}`}
-              className="stage-note__log"
-              ref={logRef}
-              role="log"
-            >
-              <MarkdownNotes
-                currentMatch={currentMatch}
-                foldAll={false}
-                label={`${label} captures`}
-                matchBase={heardMatchBase}
-                query={query}
-                source={captured}
-              />
-            </div>
-          ) : null}
+          <button
+            aria-expanded={isCaptureOpen}
+            aria-label={`${isCaptureOpen ? 'Hide' : 'Show'} ${CAPTURE_SECTION} in ${label}`}
+            className={[
+              'stage-note__dock-toggle',
+              isCaptureOpen ? '' : 'stage-note__dock-toggle--collapsed',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            onClick={onToggleCapture}
+            type="button"
+          >
+            <ChevronRight aria-hidden="true" size={14} />
+            {CAPTURE_SECTION}
+            {lines.length > 0 ? <span className="stage-note__dock-count">{lines.length}</span> : null}
+          </button>
 
-          {isEditingLines ? (
-            <div className="stage-note__log stage-note__log--editing" ref={logRef}>
-              <CapturedLines label={label} lines={lines} onRevise={onRevise} />
-            </div>
+          {isCaptureOpen ? (
+            <>
+              {captured && !isEditingLines ? (
+                <div
+                  aria-label={`${CAPTURE_SECTION} in ${label}`}
+                  className="stage-note__log"
+                  ref={logRef}
+                  role="log"
+                >
+                  <MarkdownNotes
+                    currentMatch={currentMatch}
+                    foldAll={false}
+                    label={`${label} captures`}
+                    matchBase={heardMatchBase}
+                    query={query}
+                    source={captured}
+                  />
+                </div>
+              ) : null}
+
+              {isEditingLines ? (
+                <div className="stage-note__log stage-note__log--editing" ref={logRef}>
+                  <CapturedLines label={label} lines={lines} onRevise={onRevise} />
+                </div>
+              ) : null}
+              <div className="stage-note__capture">
+                <label className="field">
+                  <span className="sr-only">Capture a line in {label}</span>
+                  <textarea
+                    // The one shortcut with no button in the title bar to hang a hint on, so
+                    // the box it lands in is what names it. The shortcuts list carries the
+                    // visible half.
+                    aria-keyshortcuts={shortcutKeys('K')}
+                    data-capture-focus={isFocused ? 'true' : undefined}
+                    // Never disabled, not even mid-write: taking the caret away from someone
+                    // typing what they are being told is worse than a write it has to wait for.
+                    onChange={(event) => setLine(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter') return
+                      // Shift+Enter is the way to a second line, so Enter stays the fast path:
+                      // the box is answered mid-conversation, and reaching for a button to file
+                      // what was just said is the thing this dock exists to avoid.
+                      if (event.shiftKey) return
+                      // The panel is one form around every stage, so Enter would otherwise
+                      // save the lot and close it in the middle of a conversation.
+                      event.preventDefault()
+                      void capture()
+                    }}
+                    placeholder={`What did they say? Enter files it under ${CAPTURE_SECTION}, Shift+Enter starts a line`}
+                    value={line}
+                  />
+                </label>
+                {lines.length > 0 ? (
+                  <button
+                    aria-label={`${isEditingLines ? 'Read' : 'Correct'} the captured lines in ${label}`}
+                    aria-pressed={isEditingLines}
+                    className="button button--quiet stage-note__mode"
+                    onClick={onToggleEditLines}
+                    type="button"
+                  >
+                    <PencilLine aria-hidden="true" size={14} />
+                    {isEditingLines ? 'Done' : 'Correct'}
+                  </button>
+                ) : null}
+                <button
+                  aria-label={`Capture this line in ${label}`}
+                  className="button button--quiet stage-note__mode"
+                  disabled={capturing || !line.trim()}
+                  onClick={() => void capture()}
+                  type="button"
+                >
+                  <CornerDownLeft aria-hidden="true" size={14} />
+                  Capture
+                </button>
+              </div>
+            </>
           ) : null}
-          <div className="stage-note__capture">
-            <label className="field">
-              <span className="sr-only">Capture a line in {label}</span>
-              <textarea
-                // The one shortcut with no button in the title bar to hang a hint on, so
-                // the box it lands in is what names it. The shortcuts list carries the
-                // visible half.
-                aria-keyshortcuts={shortcutKeys('K')}
-                data-capture-focus={isFocused ? 'true' : undefined}
-                // Never disabled, not even mid-write: taking the caret away from someone
-                // typing what they are being told is worse than a write it has to wait for.
-                onChange={(event) => setLine(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter') return
-                  // Shift+Enter is the way to a second line, so Enter stays the fast path:
-                  // the box is answered mid-conversation, and reaching for a button to file
-                  // what was just said is the thing this dock exists to avoid.
-                  if (event.shiftKey) return
-                  // The panel is one form around every stage, so Enter would otherwise
-                  // save the lot and close it in the middle of a conversation.
-                  event.preventDefault()
-                  void capture()
-                }}
-                placeholder={`What did they say? Enter files it under ${CAPTURE_SECTION}, Shift+Enter starts a line`}
-                value={line}
-              />
-            </label>
-            {lines.length > 0 ? (
-              <button
-                aria-label={`${isEditingLines ? 'Read' : 'Correct'} the captured lines in ${label}`}
-                aria-pressed={isEditingLines}
-                className="button button--quiet stage-note__mode"
-                onClick={onToggleEditLines}
-                type="button"
-              >
-                <PencilLine aria-hidden="true" size={14} />
-                {isEditingLines ? 'Done' : 'Correct'}
-              </button>
-            ) : null}
-            <button
-              aria-label={`Capture this line in ${label}`}
-              className="button button--quiet stage-note__mode"
-              disabled={capturing || !line.trim()}
-              onClick={() => void capture()}
-              type="button"
-            >
-              <CornerDownLeft aria-hidden="true" size={14} />
-              Capture
-            </button>
-          </div>
         </div>
       </section>
     </div>

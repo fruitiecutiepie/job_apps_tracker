@@ -375,6 +375,18 @@ export function StageNotesPanel({
    * highlight to step onto.
    */
   const [editingLines, setEditingLines] = useState<string[]>([])
+  /**
+   * Notes whose capture dock is open. Collapsed by default and held here rather than in
+   * the pane, so opening it for one note stays sticky across switching tabs away and back
+   * — the pane for the tab left behind unmounts, but this does not.
+   */
+  const [captureOpen, setCaptureOpen] = useState<string[]>([])
+  /**
+   * Set by the "K" shortcut when it has to open a collapsed dock before it can focus the
+   * box inside it: the box does not exist yet in the render that opens it, so focusing it
+   * has to wait for the one after.
+   */
+  const [pendingCaptureFocusKey, setPendingCaptureFocusKey] = useState<string | null>(null)
   const [sessions, setSessions] = useState<Record<string, OpenSession>>({})
   const sessionsRef = useRef(sessions)
   const [formError, setFormError] = useState<string | null>(null)
@@ -1013,14 +1025,28 @@ export function StageNotesPanel({
       }
       if (key === 'k') {
         event.preventDefault()
-        // Found in the DOM rather than by index, so this listener does not have to be
-        // rebound every time the focus moves from one pane to the other.
-        notesRef.current?.querySelector<HTMLInputElement>('[data-capture-focus]')?.focus()
+        // Opens the dock first if it is collapsed, the same shortcut either way: reaching
+        // for it should not depend on remembering whether it was left open last time.
+        setCaptureOpen((current) => (current.includes(activeKey) ? current : [...current, activeKey]))
+        setPendingCaptureFocusKey(activeKey)
       }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [openFind, toggleSplit])
+  }, [activeKey, openFind, toggleSplit])
+
+  /**
+   * Focuses the capture box once the dock the "K" shortcut just opened has actually
+   * rendered it. Found in the DOM rather than by index, so this does not have to be
+   * rebound every time the focus moves from one pane to the other.
+   */
+  useEffect(() => {
+    if (!pendingCaptureFocusKey) return
+    const target = notesRef.current?.querySelector<HTMLTextAreaElement>('[data-capture-focus]')
+    if (!target) return
+    target.focus()
+    setPendingCaptureFocusKey(null)
+  }, [captureOpen, pendingCaptureFocusKey])
 
   /*
    * Arranging the panes from the keyboard. A drag is the obvious way to move a tab and the
@@ -1515,6 +1541,7 @@ export function StageNotesPanel({
           formatDate={formatShortDate}
           heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
           isCurrentState={shownApplication?.state === shown.state}
+          isCaptureOpen={captureOpen.includes(shownKey)}
           isEditing={editing.includes(shownKey) && !open}
           isEditingLines={editingLines.includes(shownKey)}
           isFocused={isFocusedGroup}
@@ -1533,6 +1560,12 @@ export function StageNotesPanel({
           onRevise={(entryId, revised) =>
             onRevise(shown.applicationId, shown.state, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}
+          onToggleCapture={() =>
+            setCaptureOpen((current) =>
+              current.includes(shownKey)
+                ? current.filter((entry) => entry !== shownKey)
+                : [...current, shownKey],
+            )}
           onToggleEditLines={() =>
             setEditingLines((current) =>
               current.includes(shownKey)

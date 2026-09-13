@@ -63,6 +63,11 @@ async function renderLoadedApp() {
   return view
 }
 
+/** Opens a stage's capture dock, collapsed by default, before a test reaches into it. */
+async function openCapture(user: ReturnType<typeof userEvent.setup>, container: HTMLElement, label: string) {
+  await user.click(within(container).getByRole('button', { name: `Show Heard in ${label}` }))
+}
+
 function jsonFile(contents: string, name = 'applications.json') {
   const file = new File([contents], name, { type: 'application/json' })
   Object.defineProperty(file, 'text', {
@@ -813,6 +818,7 @@ describe('job applications tracker', () => {
     expect(within(notes).getByText('Cutting cycle time')).toBeInTheDocument()
 
     // Collapsed by default: what you were told is not on screen until it is opened.
+    await openCapture(user, notes, 'Halcyon Maps · Interview 2')
     await user.type(
       within(notes).getByLabelText('Capture a line in Halcyon Maps · Interview 2'),
       'Two more rounds after this{Enter}',
@@ -869,6 +875,7 @@ describe('job applications tracker', () => {
 
     // Captures are their own field, so writing the prep note cannot race them: the log
     // and its capture line stay put rather than being replaced by the editor.
+    await openCapture(user, dialog, 'Halcyon Maps · Interview 2')
     await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
     expect(within(dialog).getByLabelText('Halcyon Maps · Interview 2 prep notes')).toBeInTheDocument()
 
@@ -918,6 +925,7 @@ describe('job applications tracker', () => {
     )!
     const [first] = before.stage_notes.find((note) => note.state === 'interview_2')!.heard
 
+    await openCapture(user, dialog, 'Halcyon Maps · Interview 2')
     await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Halcyon Maps · Interview 2' }))
 
     const rows = within(dialog).getByRole('list', { name: 'Captured lines in Halcyon Maps · Interview 2' })
@@ -958,6 +966,7 @@ describe('job applications tracker', () => {
     const heard = before.stage_notes.find((note) => note.state === 'interview_2')!.heard
     expect(heard).toHaveLength(3)
 
+    await openCapture(user, dialog, 'Halcyon Maps · Interview 2')
     await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Halcyon Maps · Interview 2' }))
     await user.click(within(dialog).getByRole('button', {
       name: `Remove the line captured at ${formatTimeOfDay(heard[1].at)} in Halcyon Maps · Interview 2`,
@@ -1000,6 +1009,7 @@ describe('job applications tracker', () => {
       return store(input, init)
     }))
 
+    await openCapture(user, dialog, 'Halcyon Maps · Interview 2')
     await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
     await user.type(within(dialog).getByLabelText('Halcyon Maps · Interview 2 prep notes'), ' Ask about on-call.')
     await waitFor(() => expect(inFlight).toBe(true), { timeout: 3000 })
@@ -1066,6 +1076,7 @@ describe('job applications tracker', () => {
       'Open a second pane (Ctrl+\\)',
     )
     // Ctrl+K has no button in the title bar, so the box it lands in carries it instead.
+    await openCapture(user, dialog, 'Halcyon Maps · Interview 2')
     expect(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 2')).toHaveAttribute(
       'aria-keyshortcuts',
       'Meta+K Control+K',
@@ -1216,6 +1227,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
 
     // A capture holding the same word as the note being written.
+    await openCapture(user, dialog, 'Halcyon Maps · Interview 2')
     await user.type(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 2'), 'More on leads')
     await user.keyboard('{Enter}')
     await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
