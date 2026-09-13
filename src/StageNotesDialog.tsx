@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronRight, Columns2, CornerDownLeft, Keyboard, PanelLeft, Search, X } from 'lucide-react'
+import { ChevronRight, Columns2, Keyboard, PanelLeft, Plus, Search, X } from 'lucide-react'
 import {
   closeStageNoteEditor,
   openStageNoteInEditor,
@@ -1429,6 +1429,16 @@ export function StageNotesDialog({
               </div>
             )
           })}
+          <button
+            aria-keyshortcuts={shortcutKeys('P')}
+            aria-label="Go to stage"
+            className="icon-button panel__tab-add"
+            onClick={() => setQuickOpen(true)}
+            title={`Open the note picker (${shortcutLabel('P')})`}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={14} />
+          </button>
         </div>
 
         {/*
@@ -1541,16 +1551,6 @@ export function StageNotesDialog({
           >
             <Columns2 aria-hidden="true" size={14} />
             {isSplit ? 'Unsplit' : 'Split'}
-          </button>
-          <button
-            aria-keyshortcuts={shortcutKeys('P')}
-            className="button button--quiet panel__chrome-button"
-            onClick={() => setQuickOpen(true)}
-            title={`Open the note picker (${shortcutLabel('P')})`}
-            type="button"
-          >
-            <CornerDownLeft aria-hidden="true" size={14} />
-            Go to stage
           </button>
           <button
             aria-keyshortcuts={shortcutKeys('F')}

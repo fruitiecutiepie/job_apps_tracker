@@ -1514,7 +1514,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
     await user.click(within(dialog).getByRole('button', { name: 'Go to stage' }))
-    const picker = within(dialog).getByLabelText('Go to stage')
+    const picker = within(dialog).getByRole('textbox', { name: 'Go to stage' })
     const choices = () => within(within(dialog).getByRole('list', { name: 'Stages' }))
 
     // Every stage of this application is reachable, and the ones already open say so.
@@ -1532,13 +1532,13 @@ describe('job applications tracker', () => {
 
     // Escape leaves the picker without opening anything.
     await user.keyboard('{Escape}')
-    expect(within(dialog).queryByLabelText('Go to stage')).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('textbox', { name: 'Go to stage' })).not.toBeInTheDocument()
     expect(within(dialog).getAllByRole('tab')).toHaveLength(3)
     expect(screen.getByRole('dialog', { name: 'Stage prep notes' })).toBeInTheDocument()
 
     // Picking one opens it as a tab, ready to type into.
     await user.click(within(dialog).getByRole('button', { name: 'Go to stage' }))
-    await user.type(within(dialog).getByLabelText('Go to stage'), 'takeh')
+    await user.type(within(dialog).getByRole('textbox', { name: 'Go to stage' }), 'takeh')
     await user.keyboard('{Enter}')
 
     expect(within(dialog).getAllByRole('tab')).toHaveLength(4)
@@ -1624,7 +1624,7 @@ describe('job applications tracker', () => {
 
     // Quick open reaches every stage, not only the ones already on screen.
     await user.keyboard('{Control>}p{/Control}')
-    await user.type(within(dialog).getByLabelText('Go to stage'), 'inter1')
+    await user.type(within(dialog).getByRole('textbox', { name: 'Go to stage' }), 'inter1')
     await user.keyboard('{Enter}')
 
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Interview 1')

@@ -3018,6 +3018,22 @@ tbody tr:hover {
   border-bottom-color: var(--accent);
 }
 
+/* Sits at the end of the strip like one more tab, not a boxed chrome control. */
+.panel__tab-add {
+  flex: 0 0 auto;
+  min-height: var(--control-form);
+  border: 0;
+  border-radius: 0;
+  color: var(--ink-3);
+  background: none;
+}
+
+.panel__tab-add:hover {
+  color: var(--ink);
+  background: var(--surface-3);
+  border-color: transparent;
+}
+
 .panel__tab-badge {
   padding: 0 var(--s2);
   border-radius: var(--pill);
