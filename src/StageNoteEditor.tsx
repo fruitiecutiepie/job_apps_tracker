@@ -382,17 +382,6 @@ export function StageNoteEditor({
           </label>
         </div>
       </div>
-      <p className="stage-note__hint">
-        Markdown: <code>##</code> heading, <code>-</code> bullet (indent to nest),
-        {' '}<code>&gt;</code> quote (<code>&gt;&gt;</code> to nest one inside another),
-        {' '}<code>```</code> fenced code, <code>**bold**</code>, <code>_italic_</code>,
-        {' '}<code>`code`</code>, <code>[link](https://…)</code>. A pasted
-        {' '}<code>https://…</code> URL or email address links itself, and
-        {' '}<code>[to a heading](#heading)</code> jumps within the note.
-        Headings, bullets with sub-points, quotes, and code blocks fold here as they do in
-        the reading view — from the chevrons beside them, or all at once. A line straight
-        after a <code>&gt;</code> joins that quote — leave a blank line to end it.
-      </p>
     </div>
   )
 }

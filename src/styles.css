@@ -2269,13 +2269,6 @@ tbody tr:hover {
   padding: 0;
 }
 
-.stage-note__hint {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: var(--t2);
-  line-height: 1.6;
-}
-
 .stage-note__external {
   display: flex;
   flex-wrap: wrap;
@@ -2386,7 +2379,6 @@ tbody tr:hover {
   resize: none;
 }
 
-.stage-note__hint code,
 .stage-note__external code,
 .markdown code {
   padding: 0 var(--s2);
