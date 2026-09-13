@@ -770,15 +770,17 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const select = () =>
+      within(dialog).getByRole('combobox', {
+        name: 'Move Halcyon Maps to a different stage',
+      }) as HTMLSelectElement
 
-    // Reading the current stage's own tab, where the control reads as the pipeline's own
-    // pill rather than as a form field.
-    const select = within(dialog).getByRole('combobox', {
-      name: 'Move Halcyon Maps to a different stage',
-    }) as HTMLSelectElement
-    expect(select.value).toBe('interview_2')
+    // Reads as the tab open in front of you, not as wherever the application actually
+    // stands — an older or a not-yet-reached stage can be open without being where the
+    // application is, and the control names the one you are looking at.
+    expect(select().value).toBe('interview_2')
 
-    await user.selectOptions(select, 'Offer')
+    await user.selectOptions(select(), 'Offer')
 
     expect(screen.getByRole('status')).toHaveTextContent('Halcyon Maps moved to Offer.')
     expect(
@@ -787,19 +789,18 @@ describe('job applications tracker', () => {
     ).toBe('offer')
 
     // The tab that carries the "Current" badge follows the move on its own: it is derived
-    // from the application's state rather than tracked separately.
+    // from the application's state rather than tracked separately. The tab just picked
+    // from is untouched — moving the application is not the same as switching tabs.
     expect(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Offer/ })).toHaveTextContent('Current')
     expect(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Interview 2$/ }))
       .not.toHaveTextContent('Current')
+    expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Interview 2')
+    expect(select().value).toBe('interview_2')
 
-    // Every open tab's own select reads the same, moved-to state — not just the one used
-    // to move it.
+    // Switching tabs reads a different one back: each pane's control is its own stage,
+    // not a single value shared by the whole panel.
     await user.click(within(dialog).getByRole('tab', { name: /^Halcyon Maps · Interview 1$/ }))
-    expect(
-      (within(dialog).getByRole('combobox', {
-        name: 'Move Halcyon Maps to a different stage',
-      }) as HTMLSelectElement).value,
-    ).toBe('offer')
+    expect(select().value).toBe('interview_1')
   })
 
   it('takes a stage off the tab bar without deleting the note behind it', async () => {

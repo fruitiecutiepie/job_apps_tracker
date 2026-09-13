@@ -1538,7 +1538,6 @@ export function StageNotesPanel({
         ) : null}
 
         <StageNotePane
-          applicationState={shownApplication?.state ?? shown.state}
           body={drafts[shownKey] ?? ''}
           captured={capturedByKey.get(shownKey) ?? ''}
           company={shownApplication?.company ?? ''}

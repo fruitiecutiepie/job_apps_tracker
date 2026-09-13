@@ -18,13 +18,7 @@ interface StageNotePaneProps {
   company: string
   /** Whether this is the application's own stage, which the panel tints. */
   isCurrentState: boolean
-  /**
-   * Where the application actually stands, which is not necessarily the stage this pane
-   * is showing — an older or a not-yet-reached stage can be open for notes without being
-   * where the application is.
-   */
-  applicationState: StateId
-  /** Moves the application straight to a stage, from wherever its notes are open. */
+  /** Moves the application straight to the stage picked, from wherever its notes are open. */
   onMoveState: (state: StateId) => void
   body: string
   saved: StageNote | undefined
@@ -92,7 +86,6 @@ export function StageNotePane({
   label,
   company,
   isCurrentState,
-  applicationState,
   onMoveState,
   body,
   saved,
@@ -193,7 +186,7 @@ export function StageNotePane({
             <select
               className={`stage-note__state-select${isCurrentState ? ' stage-note__state-select--current' : ''}`}
               onChange={(event) => onMoveState(event.target.value as StateId)}
-              value={applicationState}
+              value={noteRef.state}
             >
               {STATE_CONFIG.map((state) => (
                 <option key={state.id} value={state.id}>
