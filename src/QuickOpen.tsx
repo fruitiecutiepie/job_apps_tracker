@@ -1,13 +1,25 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
 import { fuzzyScore } from './quickOpenMatch'
 
-export interface QuickOpenEntry {
-  /** What picking this entry opens. A note's key, not a bare state: the picker spans
-   *  every application, so the same stage appears once per company. */
+export interface QuickOpenStageOption {
+  /** What picking this option opens: a note's key. */
   id: string
   label: string
-  /** Whether the panel is already showing this note, so picking it only switches tab. */
+  /** Whether the panel is already showing this stage, so picking it only switches tab. */
   open: boolean
+}
+
+export interface QuickOpenEntry {
+  /** The application, not a stage: one row per (company, role) keeps the list the length
+   *  of the applications rather than the length of every stage any of them could reach. */
+  id: string
+  /** "(company, role)", since the stage is not on this label at all. */
+  label: string
+  /** Every stage this application can reach, offered as a dropdown on its row. */
+  stages: readonly QuickOpenStageOption[]
+  /** What Enter opens on this row without touching its dropdown: the application's
+   *  current stage, the one most likely wanted. */
+  defaultStageId: string
 }
 
 interface QuickOpenProps {
@@ -49,7 +61,7 @@ export function QuickOpen({ entries, onPick, onClose }: QuickOpenProps) {
     }
     if (event.key === 'Enter') {
       event.preventDefault()
-      if (active) onPick(active.id)
+      if (active) onPick(active.defaultStageId)
       return
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
@@ -78,19 +90,35 @@ export function QuickOpen({ entries, onPick, onClose }: QuickOpenProps) {
         value={query}
       />
       {matches.length === 0 ? (
-        <p className="quick-open__empty">No stage matches that.</p>
+        <p className="quick-open__empty">No application matches that.</p>
       ) : (
-        <ul aria-label="Stages" className="quick-open__list">
+        <ul aria-label="Applications" className="quick-open__list">
           {matches.map((entry) => (
-            <li key={entry.id}>
-              <button
-                className={`quick-open__entry${entry === active ? ' quick-open__entry--active' : ''}`}
-                onClick={() => onPick(entry.id)}
-                type="button"
+            <li
+              className={`quick-open__entry${entry === active ? ' quick-open__entry--active' : ''}`}
+              key={entry.id}
+            >
+              <span className="quick-open__label">{entry.label}</span>
+              <select
+                aria-label={`${entry.label} stage`}
+                className="quick-open__stage"
+                onChange={(event) => {
+                  const stageId = event.target.value
+                  if (stageId) onPick(stageId)
+                }}
+                onFocus={() => setHighlighted(matches.indexOf(entry))}
+                value=""
               >
-                <span className="quick-open__label">{entry.label}</span>
-                {entry.open ? <span className="quick-open__badge">Open</span> : null}
-              </button>
+                <option disabled value="">
+                  Go to a stage…
+                </option>
+                {entry.stages.map((stage) => (
+                  <option key={stage.id} value={stage.id}>
+                    {stage.label}
+                    {stage.open ? ' — Open' : ''}
+                  </option>
+                ))}
+              </select>
             </li>
           ))}
         </ul>

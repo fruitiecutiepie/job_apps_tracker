@@ -327,6 +327,15 @@ export function StageNotesDialog({
   )
 
   /**
+   * What tells two applications apart in the picker, where the stage is not on the
+   * label at all: two applications at the same company are otherwise indistinguishable.
+   */
+  const applicationLabel = useCallback((application: Application) => {
+    const role = application.role?.trim()
+    return `(${application.company}, ${role || 'No role'})`
+  }, [])
+
+  /**
    * Ids for the panes this sitting creates. A counter rather than a uuid: it is only ever
    * compared with its own siblings, and a readable id makes a layout easy to follow.
    */
@@ -1067,15 +1076,34 @@ export function StageNotesDialog({
     return found
   }, [activeRef.applicationId, applications, labelOf])
 
-  const quickOpenEntries: QuickOpenEntry[] = useMemo(
-    () =>
-      [...pickable].map(([key, entry]) => ({
-        id: key,
-        label: entry.label,
-        open: refByKey.has(key),
-      })),
-    [pickable, refByKey],
-  )
+  /**
+   * One row per application rather than one per stage: the stage is what the dropdown on
+   * that row is for, so the list the fuzzy search runs over stays the length of the
+   * applications instead of the length of every stage any of them could reach.
+   */
+  const quickOpenEntries: QuickOpenEntry[] = useMemo(() => {
+    const byApplication = new Map<string, { application: Application; refs: NoteRef[] }>()
+    for (const { ref } of pickable.values()) {
+      const application = applicationsById.get(ref.applicationId)
+      if (!application) continue
+      const group = byApplication.get(application.id) ?? { application, refs: [] }
+      group.refs.push(ref)
+      byApplication.set(application.id, group)
+    }
+    return [...byApplication.values()].map(({ application, refs }) => {
+      const ordered = [...refs].sort((left, right) => stateRank(left.state) - stateRank(right.state))
+      return {
+        id: application.id,
+        label: applicationLabel(application),
+        stages: ordered.map((ref) => ({
+          id: noteRefKey(ref),
+          label: stateLabel(ref.state),
+          open: refByKey.has(noteRefKey(ref)),
+        })),
+        defaultStageId: noteRefKey({ applicationId: application.id, state: application.state }),
+      }
+    })
+  }, [applicationLabel, applicationsById, pickable, refByKey])
 
   const openFromPicker = (key: string) => {
     const ref = pickable.get(key)?.ref

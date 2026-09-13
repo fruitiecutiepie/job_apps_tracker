@@ -1515,20 +1515,27 @@ describe('job applications tracker', () => {
 
     await user.click(within(dialog).getByRole('button', { name: 'Go to stage' }))
     const picker = within(dialog).getByRole('textbox', { name: 'Go to stage' })
-    const choices = () => within(within(dialog).getByRole('list', { name: 'Stages' }))
+    const choices = () => within(within(dialog).getByRole('list', { name: 'Applications' }))
 
-    // Every stage of this application is reachable, and the ones already open say so.
-    // The other seeded applications contribute their own current stage, since the picker
-    // is how a second company's notes get into the panel.
-    const labels = () => choices().getAllByRole('button').map((entry) => entry.textContent)
-    expect(labels().filter((label) => label?.startsWith('Halcyon Maps · '))).toHaveLength(19)
-    expect(labels().some((label) => label?.startsWith('Echo Robotics · '))).toBe(true)
-    // Exact, because "Interview 2" is also the start of "Interview 2 — Rejected".
-    const interviewTwo = choices().getByText('Halcyon Maps · Interview 2', { selector: '.quick-open__label' })
-    expect(interviewTwo.closest('button')).toHaveTextContent('Open')
+    // One row per application, labelled by company and role rather than by stage — the
+    // stage is what its own dropdown is for. The application being worked on can reach
+    // every stage; the other seeded applications only offer their own current one, since
+    // the picker is how a second company's notes get into the panel.
+    const halcyonStage = () =>
+      choices().getByRole('combobox', { name: '(Halcyon Maps, Engineering Manager) stage' })
+    expect(within(halcyonStage()).getAllByRole('option')).toHaveLength(20) // + placeholder
+    expect(
+      choices().getByRole('combobox', { name: '(Echo Robotics, Human Factors Researcher) stage' }),
+    ).toBeInTheDocument()
+    // Already-open stages say so on their own option.
+    expect(
+      within(halcyonStage()).getByRole('option', { name: 'Interview 2 — Open' }),
+    ).toBeInTheDocument()
 
-    await user.type(picker, 'takeh')
-    expect(choices().getAllByRole('button')[0]).toHaveTextContent('Take-home assessment')
+    await user.type(picker, 'Echo Robotics')
+    expect(choices().getByText('(Echo Robotics, Human Factors Researcher)')).toBeInTheDocument()
+    expect(choices().queryByText('(Halcyon Maps, Engineering Manager)')).not.toBeInTheDocument()
+    await user.clear(picker)
 
     // Escape leaves the picker without opening anything.
     await user.keyboard('{Escape}')
@@ -1536,10 +1543,12 @@ describe('job applications tracker', () => {
     expect(within(dialog).getAllByRole('tab')).toHaveLength(3)
     expect(screen.getByRole('dialog', { name: 'Stage prep notes' })).toBeInTheDocument()
 
-    // Picking one opens it as a tab, ready to type into.
+    // Picking a stage from the dropdown opens it as a tab, ready to type into.
     await user.click(within(dialog).getByRole('button', { name: 'Go to stage' }))
-    await user.type(within(dialog).getByRole('textbox', { name: 'Go to stage' }), 'takeh')
-    await user.keyboard('{Enter}')
+    await user.selectOptions(
+      choices().getByRole('combobox', { name: '(Halcyon Maps, Engineering Manager) stage' }),
+      'Take-home assessment',
+    )
 
     expect(within(dialog).getAllByRole('tab')).toHaveLength(4)
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Take-home assessment')
@@ -1624,8 +1633,10 @@ describe('job applications tracker', () => {
 
     // Quick open reaches every stage, not only the ones already on screen.
     await user.keyboard('{Control>}p{/Control}')
-    await user.type(within(dialog).getByRole('textbox', { name: 'Go to stage' }), 'inter1')
-    await user.keyboard('{Enter}')
+    await user.selectOptions(
+      within(dialog).getByRole('combobox', { name: '(Orbit & Oak, Operations Lead) stage' }),
+      'Interview 1',
+    )
 
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Interview 1')
     await user.type(
