@@ -327,13 +327,11 @@ export function StageNotesDialog({
   )
 
   /**
-   * What tells two applications apart in the picker, where the stage is not on the
-   * label at all: two applications at the same company are otherwise indistinguishable.
+   * What tells two applications at the same company apart in the picker, where the stage
+   * is not on the row at all: the role, grouped under the company rather than repeating
+   * it on every row.
    */
-  const applicationLabel = useCallback((application: Application) => {
-    const role = application.role?.trim()
-    return `${application.company}, ${role || 'No role'}`
-  }, [])
+  const applicationRole = useCallback((application: Application) => application.role?.trim() || 'No role', [])
 
   /**
    * Ids for the panes this sitting creates. A counter rather than a uuid: it is only ever
@@ -1094,7 +1092,8 @@ export function StageNotesDialog({
       const ordered = [...refs].sort((left, right) => stateRank(left.state) - stateRank(right.state))
       return {
         id: application.id,
-        label: applicationLabel(application),
+        company: application.company,
+        role: applicationRole(application),
         stages: ordered.map((ref) => ({
           id: noteRefKey(ref),
           label: stateLabel(ref.state),
@@ -1103,7 +1102,7 @@ export function StageNotesDialog({
         defaultStageId: noteRefKey({ applicationId: application.id, state: application.state }),
       }
     })
-  }, [applicationLabel, applicationsById, pickable, refByKey])
+  }, [applicationRole, applicationsById, pickable, refByKey])
 
   const openFromPicker = (key: string) => {
     const ref = pickable.get(key)?.ref

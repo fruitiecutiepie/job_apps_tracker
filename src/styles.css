@@ -3170,52 +3170,100 @@ tbody tr:hover {
 
 .quick-open__list {
   display: grid;
-  gap: var(--s1);
-  max-height: 16rem;
+  gap: var(--s3);
+  max-height: 20rem;
   margin: 0;
   padding: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   list-style: none;
 }
 
-.quick-open__entry {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  width: 100%;
-  min-height: var(--control);
+/* Not itself interactive — the heading over the applications at that company, so a role
+   never has to repeat it. */
+.quick-open__company {
+  margin: 0;
   padding: 0 var(--s3);
-  border: 0;
-  border-radius: var(--r1);
-  color: var(--ink);
-  background: none;
-  font-size: var(--t3);
-  text-align: left;
-}
-
-.quick-open__entry:hover,
-.quick-open__entry--active {
-  background: var(--surface-3);
-}
-
-.quick-open__label {
-  flex: 1;
-  min-width: 0;
   overflow: hidden;
+  color: var(--ink-3);
+  font-size: var(--t2);
+  font-weight: 600;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.quick-open__stage {
-  flex: 0 0 9rem;
-  width: 9rem;
+.quick-open__roles {
+  display: grid;
+  margin: var(--s1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.quick-open__role {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  border-radius: var(--r1);
+}
+
+.quick-open__role:hover,
+.quick-open__role--active {
+  background: var(--surface-3);
+}
+
+.quick-open__role-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
   min-height: var(--control);
-  padding: 0 var(--s2);
+  padding: 0 var(--s3);
+  border: 0;
+  color: var(--ink);
+  background: none;
+  font-size: var(--t3);
+  text-align: left;
+  /* The role can run long — "Senior Engineer II — Developer Tooling (Python/Java)" — and
+     wrapping it keeps every word readable rather than trading half of it for an ellipsis. */
+  white-space: normal;
+}
+
+.quick-open__badge {
+  flex-shrink: 0;
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
+/* A small icon standing in for a native select, which sits on top of it and fully
+   transparent: the control that opens is still a real <select>, with everything a
+   keyboard and a screen reader already know how to do with one, but what is seen is the
+   chevron rather than a box wide enough to hold its longest option. */
+.quick-open__stage-trigger {
+  position: relative;
+  display: inline-grid;
+  flex-shrink: 0;
+  min-width: var(--control);
+  min-height: var(--control);
+  margin-inline-end: var(--s2);
   border: 1px solid var(--line-strong);
   border-radius: var(--r1);
+  color: var(--ink-3);
+  place-items: center;
+}
+
+.quick-open__role:hover .quick-open__stage-trigger,
+.quick-open__stage-trigger:focus-within {
   color: var(--ink);
   background: var(--surface);
-  font-size: var(--t2);
+}
+
+.quick-open__stage-select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
 }
 
 .quick-open__empty {
