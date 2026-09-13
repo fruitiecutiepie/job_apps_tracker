@@ -332,7 +332,7 @@ export function StageNotesDialog({
    */
   const applicationLabel = useCallback((application: Application) => {
     const role = application.role?.trim()
-    return `(${application.company}, ${role || 'No role'})`
+    return `${application.company}, ${role || 'No role'}`
   }, [])
 
   /**

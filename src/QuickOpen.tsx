@@ -13,7 +13,7 @@ export interface QuickOpenEntry {
   /** The application, not a stage: one row per (company, role) keeps the list the length
    *  of the applications rather than the length of every stage any of them could reach. */
   id: string
-  /** "(company, role)", since the stage is not on this label at all. */
+  /** "company, role", since the stage is not on this label at all. */
   label: string
   /** Every stage this application can reach, offered as a dropdown on its row. */
   stages: readonly QuickOpenStageOption[]
@@ -84,7 +84,7 @@ export function QuickOpen({ entries, onPick, onClose }: QuickOpenProps) {
           setHighlighted(0)
         }}
         onKeyDown={onKeyDown}
-        placeholder="Go to stage…"
+        placeholder="Search company or role…"
         ref={inputRef}
         type="text"
         value={query}

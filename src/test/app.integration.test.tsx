@@ -1522,10 +1522,10 @@ describe('job applications tracker', () => {
     // every stage; the other seeded applications only offer their own current one, since
     // the picker is how a second company's notes get into the panel.
     const halcyonStage = () =>
-      choices().getByRole('combobox', { name: '(Halcyon Maps, Engineering Manager) stage' })
+      choices().getByRole('combobox', { name: 'Halcyon Maps, Engineering Manager stage' })
     expect(within(halcyonStage()).getAllByRole('option')).toHaveLength(20) // + placeholder
     expect(
-      choices().getByRole('combobox', { name: '(Echo Robotics, Human Factors Researcher) stage' }),
+      choices().getByRole('combobox', { name: 'Echo Robotics, Human Factors Researcher stage' }),
     ).toBeInTheDocument()
     // Already-open stages say so on their own option.
     expect(
@@ -1533,8 +1533,8 @@ describe('job applications tracker', () => {
     ).toBeInTheDocument()
 
     await user.type(picker, 'Echo Robotics')
-    expect(choices().getByText('(Echo Robotics, Human Factors Researcher)')).toBeInTheDocument()
-    expect(choices().queryByText('(Halcyon Maps, Engineering Manager)')).not.toBeInTheDocument()
+    expect(choices().getByText('Echo Robotics, Human Factors Researcher')).toBeInTheDocument()
+    expect(choices().queryByText('Halcyon Maps, Engineering Manager')).not.toBeInTheDocument()
     await user.clear(picker)
 
     // Escape leaves the picker without opening anything.
@@ -1546,7 +1546,7 @@ describe('job applications tracker', () => {
     // Picking a stage from the dropdown opens it as a tab, ready to type into.
     await user.click(within(dialog).getByRole('button', { name: 'Go to stage' }))
     await user.selectOptions(
-      choices().getByRole('combobox', { name: '(Halcyon Maps, Engineering Manager) stage' }),
+      choices().getByRole('combobox', { name: 'Halcyon Maps, Engineering Manager stage' }),
       'Take-home assessment',
     )
 
@@ -1634,7 +1634,7 @@ describe('job applications tracker', () => {
     // Quick open reaches every stage, not only the ones already on screen.
     await user.keyboard('{Control>}p{/Control}')
     await user.selectOptions(
-      within(dialog).getByRole('combobox', { name: '(Orbit & Oak, Operations Lead) stage' }),
+      within(dialog).getByRole('combobox', { name: 'Orbit & Oak, Operations Lead stage' }),
       'Interview 1',
     )
 
