@@ -2962,6 +2962,7 @@ tbody tr:hover {
 /* A tab and its close control read as one tab, so the pair shares the tab's background
    and the control only appears once the pair is being pointed at or keyed into. */
 .panel__tab-slot {
+  position: relative;
   display: flex;
   align-items: center;
   flex: 0 0 auto;
@@ -2973,12 +2974,18 @@ tbody tr:hover {
   background: var(--surface-3);
 }
 
+/* Sits over the tab's own end rather than beside it, the way its background — set to
+   match the tab's own hover background — reads as covering the title underneath rather
+   than floating past the tab's edge. */
 .panel__tab-close {
-  align-self: center;
-  margin-inline-start: calc(var(--s3) * -1);
+  position: absolute;
+  top: 50%;
+  right: var(--s2);
   padding: var(--s1);
   opacity: 0;
   color: var(--ink-3);
+  background: var(--surface-3);
+  translate: 0 -50%;
 }
 
 .panel__tab-slot:hover .panel__tab-close,
