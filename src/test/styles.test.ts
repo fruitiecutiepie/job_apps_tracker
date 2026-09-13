@@ -161,6 +161,41 @@ describe('prep notes view', () => {
     expect(ruleBody('.panel-view')).toMatch(/max-height:\s*100dvh/)
   })
 
+  it('lays the panel out against its own width, not the window\'s', () => {
+    // The panel had the whole viewport while it was a modal, so window width and panel
+    // width were the same measurement. In a view they are not: the surface around it
+    // takes a gutter each side, and the window says nothing about what the panel has.
+    expect(ruleBody('.panel-view')).toMatch(/container-type:\s*inline-size/)
+    expect(ruleBody('.panel-view')).toMatch(/container-name:\s*panel/)
+
+    const narrowPanel = css.slice(css.indexOf('@container panel (max-width: 760px)'))
+    expect(narrowPanel).toMatch(/\.panel__body \{/)
+    expect(narrowPanel).toMatch(/\.panel__split--row \{/)
+
+    // And those rules are gone from the viewport query they used to live in.
+    const narrowWindow = css.slice(
+      css.indexOf('@media (max-width: 760px)'),
+      css.indexOf('@media (max-width: 520px)'),
+    )
+    expect(narrowWindow).not.toMatch(/\.panel__body \{/)
+    expect(narrowWindow).not.toMatch(/\.panel__split--row \{/)
+  })
+
+  it('lets the notes column narrow to the panel instead of to its own content', () => {
+    // A grid item in `.panel__main`, whose single column is `auto`: an auto track is at
+    // least its item's min-content, and the notes' min-content runs to about a thousand
+    // pixels. Left at `auto` the column takes that width whatever the panel was given, and
+    // the panel clips the difference — the breadcrumbs, the tab strip's end, the status bar
+    // and the right of every note go off the edge instead of the column narrowing.
+    expect(ruleBody('.panel__notes')).toMatch(/min-width:\s*0/)
+  })
+
+  it('wraps the chrome rather than letting a narrow panel clip it', () => {
+    // The panel clips its own overflow, so a title bar that cannot wrap loses its last
+    // control rather than scrolling to it. The stage header already wraps for this reason.
+    expect(ruleBody('.panel__titlebar')).toMatch(/flex-wrap:\s*wrap/)
+  })
+
   it('sizes the panel buttons before the chrome narrows them again', () => {
     // Both rules are one class deep, so source order is what decides between them: the
     // dense chrome has to come after the panel-wide rule it is undoing.

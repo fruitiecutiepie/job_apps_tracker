@@ -2467,7 +2467,15 @@ tbody tr:hover {
  * write state stay in place however long the notes run.
  */
 
+/*
+ * The panel is measured against itself, not the window. It had the whole viewport while it
+ * was a modal, so the two were one measurement; in a view they are not — the surface takes
+ * a gutter each side, and a window width says nothing about what the panel was left. Every
+ * rule that stacks or narrows the panel hangs off this container instead.
+ */
 .panel-view {
+  container-type: inline-size;
+  container-name: panel;
   display: grid;
   min-height: 0;
   height: 100%;
@@ -2507,6 +2515,10 @@ tbody tr:hover {
 
 .panel__titlebar {
   display: flex;
+  /* The panel clips its own overflow, so a row that cannot wrap loses its last control
+     rather than scrolling to it — and what the panel is left is not the window's width to
+     assume. The stage header and the status bar wrap for the same reason. */
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s3);
   padding: var(--s3) var(--s5);
@@ -2689,6 +2701,16 @@ tbody tr:hover {
 .panel__notes {
   display: flex;
   min-height: 0;
+  /*
+   * Both axes, and `min-width` is the load-bearing half. This is a grid item in
+   * `.panel__main`, whose single column is `auto`: an auto track is at least its item's
+   * min-content contribution, and the notes' min-content is whatever the widest tab strip,
+   * capture box and note header add up to — around a thousand pixels. Left at `auto` the
+   * column takes that width whatever the panel was given, and the panel clips the
+   * difference: the breadcrumbs, the tab strip's end, the status bar and the right of
+   * every note all disappear off the edge rather than the notes column narrowing.
+   */
+  min-width: 0;
 }
 
 /*
@@ -3834,6 +3856,66 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   /* The panel takes what the page leaves at every width, so the sheet treatment above
      has nothing left to undo on it. */
 
+}
+
+@media (max-width: 520px) {
+  .context-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .context-bar__filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-field,
+  .context-bar select {
+    flex: none;
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+
+  /* The source select is stretched by the rule above, so inside its pair it has to give
+     the copy button back the width it needs rather than pushing it out of the row. */
+  .context-bar__source select {
+    flex: 1 1 auto;
+    width: auto;
+  }
+
+  .view-toolbar,
+  .calendar__toolbar,
+  .view-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .calendar__month-nav {
+    justify-content: space-between;
+  }
+
+  .segmented-control {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .dialog__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dialog__actions-spacer {
+    display: none;
+  }
+}
+
+/*
+ * The panel with no room to lay itself out in two dimensions. Asked of the panel rather
+ * than of the window, so a panel narrowed by anything else — a gutter, a sidebar, a window
+ * that is merely small — gets the same treatment for the same reason.
+ */
+@container panel (max-width: 760px) {
   /* Too narrow for a sidebar column, so the outline becomes a strip above the notes
      rather than disappearing: it is the only place the headings are listed together. */
   .panel__body {
@@ -3896,58 +3978,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .find-widget__input {
     flex: 1;
     width: auto;
-  }
-}
-
-@media (max-width: 520px) {
-  .context-bar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .context-bar__filters {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .search-field,
-  .context-bar select {
-    flex: none;
-    min-width: 0;
-    max-width: none;
-    width: 100%;
-  }
-
-  /* The source select is stretched by the rule above, so inside its pair it has to give
-     the copy button back the width it needs rather than pushing it out of the row. */
-  .context-bar__source select {
-    flex: 1 1 auto;
-    width: auto;
-  }
-
-  .view-toolbar,
-  .calendar__toolbar,
-  .view-heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .calendar__month-nav {
-    justify-content: space-between;
-  }
-
-  .segmented-control {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .dialog__actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .dialog__actions-spacer {
-    display: none;
   }
 }
 

@@ -169,6 +169,39 @@ describe('the panel in a real browser', () => {
     }
   })
 
+  it('narrows the notes column to the panel rather than to its own content', async () => {
+    renderPanel()
+    await page.viewport(900, 800)
+
+    // The notes are a grid item whose track is `auto`, so without a floor of zero the
+    // column takes its min-content — about a thousand pixels of tab strip, header and
+    // capture box — and the panel clips the difference. What goes first is the right of
+    // every note, the breadcrumbs, and the status bar's save state.
+    const panel = document.querySelector('.panel')!.getBoundingClientRect()
+    for (const selector of ['.panel__notes', '.panel__breadcrumbs', '.panel__statusbar', '.panel__pane']) {
+      const box = document.querySelector(selector)!.getBoundingClientRect()
+      expect(box.right).toBeLessThanOrEqual(panel.right + 1)
+    }
+  })
+
+  it('stacks the panes when the panel is narrow in a window that is not', async () => {
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: 'Split' }))
+    expect(paneBoxes()[1].left).toBeGreaterThan(paneBoxes()[0].left)
+
+    // A wide window with a narrow panel in it — what a media query cannot tell apart from
+    // a wide panel, and the reason the panel's own layout is asked of the panel.
+    const surface = document.querySelector<HTMLElement>('.view-surface--panel')!
+    surface.style.width = '520px'
+
+    const [first, second] = paneBoxes()
+    expect(Math.abs(first.left - second.left)).toBeLessThan(2)
+    expect(second.top).toBeGreaterThanOrEqual(first.bottom - 1)
+    // And nothing runs past the panel it is in.
+    const panel = document.querySelector('.panel')!.getBoundingClientRect()
+    expect(first.right).toBeLessThanOrEqual(panel.right + 1)
+  })
+
   it('stacks the panes when the split runs the other way', async () => {
     renderPanel()
     await splitDown()
