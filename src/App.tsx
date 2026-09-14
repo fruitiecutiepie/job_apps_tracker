@@ -26,6 +26,7 @@ import {
   STATE_LABELS,
   addApplication,
   clearLegacyLocalStorage,
+  isRejectedState,
   completeApplicationNextAction,
   updateApplicationCompletedActions,
   createAttachmentMetadata,
@@ -885,11 +886,16 @@ export default function App() {
 
   const move = (id: string, state: StateId) => {
     const moving = tracker.applications.find((application) => application.id === id)
+    // A rejection drops an outstanding next action, so the notice says so rather than
+    // leaving the task to vanish quietly off the plan.
+    const clearing = Boolean(moving?.next_action?.trim()) && isRejectedState(state)
     // A move to the state it already holds returns the same document, and `commit` reads
     // that as nothing to write, so no notice is shown for it either.
     commit(
       (current) => moveApplication(current, id, state),
-      `${moving?.company ?? 'Application'} moved to ${STATE_LABELS[state]}.`,
+      `${moving?.company ?? 'Application'} moved to ${STATE_LABELS[state]}.${
+        clearing ? ' Next action cleared.' : ''
+      }`,
     )
   }
 

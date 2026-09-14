@@ -63,7 +63,15 @@ Select **Done** beside a next action — on a Focus row, a Kanban card, or in th
 action column — when you have finished it. The task moves to that application's **Completed
 actions**, a dated record kept separately from Notes, and the next action clears. The deadline
 is left alone, since a closing date is not something you complete, and finishing a task is not
-a stage change, so no history entry is added. Applications with nothing left to do fall into
+a stage change, so no history entry is added.
+
+Moving an application into a rejected state clears an outstanding next action for you, and the
+notice for the move says so. A rejection ends the application, so the follow-up you had planned
+is work that will not happen, and left in place it sits on your plan forever because nothing
+asks about it again. It is dropped rather than recorded under Completed actions, since you never
+did it. Accepted and No openings are left alone: nobody turned either down, and a task on an
+offer you accepted is real work. If a rejection does leave you something to do, such as asking
+for feedback, write it as a new next action afterwards. Applications with nothing left to do fall into
 Focus's **No stage change in more than 7 days** or **Nothing dated or planned** group, which is
 where you decide what is next.
 

@@ -442,6 +442,60 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
+  it('clears an outstanding next action when the application is rejected', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
+    const user = userEvent.setup()
+    const { unmount } = await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Marble & Finch',
+    )!
+    expect(before.next_action).toBe('Follow up on the application')
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Move Marble & Finch to state' }),
+      'auto_rejected',
+    )
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.state).toBe('auto_rejected')
+    expect(after.next_action).toBeNull()
+    expect(after.next_action_at).toBeNull()
+    // Abandoned, not carried out, so it leaves no record of having been done.
+    expect(after.completed_actions).toEqual(before.completed_actions)
+    // A closing date is not the task, and the move is still one stage change.
+    expect(after.deadline_at).toBe(before.deadline_at)
+    expect(after.state_history).toHaveLength(before.state_history.length + 1)
+
+    // Said out loud rather than left to be noticed, since a task disappeared.
+    expect(await screen.findByText(/Next action cleared\./)).toBeInTheDocument()
+
+    unmount()
+    await renderLoadedApp()
+    expect(
+      readSavedDocument().applications.find((item) => item.id === before.id)!.next_action,
+    ).toBeNull()
+  })
+
+  it('keeps a next action when the move is to a live stage, not a rejection', async () => {
+    seedFullDemo()
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Marble & Finch',
+    )!
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Move Marble & Finch to state' }),
+      'recruiter_messaged',
+    )
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.state).toBe('recruiter_messaged')
+    expect(after.next_action).toBe('Follow up on the application')
+    expect(after.next_action_at).toBe(before.next_action_at)
+  })
+
   it('marks an action done from the editor and lists it apart from the notes', async () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   STATE_CONFIG,
   STATE_IDS,
+  addApplication,
   addAttachment,
   addStateEvent,
   applyRatings,
@@ -1949,5 +1950,85 @@ describe('document validation and persistence', () => {
     const roundTrip = parseTrackerDocument(serializeTrackerDocument(document))
     expect(roundTrip.applications).toEqual(document.applications)
     expect(roundTrip.indexes.stats_current).toEqual(document.indexes.stats_current)
+  })
+})
+
+describe('rejection clears an outstanding next action', () => {
+  const REJECTED_AT = new Date('2026-08-24T09:00:00+10:00')
+
+  function withAction() {
+    return createApplication(
+      {
+        company: 'Northwind',
+        next_action: 'Follow up with the recruiter',
+        next_action_at: '2026-08-30T09:00:00+10:00',
+        deadline_at: '2026-09-05T17:00:00+10:00',
+      },
+      REFERENCE,
+    )
+  }
+
+  it('drops the action and its date when moving into a rejected state', () => {
+    const moved = moveApplicationState(withAction(), 'auto_rejected', REJECTED_AT)
+
+    expect(moved.state).toBe('auto_rejected')
+    expect(moved.next_action).toBeNull()
+    expect(moved.next_action_at).toBeNull()
+  })
+
+  it('does not record the dropped action as completed', () => {
+    const moved = moveApplicationState(withAction(), 'auto_rejected', REJECTED_AT)
+
+    expect(moved.completed_actions).toEqual([])
+  })
+
+  it('leaves the deadline alone, the way completing an action does', () => {
+    const application = withAction()
+    const moved = moveApplicationState(application, 'auto_rejected', REJECTED_AT)
+
+    expect(moved.deadline_at).toBe(application.deadline_at)
+  })
+
+  it('still appends exactly one history entry for the move', () => {
+    const application = withAction()
+    const moved = moveApplicationState(application, 'auto_rejected', REJECTED_AT)
+
+    expect(moved.state_history).toEqual([
+      ...application.state_history,
+      { state: 'auto_rejected', at: REJECTED_AT.toISOString() },
+    ])
+  })
+
+  it('keeps the action when moving between live states', () => {
+    const moved = moveApplicationState(withAction(), 'recruiter_interview', REJECTED_AT)
+
+    expect(moved.next_action).toBe('Follow up with the recruiter')
+    expect(moved.next_action_at).toBe(new Date('2026-08-30T09:00:00+10:00').toISOString())
+  })
+
+  it('keeps the action when moving to Accepted, where a task is still live work', () => {
+    const moved = moveApplicationState(withAction(), 'accepted', REJECTED_AT)
+
+    expect(moved.next_action).toBe('Follow up with the recruiter')
+  })
+
+  it('is still a no-op when the application is already in that rejected state', () => {
+    const rejected = moveApplicationState(withAction(), 'auto_rejected', REJECTED_AT)
+
+    expect(moveApplicationState(rejected, 'auto_rejected', new Date())).toBe(rejected)
+  })
+
+  it('clears through the document-level move as well', () => {
+    const document = addApplication(
+      createEmptyDocument(),
+      { company: 'Northwind', next_action: 'Follow up with the recruiter' },
+      REFERENCE,
+    )
+    const application = document.applications[0]!
+    const moved = moveApplication(document, application.id, 'auto_rejected', REJECTED_AT)
+    const stored = moved.applications.find((item) => item.id === application.id)!
+
+    expect(stored.next_action).toBeNull()
+    expect(stored.next_action_at).toBeNull()
   })
 })
