@@ -101,6 +101,7 @@ export function NotesTreeView({
               <ul className="notes-tree__notes">
                 {group.notes.map((note) => {
                   const key = noteRefKey(note.ref)
+                  const name = `${note.company}${note.role ? ` · ${note.role}` : ''}`
                   return (
                     <li key={key}>
                       <button
@@ -120,9 +121,12 @@ export function NotesTreeView({
                         onPointerDown={(event) => onDragStart(event, key)}
                         type="button"
                       >
-                        <span className="notes-tree__name">
-                          {note.company}
-                          {note.role ? ` · ${note.role}` : ''}
+                        {/* The column is narrow and a name is long, so the name is
+                            truncated and carries itself as a tooltip: a row reading
+                            "Halcyon Maps · Engineerin…" says which company and not which
+                            role, and the role is half of what tells two rows apart. */}
+                        <span className="notes-tree__name" title={name}>
+                          {name}
                         </span>
                         {/* What is in it, so a row can be read before it is opened: a stage
                             holding only what you were told is worth telling apart from one
@@ -134,6 +138,41 @@ export function NotesTreeView({
                           </span>
                         ) : null}
                       </button>
+
+                      {note.matches.length > 0 ? (
+                        /*
+                         * The hits themselves, under the note holding them. A search that
+                         * only listed which notes matched left the reader opening each one
+                         * to find out why; the words are what they were looking for.
+                         */
+                        <ul aria-label={`Matches in ${name}`} className="notes-tree__hits">
+                          {note.matches.map((match, index) => (
+                            // Keyed by position: two identical snippets in one note are two
+                            // hits, and there is nothing else to tell them apart by.
+                            <li key={`${match.where}-${index}`}>
+                              <button
+                                className="notes-tree__hit"
+                                onClick={() => {
+                                  if (wasDragged()) return
+                                  onPick(note.ref)
+                                }}
+                                title={match.snippet}
+                                type="button"
+                              >
+                                <span className="notes-tree__hit-text">{match.snippet}</span>
+                                {match.where === 'captured' ? (
+                                  <span className="notes-tree__hit-where">said</span>
+                                ) : null}
+                              </button>
+                            </li>
+                          ))}
+                          {note.hits > note.matches.length ? (
+                            <li className="notes-tree__more">
+                              {note.hits - note.matches.length} more in this note
+                            </li>
+                          ) : null}
+                        </ul>
+                      ) : null}
                     </li>
                   )
                 })}

@@ -60,7 +60,16 @@ import {
   type NoteRequest,
   type TabGroup,
 } from './notesLayout'
-import { captureHeightWithin, DEFAULT_CAPTURE_LOG, type Arrangement } from './notesArrangement'
+import {
+  captureHeightWithin,
+  DEFAULT_CAPTURE_LOG,
+  DEFAULT_SIDEBAR,
+  SIDEBAR_STEP,
+  MAX_SIDEBAR,
+  MIN_SIDEBAR,
+  sidebarWidthWithin,
+  type Arrangement,
+} from './notesArrangement'
 import { NotesTreeView } from './NotesTreeView'
 import { StageNotePane } from './StageNotePane'
 import {
@@ -435,6 +444,7 @@ export function StageNotesPanel({
    * time. Undefined until one is dragged, which leaves the stylesheet its own default.
    */
   const [captureHeight, setCaptureHeight] = useState(initial.captureHeight ?? DEFAULT_CAPTURE_LOG)
+  const [sidebarWidth, setSidebarWidth] = useState(initial.sidebarWidth ?? DEFAULT_SIDEBAR)
   const [quickOpen, setQuickOpen] = useState<string | null>(null)
   /** The section the breadcrumbs name: the last heading scrolled past. */
   const [trailKey, setTrailKey] = useState<string | null>(null)
@@ -890,8 +900,8 @@ export function StageNotesPanel({
    * tab.
    */
   useEffect(() => {
-    arrangeRef.current({ layout, focusedGroupId, captureHeight })
-  }, [captureHeight, focusedGroupId, layout])
+    arrangeRef.current({ layout, focusedGroupId, captureHeight, sidebarWidth })
+  }, [captureHeight, focusedGroupId, layout, sidebarWidth])
 
   /*
    * A note asked for from outside the panel. Only the nonce is watched: the ref alone
@@ -916,6 +926,47 @@ export function StageNotesPanel({
   const resizeCapture = useCallback((delta: number) => {
     setCaptureHeight((current) => captureHeightWithin(current + delta))
   }, [])
+
+  /**
+   * Moves the sidebar's edge. Asked for a width below what its own rows can be read at,
+   * the panel closes instead of narrowing further: a column too thin to read is not a
+   * narrower sidebar, it is a sidebar in the way. The rail stays, so the way back is where
+   * the way out was, and the width it had is kept for when it comes back.
+   */
+  const endSidebarDrag = useRef<(() => void) | null>(null)
+  // A drag outlives a re-render, but must not outlive the panel it belongs to.
+  useEffect(() => () => endSidebarDrag.current?.(), [])
+
+  const resizeSidebar = useCallback((delta: number) => {
+    setSidebarWidth((current) => {
+      const wanted = current + delta
+      if (wanted < MIN_SIDEBAR) {
+        setSidebarPanel(null)
+        return current
+      }
+      return sidebarWidthWithin(wanted)
+    })
+  }, [])
+
+  /**
+   * The drag that moves it, re-based on every move so the edge tracks the pointer rather
+   * than accelerating away from it — the same reason the other handles re-base theirs.
+   */
+  const beginSidebarDrag = useCallback((startX: number) => {
+    let from = startX
+    const move = (event: MouseEvent) => {
+      resizeSidebar(event.clientX - from)
+      from = event.clientX
+    }
+    const stop = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', stop)
+      endSidebarDrag.current = null
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', stop)
+    endSidebarDrag.current = stop
+  }, [resizeSidebar])
 
   /**
    * Closes the note on show in the pane being read. Off the refs rather than the rendered
@@ -1815,7 +1866,10 @@ export function StageNotesPanel({
       ref={panelRef}
       /* Set on the panel rather than on each dock: the height is shared, and one variable
          is what makes every pane agree without passing it down twice. */
-      style={{ '--capture-log': `${captureHeight}px` } as CSSProperties}
+      style={{
+        '--capture-log': `${captureHeight}px`,
+        '--sidebar': `${sidebarWidth}px`,
+      } as CSSProperties}
       tabIndex={-1}
     >
         <div className="panel__titlebar">
@@ -1902,6 +1956,35 @@ export function StageNotesPanel({
                 wasDragged={drag.wasDragged}
               />
             </aside>
+          ) : null}
+
+          {sidebarPanel === 'outline' || sidebarPanel === 'notes' ? (
+            /*
+             * The sidebar's own edge, a real `separator` with arrow keys like the handles
+             * between panes and the one over the dock. Drawn once beside whichever panel is
+             * open rather than once per panel: it moves the column, not what is in it — and
+             * after the panel rather than before it, the body being a grid whose columns are
+             * filled in the order its children appear.
+             */
+            <div
+              aria-label="Resize the sidebar"
+              aria-orientation="vertical"
+              aria-valuemax={MAX_SIDEBAR}
+              aria-valuemin={MIN_SIDEBAR}
+              aria-valuenow={sidebarWidth}
+              className="panel__sidebar-resize"
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                event.preventDefault()
+                resizeSidebar(event.key === 'ArrowRight' ? SIDEBAR_STEP : -SIDEBAR_STEP)
+              }}
+              onMouseDown={(event) => {
+                event.preventDefault()
+                beginSidebarDrag(event.clientX)
+              }}
+              role="separator"
+              tabIndex={0}
+            />
           ) : null}
 
           <div className="panel__main">

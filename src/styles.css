@@ -2594,8 +2594,25 @@ tbody tr:hover {
 
 .panel__body {
   display: grid;
-  grid-template-columns: auto var(--sidebar) minmax(0, 1fr);
+  grid-template-columns: auto var(--sidebar) auto minmax(0, 1fr);
   min-height: 0;
+}
+
+/*
+ * The sidebar's own edge. Full height and one handle wide, like the handles between panes,
+ * and it owns the pointer for the length of a drag — without that a touch drag scrolls the
+ * panel instead of moving the edge.
+ */
+.panel__sidebar-resize {
+  width: var(--pane-handle);
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.panel__sidebar-resize:hover,
+.panel__sidebar-resize:focus-visible {
+  background: var(--line-strong);
 }
 
 /* With no panel open the rail is all that is left of the column: the controls that bring
@@ -3890,6 +3907,75 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/*
+ * Every level of the tree is a grid, and a grid item refuses to shrink below its content
+ * unless told otherwise. A snippet is one long line, so without a floor of zero at each
+ * level the lists size to the longest one and run past the sidebar's edge — clipped rather
+ * than ending in the ellipsis the text itself asks for.
+ */
+.notes-tree,
+.notes-tree__stages,
+.notes-tree__stages > li,
+.notes-tree__notes,
+.notes-tree__notes > li,
+.notes-tree__hits,
+.notes-tree__hits > li {
+  min-width: 0;
+}
+
+/* The words that matched, under the note holding them: indented past the note's own guide
+   so the nesting is in the layout rather than only in the order. */
+.notes-tree__hits {
+  display: grid;
+  gap: var(--s1);
+  margin: var(--s1) 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+}
+
+.notes-tree__hit {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  width: 100%;
+  /* A flex item will not shrink below its content without this, and a snippet is one long
+     line: the ellipsis on the text inside never arrives, and the words run past the
+     sidebar's edge instead of ending in one. */
+  min-width: 0;
+  padding: 0 var(--s2);
+  border: 0;
+  border-left: 2px solid var(--line);
+  color: var(--ink-3);
+  background: none;
+  font: inherit;
+  font-size: var(--t1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.notes-tree__hit:hover {
+  color: var(--ink-2);
+  background: var(--surface-3);
+}
+
+.notes-tree__hit-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-tree__hit-where {
+  flex: none;
+  color: var(--ink-3);
+}
+
+.notes-tree__more {
+  padding: 0 var(--s2);
+  color: var(--ink-3);
+  font-size: var(--t1);
 }
 
 /* What is in it, so a row can be read before it is opened. */

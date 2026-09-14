@@ -59,6 +59,23 @@ export const DEFAULT_CAPTURE_LOG = 154
 /** How far one arrow key moves the dock's edge. */
 export const CAPTURE_STEP = 24
 
+/**
+ * What the sidebar may be resized between, in pixels. `MIN_SIDEBAR` is both the narrowest
+ * it goes and the point past which it closes: a column too thin to read its own rows is
+ * not a narrower sidebar, it is a sidebar in the way, so asking for one closes it instead.
+ * One rule rather than a floor and a separate collapse point below it — with both, the
+ * clamp held the width above the threshold and the collapse could never be reached.
+ * The rail stays, so the way back is where the way out was, and the width is kept.
+ */
+export const MIN_SIDEBAR = 140
+export const MAX_SIDEBAR = 420
+
+/** How far one arrow key moves the sidebar's edge. */
+export const SIDEBAR_STEP = 16
+
+/** The width the stylesheet gives it before anyone drags it, matching `--sidebar`. */
+export const DEFAULT_SIDEBAR = 208
+
 export interface Arrangement {
   layout: LayoutNode
   focusedGroupId: string
@@ -68,6 +85,11 @@ export interface Arrangement {
    * tabs do. Absent until one is dragged, which leaves the stylesheet its own default.
    */
   captureHeight?: number
+  /**
+   * How wide the sidebar stands. Absent until one is dragged, which leaves the stylesheet
+   * its own width.
+   */
+  sidebarWidth?: number
 }
 
 /**
@@ -78,8 +100,16 @@ export function arrangementKey(profile: string = trackerProfile()): string {
   return `job-applications-tracker:notes-arrangement:${profile}`
 }
 
-export function serializeArrangement({ layout, focusedGroupId, captureHeight }: Arrangement): string {
-  return JSON.stringify({ version: ARRANGEMENT_VERSION, layout, focusedGroupId, captureHeight })
+export function serializeArrangement(
+  { layout, focusedGroupId, captureHeight, sidebarWidth }: Arrangement,
+): string {
+  return JSON.stringify({
+    version: ARRANGEMENT_VERSION,
+    layout,
+    focusedGroupId,
+    captureHeight,
+    sidebarWidth,
+  })
 }
 
 /** A stored dock height, or nothing at all when it is not one. */
@@ -91,6 +121,15 @@ function readCaptureHeight(value: unknown): number | undefined {
 /** The same clamp, for a drag or an arrow key moving the edge. */
 export function captureHeightWithin(height: number): number {
   return Math.round(Math.min(MAX_CAPTURE_LOG, Math.max(MIN_CAPTURE_LOG, height)))
+}
+
+function readSidebarWidth(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  return sidebarWidthWithin(value)
+}
+
+export function sidebarWidthWithin(width: number): number {
+  return Math.round(Math.min(MAX_SIDEBAR, Math.max(MIN_SIDEBAR, width)))
 }
 
 /**
@@ -240,10 +279,12 @@ export function restoreArrangement(
       ? stored
       : groups[0].id
 
+  const restored: Arrangement = { layout, focusedGroupId }
   const captureHeight = readCaptureHeight(parsed.captureHeight)
-  return captureHeight === undefined
-    ? { layout, focusedGroupId }
-    : { layout, focusedGroupId, captureHeight }
+  if (captureHeight !== undefined) restored.captureHeight = captureHeight
+  const sidebarWidth = readSidebarWidth(parsed.sidebarWidth)
+  if (sidebarWidth !== undefined) restored.sidebarWidth = sidebarWidth
+  return restored
 }
 
 function browserStorage(): StorageLike | null {

@@ -642,8 +642,49 @@ describe('job applications tracker', () => {
     await user.type(within(panel).getByRole('searchbox', { name: 'Search prep notes' }), 'teleoperation')
 
     const tree = within(panel).getByRole('list', { name: 'Prep notes by stage' })
-    expect(within(tree).getAllByRole('button')).toHaveLength(1)
     expect(within(tree).getByRole('button', { name: /Echo Robotics/ })).toBeInTheDocument()
+    expect(within(tree).getAllByRole('listitem', { name: /^Stage / })).toHaveLength(1)
+
+    // And the words that matched, under the note holding them: a search that only said
+    // which notes matched left the reader opening each one to find out why.
+    const hits = within(tree).getByRole('list', { name: /^Matches in Echo Robotics/ })
+    expect(within(hits).getAllByRole('button')[0]).toHaveTextContent(/teleoperation study/i)
+  })
+
+  it('resizes the sidebar, and closes it rather than narrowing past reading', async () => {
+    const user = userEvent.setup()
+    const { unmount } = await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    const edge = () => within(panel).getByRole('separator', { name: 'Resize the sidebar' })
+    const width = () => Number(edge().getAttribute('aria-valuenow'))
+    const started = width()
+
+    edge().focus()
+    await user.keyboard('{ArrowRight}{ArrowRight}')
+    const wider = width()
+    expect(wider).toBeGreaterThan(started)
+
+    // Wide enough to survive the app closing, like the panes and the dock.
+    unmount()
+    await renderLoadedApp()
+    await user.click(screen.getByRole('button', { name: 'Prep notes' }))
+    const restored = screen.getByRole('region', { name: 'Stage prep notes' })
+    expect(
+      Number(
+        within(restored).getByRole('separator', { name: 'Resize the sidebar' })
+          .getAttribute('aria-valuenow'),
+      ),
+    ).toBe(wider)
+
+    // Dragged past the point of being readable it closes, rather than leaving a column
+    // nobody could use. The rail is still there to bring it back.
+    within(restored).getByRole('separator', { name: 'Resize the sidebar' }).focus()
+    await user.keyboard('{ArrowLeft>40/}')
+    expect(within(restored).queryByText('Outline')).not.toBeInTheDocument()
+    expect(within(restored).getByRole('button', { name: 'Show the outline' })).toBeInTheDocument()
   })
 
   it('keeps the rail when both sidebar panels are closed', async () => {
@@ -3477,7 +3518,9 @@ describe('job applications tracker', () => {
 
     expect(within(dialog).getAllByRole('tablist')).toHaveLength(3)
     expect(
-      within(dialog).getAllByRole('separator').map((handle) => handle.getAttribute('aria-label')),
+      within(dialog).getAllByRole('separator')
+        .map((handle) => handle.getAttribute('aria-label'))
+        .filter((label) => label?.startsWith('Resize pane')),
     ).toEqual(['Resize pane 1 and pane 2', 'Resize pane 2 and pane 3'])
     expect(dialog.querySelectorAll('.panel__split')).toHaveLength(1)
   })

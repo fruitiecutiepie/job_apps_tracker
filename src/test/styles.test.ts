@@ -236,7 +236,7 @@ describe('prep notes view', () => {
   it('leaves only the rail when both sidebar panels are closed', () => {
     // The rail is the switcher and the way back, so it is what the column collapses to —
     // one icon wide, and the same element whether a panel is open or not.
-    expect(ruleBody('.panel__body')).toMatch(/grid-template-columns:\s*auto var\(--sidebar\) minmax\(0, 1fr\)/)
+    expect(ruleBody('.panel__body')).toMatch(/grid-template-columns:\s*auto var\(--sidebar\) auto minmax\(0, 1fr\)/)
     expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\)/)
     // Which panel is showing is a pressed state on its own control, not a mark elsewhere.
     expect(ruleBody(".panel__rail .icon-button\\[aria-pressed='true'\\]")).toMatch(/--accent/)
@@ -249,6 +249,18 @@ describe('prep notes view', () => {
     expect(ruleBody('.notes-tree__note--current')).toMatch(/border-left-color:\s*var\(--accent\)/)
     // The same indent guide the outline draws, so one sidebar reads as one sidebar.
     expect(ruleBody('.notes-tree__note')).toMatch(/border-left:\s*2px solid var\(--line\)/)
+  })
+
+  it('ends a search hit in an ellipsis rather than past the sidebar', () => {
+    // A snippet is one long line in a flex row, so without a floor of zero the row refuses
+    // to shrink below it and the ellipsis never arrives — the words run off the edge.
+    expect(ruleBody('.notes-tree__hit')).toMatch(/min-width:\s*0/)
+    // And every list above it, each being a grid item with the same refusal to shrink:
+    // the rule they share is named by its last selector.
+    expect(ruleBody('.notes-tree__hits > li')).toMatch(/min-width:\s*0/)
+    const text = ruleBody('.notes-tree__hit-text')
+    expect(text).toMatch(/min-width:\s*0/)
+    expect(text).toMatch(/text-overflow:\s*ellipsis/)
   })
 
   it('tints the tab as well as the slot a drag is aimed at', () => {

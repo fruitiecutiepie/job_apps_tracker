@@ -14,6 +14,24 @@ import type { Application, StateId } from './domain'
 import { STATE_CONFIG, stateLabel } from './domain'
 import type { NoteRef } from './notesLayout'
 
+/** How much of a note a hit shows around the words that matched. */
+export const SNIPPET_CHARS = 96
+
+/**
+ * How many hits a row lists. A row is a way into a note rather than the note itself, and a
+ * search for a common word would otherwise put a whole note in the sidebar.
+ */
+export const MATCHES_SHOWN = 5
+
+/** Which half of a note a hit is in — what you wrote, or what you were told. */
+export type MatchWhere = 'written' | 'captured'
+
+export interface NotesTreeMatch {
+  where: MatchWhere
+  /** The words around the hit, read as the prose the note renders to. */
+  snippet: string
+}
+
 export interface NotesTreeEntry {
   ref: NoteRef
   company: string
@@ -22,6 +40,14 @@ export interface NotesTreeEntry {
   written: boolean
   /** How many lines were captured, so a row can say what is in it before it is opened. */
   captured: number
+  /**
+   * The hits in this note's own words, up to `MATCHES_SHOWN`, for the rows that sit under
+   * it while a search is running. Empty without a query, and empty for a row that matched
+   * on its company or its stage rather than on anything written in it.
+   */
+  matches: NotesTreeMatch[]
+  /** Every hit, including the ones not listed, so a row can say there are more. */
+  hits: number
 }
 
 export interface NotesTreeGroup {
@@ -41,6 +67,49 @@ function haystack(application: Application, state: StateId, body: string, captur
     .toLowerCase()
 }
 
+/**
+ * A note's source read as the prose it renders to. The markers are how it is written
+ * rather than part of what it says, and a hit is one line: a snippet still carrying `##`
+ * and `-` reads as a fragment of a file instead of a sentence from a note.
+ *
+ * Deliberately not the Markdown parser. This throws structure away on purpose, where the
+ * parser exists to keep it, and a snippet is the one place that wants the text flattened.
+ */
+function asProse(text: string): string {
+  return text
+    .replace(/```+/g, ' ')
+    .replace(/^[\s>]*(?:#{1,6}|[-*+]|\d+\.)\s+/gm, '')
+    .replace(/[*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+/**
+ * The text around one hit. A fixed window rather than a cut on word boundaries, which is
+ * what makes a snippet predictable against the note it came from — and the hit itself is
+ * never cut, that being what the reader is looking for.
+ */
+function snippetAround(text: string, at: number, length: number): string {
+  const room = Math.max(0, SNIPPET_CHARS - length)
+  const start = Math.max(0, at - Math.floor(room / 2))
+  const end = Math.min(text.length, start + SNIPPET_CHARS + length)
+  const middle = text.slice(start, end).trim()
+  return `${start > 0 ? '…' : ''}${middle}${end < text.length ? '…' : ''}`
+}
+
+/** Every hit in one piece of text, as the snippets a row lists. */
+function hitsIn(source: string, needle: string, where: MatchWhere): NotesTreeMatch[] {
+  const text = asProse(source)
+  const hay = text.toLowerCase()
+  const found: NotesTreeMatch[] = []
+  let at = hay.indexOf(needle)
+  while (at !== -1) {
+    found.push({ where, snippet: snippetAround(text, at, needle.length) })
+    at = hay.indexOf(needle, at + needle.length)
+  }
+  return found
+}
+
 export function buildNotesTree(
   applications: readonly Application[],
   query: string,
@@ -55,6 +124,12 @@ export function buildNotesTree(
       const captured = note.heard.map((entry) => entry.body).join('\n')
       if (needle && !haystack(application, note.state, note.body, captured).includes(needle)) continue
 
+      // What the note itself says, which is not the same question as whether the row
+      // matched: a row found by its company has nothing to show under it.
+      const found = needle
+        ? [...hitsIn(note.body, needle, 'written'), ...hitsIn(captured, needle, 'captured')]
+        : []
+
       const entries = byState.get(note.state) ?? []
       entries.push({
         ref: { applicationId: application.id, state: note.state },
@@ -62,6 +137,8 @@ export function buildNotesTree(
         role: application.role,
         written,
         captured: note.heard.length,
+        matches: found.slice(0, MATCHES_SHOWN),
+        hits: found.length,
       })
       byState.set(note.state, entries)
     }

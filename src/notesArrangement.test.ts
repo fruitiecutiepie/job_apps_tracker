@@ -15,7 +15,9 @@ import {
 import {
   ARRANGEMENT_VERSION,
   MAX_CAPTURE_LOG,
+  MAX_SIDEBAR,
   MIN_CAPTURE_LOG,
+  MIN_SIDEBAR,
   openingLayout,
   restoreArrangement,
   serializeArrangement,
@@ -259,6 +261,31 @@ describe('the captured lines\' height', () => {
     const raw = serializeArrangement({ layout, focusedGroupId: 'pane-1', captureHeight: 300 })
 
     expect(restoreArrangement(raw, [acme])).toEqual({ layout, focusedGroupId: 'pane-1', captureHeight: 300 })
+  })
+})
+
+describe('the sidebar width', () => {
+  const stored = (sidebarWidth: unknown): string =>
+    JSON.stringify({
+      version: ARRANGEMENT_VERSION,
+      layout: singleGroup('pane-1', ref('acme', 'applied')),
+      focusedGroupId: 'pane-1',
+      sidebarWidth,
+    })
+
+  it('comes back as it was left', () => {
+    expect(restoreArrangement(stored(260), [acme])!.sidebarWidth).toBe(260)
+  })
+
+  it('is held between a readable floor and a width that leaves room for the notes', () => {
+    expect(restoreArrangement(stored(10), [acme])!.sidebarWidth).toBe(MIN_SIDEBAR)
+    expect(restoreArrangement(stored(9_999), [acme])!.sidebarWidth).toBe(MAX_SIDEBAR)
+  })
+
+  it('is dropped rather than guessed at when it is not a width', () => {
+    for (const nonsense of ['260', null, Number.NaN, {}]) {
+      expect(restoreArrangement(stored(nonsense), [acme])!.sidebarWidth).toBeUndefined()
+    }
   })
 })
 

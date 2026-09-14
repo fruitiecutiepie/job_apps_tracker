@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createApplication } from './domain/mutations'
 import type { Application, StateId } from './domain'
-import { buildNotesTree } from './notesTree'
+import { buildNotesTree, MATCHES_SHOWN } from './notesTree'
 
 function application(
   company: string,
@@ -76,6 +76,46 @@ describe('buildNotesTree', () => {
       ['Interview 2', ['Halcyon Maps']],
       ['Offer', ['Halcyon Maps']],
     ])
+  })
+
+  it('shows the words around each hit, so a row can be read before it is opened', () => {
+    const long = application('Long', {
+      applied: { body: '## Questions to ask\n\n- How is **design system** work resourced?\n- Who owns the design system roadmap?' },
+    })
+
+    const [{ notes }] = buildNotesTree([long], 'design system')
+
+    expect(notes[0].matches).toHaveLength(2)
+    expect(notes[0].matches[0].snippet).toContain('design system work resourced')
+    // As prose: the markers are how a note is written, not what it says.
+    expect(notes[0].matches[0].snippet).not.toMatch(/[#*`]/)
+    expect(notes[0].matches.every((match) => match.where === 'written')).toBe(true)
+  })
+
+  it('says which half of a note each hit is in', () => {
+    const heard = application('Heard', { applied: { body: 'Nothing here', heard: ['They mentioned the rebrand budget'] } })
+
+    const [{ notes }] = buildNotesTree([heard], 'budget')
+
+    expect(notes[0].matches).toEqual([
+      { where: 'captured', snippet: 'They mentioned the rebrand budget' },
+    ])
+  })
+
+  it('caps the hits it lists, a row being a way in rather than the note itself', () => {
+    const many = application('Many', { applied: { body: Array.from({ length: 30 }, () => 'needle').join(' ') } })
+
+    const [{ notes }] = buildNotesTree([many], 'needle')
+
+    expect(notes[0].matches).toHaveLength(MATCHES_SHOWN)
+    expect(notes[0].hits).toBe(30)
+  })
+
+  it('lists no hits for a row that matched on its company rather than its words', () => {
+    const [{ notes }] = buildNotesTree([atlas], 'atlas')
+
+    expect(notes[0].matches).toEqual([])
+    expect(notes[0].hits).toBe(0)
   })
 
   it('returns nothing at all when nothing matches', () => {
