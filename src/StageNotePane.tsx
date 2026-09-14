@@ -208,8 +208,17 @@ export function StageNotePane({
             </select>
           </label>
           {saved ? (
+            /*
+             * The date carries the word only to a screen reader. A bare date in a note's
+             * header reads as when it was last written, and spelling that out costs a line
+             * of a narrow pane: with the word, this and the controls beside it cannot share
+             * a row, and the header takes three rows where two will do.
+             */
             <small className="stage-note__meta">
-              Updated <time dateTime={saved.updated_at}>{formatDate(saved.updated_at)}</time>
+              <span className="sr-only">Updated </span>
+              <time dateTime={saved.updated_at} title={`Updated ${formatDate(saved.updated_at)}`}>
+                {formatDate(saved.updated_at)}
+              </time>
             </small>
           ) : null}
           <span className="stage-note__actions">

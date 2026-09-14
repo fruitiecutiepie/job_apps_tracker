@@ -190,6 +190,35 @@ describe('prep notes view', () => {
     expect(ruleBody('.panel__notes')).toMatch(/min-width:\s*0/)
   })
 
+  it('keeps the note header to two rows by letting the name give way', () => {
+    // The header's parts want some seven hundred pixels between them, so in a split pane a
+    // plain wrap gave each of them a line of its own — four rows of chrome over a note that
+    // had less height than they did. The name is the part that gives, being the one thing
+    // here also written in full on the tab directly above.
+    const heading = ruleBody('.stage-note__header h3')
+    expect(heading).toMatch(/text-overflow:\s*ellipsis/)
+    expect(heading).toMatch(/white-space:\s*nowrap/)
+    expect(heading).toMatch(/min-width:\s*0/)
+    // The controls keep their width, so they wrap as one piece rather than splitting up.
+    expect(ruleBody('.stage-note__actions')).toMatch(/flex:\s*none/)
+  })
+
+  it('insets a pane once rather than three times over', () => {
+    // The pane, the note's body and the note's header each inset what is inside them, and
+    // three roomy frames around one column of text cost more of a split pane than any of
+    // them is worth. All three sit a step down the scale from a form's spacing.
+    expect(ruleBody('.panel__pane')).toMatch(/padding:\s*var\(--s3\)/)
+    expect(ruleBody('.panel__notes .stage-note__body')).toMatch(/padding:\s*0 var\(--s3\) var\(--s3\)/)
+    expect(ruleBody('.panel__notes .stage-note__header')).toMatch(/padding:\s*var\(--s2\) var\(--s3\)/)
+  })
+
+  it('sizes the tab strip by the chrome measure, including the control that sets it', () => {
+    // The + is what the strip takes its height from, so a form-sized icon button there
+    // makes every tab strip in the panel taller than the tabs in it ask for.
+    expect(ruleBody('.panel__tab')).toMatch(/min-height:\s*var\(--control\)/)
+    expect(ruleBody('.panel__tab-add')).toMatch(/min-height:\s*var\(--control\)/)
+  })
+
   it('wraps the chrome rather than letting a narrow panel clip it', () => {
     // The panel clips its own overflow, so a title bar that cannot wrap loses its last
     // control rather than scrolling to it. The stage header already wraps for this reason.
