@@ -1449,12 +1449,13 @@ describe('job applications tracker', () => {
     const find = within(dialog).getByRole('button', { name: 'Find' })
     expect(find).toHaveAttribute('aria-keyshortcuts', 'Meta+F Control+F')
     expect(find).toHaveAttribute('title', 'Open the find bar (Ctrl+F)')
-    // Every control in this bar is an icon that names itself on hover and to a screen
-    // reader, so the shortcut rides in the tooltip with the name rather than on the face.
+    // The rest of this bar is icons that name themselves on hover, but Open keeps its word
+    // and its key on its face: it is the way to a note that is not on screen yet, which is
+    // when a reader can least guess at an icon, and the only visible place Ctrl+P is written.
     const picker = within(dialog).getByRole('button', { name: 'Open' })
     expect(picker).toHaveAttribute('aria-keyshortcuts', 'Meta+P Control+P')
     expect(picker).toHaveAttribute('title', 'Open a note or a stage (Ctrl+P)')
-    expect(picker).toHaveTextContent('')
+    expect(picker).toHaveTextContent('Ctrl+P')
     expect(within(dialog).getByRole('button', { name: 'Sidebar' })).toHaveAttribute(
       'title',
       'Hide the sidebar (Ctrl+B)',

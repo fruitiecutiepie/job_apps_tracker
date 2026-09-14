@@ -280,6 +280,22 @@ describe('prep notes view', () => {
     expect(ruleBody(".panel__chrome-button\\[aria-pressed='true'\\]")).toMatch(/--accent/)
   })
 
+  it('says where you are on the header control, not only what you pressed', () => {
+    // The workspace is a layer over a view rather than one of the views in the strip, so it
+    // cannot borrow their underline — and a quiet button that looks the same open as shut
+    // answers the one question it is asked, "am I in there", with nothing at all.
+    const pressed = ruleBody(".topbar__notes\\[aria-pressed='true'\\]")
+    expect(pressed).toMatch(/background:\s*var\(--accent-weak\)/)
+    expect(pressed).toMatch(/border-color:\s*var\(--accent\)/)
+    expect(pressed).toMatch(/color:\s*var\(--accent\)/)
+  })
+
+  it('keeps a word on Open while the rest of the bar is bare', () => {
+    // It is the way to a note not on screen yet, which is when an icon helps least.
+    expect(ruleBody('.panel__chrome-button--labelled')).toMatch(/padding:\s*0 var\(--s3\)/)
+    expect(ruleBody('.panel__chrome-key')).toMatch(/font-size:\s*var\(--t1\)/)
+  })
+
   it('tints the tab as well as the slot a drag is aimed at', () => {
     // The tab a pane is showing paints its own opaque surface, which sits over the slot
     // behind it: without this the drop mark showed on every tab except the one you were

@@ -1977,20 +1977,29 @@ export function StageNotesPanel({
               it, so the title bar carries only what the panel itself is showing. */}
           <p className="panel__subject">{title}</p>
           {/*
-            * Icons alone, each naming itself on hover and to a screen reader. Four labelled
-            * buttons spent more of the title bar on saying what they are than on the note
-            * the bar belongs to, and these are reached rarely enough that carrying their
-            * names all the time was the wrong trade.
+            * Icons alone, each naming itself on hover and to a screen reader. Labels here
+            * spent more of the title bar on saying what these are than on the note the bar
+            * belongs to, and they are reached rarely enough that carrying their names all
+            * the time was the wrong trade.
+            *
+            * Open keeps its own. It is the way to a note that is not open yet — the thing a
+            * reader reaches for who has not got what they want on screen — and it is the
+            * only visible place `Ctrl`/`Cmd+P` is written down.
             */}
           <button
             aria-keyshortcuts={shortcutKeys('P')}
+            // Named for the word on it, not the word plus the key beside it: the binding is
+            // `aria-keyshortcuts`' to announce, and a name that reads "Open ⌘P" is a name
+            // nobody would say out loud to ask for this button.
             aria-label="Open"
-            className="icon-button panel__chrome-button"
+            className="button button--quiet panel__chrome-button panel__chrome-button--labelled"
             onClick={() => setQuickOpen(focusedGroupId)}
             title={`Open a note or a stage (${shortcutLabel('P')})`}
             type="button"
           >
             <Plus aria-hidden="true" size={16} />
+            Open
+            <span aria-hidden="true" className="panel__chrome-key">{shortcutLabel('P')}</span>
           </button>
           <button
             aria-keyshortcuts={shortcutKeys('\\')}

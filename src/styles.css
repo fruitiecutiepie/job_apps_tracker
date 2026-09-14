@@ -2609,6 +2609,19 @@ tbody tr:hover {
   background: none;
 }
 
+/* Open says what it is: it is the way to a note not on screen yet, which is when a reader
+   is least able to guess at an icon, and the only visible place its binding is written. */
+.panel__chrome-button--labelled {
+  gap: var(--s2);
+  min-width: 0;
+  padding: 0 var(--s3);
+}
+
+.panel__chrome-key {
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
 .panel__chrome-button:hover:not(:disabled) {
   color: var(--ink);
   background: var(--surface-3);
@@ -3842,6 +3855,19 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 .markdown__quote > *:not(.markdown__fold-row),
 .markdown__code-block > *:not(.markdown__fold-row) {
   margin-left: var(--fold-indent);
+}
+
+/*
+ * Where you are, not merely what you pressed. The prep notes workspace is a layer over a
+ * view rather than one of the views in the strip, so it cannot borrow their underline —
+ * and a quiet button that looks the same open as shut is a button that answers the one
+ * question it is asked, "am I in there", with nothing at all.
+ */
+.topbar__notes[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-weak);
+  font-weight: 600;
 }
 
 /* -------------------------------------------------- prep notes tree --- */
