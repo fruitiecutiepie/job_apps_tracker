@@ -10,9 +10,14 @@ import type { ComponentType } from 'react'
  * the module graph reset before `App` is imported — importing it at the top of the file
  * would pin the dev-server backend every other suite uses.
  */
-async function renderStaticApp(): Promise<void> {
+async function renderStaticApp(profile: 'live' | 'demo' = 'live'): Promise<void> {
   vi.resetModules()
   vi.stubEnv('VITE_TRACKER_BACKEND', 'browser')
+  /*
+   * The suite runs under the demo profile by default, so the tracker build has to say so
+   * explicitly — otherwise every one of these would be testing the demo.
+   */
+  vi.stubEnv('VITE_TRACKER_PROFILE', profile)
   const { default: App } = (await import('../App')) as { default: ComponentType }
   render(<App />)
   await waitFor(
@@ -34,6 +39,7 @@ async function addApplication(
 describe('the static build', () => {
   beforeEach(() => {
     vi.stubEnv('VITE_TRACKER_BACKEND', 'browser')
+    vi.stubEnv('VITE_TRACKER_PROFILE', 'live')
   })
 
   afterEach(() => {
@@ -91,6 +97,17 @@ describe('the static build', () => {
     )
   })
 
+  it('points anyone still deciding at the demo', async () => {
+    await renderStaticApp()
+    const link = screen.getByRole('link', { name: 'Look around the demo' })
+    expect(link).toHaveAttribute('href', '/demo/')
+  })
+
+  it('shows no demo banner, because this is not the demo', async () => {
+    await renderStaticApp()
+    expect(screen.queryByText(/This is the demo/)).not.toBeInTheDocument()
+  })
+
   it('offers no external editor, which a static site cannot reach', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
@@ -103,5 +120,62 @@ describe('the static build', () => {
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Northwind' }))
     await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
     expect(screen.queryByRole('button', { name: /Open .* in an editor/ })).not.toBeInTheDocument()
+  })
+})
+
+describe('the hosted demo', () => {
+  beforeEach(() => {
+    vi.stubEnv('VITE_TRACKER_BACKEND', 'browser')
+    vi.stubEnv('VITE_TRACKER_PROFILE', 'demo')
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('opens on the nineteen examples rather than on nothing', async () => {
+    await renderStaticApp('demo')
+    expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+  })
+
+  it('says what it is, and offers the way out', async () => {
+    await renderStaticApp('demo')
+    expect(screen.getByText(/This is the demo/)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'Open my tracker' })).toHaveAttribute('href', '/')
+  })
+
+  it('does not talk anyone out of the demo they are already looking at', async () => {
+    await renderStaticApp('demo')
+    expect(screen.queryByRole('link', { name: 'Look around the demo' })).not.toBeInTheDocument()
+  })
+
+  it('can be reset, which the real tracker cannot', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp('demo')
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.getByRole('button', { name: /Reset demo data/ })).toBeInTheDocument()
+  })
+
+  /*
+   * An emptied demo stays emptied. Reseeding on reload would throw away whatever someone
+   * had been doing in it, and would make the demo the one place in the app where a save
+   * does not stick.
+   */
+  it('stays empty once the examples are cleared', async () => {
+    await renderStaticApp('demo')
+    const { backend } = await import('../backend')
+    const loaded = await backend.loadDocument()
+    await backend.saveDocument({ ...loaded, applications: [] })
+
+    cleanup()
+    const { default: App } = (await import('../App')) as { default: ComponentType }
+    render(<App />)
+    await waitFor(
+      () => expect(screen.getByText('0 of 0 applications shown')).toBeInTheDocument(),
+      { timeout: 5000 },
+    )
   })
 })

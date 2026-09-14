@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react'
-import { FolderOpen, HardDrive, TriangleAlert, Upload } from 'lucide-react'
+import { FlaskConical, FolderOpen, HardDrive, TriangleAlert, Upload } from 'lucide-react'
 
 import { backend } from './backend'
 import type { StorageConnection } from './backend'
+import { demoSiteUrl, trackerSiteUrl } from './siteLinks'
 
 /**
  * Follows where the data is being saved. Only the static build has anything to follow:
@@ -82,15 +83,44 @@ export function StorageStatus({ connection, onConnect, onReconnect }: StorageSta
   )
 }
 
+/**
+ * Shown for the whole session on the demo site. It stays rather than dismisses because the
+ * thing it is warning about — that this data is fictional and Reset will throw away
+ * anything typed into it — is as true on the fortieth screen as on the first.
+ */
+export function DemoBanner() {
+  return (
+    <aside className="demo-banner">
+      <FlaskConical aria-hidden="true" size={16} />
+      <p>
+        <strong>This is the demo.</strong> Nineteen fictional applications, one in every
+        stage, kept separately from anything real. Nothing you write here reaches your own
+        tracker.
+      </p>
+      <a className="button button--quiet" href={trackerSiteUrl()}>
+        Open my tracker
+      </a>
+    </aside>
+  )
+}
+
 export interface StorageIntroProps {
   connection: StorageConnection
   onConnect: () => void
   onImport: () => void
   onDismiss: () => void
+  /** Absent on the demo site, which is already the thing the link would lead to. */
+  showDemoLink: boolean
 }
 
 /** The first thing a visitor sees, before there is any data to look at. */
-export function StorageIntro({ connection, onConnect, onImport, onDismiss }: StorageIntroProps) {
+export function StorageIntro({
+  connection,
+  onConnect,
+  onImport,
+  onDismiss,
+  showDemoLink,
+}: StorageIntroProps) {
   return (
     <section aria-labelledby="storage-intro-heading" className="storage-intro">
       <h2 id="storage-intro-heading">Your applications, on your machine</h2>
@@ -114,6 +144,12 @@ export function StorageIntro({ connection, onConnect, onImport, onDismiss }: Sto
           Start fresh
         </button>
       </div>
+      {showDemoLink && (
+        <p className="storage-intro__aside">
+          Not sure yet? <a href={demoSiteUrl()}>Look around the demo</a> — nineteen
+          fictional applications, kept well away from this one.
+        </p>
+      )}
     </section>
   )
 }

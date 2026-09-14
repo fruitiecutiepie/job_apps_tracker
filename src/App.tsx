@@ -66,7 +66,7 @@ import {
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
 import { backend, isBrowserBackend } from './backend'
-import { StorageIntro, StorageStatus, useStorageConnection } from './StorageStatus'
+import { DemoBanner, StorageIntro, StorageStatus, useStorageConnection } from './StorageStatus'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
 import { RatingFields } from './RatingFields'
 import { StateHistory } from './StateHistory'
@@ -1241,12 +1241,15 @@ export default function App() {
           </div>
         </section>
 
+        {isBrowserBackend() && isDemoTrackerProfile() && <DemoBanner />}
+
         {showStorageIntro && (
           <StorageIntro
             connection={storageConnection}
             onConnect={connectStorage}
             onDismiss={() => setIntroDismissed(true)}
             onImport={() => importInputRef.current?.click()}
+            showDemoLink={!isDemoTrackerProfile()}
           />
         )}
 

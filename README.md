@@ -2,7 +2,9 @@
 
 A polished, local-first job search organizer built with React and TypeScript. It keeps application data in a JSON file on disk and provides focused views for tracking progress, upcoming work, stale applications, and pipeline statistics—without an account, backend, or synchronization service.
 
-There is a hosted copy at **<https://fruitiecutiepie.github.io/job_apps_tracker/>**. It is the same app with the same data file, and it is still local-first: nothing is uploaded, and every change is saved on the machine looking at it. See [Where your data lives](#where-your-data-lives).
+**[Try the demo](https://fruitiecutiepie.github.io/job_apps_tracker/demo/)** — nineteen fictional applications, one in every stage, nothing to install. **[Open the tracker](https://fruitiecutiepie.github.io/job_apps_tracker/)** when you want to enter your own.
+
+Both are the same app, hosted as static files, and both are still local-first: nothing is uploaded, and every change is saved on the machine looking at it. The demo keeps its data separately, so it can never reach a real tracker. See [Where your data lives](#where-your-data-lives).
 
 On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:demo` for the 19 fictional examples (exactly one in each configured state). Those demo records live under `data/demo/` so they never overwrite real applications.
 
@@ -59,8 +61,11 @@ To build the static site that GitHub Pages serves — the same app with browser 
 
 ```sh
 pnpm build:pages
+pnpm build:pages-demo
 pnpm preview:pages
 ```
+
+`build:pages-demo` writes the demo under `dist/demo/`, so one artifact serves both. Preview shows the tracker at the base path and the demo at `/demo/`.
 
 ## Using the app
 
@@ -331,9 +336,15 @@ Pick the folder from **Choose a folder** in the top bar. The browser remembers i
 
 Nothing is uploaded anywhere in either build. The hosted site is static files; there is no account and no endpoint to send anything to. What the browser's storage holds is only as durable as the browser profile, which is the reason to connect a folder or export regularly.
 
+### The demo
+
+<https://fruitiecutiepie.github.io/job_apps_tracker/demo/> is a second build of the same app under the demo profile: the 19 fictional examples, one in each configured state, seeded on a first visit. **Reset demo data** restores them and exists only there.
+
+It is the same origin as the tracker, so the one thing keeping them apart is that each gets its own IndexedDB database. Emptying the demo sticks — it is not reseeded on every load — and a standing banner says whose data it is, with a link back.
+
 ### Publishing it yourself
 
-`.github/workflows/pages.yml` typechecks, lints, tests and deploys on every push to `master`. A fork needs two things: **Settings → Pages → Source** set to **GitHub Actions**, and `VITE_BASE_PATH` in that workflow changed to match the repository name.
+`.github/workflows/pages.yml` typechecks, lints, tests, builds both sites and deploys on every push to `master`. A fork needs two things: **Settings → Pages → Source** set to **GitHub Actions**, and the `VITE_BASE_PATH` values in `package.json`'s `build:pages` and `build:pages-demo` changed to match the repository name.
 
 ## Development checks
 

@@ -13,6 +13,14 @@ const staticBuild = process.env.VITE_TRACKER_BACKEND === 'browser'
 export default defineConfig({
   // A project page is served from a subpath, so the asset URLs have to carry it.
   base: process.env.VITE_BASE_PATH ?? '/',
+  /*
+   * The demo is a second build of the same app, written under the first so one Pages
+   * artifact carries both. It must not empty `dist`, or it would delete the tracker it
+   * was built beside.
+   */
+  build: process.env.VITE_OUT_DIR
+    ? { outDir: process.env.VITE_OUT_DIR, emptyOutDir: false }
+    : {},
   plugins: staticBuild ? [react()] : [react(), trackerDbPlugin()],
   test: {
     environment: 'jsdom',

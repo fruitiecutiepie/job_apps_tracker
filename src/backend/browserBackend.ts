@@ -188,8 +188,19 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
 
         const cached = (await store.get('state', DOCUMENT_KEY)) as string | null
         if (cached === null) {
-          // First visit: an empty tracker, not the demo data, and nothing written yet.
-          return createEmptyDocument()
+          /*
+           * Nothing stored yet. The demo profile seeds its nineteen examples and writes
+           * them, so a visitor has something to look at; the real tracker opens empty and
+           * writes nothing, so "nothing stored" stays true until they type something.
+           *
+           * The seed is written rather than only returned, which is what makes it a first
+           * visit rather than every visit: someone who deletes every demo row gets an
+           * empty demo back on reload, not the nineteen they just cleared.
+           */
+          if (!isDemoTrackerProfile()) return createEmptyDocument()
+          const demo = refreshTrackerDatabase(createDemoDocument())
+          await writeDocument(demo)
+          return demo
         }
         const parsed = ensureFreshIndexes(parseTrackerDocument(cached))
         if (directory) await writeFileIn(directory, TRACKER_FILENAME, serialize(parsed))

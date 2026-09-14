@@ -502,6 +502,40 @@ p {
   gap: var(--s3);
 }
 
+.storage-intro__aside {
+  margin: var(--s4) 0 0;
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+  font-size: var(--t2);
+}
+
+/*
+ * The demo's standing warning. It borrows the notice's accent treatment rather than the
+ * danger colours: nothing is wrong here, and a red bar over a working app would read as
+ * a fault rather than as a label.
+ */
+.demo-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: 0 var(--gutter) var(--s3);
+  padding: var(--s3) var(--s3) var(--s3) var(--s4);
+  border: 1px solid var(--accent);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--accent-weak);
+  font-size: var(--t3);
+}
+
+.demo-banner p {
+  flex: 1;
+  margin: 0;
+}
+
+.demo-banner .button {
+  flex-shrink: 0;
+}
+
 /* --------------------------------------------------- header actions menu --- */
 
 .actions-menu {

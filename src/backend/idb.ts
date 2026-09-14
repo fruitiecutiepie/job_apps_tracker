@@ -1,3 +1,5 @@
+import { trackerProfile, type TrackerProfile } from '../domain/trackerProfile'
+
 /**
  * The little slice of IndexedDB this app needs, behind an interface so the backend can be
  * tested with an in-memory fake rather than a polyfill.
@@ -12,9 +14,17 @@ export interface KeyValueStore {
   clear(store: StoreName): Promise<void>
 }
 
-export const IDB_NAME = 'job-applications-tracker'
 export const IDB_VERSION = 1
 const STORES: StoreName[] = ['state', 'attachments']
+
+/*
+ * The demo and the real tracker are served from one origin, so they share one IndexedDB
+ * namespace unless told otherwise. A database per profile is what keeps nineteen
+ * fictional applications from ever turning up in somebody's actual job search.
+ */
+export function idbName(profile: TrackerProfile): string {
+  return profile === 'demo' ? 'job-applications-tracker-demo' : 'job-applications-tracker'
+}
 
 function request<T>(source: IDBRequest<T>): Promise<T> {
   return new Promise((resolve, reject) => {
@@ -23,9 +33,9 @@ function request<T>(source: IDBRequest<T>): Promise<T> {
   })
 }
 
-function openDatabase(): Promise<IDBDatabase> {
+function openDatabase(name: string): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
-    const open = indexedDB.open(IDB_NAME, IDB_VERSION)
+    const open = indexedDB.open(name, IDB_VERSION)
     open.onupgradeneeded = () => {
       for (const store of STORES) {
         if (!open.result.objectStoreNames.contains(store)) open.result.createObjectStore(store)
@@ -36,9 +46,9 @@ function openDatabase(): Promise<IDBDatabase> {
   })
 }
 
-export function indexedDbStore(): KeyValueStore {
+export function indexedDbStore(profile: TrackerProfile = trackerProfile()): KeyValueStore {
   let opening: Promise<IDBDatabase> | null = null
-  const database = () => (opening ??= openDatabase())
+  const database = () => (opening ??= openDatabase(idbName(profile)))
 
   async function transact<T>(
     store: StoreName,

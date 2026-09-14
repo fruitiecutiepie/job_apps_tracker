@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { createApplication } from '../domain/mutations'
 import { prepareTrackerDatabase } from '../domain/database'
@@ -6,7 +6,7 @@ import { MAX_ATTACHMENT_BYTES } from '../domain/attachmentPaths'
 import type { TrackerDatabase } from '../domain/types'
 import { browserBackend, TRACKER_FILENAME } from './browserBackend'
 import { FakeDirectory } from './fakeDirectory'
-import { memoryStore, type KeyValueStore } from './idb'
+import { idbName, memoryStore, type KeyValueStore } from './idb'
 import type { DirectoryHandleLike } from './fileSystem'
 
 const APPLICATION_ID = '11111111-1111-7111-8111-111111111111'
@@ -32,6 +32,29 @@ function connected(store: KeyValueStore, folder: DirectoryHandleLike) {
   return browserBackend({ store, supportsFolders: true, pick: async () => folder })
 }
 
+/*
+ * The demo and the tracker are served from one origin, so nothing but the database name
+ * separates their storage. If these ever matched, nineteen fictional applications would
+ * turn up in somebody's real job search.
+ */
+describe('storage namespacing', () => {
+  it('gives the demo its own database', () => {
+    expect(idbName('demo')).not.toBe(idbName('live'))
+  })
+})
+
+/*
+ * The suite runs under the demo profile, so the tracker's behaviour has to be asked for
+ * explicitly — otherwise these would all be measuring the demo.
+ */
+beforeEach(() => {
+  vi.stubEnv('VITE_TRACKER_PROFILE', 'live')
+})
+
+afterEach(() => {
+  vi.unstubAllEnvs()
+})
+
 describe('browser backend, with no folder connected', () => {
   let store: KeyValueStore
 
@@ -44,6 +67,25 @@ describe('browser backend, with no folder connected', () => {
     const loaded = await backend.loadDocument()
     expect(loaded.applications).toEqual([])
     expect(backend.storage?.connection()).toEqual({ kind: 'unsupported' })
+  })
+
+  it('writes nothing until there is something to write', async () => {
+    await browserBackend({ store, supportsFolders: false }).loadDocument()
+    expect(await store.get('state', 'document')).toBeNull()
+  })
+
+  it('seeds the demo profile instead, and only once', async () => {
+    vi.stubEnv('VITE_TRACKER_PROFILE', 'demo')
+    const seeded = await browserBackend({ store, supportsFolders: false }).loadDocument()
+    expect(seeded.applications).toHaveLength(19)
+
+    // Emptying it sticks: the seed is a first visit, not a reset on every load.
+    await browserBackend({ store, supportsFolders: false }).saveDocument({
+      ...seeded,
+      applications: [],
+    })
+    const reloaded = await browserBackend({ store, supportsFolders: false }).loadDocument()
+    expect(reloaded.applications).toEqual([])
   })
 
   it('auto-saves every change and reads it back after a reload', async () => {
