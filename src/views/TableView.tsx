@@ -304,7 +304,13 @@ export function TableView({
   onCompleteAction,
   onMove,
 }: MovableApplicationsViewProps) {
-  const [sortField, setSortField] = useState<SortField>("updated_at");
+  /**
+   * Urgency, descending, so the table opens on the question it exists to answer: what to
+   * do next. That is also the one sort the bands appear under, so the headings are there
+   * before anything is clicked. Last update ordered by when a row was last touched, which
+   * is a record of your own attention rather than a reading of what needs it.
+   */
+  const [sortField, setSortField] = useState<SortField>("urgency");
   const [sortDirection, setSortDirection] = useState<SortDirection>("descending");
   const [filters, setFilters] = useState<ColumnFilters>(EMPTY_COLUMN_FILTERS);
   const [columnWidths, setColumnWidths] = useState<Record<ColumnKey, number>>(defaultColumnWidths);

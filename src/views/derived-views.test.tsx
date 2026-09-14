@@ -105,6 +105,18 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
+/**
+ * The company cell of each row, in order. A banded table puts its band headings in the
+ * same role, so they are filtered out here rather than worked around by every sort test;
+ * the tests that are about the bands assert on the headings directly.
+ */
+function rowCompanies(): (string | null)[] {
+  return screen
+    .getAllByRole('rowheader')
+    .filter((cell) => !cell.closest('.table-view__band'))
+    .map((cell) => cell.textContent)
+}
+
 describe('FocusView', () => {
   function groupElement(heading: string): HTMLElement {
     return screen.getByRole('heading', { name: heading }).closest('details')!
@@ -579,14 +591,14 @@ describe('TableView', () => {
     // A row that is not idle has no value here, so it stays last whichever way the
     // column is pointed rather than reading as the freshest or the quietest.
     fireEvent.click(screen.getByRole('button', { name: 'Activity' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Silent Co',
       'Quiet Co',
       'Busy Co',
     ])
 
     fireEvent.click(screen.getByRole('button', { name: 'Activity' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Quiet Co',
       'Silent Co',
       'Busy Co',
@@ -595,7 +607,7 @@ describe('TableView', () => {
     fireEvent.change(screen.getByLabelText('Filter Activity column'), {
       target: { value: '40' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Quiet Co'])
+    expect(rowCompanies()).toEqual(['Quiet Co'])
   })
 
   it('sorts, opens, and moves an application without changing the data', () => {
@@ -616,21 +628,23 @@ describe('TableView', () => {
       <TableView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />,
     )
 
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    // The default sort: both live rows tie on score and neither is rated, so the band's
+    // last tiebreak decides between them, and the accepted one sits in a later band.
+    expect(rowCompanies()).toEqual([
       'Middle Studio',
-      'Alpha Labs',
       'Zebra Works',
+      'Alpha Labs',
     ])
 
     fireEvent.click(screen.getByRole('button', { name: 'Company' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Alpha Labs',
       'Middle Studio',
       'Zebra Works',
     ])
 
     fireEvent.click(screen.getByRole('button', { name: 'Created' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Zebra Works',
       'Middle Studio',
       'Alpha Labs',
@@ -669,21 +683,21 @@ describe('TableView', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter Company column' }), {
       target: { value: 'Alpha' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+    expect(rowCompanies()).toEqual(['Alpha Labs'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
-    expect(screen.getAllByRole('rowheader')).toHaveLength(2)
+    expect(rowCompanies()).toHaveLength(2)
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter State column' }), {
       target: { value: 'accepted' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+    expect(rowCompanies()).toEqual(['Alpha Labs'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Attachments column' }), {
       target: { value: 'resume.pdf' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+    expect(rowCompanies()).toEqual(['Alpha Labs'])
     expect(applications).toHaveLength(2)
   })
 
@@ -715,7 +729,7 @@ describe('TableView', () => {
     ])
 
     fireEvent.click(screen.getByRole('button', { name: 'Invites' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Sooner Panel',
       'Later Panel',
       'No Invites',
@@ -725,13 +739,13 @@ describe('TableView', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Invites column' }), {
       target: { value: 'docklands' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Sooner Panel'])
+    expect(rowCompanies()).toEqual(['Sooner Panel'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Invites column' }), {
       target: { value: 'cancelled' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Sooner Panel'])
+    expect(rowCompanies()).toEqual(['Sooner Panel'])
   })
 
   it('sorts by deadline with undated applications last', () => {
@@ -752,7 +766,7 @@ describe('TableView', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Deadline' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Middle Studio',
       'Zebra Works',
       'Alpha Labs',
@@ -760,7 +774,7 @@ describe('TableView', () => {
 
     // Undated is absent rather than late, so it stays last when the order flips too.
     fireEvent.click(screen.getByRole('button', { name: 'Deadline' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Zebra Works',
       'Middle Studio',
       'Alpha Labs',
@@ -812,7 +826,7 @@ describe('TableView', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Deadline column' }), {
       target: { value: 'Sep' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+    expect(rowCompanies()).toEqual(['Alpha Labs'])
   })
 
   it('ranks by urgency, showing the reason and leaving finished applications out', () => {
@@ -840,8 +854,8 @@ describe('TableView', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
-    // Sorting by urgency bands the rows; the ranking inside each band is what this asserts.
+    // The table opens on urgency, which bands the rows; the ranking inside each band is
+    // what this asserts.
     expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
       'Dated, soonest first2',
       'Overdue Co',
@@ -887,11 +901,7 @@ describe('TableView', () => {
       />,
     )
 
-    // Sorted by Last update to begin with, so no band separates anything.
-    expect(screen.queryByText('Dated, soonest first')).not.toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
-
+    // The table opens banded, because it opens sorted by urgency.
     expect(
       screen.getAllByRole('rowgroup')
         .flatMap((group) => within(group).queryAllByRole('rowheader'))
@@ -910,12 +920,16 @@ describe('TableView', () => {
     // Flipping the direction takes the bands away: the order no longer follows their rule.
     fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
     expect(screen.queryByText('Dated, soonest first')).not.toBeInTheDocument()
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Loose End Co',
       'Closed Co',
       'Quiet Co',
       'Overdue Co',
     ])
+
+    // So does sorting on a column the bands say nothing about.
+    fireEvent.click(screen.getByRole('button', { name: 'Company' }))
+    expect(screen.queryByText('Live, nothing dated')).not.toBeInTheDocument()
   })
 
   it('prints no heading for a band that holds nothing', () => {
@@ -931,8 +945,6 @@ describe('TableView', () => {
         onCompleteAction={vi.fn()}
       />,
     )
-
-    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
 
     expect(screen.getByText('Live, nothing dated')).toBeInTheDocument()
     expect(screen.queryByText('Dated, soonest first')).not.toBeInTheDocument()
@@ -977,13 +989,7 @@ describe('TableView', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
-
-    expect(
-      screen.getAllByRole('rowheader')
-        .map((cell) => cell.textContent)
-        .filter((text) => text?.endsWith(' Co')),
-    ).toEqual(['Action Co', 'Invite Co'])
+    expect(rowCompanies()).toEqual(['Action Co', 'Invite Co'])
   })
 
   it('filters the urgency column by its reason', () => {
@@ -1008,7 +1014,7 @@ describe('TableView', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Urgency column' }), {
       target: { value: 'overdue' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Overdue Co'])
+    expect(rowCompanies()).toEqual(['Overdue Co'])
   })
 
   it('shows a preference score with what is missing, and a dash when unrated', () => {
@@ -1078,7 +1084,7 @@ describe('TableView', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Preference' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Best Co',
       'Middle Co',
       'Unrated Co',
@@ -1086,7 +1092,7 @@ describe('TableView', () => {
 
     // Unrated is absent, not worst, so it stays last when the order flips.
     fireEvent.click(screen.getByRole('button', { name: 'Preference' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Middle Co',
       'Best Co',
       'Unrated Co',
@@ -1112,7 +1118,7 @@ describe('TableView', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Preference column' }), {
       target: { value: 'unknown' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Unknown Co'])
+    expect(rowCompanies()).toEqual(['Unknown Co'])
   })
 
   it('shows the progression and how far off target it lands', () => {
@@ -1169,7 +1175,7 @@ describe('TableView', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Compensation' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Best Co',
       'Middle Co',
       'Target Only Co',
@@ -1179,7 +1185,7 @@ describe('TableView', () => {
     // Absent is not the lowest pay, so both rows without a figure stay last when the order
     // flips. A sentinel number could not do this: it would sort to the wrong end here.
     fireEvent.click(screen.getByRole('button', { name: 'Compensation' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Middle Co',
       'Best Co',
       'Target Only Co',
@@ -1218,7 +1224,7 @@ describe('TableView', () => {
 
     // 100,000-120,000 overlaps 110,000-130,000; 200,000-250,000 does not; the offer is the
     // right number but the wrong stage.
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Advertised Co'])
+    expect(rowCompanies()).toEqual(['Advertised Co'])
   })
 
   it('checks every stage when none is picked, and leaves an open bound unbounded', () => {
@@ -1244,12 +1250,12 @@ describe('TableView', () => {
     // "Any stage" is the default, so a range can catch an offer without picking it out.
     fireEvent.change(minimum, { target: { value: '125000' } })
     fireEvent.change(maximum, { target: { value: '135000' } })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Offered Co'])
+    expect(rowCompanies()).toEqual(['Offered Co'])
 
     // A minimum with no maximum reads as "at least", not as a band the row must fit inside.
     fireEvent.change(minimum, { target: { value: '150000' } })
     fireEvent.change(maximum, { target: { value: '' } })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Well Paid Co'])
+    expect(rowCompanies()).toEqual(['Well Paid Co'])
   })
 
   it('ignores a range that has not been typed as a number yet, rather than hiding every row', () => {
@@ -1271,7 +1277,7 @@ describe('TableView', () => {
     fireEvent.change(screen.getByLabelText('Filter Compensation column, minimum'), {
       target: { value: 'abc' },
     })
-    expect(screen.getAllByRole('rowheader')).toHaveLength(2)
+    expect(rowCompanies()).toHaveLength(2)
 
     // Clear column filters resets the stage as well as both bounds.
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter Compensation column by stage' }), {
@@ -1286,7 +1292,7 @@ describe('TableView', () => {
     expect(
       screen.getByRole('combobox', { name: 'Filter Compensation column by stage' }),
     ).toHaveValue('any')
-    expect(screen.getAllByRole('rowheader')).toHaveLength(2)
+    expect(rowCompanies()).toHaveLength(2)
   })
 
   it('offers company and source datalist suggestions', () => {
