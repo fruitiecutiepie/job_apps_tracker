@@ -1809,23 +1809,50 @@ describe('job applications tracker', () => {
     expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(1)
   })
 
-  it('never opens the same stage in both panes', async () => {
+  it('opens a copy in the pane you are reading, whatever another pane holds', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-
     await user.click(within(dialog).getByRole('button', { name: 'Split' }))
-    // Panes hold Interview 2 and Interview 1. Asking the focused pane for a stage the
-    // other pane already holds has to move focus, not duplicate the note — two copies
-    // would give one match two ids and the find would step onto the wrong one.
-    await user.click(within(dialog).getByRole('tab', { name: /Interview 1/ }))
 
-    const panes = within(dialog).getAllByRole('tabpanel')
-    expect(panes).toHaveLength(2)
-    expect(panes[0]).toHaveAccessibleName('Halcyon Maps · Interview 2')
-    expect(panes[1]).toHaveAccessibleName('Halcyon Maps · Interview 1')
+    const strip = (paneNumber: number) =>
+      within(dialog).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
+    // Panes hold Interview 2 and Interview 1. Reading the first, ask for the note the
+    // second is showing: that is a request to have it here, not to be sent over there.
+    await user.click(within(strip(1)).getByRole('tab', { name: /Interview 2/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
+    const tree = within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
+    await user.click(
+      within(tree.getByRole('listitem', { name: 'Stage Interview 1' }))
+        .getByRole('button', { name: /^Halcyon Maps/ }),
+    )
+
+    expect(within(strip(1)).getByRole('tab', { name: /Interview 1/ })).toBeInTheDocument()
+    expect(within(strip(2)).getByRole('tab', { name: /Interview 1/ })).toBeInTheDocument()
+  })
+
+  it('does nothing but show it when the pane you are reading already has it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const tabs = () => within(dialog).getAllByRole('tab').map((tab) => tab.textContent)
+    const before = tabs()
+
+    await user.click(within(dialog).getByRole('tab', { name: /Offer/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
+    const tree = within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
+    await user.click(
+      within(tree.getByRole('listitem', { name: 'Stage Interview 2' }))
+        .getByRole('button', { name: /^Halcyon Maps/ }),
+    )
+
+    // One strip holds one tab per note, so asking for one it already has just shows it.
+    expect(tabs()).toEqual(before)
+    expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Interview 2')
   })
 
   it('closes one pane of a split without touching the other', async () => {
@@ -2975,6 +3002,83 @@ describe('job applications tracker', () => {
     // The click a browser sends after a pointer sequence must not also open it where a
     // plain click would have — dropping a note somewhere is not also asking to read it here.
     expect(within(panel).getAllByRole('tab', { name: /Echo Robotics/ })).toHaveLength(1)
+  })
+
+  it('opens a second copy of a note by dragging it into another pane', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
+
+    const strip = (paneNumber: number) =>
+      within(dialog).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
+    const row = within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
+      .getByRole('listitem', { name: 'Stage Interview 2' })
+    pointerDrag(
+      within(row).getByRole('button', { name: /^Halcyon Maps/ }),
+      slotOf(within(strip(2)).getAllByRole('tab')[0]),
+    )
+
+    // One note, read in two panes — the point of a split when the note is long.
+    expect(within(strip(1)).getByRole('tab', { name: /Interview 2/ })).toBeInTheDocument()
+    expect(within(strip(2)).getByRole('tab', { name: /Interview 2/ })).toBeInTheDocument()
+
+    // Each copy is its own tab and its own pane, with ids to match: two elements claiming
+    // one id is the failure this pairing exists to prevent.
+    const ids = within(dialog).getAllByRole('tabpanel').map((pane) => pane.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    const tabIds = within(dialog).getAllByRole('tab').map((tab) => tab.id)
+    expect(new Set(tabIds).size).toBe(tabIds.length)
+  })
+
+  it('writes into both copies of a note at once, being one note', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.type(
+      within(dialog).getByLabelText('Marble & Finch · Applied prep notes'),
+      'Ask about the rebrand',
+    )
+    await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
+
+    // The tree reads the stored notes, so it lists this one once the autosave has landed.
+    const row = await waitFor(
+      () =>
+        within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
+          .getByRole('button', { name: /^Marble & Finch/ }),
+      { timeout: 4000 },
+    )
+    pointerDragToEdge(row, 'right')
+
+    // The text is the note's, not the tab's, so both copies show what was typed into one.
+    const panes = within(dialog).getAllByRole('tabpanel')
+    expect(panes).toHaveLength(2)
+    for (const pane of panes) expect(pane).toHaveTextContent('Ask about the rebrand')
+  })
+
+  it('counts the matches in every copy, each being somewhere to be sent', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.keyboard('{Control>}f{/Control}')
+    await user.type(within(dialog).getByLabelText('Find in notes'), 'the')
+    const before = within(dialog).getByText(/of \d+/).textContent
+
+    await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
+    const row = within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
+      .getByRole('listitem', { name: 'Stage Interview 2' })
+    pointerDragToEdge(within(row).getByRole('button', { name: /^Halcyon Maps/ }), 'right')
+
+    // A copy is a place on screen the find can send you, so its matches are its own.
+    const after = within(dialog).getByText(/of \d+/).textContent
+    expect(after).not.toBe(before)
   })
 
   it('reorders a tab within its pane by dragging it', async () => {

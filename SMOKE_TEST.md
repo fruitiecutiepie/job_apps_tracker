@@ -134,7 +134,9 @@ neither a finger nor any browser automation.
    stage down the pipeline and lists no stage you have written nothing for — type a word you know is
    in another application's note and confirm the tree filters to it and picking it opens it, then
    drag a row onto the other pane's tabs and onto a pane edge and confirm it lands where it was
-   dropped rather than in the pane you were reading — that the
+   dropped rather than in the pane you were reading, then drag a note the other pane already holds
+   onto this one and confirm both panes show it, that typing into one shows in the other, and that
+   closing one copy leaves the other — that the
    application's current stage appears first and is badged, and that saved notes render as an outline
    rather than raw text. Open a second company's notes from the picker, split the panes, then leave
    for another view and come back — and reload the page — and confirm the same arrangement is there.

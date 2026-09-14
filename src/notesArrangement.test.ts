@@ -143,7 +143,7 @@ describe('restoreArrangement', () => {
     expect(restoreArrangement(stored(layout, 'pane-1'), [acme])).toBeNull()
   })
 
-  it('keeps a note in one pane when the stored tree had it in two', () => {
+  it('keeps a note that was open in two panes open in both', () => {
     const layout = split(
       [
         makeGroup('pane-1', [ref('acme', 'applied')]),
@@ -154,6 +154,26 @@ describe('restoreArrangement', () => {
 
     const restored = restoreArrangement(stored(layout, 'pane-1'), [acme, globex])
 
+    // Reading one note in two panes is an arrangement like any other, so it survives the
+    // app closing like any other.
+    expect(keys(restored!.layout)).toEqual([
+      noteRefKey(ref('acme', 'applied')),
+      noteRefKey(ref('acme', 'applied')),
+      noteRefKey(ref('globex', 'applied')),
+    ])
+  })
+
+  it('keeps a note in one pane when the stored tree had it twice in that pane', () => {
+    const layout = makeGroup('pane-1', [
+      ref('acme', 'applied'),
+      ref('acme', 'applied'),
+      ref('globex', 'applied'),
+    ])
+
+    const restored = restoreArrangement(stored(layout, 'pane-1'), [acme, globex])
+
+    // Two tabs in one strip showing the same note would be two ways to the same place,
+    // and two elements claiming one id.
     expect(keys(restored!.layout)).toEqual([noteRefKey(ref('acme', 'applied')), noteRefKey(ref('globex', 'applied'))])
   })
 

@@ -151,20 +151,18 @@ function readableSizes(sizes: number[]): number[] {
  * child it cannot read is dropped rather than defaulted: half a pane restored is harder to
  * recognise as wrong than a pane that is simply not there.
  *
- * `seen` carries the refs already placed, so a note stored in two panes comes back in one.
- * `openInGroup` and `moveTab` keep that invariant while the panel runs; a hand-edited file
- * must not be able to break it, because two copies of a note give one find match two ids.
+ * Duplicates are dropped within a pane and only within one. A note open in two panes is an
+ * arrangement a reader can make and so is one they can get back; a note twice in one strip
+ * is two tabs to the same place and two elements claiming one id, which is why the tab's
+ * own id is the pane and the note together.
  */
-function readNode(
-  value: unknown,
-  known: ReadonlySet<string>,
-  seen: Set<string>,
-): LayoutNode | null {
+function readNode(value: unknown, known: ReadonlySet<string>): LayoutNode | null {
   if (!isRecord(value) || typeof value.id !== 'string') return null
 
   if (value.kind === 'group') {
     if (!Array.isArray(value.tabs)) return null
     const tabs: NoteRef[] = []
+    const seen = new Set<string>()
     for (const tab of value.tabs) {
       if (!isRecord(tab)) continue
       const { applicationId, state } = tab
@@ -188,7 +186,7 @@ function readNode(
   const children: LayoutNode[] = []
   const kept: number[] = []
   stored.forEach((child, index) => {
-    const node = readNode(child, known, seen)
+    const node = readNode(child, known)
     if (!node) return
     children.push(node)
     const size = sizes[index]
@@ -230,7 +228,7 @@ export function restoreArrangement(
   if (!isRecord(parsed) || parsed.version !== ARRANGEMENT_VERSION) return null
 
   const known = new Set(applications.map((application) => application.id))
-  const read = readNode(parsed.layout, known, new Set())
+  const read = readNode(parsed.layout, known)
   if (!read) return null
   const layout = prune(read)
   if (!layout) return null

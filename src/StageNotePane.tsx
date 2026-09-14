@@ -6,7 +6,7 @@ import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangeme
 import { CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE, MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
 import { STATE_CONFIG, type StageNote, type StageNoteEditSession, type StateId } from './domain'
-import { noteRefKey, type NoteRef } from './notesLayout'
+import { noteRefKey, tabId, type NoteRef } from './notesLayout'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
 import { shortcutKeys } from './shortcuts'
 
@@ -63,6 +63,8 @@ interface StageNotePaneProps {
    */
   isCaptureOpen: boolean
   onToggleCapture: () => void
+  /** The pane this copy is in, since one note may be open in several. */
+  groupId: string
   /** How tall the captured lines stand, shared by every pane, for the handle to report. */
   captureHeight: number
   /** Moves the dock's edge by that many pixels, positive for taller. */
@@ -118,6 +120,7 @@ export function StageNotePane({
   onToggleEditLines,
   isCaptureOpen,
   onToggleCapture,
+  groupId,
   captureHeight,
   onResizeCapture,
   onRevise,
@@ -227,11 +230,11 @@ export function StageNotePane({
         // "Halcyon Maps · Engineering Manager" — and read as the same region twice.
         aria-label={label}
         className={`stage-note${isCurrentState ? ' stage-note--current' : ''}`}
-        id={stageNotePanelId(noteRef)}
+        id={stageNotePanelId(groupId, noteRef)}
         role="tabpanel"
       >
         <header className="stage-note__header">
-          <h3 id={stageNoteHeadingId(noteRef)}>{company} · {role}</h3>
+          <h3 id={stageNoteHeadingId(groupId, noteRef)}>{company} · {role}</h3>
           <label className="stage-note__state">
             <span className="sr-only">Go to a different stage for {company}</span>
             <select
@@ -351,7 +354,7 @@ export function StageNotePane({
             onChange={onChange}
             query={query}
             revealKeys={revealKeys}
-            sourceId={noteRefKey(noteRef)}
+            sourceId={tabId(groupId, noteRef)}
             value={body}
           />
         ) : body.trim() ? (

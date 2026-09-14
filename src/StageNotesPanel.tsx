@@ -41,12 +41,16 @@ import {
   groupsOf,
   highestPaneNumber,
   makeGroup,
+  moveTab,
   neighbourGroup,
   noteRefKey,
   openInGroup,
   orderedRefs,
+  orderedTabs,
   parseNoteRefKey,
+  parseTabId,
   placeTab,
+  tabId,
   replaceTab,
   resizeSplit,
   splitWith,
@@ -492,6 +496,11 @@ export function StageNotesPanel({
   }, [focusedGroupId])
 
   const openRefs = useMemo(() => orderedRefs(layout), [layout])
+  /**
+   * The same notes as the copies they are. A note open in two panes is two places on
+   * screen, and anything numbering or addressing what is showing has to say which.
+   */
+  const openTabs = useMemo(() => orderedTabs(layout), [layout])
 
   /**
    * Seeds a draft for every note as it joins the panel, so what is typed is measured
@@ -748,18 +757,22 @@ export function StageNotesPanel({
    */
   const findMatches = useCallback(
     (value: string) => {
-      const perNote = new Map<
+      const perTab = new Map<
         string,
-        { base: number; count: number; written: number; inEditor: boolean }
+        { base: number; count: number; written: number; inEditor: boolean; key: string }
       >()
       const order: string[] = []
       let total = 0
-      if (!value.trim()) return { perNote, order, total }
+      if (!value.trim()) return { perTab, order, total }
 
       const countIn = (source: string) =>
         source.trim() ? searchNote(buildSections(parseMarkdown(source)), value).count : 0
 
-      for (const ref of openRefs) {
+      for (const { groupId, ref } of openTabs) {
+        // Two ids in play, and the difference is the point: the note's key says what the
+        // text is, and is shared by every copy of it, while the tab's says which copy is
+        // being numbered. Matches belong to a copy; drafts belong to a note.
+        const id = tabId(groupId, ref)
         const key = noteRefKey(ref)
         const inEditor = editing.includes(key) && !sessions[key]
         const source = drafts[key] ?? ''
@@ -772,13 +785,13 @@ export function StageNotesPanel({
         const said = editingLines.includes(key) ? 0 : countIn(capturedByKey.get(key) ?? '')
         const count = written + said
         if (count === 0) continue
-        perNote.set(key, { base: total, count, written, inEditor })
-        order.push(key)
+        perTab.set(id, { base: total, count, written, inEditor, key })
+        order.push(id)
         total += count
       }
-      return { perNote, order, total }
+      return { perTab, order, total }
     },
-    [capturedByKey, drafts, editing, editingLines, openRefs, sessions],
+    [capturedByKey, drafts, editing, editingLines, openTabs, sessions],
   )
 
   const matches = useMemo(() => findMatches(query), [findMatches, query])
@@ -788,10 +801,10 @@ export function StageNotesPanel({
     ? null
     : ((matchCursor % matches.total) + matches.total) % matches.total
 
-  /** The note holding a given position in the panel-wide list of matches. */
+  /** The copy holding a given position in the panel-wide list of matches. */
   const noteOfMatch = (position: number): string | undefined =>
-    matches.order.find((key) => {
-      const found = matches.perNote.get(key)
+    matches.order.find((id) => {
+      const found = matches.perTab.get(id)
       return found ? position >= found.base && position < found.base + found.count : false
     })
 
@@ -814,15 +827,13 @@ export function StageNotesPanel({
      * what a request from outside the panel and the keyboard shortcut both want.
      */
     (ref: NoteRef, intoGroupId?: string) => {
-      const key = noteRefKey(ref)
-      const holding = groupHolding(layoutRef.current, key)
-      if (holding) {
-        applyLayout(activateTab(layoutRef.current, holding.id, key), holding.id)
-        return
-      }
       const wanted = intoGroupId ?? focusedGroupId
       const target = groupsOf(layoutRef.current).find((group) => group.id === wanted)
         ?? groupsOf(layoutRef.current)[0]
+      // Into this pane, whatever any other pane is showing. `openInGroup` settles the rest:
+      // a pane already holding the note just shows it, and one that is not gets a copy.
+      // Reaching for a note is a request to have it here, not a request to be sent to
+      // wherever a copy of it happens to be.
       applyLayout(openInGroup(layoutRef.current, target.id, ref), target.id)
     },
     [applyLayout, focusedGroupId],
@@ -891,12 +902,18 @@ export function StageNotesPanel({
     applyLayout(closeTab(layoutRef.current, group.id, group.activeKey))
   }, [applyLayout])
 
-  const showKey = useCallback(
-    (key: string) => {
-      const ref = refByKey.get(key)
-      if (ref) showRef(ref)
+  /**
+   * Shows one copy: the tab in the pane the id names. The find steps between copies as
+   * well as between notes, so it has to say which — `showKey` would land on whichever
+   * pane happened to hold the note first.
+   */
+  const showTab = useCallback(
+    (id: string) => {
+      const found = parseTabId(id)
+      if (!found) return
+      applyLayout(activateTab(layoutRef.current, found.groupId, noteRefKey(found.ref)), found.groupId)
     },
-    [refByKey, showRef],
+    [applyLayout],
   )
 
   /**
@@ -909,9 +926,10 @@ export function StageNotesPanel({
    * The selection is set all the same, unfocused and invisible, so clicking into the box
    * afterwards puts the caret on the hit rather than wherever it last was.
    */
-  const revealInSource = (key: string | undefined, position: number) => {
-    const found = key ? matches.perNote.get(key) : undefined
-    if (!key || !found?.inEditor) return
+  const revealInSource = (id: string | undefined, position: number) => {
+    const found = id ? matches.perTab.get(id) : undefined
+    if (!id || !found?.inEditor) return
+    const key = found.key
     const index = position - found.base
     // Past the written note is the captured log, which renders marks like any note.
     if (index >= found.written) return
@@ -920,7 +938,7 @@ export function StageNotesPanel({
 
     requestAnimationFrame(() => {
       const pane = notesRef.current
-      const box = pane?.querySelector<HTMLTextAreaElement>(`[data-note-source="${key}"]`)
+      const box = pane?.querySelector<HTMLTextAreaElement>(`[data-note-source="${id}"]`)
       if (!box) return
       // The box holds the note with its folded lines taken out. A fold holding a match is
       // open while the find is running, so the match itself is in there — but the lines
@@ -943,9 +961,9 @@ export function StageNotesPanel({
     const next = matchCursor + delta
     setMatchCursor(next)
     const landing = ((next % matches.total) + matches.total) % matches.total
-    const key = noteOfMatch(landing)
-    if (key) showKey(key)
-    revealInSource(key, landing)
+    const id = noteOfMatch(landing)
+    if (id) showTab(id)
+    revealInSource(id, landing)
   }
 
   /** A new query starts from its first match, in whichever note that turns out to be. */
@@ -953,7 +971,7 @@ export function StageNotesPanel({
     setFindQuery(value)
     setMatchCursor(0)
     const [first] = findMatches(value).order
-    if (first) showKey(first)
+    if (first) showTab(first)
   }
 
   const closeFind = () => {
@@ -978,13 +996,22 @@ export function StageNotesPanel({
     const list = groupsOf(current)
     if (list.length > 1) {
       const first = list[0]
-      applyLayout(makeGroup(first.id, list.flatMap((group) => group.tabs), first.activeKey), first.id)
+      // One strip cannot hold a note twice, so copies gathered from several panes collapse
+      // back into the one tab they are copies of.
+      const gathered: NoteRef[] = []
+      for (const tab of list.flatMap((group) => group.tabs)) {
+        if (!gathered.some((kept) => noteRefKey(kept) === noteRefKey(tab))) gathered.push(tab)
+      }
+      applyLayout(makeGroup(first.id, gathered, first.activeKey), first.id)
       return
     }
     const only = list[0]
     const other = only.tabs.find((tab) => noteRefKey(tab) !== only.activeKey)
     if (!other) return
-    applyLayout(splitWith(current, only.id, 'right', other, newId), only.id)
+    // Taken out of the pane it was in rather than copied beside it: Split shows two notes
+    // at once, and a second copy of one of them is not what was asked for. Opening a note
+    // twice is a drag, which says so.
+    applyLayout(splitWith(current, only.id, 'right', other, newId, only.id), only.id)
   }, [applyLayout, newId])
 
   const closeNote = (groupId: string, key: string) => {
@@ -1003,37 +1030,49 @@ export function StageNotesPanel({
   )
 
   /**
+   * What a drag is carrying, and where it came from.
+   *
+   * A tab hands over its own id — the pane it is in and the note it shows — because
+   * dragging a tab means moving that copy out of that pane. A row in the tree of unopened
+   * notes hands over a note key, which names no pane, because dragging one means opening a
+   * copy where it lands and leaving every other copy alone. The two intents differ and the
+   * payload is what tells them apart.
+   */
+  const dragged = useCallback(
+    (key: string): { ref: NoteRef; from: string | null } | null => {
+      const asTab = parseTabId(key)
+      if (asTab) return { ref: asTab.ref, from: asTab.groupId }
+      const ref = refByKey.get(key) ?? parseNoteRefKey(key)
+      return ref ? { ref, from: null } : null
+    },
+    [refByKey],
+  )
+
+  /**
    * Lands a dragged or arrowed tab in a pane. The keyboard and the pointer share this so
    * the two cannot drift: whatever a drag can arrange, the arrows can arrange too, which
    * is the whole reason the layout operations are pure.
    */
-  /**
-   * Where a dragged note lands. The key is resolved to a note rather than looked up on an
-   * open tab, because a drag can start in the tree of notes that are not open — there is no
-   * tab to read the ref off, and `placeTab` does not need one.
-   */
-  const refForKey = useCallback(
-    (key: string) => refByKey.get(key) ?? parseNoteRefKey(key),
-    [refByKey],
-  )
-
   const dropTab = useCallback(
     (key: string, groupId: string, index: number) => {
-      const ref = refForKey(key)
-      if (!ref) return
-      applyLayout(placeTab(layoutRef.current, ref, groupId, index), groupId)
+      const held = dragged(key)
+      if (!held) return
+      const next = held.from
+        ? moveTab(layoutRef.current, held.from, noteRefKey(held.ref), groupId, index)
+        : placeTab(layoutRef.current, held.ref, groupId, index)
+      applyLayout(next, groupId)
     },
-    [applyLayout, refForKey],
+    [applyLayout, dragged],
   )
 
-  /** Opens a new pane on one side of an existing one, holding the tab that was moved. */
+  /** Opens a new pane on one side of an existing one, holding the note that was dragged. */
   const splitTabOff = useCallback(
     (key: string, targetGroupId: string, edge: Edge) => {
-      const ref = refForKey(key)
-      if (!ref) return
-      applyLayout(splitWith(layoutRef.current, targetGroupId, edge, ref, newId))
+      const held = dragged(key)
+      if (!held) return
+      applyLayout(splitWith(layoutRef.current, targetGroupId, edge, held.ref, newId, held.from))
     },
-    [applyLayout, newId, refForKey],
+    [applyLayout, dragged, newId],
   )
 
   /**
@@ -1048,16 +1087,17 @@ export function StageNotesPanel({
       const from = groupsOf(tree).find((group) => group.id === focusedGroupRef.current)
         ?? groupsOf(tree)[0]
       const key = from.activeKey
-      if (!key) return
+      const ref = key ? from.tabs.find((tab) => noteRefKey(tab) === key) : undefined
+      if (!key || !ref) return
 
       const neighbour = neighbourGroup(tree, from.id, edge)
       if (neighbour) {
         const target = groupsOf(tree).find((group) => group.id === neighbour)!
         // Landing nearest the edge it came from, so the tab arrives where it was aimed.
-        dropTab(key, neighbour, edge === 'right' || edge === 'bottom' ? 0 : target.tabs.length)
+        dropTab(tabId(from.id, ref), neighbour, edge === 'right' || edge === 'bottom' ? 0 : target.tabs.length)
         return
       }
-      splitTabOff(key, from.id, edge)
+      splitTabOff(tabId(from.id, ref), from.id, edge)
     },
     [dropTab, splitTabOff],
   )
@@ -1226,6 +1266,12 @@ export function StageNotesPanel({
    * that row is for, so the list the fuzzy search runs over stays the length of the
    * applications instead of the length of every stage any of them could reach.
    */
+  /** The pane the picker was opened from, whose tabs decide what reads as already open. */
+  const pickingInto = useMemo(
+    () => (quickOpen ? groupsOf(layout).find((group) => group.id === quickOpen) ?? null : null),
+    [layout, quickOpen],
+  )
+
   const quickOpenEntries: QuickOpenEntry[] = useMemo(() => {
     const byApplication = new Map<string, { application: Application; refs: NoteRef[] }>()
     for (const { ref } of pickable.values()) {
@@ -1244,12 +1290,16 @@ export function StageNotesPanel({
         stages: ordered.map((ref) => ({
           id: noteRefKey(ref),
           label: stateLabel(ref.state),
-          open: refByKey.has(noteRefKey(ref)),
+          // Open **here**, in the pane this picker belongs to, rather than open anywhere:
+          // that is what decides whether picking it shows a tab you have or adds one, and
+          // a badge saying Open over a note this pane has not got would be describing
+          // somewhere else.
+          open: pickingInto?.tabs.some((tab) => noteRefKey(tab) === noteRefKey(ref)) ?? false,
         })),
         defaultStageId: noteRefKey({ applicationId: application.id, state: application.state }),
       }
     })
-  }, [applicationRole, applicationsById, pickable, refByKey])
+  }, [applicationRole, applicationsById, pickable, pickingInto])
 
   const openFromPicker = (key: string) => {
     const ref = pickable.get(key)?.ref
@@ -1516,7 +1566,7 @@ export function StageNotesPanel({
       group.tabs.find((tab) => noteRefKey(tab) === group.activeKey) ?? group.tabs[0]
     const shownKey = noteRefKey(shown)
     const open = sessions[shownKey]
-    const found = matches.perNote.get(shownKey)
+    const found = matches.perTab.get(tabId(group.id, shown))
     const isFocusedGroup = group.id === activeGroup.id
     const shownApplication = applicationsById.get(shown.applicationId)
 
@@ -1535,7 +1585,7 @@ export function StageNotesPanel({
           {group.tabs.map((tab, tabIndex) => {
             const key = noteRefKey(tab)
             const label = labelOf(tab)
-            const tabMatches = matches.perNote.get(key)
+            const tabMatches = matches.perTab.get(tabId(group.id, tab))
             const isActive = key === shownKey
             const application = applicationsById.get(tab.applicationId)
             // Company and stage alone read the same for two roles at the same company; the
@@ -1556,7 +1606,7 @@ export function StageNotesPanel({
               <div
                 className={[
                   'panel__tab-slot',
-                  drag.key === key ? 'panel__tab-slot--dragging' : '',
+                  drag.key === tabId(group.id, tab) ? 'panel__tab-slot--dragging' : '',
                   isDropTarget ? 'panel__tab-slot--drop-target' : '',
                 ]
                   .filter(Boolean)
@@ -1566,7 +1616,7 @@ export function StageNotesPanel({
                 {...{ [DROP_SLOT_GROUP]: group.id, [DROP_SLOT_INDEX]: tabIndex }}
               >
                 <button
-                  aria-controls={isActive ? stageNotePanelId(tab) : undefined}
+                  aria-controls={isActive ? stageNotePanelId(group.id, tab) : undefined}
                   aria-keyshortcuts={`${shortcutKeys(MOVE_TAB_SHORTCUT)} ${shortcutKeys(REORDER_TAB_SHORTCUT)}`}
                   aria-selected={isActive}
                   className={[
@@ -1575,14 +1625,16 @@ export function StageNotesPanel({
                   ]
                     .filter(Boolean)
                     .join(' ')}
-                  id={stageTabId(tab)}
+                  id={stageTabId(group.id, tab)}
                   onClick={() => {
                     // The browser sends a click after any pointer sequence, this one
                     // included. Dropping a tab somewhere is not also a request to read it.
                     if (drag.wasDragged()) return
                     applyLayout(activateTab(layoutRef.current, group.id, key), group.id)
                   }}
-                  onPointerDown={(event) => drag.start(event, key)}
+                  // Its own id, not the note's: dragging a tab moves this copy out of
+                  // this pane, where dragging a row in the tree opens another one.
+                  onPointerDown={(event) => drag.start(event, tabId(group.id, tab))}
                   onKeyDown={(event) => {
                     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
                     event.preventDefault()
@@ -1674,6 +1726,7 @@ export function StageNotesPanel({
           company={shownApplication?.company ?? ''}
           currentMatch={currentMatch}
           formatDate={formatShortDate}
+          groupId={group.id}
           heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
           isCurrentState={shownApplication?.state === shown.state}
           captureHeight={captureHeight}
