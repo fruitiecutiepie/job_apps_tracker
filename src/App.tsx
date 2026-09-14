@@ -86,7 +86,7 @@ import {
   type InviteRow,
 } from './invites'
 import type { StageNoteDraftBatch } from './StageNotesPanel'
-import type { NoteRef, NoteRequest } from './notesLayout'
+import type { NoteRequest } from './notesLayout'
 import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
@@ -95,7 +95,6 @@ import {
   CompareNotesView,
   FocusView,
   KanbanView,
-  PrepNotesSearch,
   PrepNotesView,
   StaleView,
   StatisticsView,
@@ -932,23 +931,14 @@ export default function App() {
     setEditor({ mode: 'add' })
   }
 
-  /**
-   * Prep notes are a view rather than a dialog, so opening them is navigation: there is no
-   * opener to return focus to afterwards, and a stale one would aim at a card the view
-   * switch has already unmounted.
-   */
-  /** Opens one exact note, for a caller that already knows the stage it wants. */
-  const openStageNotesAt = (ref: NoteRef) => {
-    dialogOpenerRef.current = null
-    dialogWasOpenRef.current = false
-    notesNonce.current += 1
-    setNotesRequest({ ref, nonce: notesNonce.current })
-    setNotesOpen(true)
-  }
-
   /** Shows the notes over the view you are on, or takes them away and leaves it showing. */
   const toggleStageNotes = () => setNotesOpen((open) => !open)
 
+  /**
+   * Prep notes are shown over a view rather than in a dialog, so opening them is
+   * navigation: there is no opener to return focus to afterwards, and a stale one would
+   * aim at a card the switch has already unmounted.
+   */
   const openStageNotes = (id: string) => {
     const application = tracker.applications.find((candidate) => candidate.id === id)
     if (!application) return
@@ -1210,16 +1200,14 @@ export default function App() {
               ? NOTES_VIEW.label
               : VIEW_OPTIONS.find((view) => view.id === activeView)?.label}
           </h1>
-          {notesOpen ? (
+          {notesOpen ? null : (
             /*
              * A workspace, not a slice of the collection: the count, the search and the
              * filters all act on the collection, so a bar carrying them here would be
-             * offering controls that do nothing and a number that means nothing. What this
-             * view can answer is where a form of words is written down, across every note
-             * rather than only the ones open.
+             * offering controls that do nothing over a number that means nothing. The one
+             * search that makes sense here is over the notes, and it lives in the sidebar
+             * with the tree it filters — beside what it searches rather than above it.
              */
-            <PrepNotesSearch applications={tracker.applications} onOpen={openStageNotesAt} />
-          ) : (
             <>
             <p className="context-bar__count">
               {filteredApplications.length} of {tracker.applications.length} applications shown

@@ -537,6 +537,65 @@ describe('job applications tracker', () => {
     expect(views.queryByRole('button', { current: 'page' })).not.toBeInTheDocument()
   })
 
+  it('browses every written note from the sidebar, grouped by stage', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // The rail carries both panels, so the outline is not what has to be given up to
+    // browse the rest.
+    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
+    const tree = within(panel).getByRole('list', { name: 'Prep notes by stage' })
+
+    // Grouped by the stage they prepare for, down the pipeline rather than by company.
+    const groups = within(tree).getAllByRole('listitem', { name: /^Stage / })
+    expect(groups.map((group) => group.getAttribute('aria-label'))).toEqual([
+      'Stage Interview 1',
+      'Stage Interview 2',
+      'Stage Offer',
+    ])
+
+    // A note that was never written is not a place to go back to.
+    expect(within(tree).queryByRole('button', { name: /Saffron Systems/ })).not.toBeInTheDocument()
+
+    // And picking one opens it, whether or not it was already a tab.
+    await user.click(within(tree).getByRole('button', { name: /^Echo Robotics/ }))
+    expect(within(panel).getByRole('tab', { selected: true })).toHaveTextContent('Echo Robotics')
+  })
+
+  it('filters the tree from the sidebar rather than from the view bar', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // The search belongs with the notes it searches, not with the collection's filters.
+    expect(screen.queryByRole('searchbox', { name: 'Search applications' })).not.toBeInTheDocument()
+    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
+    await user.type(within(panel).getByRole('searchbox', { name: 'Search prep notes' }), 'teleoperation')
+
+    const tree = within(panel).getByRole('list', { name: 'Prep notes by stage' })
+    expect(within(tree).getAllByRole('button')).toHaveLength(1)
+    expect(within(tree).getByRole('button', { name: /Echo Robotics/ })).toBeInTheDocument()
+  })
+
+  it('keeps the rail when both sidebar panels are closed', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    await user.click(within(panel).getByRole('button', { name: 'Hide the outline' }))
+    // A control inside the thing it hides would have nowhere to be once it is hidden.
+    expect(within(panel).getByRole('button', { name: 'Show the outline' })).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'Show every prep note' })).toBeInTheDocument()
+    expect(within(panel).queryByRole('list', { name: 'Prep notes by stage' })).not.toBeInTheDocument()
+  })
+
   it('leaves the notes when a view is picked from the strip', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
@@ -592,28 +651,6 @@ describe('job applications tracker', () => {
     expect(screen.queryByRole('combobox', { name: 'Filter by state' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Copy roles/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/applications shown/)).not.toBeInTheDocument()
-  })
-
-  it('searches every prep note from the header, open or not, and opens the one picked', async () => {
-    const user = userEvent.setup()
-    await renderLoadedApp()
-
-    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
-    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
-    expect(within(panel).queryByRole('tab', { name: /Echo Robotics/ })).not.toBeInTheDocument()
-
-    // Words from a note belonging to an application that is not open at all.
-    await user.type(screen.getByRole('searchbox', { name: 'Search prep notes' }), 'teleoperation')
-
-    const results = within(screen.getByRole('list', { name: 'Matching prep notes' }))
-    const hit = results.getByRole('button', { name: /Echo Robotics/ })
-    expect(hit).toHaveTextContent(/teleoperation/i)
-
-    await user.click(hit)
-    expect(
-      within(screen.getByRole('region', { name: 'Stage prep notes' }))
-        .getByRole('tab', { selected: true }),
-    ).toHaveTextContent('Echo Robotics')
   })
 
   it('hosts the prep notes panel in the view surface rather than over it', async () => {
@@ -1761,22 +1798,20 @@ describe('job applications tracker', () => {
     expect(panes[1]).toHaveAccessibleName('Halcyon Maps · Interview 1')
 
     // The outline collapses away to give the notes the full width, and comes back. The
-    // control that does it sits with the outline it acts on, not up in the title bar
-    // among the actions that act on the notes.
+    // control that does it lives in the rail beside the outline it acts on, not up in the
+    // title bar among the actions that act on the notes — and it is in the rail whether
+    // the outline is showing or not, so it never moves when it is pressed.
     expect(within(dialog).getByText('Outline')).toBeInTheDocument()
     const toggle = within(dialog).getByRole('button', { name: 'Hide the outline' })
-    expect(toggle.closest('.panel__sidebar')).not.toBeNull()
+    expect(toggle.closest('.panel__rail')).not.toBeNull()
     expect(toggle.closest('.panel__titlebar')).toBeNull()
 
     await user.click(toggle)
     expect(within(dialog).queryByText('Outline')).not.toBeInTheDocument()
 
-    // Collapsing leaves a rail behind. A control inside the thing it hides would have
-    // nowhere to be once it was hidden, so the way back would have to be somewhere else
-    // — and then the button would move every time it was pressed.
     const railToggle = within(dialog).getByRole('button', { name: 'Show the outline' })
     expect(railToggle.closest('.panel__rail')).not.toBeNull()
-    expect(railToggle.closest('.panel__titlebar')).toBeNull()
+    expect(railToggle).toBe(toggle)
 
     await user.click(railToggle)
     expect(within(dialog).getByText('Outline')).toBeInTheDocument()

@@ -233,6 +233,24 @@ describe('prep notes view', () => {
     expect(ruleBody('.panel__tab-add')).toMatch(/min-height:\s*var\(--control\)/)
   })
 
+  it('leaves only the rail when both sidebar panels are closed', () => {
+    // The rail is the switcher and the way back, so it is what the column collapses to —
+    // one icon wide, and the same element whether a panel is open or not.
+    expect(ruleBody('.panel__body')).toMatch(/grid-template-columns:\s*auto var\(--sidebar\) minmax\(0, 1fr\)/)
+    expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\)/)
+    // Which panel is showing is a pressed state on its own control, not a mark elsewhere.
+    expect(ruleBody(".panel__rail .icon-button\\[aria-pressed='true'\\]")).toMatch(/--accent/)
+  })
+
+  it('marks a tree row by what it is rather than by colour alone', () => {
+    // The open note carries a stronger guide and darker text; the one being read carries
+    // the accent as well. Both read as a change in weight before they read as a hue.
+    expect(ruleBody('.notes-tree__note--open')).toMatch(/border-left-color:\s*var\(--line-strong\)/)
+    expect(ruleBody('.notes-tree__note--current')).toMatch(/border-left-color:\s*var\(--accent\)/)
+    // The same indent guide the outline draws, so one sidebar reads as one sidebar.
+    expect(ruleBody('.notes-tree__note')).toMatch(/border-left:\s*2px solid var\(--line\)/)
+  })
+
   it('wraps the chrome rather than letting a narrow panel clip it', () => {
     // The panel clips its own overflow, so a title bar that cannot wrap loses its last
     // control rather than scrolling to it. The stage header already wraps for this reason.

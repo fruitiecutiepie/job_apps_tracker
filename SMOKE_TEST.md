@@ -128,9 +128,11 @@ neither a finger nor any browser automation.
    confirm the replacement prompt appears.
 8. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
    app goes to the **Prep notes** destination in the header rather than opening a dialog over the
-   board, that the view strip no longer marks any view as current, that the bar above the panel
-   offers a search over the notes themselves rather than the collection's filters — type a word you
-   know is in another application's note and confirm picking the result opens it — that the
+   board, that the view strip no longer marks any view as current, that the bar above the panel offers none of the
+   collection's filters, that the rail at the sidebar's edge switches between **Outline** and
+   **All prep notes** and leaves only itself when both are closed, that the tree groups notes by
+   stage down the pipeline and lists no stage you have written nothing for — type a word you know is
+   in another application's note and confirm the tree filters to it and picking it opens it — that the
    application's current stage appears first and is badged, and that saved notes render as an outline
    rather than raw text. Open a second company's notes from the picker, split the panes, then leave
    for another view and come back — and reload the page — and confirm the same arrangement is there.

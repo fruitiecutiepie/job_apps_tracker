@@ -2594,24 +2594,33 @@ tbody tr:hover {
 
 .panel__body {
   display: grid;
-  grid-template-columns: var(--sidebar) minmax(0, 1fr);
+  grid-template-columns: auto var(--sidebar) minmax(0, 1fr);
   min-height: 0;
 }
 
-/* Collapsed, the outline leaves a rail rather than disappearing: the control that brings
-   it back has to be where the one that sent it away was, or it is no more findable than a
-   shortcut. `auto` rather than a width token — the rail is one icon button wide. */
+/* With no panel open the rail is all that is left of the column: the controls that bring
+   one back have to be where the ones that sent it away were, or they are no more findable
+   than a shortcut. `auto` rather than a width token — the rail is one icon button wide. */
 .panel__body--rail {
   grid-template-columns: auto minmax(0, 1fr);
 }
 
+/* The switcher, and the only part of the sidebar that is always there. Two panels over one
+   column: the outline is the note you are reading, the tree is the ones you are not, and
+   reaching for either never costs the width of the other. */
 .panel__rail {
   display: grid;
+  gap: var(--s2);
   align-content: start;
   justify-items: center;
-  padding: var(--s4) var(--s3);
+  padding: var(--s3) var(--s2);
   border-right: 1px solid var(--line);
   background: var(--surface-2);
+}
+
+.panel__rail .icon-button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-weak);
 }
 
 .panel__sidebar {
@@ -3771,93 +3780,102 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   margin-left: var(--fold-indent);
 }
 
-/* ------------------------------------------------ prep notes search --- */
+/* -------------------------------------------------- prep notes tree --- */
 
 /*
- * The prep notes view's own context bar. It stands where the collection's search and
- * filters stand on every other view, because it is what this view can actually be asked:
- * where a form of words is written down, across every note rather than the ones open.
+ * Every prep note worth going back to, grouped by the stage it prepares for. It shares the
+ * sidebar column with the outline rather than taking one of its own, and its search filters
+ * it in place: the grouping is most of what tells two notes apart, and losing it on the
+ * first keystroke would trade the one thing the tree is for.
  */
-.notes-search {
-  position: relative;
-  flex: 1;
-  min-width: 0;
+.notes-tree {
+  display: grid;
+  gap: var(--s3);
+  align-content: start;
+  min-height: 0;
 }
 
-/* Over the panel rather than above it: the bar is one row on every other view, and a list
-   that pushed the notes down as you typed would move the thing you are searching for. */
-.notes-search__results {
-  position: absolute;
-  z-index: 30;
-  top: calc(100% + var(--s2));
-  right: 0;
-  left: 0;
-  padding: var(--s2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r2);
-  background: var(--surface);
-  box-shadow: var(--shadow);
+.notes-tree__search input {
+  font-size: var(--t2);
 }
 
-.notes-search__list {
+.notes-tree__stages,
+.notes-tree__notes {
   display: grid;
   gap: var(--s1);
-  max-height: 22rem;
   margin: 0;
   padding: 0;
-  overflow-y: auto;
   list-style: none;
 }
 
-.notes-search__empty {
-  margin: 0;
-  padding: var(--s2) var(--s3);
-  color: var(--ink-3);
-  font-size: var(--t3);
+.notes-tree__stages {
+  gap: var(--s3);
+  min-height: 0;
+  overflow-y: auto;
 }
 
-.notes-search__hit {
+/* The stage a row sits under, not itself a place to go: the same quiet heading the picker
+   gives a company over the roles beneath it. */
+.notes-tree__stage {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 var(--s1);
+  color: var(--ink-3);
+  font-size: var(--t1);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.notes-tree__count {
+  letter-spacing: 0;
+}
+
+.notes-tree__note {
   display: grid;
   gap: var(--s1);
   width: 100%;
-  padding: var(--s2) var(--s3);
+  padding: var(--s1) var(--s2);
   border: 0;
-  border-radius: var(--r1);
-  color: var(--ink);
+  /* The indent guide the outline uses, so one sidebar reads as one sidebar. */
+  border-left: 2px solid var(--line);
+  border-radius: 0 var(--r1) var(--r1) 0;
+  color: var(--ink-2);
   background: none;
   font: inherit;
+  font-size: var(--t3);
   text-align: left;
   cursor: pointer;
 }
 
-.notes-search__hit:hover,
-.notes-search__hit--on {
+.notes-tree__note:hover {
+  color: var(--ink);
   background: var(--surface-3);
 }
 
-.notes-search__where {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s2);
-  align-items: baseline;
-  font-size: var(--t3);
-  font-weight: 600;
+/* Already a tab in the panel, so picking it moves to it rather than opening it again. */
+.notes-tree__note--open {
+  color: var(--ink);
+  border-left-color: var(--line-strong);
 }
 
-/* Which half of the note holds the words, and how many are in it: quiet, because it
-   qualifies the name rather than being part of it. */
-.notes-search__half {
-  color: var(--ink-3);
-  font-size: var(--t1);
-  font-weight: 400;
+.notes-tree__note--current {
+  border-left-color: var(--accent);
+  background: var(--accent-weak);
 }
 
-.notes-search__snippet {
+.notes-tree__name {
   overflow: hidden;
-  color: var(--ink-2);
-  font-size: var(--t2);
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* What is in it, so a row can be read before it is opened. */
+.notes-tree__said {
+  color: var(--ink-3);
+  font-size: var(--t1);
 }
 
 /* =========================================================================

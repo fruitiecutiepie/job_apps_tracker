@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { ChevronRight, Columns2, Keyboard, PanelLeft, Plus, Search, X } from 'lucide-react'
+import { ChevronRight, Columns2, Keyboard, ListTree, PanelLeft, Plus, Search, X } from 'lucide-react'
 import {
   closeStageNoteEditor,
   openStageNoteInEditor,
@@ -56,6 +56,7 @@ import {
   type TabGroup,
 } from './notesLayout'
 import { captureHeightWithin, DEFAULT_CAPTURE_LOG, type Arrangement } from './notesArrangement'
+import { NotesTreeView } from './NotesTreeView'
 import { StageNotePane } from './StageNotePane'
 import {
   DROP_EDGE,
@@ -395,7 +396,13 @@ export function StageNotesPanel({
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const savingRef = useRef(false)
   const mountedRef = useRef(true)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  /**
+   * Which sidebar panel is showing, or none. Two panels over one column rather than a
+   * column each: the outline is the note you are reading and the tree is the ones you are
+   * not, and reaching for either should never cost the width of the other. Closed leaves
+   * the rail, because a control inside the thing it hides has nowhere to be once hidden.
+   */
+  const [sidebarPanel, setSidebarPanel] = useState<'outline' | 'notes' | null>('outline')
   // Find state. `findSeq` remounts the widget so a second Ctrl+F refocuses and selects
   // the query already in it, the way reopening find in an editor does.
   const [findOpen, setFindOpen] = useState(false)
@@ -698,6 +705,11 @@ export function StageNotesPanel({
   const activeRef =
     activeGroup.tabs.find((tab) => noteRefKey(tab) === activeGroup.activeKey) ?? activeGroup.tabs[0]
   const activeKey = noteRefKey(activeRef)
+  /** Every note the panel has open, for the tree beside it to mark as already there. */
+  const openKeys = useMemo(
+    () => new Set(orderedRefs(layout).map(noteRefKey)),
+    [layout],
+  )
   const activeBody = drafts[activeKey] ?? ''
   const activeLabel = labelOf(activeRef)
   const isSplit = groups.length > 1
@@ -1071,7 +1083,7 @@ export function StageNotesPanel({
       }
       if (key === 'b') {
         event.preventDefault()
-        setSidebarOpen((current) => !current)
+        setSidebarPanel((current) => (current === 'outline' ? null : 'outline'))
         return
       }
       if (key === 'k') {
@@ -1412,18 +1424,30 @@ export function StageNotesPanel({
    * the sidebar collapses to a rail holding just this button, and the button does not
    * move when it is pressed.
    */
-  const outlineToggle = (
-    <button
-      aria-keyshortcuts={shortcutKeys('B')}
-      aria-label={sidebarOpen ? 'Hide the outline' : 'Show the outline'}
-      aria-pressed={sidebarOpen}
-      className="icon-button"
-      onClick={() => setSidebarOpen((current) => !current)}
-      title={`${sidebarOpen ? 'Hide the outline' : 'Show the outline'} (${shortcutLabel('B')})`}
-      type="button"
-    >
-      <PanelLeft aria-hidden="true" size={16} />
-    </button>
+  const sidebarRail = (
+    <div className="panel__rail">
+      <button
+        aria-keyshortcuts={shortcutKeys('B')}
+        aria-label={sidebarPanel === 'outline' ? 'Hide the outline' : 'Show the outline'}
+        aria-pressed={sidebarPanel === 'outline'}
+        className="icon-button"
+        onClick={() => setSidebarPanel((current) => (current === 'outline' ? null : 'outline'))}
+        title={`${sidebarPanel === 'outline' ? 'Hide the outline' : 'Show the outline'} (${shortcutLabel('B')})`}
+        type="button"
+      >
+        <PanelLeft aria-hidden="true" size={16} />
+      </button>
+      <button
+        aria-label={sidebarPanel === 'notes' ? 'Hide every prep note' : 'Show every prep note'}
+        aria-pressed={sidebarPanel === 'notes'}
+        className="icon-button"
+        onClick={() => setSidebarPanel((current) => (current === 'notes' ? null : 'notes'))}
+        title={sidebarPanel === 'notes' ? 'Hide every prep note' : 'Show every prep note'}
+        type="button"
+      >
+        <ListTree aria-hidden="true" size={16} />
+      </button>
+    </div>
   )
 
   /**
@@ -1697,19 +1721,18 @@ export function StageNotesPanel({
         </div>
 
         <form
-          className={`panel__body${sidebarOpen ? '' : ' panel__body--rail'}`}
+          className={`panel__body${sidebarPanel ? '' : ' panel__body--rail'}`}
           // There is nothing to submit — the notes write themselves. The form element
           // stays because it carries the panel's layout, and because the capture box's
           // Enter guard is written against the panel being one form around every note.
           onSubmit={(event) => event.preventDefault()}
         >
-          {sidebarOpen ? (
-            <aside className="panel__sidebar">
+          {sidebarRail}
+
+          {sidebarPanel === 'outline' ? (
+            <aside aria-label="Outline" className="panel__sidebar">
               <div>
-                <div className="panel__sidebar-head">
-                  <p className="panel__sidebar-title">Outline</p>
-                  {outlineToggle}
-                </div>
+                <p className="panel__sidebar-title">Outline</p>
                 {outline.length > 0 ? (
                   <OutlineList
                     current={trailKey}
@@ -1732,9 +1755,18 @@ export function StageNotesPanel({
                 were told in it.
               </p>
             </aside>
-          ) : (
-            <div className="panel__rail">{outlineToggle}</div>
-          )}
+          ) : null}
+
+          {sidebarPanel === 'notes' ? (
+            <aside aria-label="All prep notes" className="panel__sidebar">
+              <NotesTreeView
+                applications={applications}
+                currentKey={activeKey}
+                onPick={showRef}
+                openKeys={openKeys}
+              />
+            </aside>
+          ) : null}
 
           <div className="panel__main">
             <p className="panel__breadcrumbs">
