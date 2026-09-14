@@ -10,11 +10,11 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 - Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first — and the panel holds notes from several applications at once, in panes you can split
 - Captured lines per stage, recording what an interviewer tells you as you are told it, stored the moment they are entered and pinned on screen under the prep note however far it scrolls
 - Optional deadline per application, recording an external closing or decision date separately from your own next action
-- Preference ranking from four subjective ratings, discounted for what you have not judged yet, with the weakest dimension named so a healthy average cannot hide a dealbreaker, shown on the table row and the Kanban card, summarised across the collection on Statistics, and used to break ties within a Focus group
+- Preference ranking from four subjective ratings, discounted for what you have not judged yet, with the weakest dimension named so a healthy average cannot hide a dealbreaker, shown on the table row and the Kanban card, summarised across the collection on Statistics, and used to break ties within a table band
 - Compensation as a measurement rather than a rating: what was advertised, what you expect, and what was offered, kept side by side and compared against your target
 - Derived urgency ranking that explains itself, combining stage, scheduled invites, deadline, next-action date, and how long an application has sat in the same state, into one sortable column
 - Sortable and filterable table with invites, deadline, urgency, preference, compensation, and attachments columns, where sorting by invite sorts by what is next, and opening on urgency bands the rows under headings — what is dated, what is live but undated, what is finished with a task still on it, and what is finished
-- Focus view grouping live applications by what is most pressing, with collapsible groups and a reason on every row, and a **Done** control that clears a finished task and records it as a dated completed action, kept apart from your notes
+- A **Done** control on the Kanban card and in the table's next action cell that clears a finished task and records it as a dated completed action, kept apart from your notes
 - Calendar invites imported from the `.ics` a recruiter sends, filed against a stage, with a rescheduled invite replacing the one it supersedes
 - Calendar showing next-action dates and invites together, day by day
 - Stale applications with 7-, 14-, and 30-day thresholds, plus a Move to Rejected shortcut to the current state's counterpart
@@ -59,8 +59,8 @@ Use `pnpm start:demo` after a build to preview against the demo database.
 
 Select **Add application** and enter a company, optional role and URL, its current state, notes, and an optional next action. A next action can be saved without a date; its date is cleared automatically if the action text is removed. A deadline is separate: it records an external closing or decision date and can be set with no next action at all. URLs must begin with `http://` or `https://`.
 
-Select **Done** beside a next action — on a Focus row, a Kanban card, or in the table's next
-action column — when you have finished it. The task moves to that application's **Completed
+Select **Done** beside a next action — on a Kanban card or in the table's next action
+column — when you have finished it. The task moves to that application's **Completed
 actions**, a dated record kept separately from Notes, and the next action clears. The deadline
 is left alone, since a closing date is not something you complete, and finishing a task is not
 a stage change, so no history entry is added.
@@ -71,9 +71,8 @@ is work that will not happen, and left in place it sits on your plan forever bec
 asks about it again. It is dropped rather than recorded under Completed actions, since you never
 did it. Accepted and No openings are left alone: nobody turned either down, and a task on an
 offer you accepted is real work. If a rejection does leave you something to do, such as asking
-for feedback, write it as a new next action afterwards. Applications with nothing left to do fall into
-Focus's **No stage change in more than 7 days** or **Nothing dated or planned** group, which is
-where you decide what is next.
+for feedback, write it as a new next action afterwards. Applications with nothing left to do fall into the
+table's **Live, nothing dated** band, which is where you decide what is next.
 
 Completed actions are records rather than lines appended to your notes. Notes is prose you
 write and rewrite; a completed action is one line the app writes the moment you press Done.
@@ -241,11 +240,11 @@ never looked at, and the mean of the judgements you did make. That last table is
 find out whether **People** reads low because you keep rating it low or because you have
 never assessed it.
 
-Preference deliberately does **not** feed the urgency score or decide which Focus group an
+Preference deliberately does **not** feed the urgency score or decide which band an
 application lands in. A rating is what you want; a deadline is when it is due, and letting
 one bend the other would sink a deadline due today under a nicer role due next week. Inside
-a Focus group it is the last thing consulted: where the date and the score have already
-tied, the role you think more of goes first, and rows you have not rated stay put.
+a band it is the last thing consulted: where the date and the score have already tied, the
+role you think more of goes first, and rows you have not rated stay put.
 
 Compensation is deliberately **not** a rating. Given a number everyone agrees more is
 better, so scoring it 1–5 would throw the number away; it belongs in a field of its own.
@@ -297,8 +296,7 @@ Offered by name.
 ### Find the right view
 
 - **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames, a preference score for rated applications, and a prep notes button appear on cards, and you can move applications by drag-and-drop or the state selector. A live application that has not changed stage for 30 days or more is greyed out and labelled `Idle 30 days`; it stays in its own lane with its history, and still moves wherever any other application can. Silence is measured from the last stage change rather than the last edit, so annotating a card or importing an invite does not reset it. Rejected, accepted, and no-openings applications are finished rather than idle and are never labelled.
-- **Table** sorts and column-filters by company, role, source, state, activity, next action, deadline, urgency, preference, compensation, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—activity, deadline, invites, preference, compensation—keep the rows without one last in either sort direction. The Activity column carries the same `Idle N days` text the board shows and filters on it, and reads `—` for an application that is not idle. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, activity, company, and source filters still apply across views.
-- **Focus** answers "what should I do next". Each group heading states its own membership rule, so nothing is hidden behind a mood word: **Overdue or due today**, **Due in 1 to 7 days**, **Due in more than 7 days**, **Action with no date**, **No stage change in more than 7 days**, **Nothing dated or planned**, and a trailing **Finished, action outstanding** for tasks left on rejected, accepted, or no-openings applications. Placement uses the nearest of the soonest upcoming invite, the deadline, and the next-action date, so a date always decides the group; the urgency score only orders rows within it, and preference breaks ties the date and the score have both left level. An application with just an invite, or just a deadline, and no action of its own appears here too. Silence is measured from the last actual state change, not from the last edit, so fixing a typo does not make an application look like it moved. Groups collapse and expand—only the leading non-empty group starts open, and that choice is never saved.
+- **Table** answers "what should I do next". It opens sorted by urgency, descending, which bands the rows under four headings: **Dated, soonest first** for anything with an invite, deadline, or dated action ahead or behind; **Live, nothing dated** for what is still running with nothing on the calendar; **Finished, action outstanding** for a task left on an application that ended; and **Finished** for the rest. A band holding nothing prints no heading, and sorting any other column takes the bands away, because they would then separate rows on a rule the visible order does not follow. Inside a band the urgency score orders the rows, except in the dated band, which reads by date as its heading says, with preference breaking ties the date and the score have both left level. It also sorts and column-filters by company, role, source, state, activity, next action, deadline, urgency, preference, compensation, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—activity, deadline, invites, preference, compensation—keep the rows without one last in either sort direction. The Activity column carries the same `Idle N days` text the board shows and filters on it, and reads `—` for an application that is not idle. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, activity, company, and source filters still apply across views.
 - **Calendar** places applications only by their next-action date; select an item to edit it. There is no Done control here — the Calendar is a picture of when things fall, not a task list.
 - **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved. This is a view you tune, unlike the Idle label on the board and in the table, which is fixed at 30 days—here you choose the window you want to look through. When the current state has a rejected counterpart, **Move to Rejected** records that outcome and keeps the history.
 - **Statistics** compares current state counts with counts for every state applications have previously reached, then summarises your ratings: how many applications you have rated, the mean preference across them, and one row per dimension showing what you judged, what you could not tell, what you never assessed, and the mean of the judgements.

@@ -1147,10 +1147,8 @@ tbody tr:hover {
   font-size: var(--t2);
 }
 
-/* --------------------------------------------- next actions and stale --- */
+/* -------------------------------------------------------------- stale --- */
 
-.action-groups,
-.action-list,
 .stale-list {
   display: grid;
   gap: var(--s3);
@@ -1159,56 +1157,6 @@ tbody tr:hover {
   list-style: none;
 }
 
-.action-groups {
-  gap: var(--s5);
-}
-
-.focus-group__summary {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  cursor: pointer;
-  list-style: none;
-}
-
-.focus-group__summary::-webkit-details-marker {
-  display: none;
-}
-
-.focus-group__summary::before {
-  content: "\25b8";
-  color: var(--ink-3);
-  font-size: var(--t2);
-}
-
-.action-group[open] > .focus-group__summary::before {
-  content: "\25be";
-}
-
-.action-group[open] > .focus-group__summary {
-  margin-bottom: var(--s3);
-}
-
-.focus-group__heading {
-  flex: 1;
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--t4);
-  font-weight: 600;
-}
-
-.action-list > li {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-}
-
-.action-list .action-card {
-  flex: 1;
-  min-width: 0;
-}
-
-.action-card,
 .stale-row {
   width: 100%;
   border: 1px solid var(--line);
@@ -1216,39 +1164,16 @@ tbody tr:hover {
   background: var(--surface);
 }
 
-.action-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--s4);
-  row-gap: var(--s1);
-  align-items: start;
-  padding: var(--s3);
-  text-align: left;
-}
-
-.action-card:hover,
 .stale-row:hover {
   border-color: var(--line-strong);
 }
 
-.action-card__date {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  justify-self: end;
-  align-self: center;
-  color: var(--ink-2);
-  font-size: var(--t2);
-  white-space: nowrap;
-}
-
-.action-card strong,
 .stale-row__open strong {
   color: var(--ink);
   font-size: var(--t3);
   font-weight: 600;
 }
 
-.action-card > span:not(.action-card__date),
 .stale-row__open small {
   color: var(--ink-2);
   font-size: var(--t2);
@@ -3700,32 +3625,8 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     grid-column: auto;
   }
 
-  .action-card {
-    grid-template-columns: 1fr;
-    gap: var(--s2);
-  }
-
-  .action-card__date {
-    grid-column: 1;
-    grid-row: auto;
-    justify-self: start;
-    white-space: normal;
-  }
-
   .stale-row {
     flex-wrap: wrap;
-  }
-
-  /*
-   * A Focus row now carries two controls beside the card. Let them drop below it the way the
-   * stale row's do, rather than crushing the card to make space.
-   */
-  .action-list > li {
-    flex-wrap: wrap;
-  }
-
-  .action-list .action-card {
-    flex: 1 1 12rem;
   }
 
   .stale-row__open {

@@ -1,6 +1,7 @@
 import { classifyLifecycle } from "../domain";
 import type { Application } from "../domain";
-import { daysUntil } from "./urgency";
+import type { PreferenceScore } from "./preference";
+import { SCORE_EPSILON, daysUntil, type UrgencyRanking } from "./urgency";
 import { upcomingStateEvent } from "./viewUtils";
 
 /**
@@ -87,4 +88,50 @@ export function urgencyBandFor(
 
   const days = drivingDays(application, today);
   return days === null ? { band: "undated", days: null } : { band: "due", days };
+}
+
+/**
+ * The order inside a banded table: band first, then the band's own rule, then the urgency
+ * score, then preference, then company so the comparison is total.
+ *
+ * A dated band reads by date rather than by score, which is what its heading says. The two
+ * disagree because each pressure decays over its own horizon, so an invite three weeks out
+ * can outscore a deadline next week; in a band that promises "soonest first", the date is
+ * the honest reading. Everywhere else the score decides, unchanged.
+ *
+ * Preference is never added to or multiplied into the score and cannot overturn it. It
+ * speaks only where the score has already tied, where the fallback would otherwise be an
+ * arbitrary input order. A null sinks in both directions, the way the Preference column
+ * treats one, because never rated is not the same as rated badly.
+ */
+export function compareBanded(
+  left: Application,
+  right: Application,
+  bands: ReadonlyMap<string, BandPlacement>,
+  urgency: ReadonlyMap<string, UrgencyRanking>,
+  preference: ReadonlyMap<string, PreferenceScore>,
+): number {
+  const leftBand = bands.get(left.id)!;
+  const rightBand = bands.get(right.id)!;
+
+  const byBand = bandRank(leftBand.band) - bandRank(rightBand.band);
+  if (byBand !== 0) return byBand;
+
+  if (leftBand.days !== null && rightBand.days !== null && leftBand.days !== rightBand.days) {
+    return leftBand.days - rightBand.days;
+  }
+
+  const leftScore = urgency.get(left.id)?.score ?? 0;
+  const rightScore = urgency.get(right.id)?.score ?? 0;
+  if (Math.abs(leftScore - rightScore) > SCORE_EPSILON) return rightScore - leftScore;
+
+  const leftPreference = preference.get(left.id)?.score ?? null;
+  const rightPreference = preference.get(right.id)?.score ?? null;
+  if (leftPreference !== rightPreference) {
+    if (leftPreference === null) return 1;
+    if (rightPreference === null) return -1;
+    return rightPreference - leftPreference;
+  }
+
+  return left.company.localeCompare(right.company);
 }

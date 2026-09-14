@@ -117,6 +117,32 @@ describe('band membership', () => {
     expect(placement).toEqual({ band: 'due', days: 5 })
   })
 
+  it('bands a dated action past its pressure horizon by the date, not as unplanned', () => {
+    // The action pressure decays to nothing after a week, so this scores zero. It is still
+    // dated, and a band that read the score would file it with the rows that have no plan.
+    expect(
+      urgencyBandFor(
+        application('Far Off Co', { next_action: 'Submit the exercise', next_action_at: at(30) }),
+        today,
+      ),
+    ).toEqual({ band: 'due', days: 30 })
+  })
+
+  it('treats a cancelled invite as no date at all', () => {
+    expect(
+      urgencyBandFor(
+        application('Called Off Co', { state_events: [invite({ cancelled: true })] }),
+        today,
+      ).band,
+    ).toBe('undated')
+  })
+
+  it('treats an invite today as dated, not as something already past', () => {
+    expect(
+      urgencyBandFor(application('Today Co', { state_events: [invite({ starts_at: at(0, 17) })] }), today),
+    ).toEqual({ band: 'due', days: 0 })
+  })
+
   it('separates a finished application that still carries a task from one that does not', () => {
     const rejected = {
       state: 'auto_rejected' as StateId,

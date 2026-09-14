@@ -1,7 +1,6 @@
 export { CalendarView } from "./CalendarView";
 export { CompareNotesView } from "./CompareNotesView";
 export { CompleteActionButton } from "./CompleteActionButton";
-export { FocusView } from "./FocusView";
 export { InviteSummaries } from "./InviteSummaries";
 export { KanbanView } from "./KanbanView";
 export { StageNotesButton } from "./StageNotesButton";

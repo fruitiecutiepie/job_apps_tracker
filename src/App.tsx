@@ -14,7 +14,6 @@ import {
   Search,
   Sun,
   Table2,
-  Target,
   Upload,
   X,
 } from 'lucide-react'
@@ -92,19 +91,17 @@ import { idleFilterMatches, type IdleFilter } from './views/idle'
 import {
   CalendarView,
   CompareNotesView,
-  FocusView,
   KanbanView,
   StaleView,
   StatisticsView,
   TableView,
 } from './views'
 
-type ViewId = 'kanban' | 'table' | 'focus' | 'calendar' | 'stale' | 'statistics' | 'compare'
+type ViewId = 'kanban' | 'table' | 'calendar' | 'stale' | 'statistics' | 'compare'
 
 const VIEW_OPTIONS = [
   { id: 'kanban', label: 'Kanban', icon: KanbanSquare },
   { id: 'table', label: 'Table', icon: Table2 },
-  { id: 'focus', label: 'Focus', icon: Target },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
@@ -917,8 +914,6 @@ export default function App() {
     switch (activeView) {
       case 'table':
         return <TableView {...shared} onMove={move} />
-      case 'focus':
-        return <FocusView {...shared} />
       case 'calendar':
         return <CalendarView {...shared} />
       case 'stale':
