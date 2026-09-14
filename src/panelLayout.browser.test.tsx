@@ -19,6 +19,7 @@ import { render, screen, within } from '@testing-library/react'
 import { page, userEvent } from '@vitest/browser/context'
 
 import { createDemoDocument } from './domain/demo'
+import { stateLabel } from './domain'
 import type { Application } from './domain'
 import { StageNotesPanel } from './StageNotesPanel'
 import { openingLayout } from './notesArrangement'
@@ -182,6 +183,31 @@ describe('the panel in a real browser', () => {
       const box = document.querySelector(selector)!.getBoundingClientRect()
       expect(box.right).toBeLessThanOrEqual(panel.right + 1)
     }
+  })
+
+  it('scrolls a strip to the tab just opened, once there are more than fit', async () => {
+    const { halcyon } = renderPanel()
+    await page.viewport(640, 800)
+
+    const strip = () => document.querySelector('.panel__tabs')!
+    const activeTab = () => strip().querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')!
+
+    // Enough tabs that the strip overflows, which is the only state this is about.
+    for (const state of ['applied', 'recruiter_interview', 'interview_1', 'offer'] as const) {
+      await userEvent.click(screen.getByRole('button', { name: 'Go to stage' }))
+      await userEvent.selectOptions(
+        screen.getByRole('combobox', { name: new RegExp(`Other stages for ${halcyon.company}`) }),
+        [stateLabel(state)],
+      )
+    }
+    expect(strip().scrollWidth).toBeGreaterThan(strip().clientWidth)
+
+    // The tab that names the note now showing is in view rather than off the end of the
+    // strip — jsdom cannot tell these apart, which is why it is asked here.
+    const box = strip().getBoundingClientRect()
+    const tab = activeTab().getBoundingClientRect()
+    expect(tab.left).toBeGreaterThanOrEqual(box.left - 1)
+    expect(tab.right).toBeLessThanOrEqual(box.right + 1)
   })
 
   it('stacks the panes when the panel is narrow in a window that is not', async () => {

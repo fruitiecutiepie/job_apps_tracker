@@ -503,6 +503,32 @@ export function StageNotesPanel({
   const openTabs = useMemo(() => orderedTabs(layout), [layout])
 
   /**
+   * Which tab each pane is showing, as one string, so the effect below runs when a strip
+   * changes what it is showing rather than on every arrangement of anything.
+   */
+  const showing = useMemo(
+    () => groupsOf(layout).map((group) => `${group.id}@${group.activeKey ?? ''}`).join('|'),
+    [layout],
+  )
+
+  /*
+   * A strip scrolls, and a tab opened onto the end of one lands past its edge — the note
+   * appears below while the tab that says which note it is does not. So the tab a pane has
+   * just shown is brought into view in its own strip.
+   *
+   * `nearest` on both axes so a tab already showing is left where it is and the panel
+   * around it is not scrolled: this moves a strip, and only as far as it has to.
+   */
+  useEffect(() => {
+    for (const group of groupsOf(layoutRef.current)) {
+      const ref = group.tabs.find((tab) => noteRefKey(tab) === group.activeKey)
+      if (!ref) continue
+      // Optional call: jsdom has no layout and leaves scrollIntoView undefined.
+      tabRefs.current[tabId(group.id, ref)]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    }
+  }, [showing])
+
+  /**
    * Seeds a draft for every note as it joins the panel, so what is typed is measured
    * against what was stored rather than against nothing. A note already seeded is left
    * alone: re-seeding it from the document would throw away the keystrokes that have not
@@ -1645,10 +1671,10 @@ export function StageNotesPanel({
                     applyLayout(activateTab(layoutRef.current, group.id, nextKey), group.id)
                     // Focus follows the selection, or the next arrow key would be read
                     // by the tab left behind and step from the wrong place.
-                    tabRefs.current[nextKey]?.focus()
+                    tabRefs.current[tabId(group.id, next)]?.focus()
                   }}
                   ref={(node) => {
-                    tabRefs.current[key] = node
+                    tabRefs.current[tabId(group.id, tab)] = node
                   }}
                   role="tab"
                   tabIndex={isActive ? 0 : -1}

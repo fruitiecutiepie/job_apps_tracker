@@ -3004,6 +3004,37 @@ describe('job applications tracker', () => {
     expect(within(panel).getAllByRole('tab', { name: /Echo Robotics/ })).toHaveLength(1)
   })
 
+  it('scrolls a strip to the tab it just opened, however far along it is', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // jsdom lays nothing out, so whether a tab is off the end of its strip is a question
+    // it cannot answer. What it can answer is whether the panel asked for the tab it just
+    // opened to be brought into view — the browser suite measures the rest.
+    const scrolled: HTMLElement[] = []
+    const original = Element.prototype.scrollIntoView
+    Element.prototype.scrollIntoView = function scrollIntoViewStub(this: HTMLElement) {
+      scrolled.push(this)
+    }
+
+    try {
+      await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+      const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+      await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
+
+      scrolled.length = 0
+      await user.click(
+        within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
+          .getByRole('button', { name: /^Echo Robotics/ }),
+      )
+
+      const opened = within(dialog).getByRole('tab', { name: /Echo Robotics/ })
+      expect(scrolled).toContain(opened)
+    } finally {
+      Element.prototype.scrollIntoView = original
+    }
+  })
+
   it('opens a second copy of a note by dragging it into another pane', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
