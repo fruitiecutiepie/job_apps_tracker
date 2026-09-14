@@ -28,6 +28,8 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 ### States and transitions
 
 - `StateId` is a closed union of exactly 19 states. `STATE_CONFIG` in `src/domain/states.ts` is the only source for state order and display labels.
+- `classifyLifecycle` in `src/domain/states.ts` is the only source for whether a state is live, rejected or closed, and `LIVE_STATE_IDS` for the live set. It lives in the domain rather than in `src/views/urgency.ts` because the `live` state filter and the urgency ranking both read it, and two definitions of "still running" would let what a view shows drift from what it scores. Like `isRejectedState` it is a view-only grouping: it never restricts moves.
+- `live` is not a synonym for `not_rejected`. They differ over `accepted` and `no_openings`, which nobody turned down and nobody is still working, so both filter options exist.
 - Preserve the configured labels exactly, including the em dashes in rejection labels.
 - Name things `state` in code and stored data — `StateId`, `state`, `state_history`, `state_events`. Use
   "stage" only in copy a reader sees, where it reads more naturally ("prep notes for this stage", the Kanban

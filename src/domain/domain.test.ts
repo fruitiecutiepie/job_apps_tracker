@@ -34,6 +34,7 @@ import {
   rebuildIndexes,
   rejectedStateFor,
   isRejectedState,
+  LIVE_STATE_IDS,
   statesForFilter,
   stateFilterMatches,
   REJECTED_STATE_IDS,
@@ -153,6 +154,19 @@ describe('state configuration and demo content', () => {
     expect(statesForFilter('rejected')).toEqual([...REJECTED_STATE_IDS])
     expect(statesForFilter('not_rejected')).toEqual([...NOT_REJECTED_STATE_IDS])
     expect(statesForFilter('offer')).toEqual(['offer'])
+  })
+
+  it('filters to the live states, which is narrower than everything not rejected', () => {
+    expect(STATE_IDS.filter((id) => stateFilterMatches('live', id))).toEqual([...LIVE_STATE_IDS])
+    expect(statesForFilter('live')).toEqual([...LIVE_STATE_IDS])
+
+    // The distinction the two outcome groups cannot draw: Accepted and No openings are not
+    // rejections, so `not_rejected` keeps them, and neither is still in play.
+    expect(stateFilterMatches('not_rejected', 'accepted')).toBe(true)
+    expect(stateFilterMatches('live', 'accepted')).toBe(false)
+    expect(stateFilterMatches('not_rejected', 'no_openings')).toBe(true)
+    expect(stateFilterMatches('live', 'no_openings')).toBe(false)
+    expect(LIVE_STATE_IDS.length).toBeLessThan(NOT_REJECTED_STATE_IDS.length)
   })
 
   it('creates one useful example in every state', () => {

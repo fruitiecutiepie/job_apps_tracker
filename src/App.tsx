@@ -1112,12 +1112,17 @@ export default function App() {
             >
               <option value="all">All states</option>
               {/*
-                * The two outcome groups share this control rather than adding one beside
+                * The outcome groups share this control rather than adding one beside
                 * it: they answer the same question a single state does, so a bar holding
                 * both would offer combinations — Offer and rejected — that select nothing.
-                * Grouped so "Rejected" is not read as a nineteenth state.
+                * Grouped so "Rejected" is not read as a twentieth state.
+                *
+                * Still live sits beside Not rejected rather than replacing it: the two
+                * differ over Accepted and No openings, which nobody turned down and
+                * nobody is still working, so each answers a question the other cannot.
                 */}
               <optgroup label="By outcome">
+                <option value="live">Still live</option>
                 <option value="rejected">Rejected</option>
                 <option value="not_rejected">Not rejected</option>
               </optgroup>

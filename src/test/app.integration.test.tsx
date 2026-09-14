@@ -233,6 +233,27 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
+  it('filters to what is still running, which keeps less than everything not rejected', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.selectOptions(screen.getByLabelText('Filter by state'), 'live')
+
+    // Nine live stages, one application in each: the eleven that are not rejections, less
+    // Accepted and No openings.
+    expect(screen.getByText('9 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Offer' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Offer — Rejected' })).not.toBeInTheDocument()
+    // The pair that separates this filter from Not rejected: neither was turned down, and
+    // neither is still in play.
+    expect(screen.queryByRole('heading', { name: 'Accepted' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'No openings' })).not.toBeInTheDocument()
+
+    expect(readSavedDocument().applications).toHaveLength(19)
+  })
+
   it('filters to the applications that have gone quiet, whatever stage they sit at', async () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()

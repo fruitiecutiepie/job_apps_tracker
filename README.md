@@ -19,7 +19,7 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 - Calendar showing next-action dates and invites together, day by day
 - Stale applications with 7-, 14-, and 30-day thresholds, plus a Move to Rejected shortcut to the current state's counterpart
 - Current-state and ever-reached statistics derived from application history
-- Global company, role, notes, stage prep note, and invite search plus state and activity filtering
+- Global company, role, notes, stage prep note, and invite search plus state and activity filtering, where the state filter also takes whole outcomes: still live, rejected, or not rejected
 - Add, edit, delete, import, and export controls, plus confirmed demo-data reset in the demo profile
 - Append-only state history whenever an application actually changes state
 - Responsive layouts, keyboard-accessible forms and dialogs, and keyboard shortcuts for splitting, finding, and navigating the stage notes panel
