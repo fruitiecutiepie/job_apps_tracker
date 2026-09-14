@@ -56,12 +56,16 @@ it('completes the primary tracker journey and persists it across reloads', async
     'Calendar',
     'Stale',
     'Statistics',
-    'Prep notes',
   ]) {
     const viewButton = views.getByRole('button', { name: view })
     await user.click(viewButton)
     expect(viewButton).toHaveAttribute('aria-current', 'page')
   }
+  // Prep notes is reached from the header rather than the strip: it is a workspace, not a
+  // view of the collection, and it shares none of the filters the strip's views do.
+  await user.click(screen.getByRole('button', { name: 'Prep notes' }))
+  expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
+
   await user.click(views.getByRole('button', { name: 'Kanban' }))
   expect(screen.getByRole('heading', { name: 'Applied' })).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Add application' }))

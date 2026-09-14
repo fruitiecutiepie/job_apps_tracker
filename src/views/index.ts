@@ -4,6 +4,7 @@ export { CompleteActionButton } from "./CompleteActionButton";
 export { FocusView } from "./FocusView";
 export { InviteSummaries } from "./InviteSummaries";
 export { KanbanView } from "./KanbanView";
+export { PrepNotesSearch } from "./PrepNotesSearch";
 export { PrepNotesView } from "./PrepNotesView";
 export { StageNotesButton } from "./StageNotesButton";
 export { StaleView } from "./StaleView";

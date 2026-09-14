@@ -86,7 +86,7 @@ import {
   type InviteRow,
 } from './invites'
 import type { StageNoteDraftBatch } from './StageNotesPanel'
-import type { NoteRequest } from './notesLayout'
+import type { NoteRef, NoteRequest } from './notesLayout'
 import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
@@ -95,13 +95,14 @@ import {
   CompareNotesView,
   FocusView,
   KanbanView,
+  PrepNotesSearch,
   PrepNotesView,
   StaleView,
   StatisticsView,
   TableView,
 } from './views'
 
-type ViewId = 'kanban' | 'table' | 'focus' | 'calendar' | 'stale' | 'statistics' | 'compare' | 'notes'
+type ViewId = 'kanban' | 'table' | 'focus' | 'calendar' | 'stale' | 'statistics' | 'compare'
 
 const VIEW_OPTIONS = [
   { id: 'kanban', label: 'Kanban', icon: KanbanSquare },
@@ -111,8 +112,17 @@ const VIEW_OPTIONS = [
   { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
   { id: 'compare', label: 'Compare', icon: Columns3 },
-  { id: 'notes', label: 'Prep notes', icon: NotebookPen },
 ] as const
+
+/**
+ * Prep notes is not one of those, and deliberately not a `ViewId` either. They are views of
+ * the application collection — they share its count, its search and its filters — and this
+ * is a workspace that ignores every one of them. It is a layer shown over whichever view
+ * you are on, which is why it is held as a flag beside `activeView` rather than as one of
+ * its values: the view underneath does not change while the notes are up, so putting it
+ * back when they go needs nothing remembered.
+ */
+const NOTES_VIEW = { label: 'Prep notes', icon: NotebookPen } as const
 
 /*
  * Occasional collection-wide actions (import, export, demo reset) live behind
@@ -641,6 +651,8 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<ViewId>('kanban')
+  /** Whether the prep notes workspace is up over that view. */
+  const [notesOpen, setNotesOpen] = useState(false)
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<StateFilter>('all')
   const [idleFilter, setIdleFilter] = useState<IdleFilter>('all')
@@ -925,6 +937,18 @@ export default function App() {
    * opener to return focus to afterwards, and a stale one would aim at a card the view
    * switch has already unmounted.
    */
+  /** Opens one exact note, for a caller that already knows the stage it wants. */
+  const openStageNotesAt = (ref: NoteRef) => {
+    dialogOpenerRef.current = null
+    dialogWasOpenRef.current = false
+    notesNonce.current += 1
+    setNotesRequest({ ref, nonce: notesNonce.current })
+    setNotesOpen(true)
+  }
+
+  /** Shows the notes over the view you are on, or takes them away and leaves it showing. */
+  const toggleStageNotes = () => setNotesOpen((open) => !open)
+
   const openStageNotes = (id: string) => {
     const application = tracker.applications.find((candidate) => candidate.id === id)
     if (!application) return
@@ -938,7 +962,7 @@ export default function App() {
       ref: { applicationId: id, state: application.state },
       nonce: notesNonce.current,
     })
-    setActiveView('notes')
+    setNotesOpen(true)
   }
 
   const closeEditor = () => setEditor(null)
@@ -961,6 +985,20 @@ export default function App() {
     )
   }
 
+  const notesLayer = (
+    <PrepNotesView
+      // Every application, not the filtered set: see `PrepNotesView`.
+      applications={tracker.applications}
+      onCapture={captureStageLine}
+      onExternalChange={(applicationId: string, state: StateId, body: string) =>
+        commitStageNote(applicationId, state, body, 'Prep notes saved from your editor.')}
+      onRequested={() => setNotesRequest(null)}
+      onRevise={reviseStageLine}
+      onSaveDrafts={saveStageDrafts}
+      request={notesRequest}
+    />
+  )
+
   const currentView = (() => {
     const shared = {
       applications: filteredApplications,
@@ -979,20 +1017,6 @@ export default function App() {
         return <StaleView {...shared} onMove={move} />
       case 'statistics':
         return <StatisticsView applications={filteredApplications} />
-      case 'notes':
-        return (
-          <PrepNotesView
-            // Every application, not the filtered set: see `PrepNotesView`.
-            applications={tracker.applications}
-            onCapture={captureStageLine}
-            onExternalChange={(applicationId: string, state: StateId, body: string) =>
-              commitStageNote(applicationId, state, body, 'Prep notes saved from your editor.')}
-            onRequested={() => setNotesRequest(null)}
-            onRevise={reviseStageLine}
-            onSaveDrafts={saveStageDrafts}
-            request={notesRequest}
-          />
-        )
       case 'compare':
         return (
           <CompareNotesView
@@ -1028,10 +1052,18 @@ export default function App() {
         <nav aria-label="Tracker views" className="view-nav">
           {VIEW_OPTIONS.map(({ id, label, icon: Icon }) => (
             <button
-              aria-current={activeView === id ? 'page' : undefined}
+              // Nothing in the strip is the page while the notes are up over it: what is
+              // on screen is the workspace, not the view it was opened from.
+              aria-current={!notesOpen && activeView === id ? 'page' : undefined}
               className="view-nav__item"
               key={id}
-              onClick={() => setActiveView(id)}
+              // Picking a view is also a way out of the notes: the strip is how you get
+              // back to the collection, and a tab that changed only what was underneath
+              // would look like a button that does nothing.
+              onClick={() => {
+                setActiveView(id)
+                setNotesOpen(false)
+              }}
               type="button"
             >
               <Icon aria-hidden="true" size={16} />
@@ -1041,6 +1073,27 @@ export default function App() {
         </nav>
 
         <div className="topbar__actions">
+          {/*
+            * A workspace shown over whatever view you are on, so it is a toggle: pressed
+            * again it goes, and the view underneath comes back. `aria-pressed` rather than
+            * `aria-current` for that reason — it is not one of the places in the strip
+            * beside it, it is a layer over whichever of them you were reading.
+            */}
+          <button
+            aria-pressed={notesOpen}
+            className="button button--quiet topbar__notes"
+            onClick={toggleStageNotes}
+            title={
+              notesOpen
+                ? `Back to ${VIEW_OPTIONS.find((view) => view.id === activeView)?.label}`
+                : NOTES_VIEW.label
+            }
+            type="button"
+          >
+            <NOTES_VIEW.icon aria-hidden="true" size={16} />
+            <span>{NOTES_VIEW.label}</span>
+          </button>
+
           <button
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             className="icon-button"
@@ -1152,114 +1205,131 @@ export default function App() {
           * carries it — but it stays the page's h1 for document structure.
           */}
         <section aria-label="View context and filters" className="context-bar">
-          <h1>{VIEW_OPTIONS.find((view) => view.id === activeView)?.label}</h1>
-          <p className="context-bar__count">
-            {filteredApplications.length} of {tracker.applications.length} applications shown
-          </p>
-          {/*
-            * Search sits with the count rather than among the filters: it is what most
-            * often decides that number, and it takes free text where the rest of the row
-            * takes a value from a list.
-            */}
-          <div className="search-field">
-            <Search aria-hidden="true" size={15} />
-            <input
-              aria-label="Search applications"
-              onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search company, role, source, notes or action"
-              type="search"
-              value={search}
-            />
-          </div>
+          <h1>
+            {notesOpen
+              ? NOTES_VIEW.label
+              : VIEW_OPTIONS.find((view) => view.id === activeView)?.label}
+          </h1>
+          {notesOpen ? (
+            /*
+             * A workspace, not a slice of the collection: the count, the search and the
+             * filters all act on the collection, so a bar carrying them here would be
+             * offering controls that do nothing and a number that means nothing. What this
+             * view can answer is where a form of words is written down, across every note
+             * rather than only the ones open.
+             */
+            <PrepNotesSearch applications={tracker.applications} onOpen={openStageNotesAt} />
+          ) : (
+            <>
+            <p className="context-bar__count">
+              {filteredApplications.length} of {tracker.applications.length} applications shown
+            </p>
+            {/*
+              * Search sits with the count rather than among the filters: it is what most
+              * often decides that number, and it takes free text where the rest of the row
+              * takes a value from a list.
+              */}
+            <div className="search-field">
+              <Search aria-hidden="true" size={15} />
+              <input
+                aria-label="Search applications"
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search company, role, source, notes or action"
+                type="search"
+                value={search}
+              />
+            </div>
 
-          <div className="context-bar__filters">
-            <select
-              aria-label="Filter by state"
-              onChange={(event) => setStateFilter(event.target.value as StateFilter)}
-              value={stateFilter}
-            >
-              <option value="all">All states</option>
-              {/*
-                * The two outcome groups share this control rather than adding one beside
-                * it: they answer the same question a single state does, so a bar holding
-                * both would offer combinations — Offer and rejected — that select nothing.
-                * Grouped so "Rejected" is not read as a nineteenth state.
-                */}
-              <optgroup label="By outcome">
-                <option value="rejected">Rejected</option>
-                <option value="not_rejected">Not rejected</option>
-              </optgroup>
-              <optgroup label="By state">
-                {STATE_CONFIG.map((state) => <option key={state.id} value={state.id}>{state.label}</option>)}
-              </optgroup>
-            </select>
-            {/*
-              * Activity gets its own control rather than joining the state select's
-              * groups. The outcome groups could share that control because they answer
-              * the same question a single state does; idleness is orthogonal to stage,
-              * so "Interview 1 and idle" is a combination worth expressing and one
-              * select cannot hold both halves of it.
-              */}
-            <select
-              aria-label="Filter by activity"
-              onChange={(event) => setIdleFilter(event.target.value as IdleFilter)}
-              value={idleFilter}
-            >
-              <option value="all">All activity</option>
-              <option value="idle">Idle</option>
-              <option value="not_idle">Active</option>
-            </select>
-            <select
-              aria-label="Filter by company"
-              onChange={(event) => setCompanyFilter(event.target.value)}
-              value={companyFilter}
-            >
-              <option value="all">All companies</option>
-              {companies.map((company) => (
-                <option key={company} value={company}>{company}</option>
-              ))}
-            </select>
-            {/*
-              * Copy roles is paired with the source select rather than left loose in the
-              * filter row: the two wrap together, so the button sits at the right of the
-              * last filter instead of dropping onto a line of its own.
-              */}
-            <div className="context-bar__source">
+            <div className="context-bar__filters">
               <select
-                aria-label="Filter by source"
-                onChange={(event) => setSourceFilter(event.target.value)}
-                value={sourceFilter}
+                aria-label="Filter by state"
+                onChange={(event) => setStateFilter(event.target.value as StateFilter)}
+                value={stateFilter}
               >
-                <option value="all">All sources</option>
-                {sources.map((source) => (
-                  <option key={source} value={source}>{source}</option>
+                <option value="all">All states</option>
+                {/*
+                  * The two outcome groups share this control rather than adding one beside
+                  * it: they answer the same question a single state does, so a bar holding
+                  * both would offer combinations — Offer and rejected — that select nothing.
+                  * Grouped so "Rejected" is not read as a nineteenth state.
+                  */}
+                <optgroup label="By outcome">
+                  <option value="rejected">Rejected</option>
+                  <option value="not_rejected">Not rejected</option>
+                </optgroup>
+                <optgroup label="By state">
+                  {STATE_CONFIG.map((state) => <option key={state.id} value={state.id}>{state.label}</option>)}
+                </optgroup>
+              </select>
+              {/*
+                * Activity gets its own control rather than joining the state select's
+                * groups. The outcome groups could share that control because they answer
+                * the same question a single state does; idleness is orthogonal to stage,
+                * so "Interview 1 and idle" is a combination worth expressing and one
+                * select cannot hold both halves of it.
+                */}
+              <select
+                aria-label="Filter by activity"
+                onChange={(event) => setIdleFilter(event.target.value as IdleFilter)}
+                value={idleFilter}
+              >
+                <option value="all">All activity</option>
+                <option value="idle">Idle</option>
+                <option value="not_idle">Active</option>
+              </select>
+              <select
+                aria-label="Filter by company"
+                onChange={(event) => setCompanyFilter(event.target.value)}
+                value={companyFilter}
+              >
+                <option value="all">All companies</option>
+                {companies.map((company) => (
+                  <option key={company} value={company}>{company}</option>
                 ))}
               </select>
-              <button
-                className="button button--quiet"
-                disabled={rolesToCopy.length === 0}
-                onClick={copyRoles}
-                type="button"
-              >
-                <ClipboardCopy aria-hidden="true" size={15} /> Copy roles
-              </button>
+              {/*
+                * Copy roles is paired with the source select rather than left loose in the
+                * filter row: the two wrap together, so the button sits at the right of the
+                * last filter instead of dropping onto a line of its own.
+                */}
+              <div className="context-bar__source">
+                <select
+                  aria-label="Filter by source"
+                  onChange={(event) => setSourceFilter(event.target.value)}
+                  value={sourceFilter}
+                >
+                  <option value="all">All sources</option>
+                  {sources.map((source) => (
+                    <option key={source} value={source}>{source}</option>
+                  ))}
+                </select>
+                <button
+                  className="button button--quiet"
+                  disabled={rolesToCopy.length === 0}
+                  onClick={copyRoles}
+                  type="button"
+                >
+                  <ClipboardCopy aria-hidden="true" size={15} /> Copy roles
+                </button>
+              </div>
+              {(search || stateFilter !== 'all' || idleFilter !== 'all' || companyFilter !== 'all' || sourceFilter !== 'all') && (
+                <button
+                  className="button button--quiet"
+                  onClick={() => {
+                    setSearch('')
+                    setStateFilter('all')
+                    setIdleFilter('all')
+                    setCompanyFilter('all')
+                    setSourceFilter('all')
+                  }}
+                  type="button"
+                >
+                  Clear filters
+                </button>
+              )}
             </div>
-            {(search || stateFilter !== 'all' || idleFilter !== 'all' || companyFilter !== 'all' || sourceFilter !== 'all') && (
-              <button
-                className="button button--quiet"
-                onClick={() => {
-                  setSearch('')
-                  setStateFilter('all')
-                  setIdleFilter('all')
-                  setCompanyFilter('all')
-                  setSourceFilter('all')
-                }}
-                type="button"
-              >
-                Clear filters
-              </button>
-            )}
-          </div>
+            </>
+          )}
         </section>
 
         {notice && (
@@ -1270,8 +1340,8 @@ export default function App() {
             </button>
           </div>
         )}
-        <section className={`view-surface${activeView === 'notes' ? ' view-surface--panel' : ''}`}>
-          {currentView}
+        <section className={`view-surface${notesOpen ? ' view-surface--panel' : ''}`}>
+          {notesOpen ? notesLayer : currentView}
         </section>
       </main>
 

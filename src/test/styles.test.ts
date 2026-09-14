@@ -203,6 +203,20 @@ describe('prep notes view', () => {
     expect(ruleBody('.stage-note__actions')).toMatch(/flex:\s*none/)
   })
 
+  it('caps the captured lines against the note they are docked under', () => {
+    // The height the handle sets is the reader's ask; this is what stops it being granted
+    // in full when the pane has not got it. Without the cap, dragging to the top of the
+    // range left the note a single line high.
+    const dock = ruleBody('.panel__notes .stage-note > .stage-note__dock')
+    expect(dock).toMatch(/max-height:\s*var\(--capture-max\)/)
+    // The whole dock is capped, so the log is the part that has to give.
+    expect(ruleBody('.stage-note__log')).toMatch(/min-height:\s*0/)
+    expect(ruleBody('.stage-note__log')).toMatch(/max-height:\s*var\(--capture-log\)/)
+    // A handle, not a border: it takes the pointer for the length of a drag.
+    expect(ruleBody('.stage-note__dock-resize')).toMatch(/touch-action:\s*none/)
+    expect(ruleBody('.stage-note__dock-resize')).toMatch(/cursor:\s*row-resize/)
+  })
+
   it('insets a pane once rather than three times over', () => {
     // The pane, the note's body and the note's header each inset what is inside them, and
     // three roomy frames around one column of text cost more of a split pane than any of

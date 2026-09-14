@@ -65,7 +65,7 @@ async function renderLoadedApp() {
 
 /** Opens a stage's capture dock, collapsed by default, before a test reaches into it. */
 async function openCapture(user: ReturnType<typeof userEvent.setup>, container: HTMLElement, label: string) {
-  await user.click(within(container).getByRole('button', { name: `Show Heard in ${label}` }))
+  await user.click(within(container).getByRole('button', { name: `Show what they said in ${label}` }))
 }
 
 function jsonFile(contents: string, name = 'applications.json') {
@@ -520,6 +520,102 @@ describe('job applications tracker', () => {
     expect(after.next_action).toBe(before.next_action)
   })
 
+  it('reaches prep notes from the header rather than from the view strip', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Seven views of the collection, and prep notes is not one of them: it is a workspace
+    // that ignores every filter the strip's views share.
+    const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
+    expect(views.queryByRole('button', { name: 'Prep notes' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes' }))
+    expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { level: 1, name: 'Prep notes' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Prep notes' })).toHaveAttribute('aria-pressed', 'true')
+    // And no view tab claims to be the page while it is showing.
+    expect(views.queryByRole('button', { current: 'page' })).not.toBeInTheDocument()
+  })
+
+  it('leaves the notes when a view is picked from the strip', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes' }))
+    expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
+
+    // A tab that changed only what was underneath would look like a button doing nothing.
+    await user.click(views.getByRole('button', { name: 'Calendar' }))
+    expect(screen.queryByRole('region', { name: 'Stage prep notes' })).not.toBeInTheDocument()
+    expect(views.getByRole('button', { name: 'Calendar' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: 'Prep notes' })).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('shows and hides prep notes over whichever view you were on', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
+    const notesButton = () => screen.getByRole('button', { name: 'Prep notes' })
+
+    await user.click(views.getByRole('button', { name: 'Table' }))
+    expect(notesButton()).toHaveAttribute('aria-pressed', 'false')
+
+    await user.click(notesButton())
+    expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
+
+    // Pressed again it goes, and what was underneath comes back — not a default view.
+    await user.click(notesButton())
+    expect(screen.queryByRole('region', { name: 'Stage prep notes' })).not.toBeInTheDocument()
+    expect(views.getByRole('button', { name: 'Table' })).toHaveAttribute('aria-current', 'page')
+    expect(notesButton()).toHaveAttribute('aria-pressed', 'false')
+
+    // Including when a card put you there rather than the header button.
+    await user.click(views.getByRole('button', { name: 'Focus' }))
+    await user.click(screen.getAllByRole('button', { name: /prep notes for/i })[0])
+    expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
+
+    await user.click(notesButton())
+    expect(views.getByRole('button', { name: 'Focus' })).toHaveAttribute('aria-current', 'page')
+  })
+
+  it('offers no collection filters on the prep notes view', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes' }))
+
+    // Every one of these acts on the collection, which this view deliberately ignores —
+    // a count of what is "shown" here would be saying something untrue.
+    expect(screen.queryByRole('searchbox', { name: 'Search applications' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Filter by company' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Filter by state' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /Copy roles/ })).not.toBeInTheDocument()
+    expect(screen.queryByText(/applications shown/)).not.toBeInTheDocument()
+  })
+
+  it('searches every prep note from the header, open or not, and opens the one picked', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    expect(within(panel).queryByRole('tab', { name: /Echo Robotics/ })).not.toBeInTheDocument()
+
+    // Words from a note belonging to an application that is not open at all.
+    await user.type(screen.getByRole('searchbox', { name: 'Search prep notes' }), 'teleoperation')
+
+    const results = within(screen.getByRole('list', { name: 'Matching prep notes' }))
+    const hit = results.getByRole('button', { name: /Echo Robotics/ })
+    expect(hit).toHaveTextContent(/teleoperation/i)
+
+    await user.click(hit)
+    expect(
+      within(screen.getByRole('region', { name: 'Stage prep notes' }))
+        .getByRole('tab', { selected: true }),
+    ).toHaveTextContent('Echo Robotics')
+  })
+
   it('hosts the prep notes panel in the view surface rather than over it', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
@@ -540,7 +636,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
 
-    expect(screen.getByRole('button', { name: 'Prep notes' })).toHaveAttribute('aria-current', 'page')
+    expect(screen.getByRole('button', { name: 'Prep notes' })).toHaveAttribute('aria-pressed', 'true')
     expect(
       within(screen.getByRole('region', { name: 'Stage prep notes' })).getByRole('heading', {
         name: 'Marble & Finch · Product Manager',
@@ -648,10 +744,14 @@ describe('job applications tracker', () => {
     await renderLoadedApp()
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by company' }), 'Paper Kite')
 
-    // The panel's tabs are its own arrangement; a filter over the board is not a reason
-    // to take a note being written away.
+    // The filter lives on the collection's own views, so it is set from one of them —
+    // which is the point: the panel's tabs are its own arrangement, and a filter over the
+    // board is not a reason to take a note being written away.
+    await user.click(screen.getByRole('button', { name: 'Kanban' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by company' }), 'Paper Kite')
+    await user.click(screen.getByRole('button', { name: 'Prep notes' }))
+
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
     expect(within(panel).getAllByRole('tab')).toHaveLength(3)
   })
@@ -874,7 +974,7 @@ describe('job applications tracker', () => {
 
     // It reads in the docked log, under today, and only there: the prep note above is
     // a different field and does not gain a copy of it.
-    const log = within(notes).getByRole('log', { name: 'Heard in Halcyon Maps · Interview 2' })
+    const log = within(notes).getByRole('log', { name: 'What they said in Halcyon Maps · Interview 2' })
     expect(within(log).getByText('Two more rounds after this')).toBeInTheDocument()
     expect(within(notes).getAllByText('Two more rounds after this')).toHaveLength(1)
 
@@ -921,7 +1021,7 @@ describe('job applications tracker', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
     expect(within(dialog).getByLabelText('Halcyon Maps · Interview 2 prep notes')).toBeInTheDocument()
 
-    const log = within(dialog).getByRole('log', { name: 'Heard in Halcyon Maps · Interview 2' })
+    const log = within(dialog).getByRole('log', { name: 'What they said in Halcyon Maps · Interview 2' })
     expect(within(log).getByText('Team is 40 engineers across four squads')).toBeInTheDocument()
 
     await user.type(
@@ -991,7 +1091,7 @@ describe('job applications tracker', () => {
 
     // Read it back: the log shows the corrected line, under the day it was captured on.
     await user.click(within(dialog).getByRole('button', { name: 'Read the captured lines in Halcyon Maps · Interview 2' }))
-    const log = within(dialog).getByRole('log', { name: 'Heard in Halcyon Maps · Interview 2' })
+    const log = within(dialog).getByRole('log', { name: 'What they said in Halcyon Maps · Interview 2' })
     expect(within(log).getByText('Team is 42 engineers across four squads')).toBeInTheDocument()
   })
 
@@ -1711,6 +1811,67 @@ describe('job applications tracker', () => {
     expect(panelRow).toHaveAttribute('data-depth', '0')
     expect(within(top).getByRole('button', { name: 'Go to Case study' })).toHaveAttribute('data-depth', '1')
     expect(within(top).getByRole('button', { name: 'Go to The numbers' })).toHaveAttribute('data-depth', '2')
+  })
+
+  it('resizes what you were told, and remembers the height', async () => {
+    const user = userEvent.setup()
+    const { unmount } = await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(within(panel).getByRole('button', { name: 'Show what they said in Halcyon Maps · Interview 2' }))
+
+    const edge = () => within(panel).getByRole('separator', { name: 'Resize what they said in Halcyon Maps · Interview 2' })
+    const height = () => Number(edge().getAttribute('aria-valuenow'))
+    const started = height()
+
+    // Up is taller, because the dock grows against the note above it.
+    edge().focus()
+    await user.keyboard('{ArrowUp}{ArrowUp}')
+    const taller = height()
+    expect(taller).toBeGreaterThan(started)
+
+    await user.keyboard('{ArrowDown}')
+    expect(height()).toBeLessThan(taller)
+    const shared = height()
+
+    // One height for the panel, not one per note: the dock is the reader's own workspace,
+    // and a height that reset with every tab switch would have to be dragged again.
+    await user.click(within(panel).getByRole('tab', { name: /Interview 1/ }))
+    await user.click(within(panel).getByRole('button', { name: 'Show what they said in Halcyon Maps · Interview 1' }))
+    expect(
+      Number(
+        within(panel)
+          .getByRole('separator', { name: 'Resize what they said in Halcyon Maps · Interview 1' })
+          .getAttribute('aria-valuenow'),
+      ),
+    ).toBe(shared)
+
+    unmount()
+    await renderLoadedApp()
+    await user.click(screen.getByRole('button', { name: 'Prep notes' }))
+    const restored = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(within(restored).getByRole('button', { name: /^Show what they said in/ }))
+    expect(Number(within(restored).getByRole('separator', { name: /^Resize what they said in/ }).getAttribute('aria-valuenow')))
+      .toBe(shared)
+  })
+
+  it('holds the dock at a readable height rather than closing it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(within(panel).getByRole('button', { name: 'Show what they said in Halcyon Maps · Interview 2' }))
+
+    const edge = () => within(panel).getByRole('separator', { name: /^Resize what they said/ })
+    edge().focus()
+    // Well past the floor: the toggle is what puts the log away, so a drag that overshoots
+    // must not do it instead.
+    await user.keyboard('{ArrowDown>20/}')
+
+    expect(Number(edge().getAttribute('aria-valuenow'))).toBe(Number(edge().getAttribute('aria-valuemin')))
+    expect(within(panel).getByRole('button', { name: 'Hide what they said in Halcyon Maps · Interview 2' })).toBeInTheDocument()
   })
 
   it('opens a picked note into the pane whose + was pressed', async () => {

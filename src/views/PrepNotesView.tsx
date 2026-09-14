@@ -8,7 +8,7 @@ import {
   saveArrangement,
   type Arrangement,
 } from "../notesArrangement";
-import { openInGroup, type LayoutNode, type NoteRequest } from "../notesLayout";
+import { openInGroup, type NoteRequest } from "../notesLayout";
 import { StageNotesPanel, type StageNoteDraftBatch } from "../StageNotesPanel";
 
 interface PrepNotesViewProps {
@@ -93,8 +93,8 @@ export function PrepNotesView({
   }, []);
 
   const remember = useCallback(
-    (layout: LayoutNode, focusedGroupId: string) => {
-      pending.current = { layout, focusedGroupId };
+    (arrangement: Arrangement) => {
+      pending.current = arrangement;
       if (timer.current) clearTimeout(timer.current);
       timer.current = setTimeout(flush, ARRANGEMENT_SAVE_MS);
     },

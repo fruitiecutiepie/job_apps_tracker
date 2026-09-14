@@ -40,9 +40,34 @@ export const ARRANGEMENT_VERSION = 1
 /** How long the arrangement settles before it is written. */
 export const ARRANGEMENT_SAVE_MS = 300
 
+/**
+ * What the captured lines may be resized between, in pixels. The floor is a couple of
+ * lines — below that the log says nothing and the collapse toggle is the way to put it
+ * away entirely — and the ceiling leaves the note it is docked under something to show.
+ */
+export const MIN_CAPTURE_LOG = 48
+export const MAX_CAPTURE_LOG = 640
+
+/**
+ * What the log stands at before anyone drags it: eleven lines of it, the height the dock
+ * has always had. The stylesheet carries the same figure as the fallback on
+ * `var(--capture-log)`, for a render that has not been given one yet; this is the source
+ * of truth, because the control needs a number to report and to count from.
+ */
+export const DEFAULT_CAPTURE_LOG = 154
+
+/** How far one arrow key moves the dock's edge. */
+export const CAPTURE_STEP = 24
+
 export interface Arrangement {
   layout: LayoutNode
   focusedGroupId: string
+  /**
+   * How tall the captured lines are, for every pane at once: the dock's height is the
+   * reader's own preference rather than anything about a note, so it does not change as
+   * tabs do. Absent until one is dragged, which leaves the stylesheet its own default.
+   */
+  captureHeight?: number
 }
 
 /**
@@ -53,8 +78,19 @@ export function arrangementKey(profile: string = trackerProfile()): string {
   return `job-applications-tracker:notes-arrangement:${profile}`
 }
 
-export function serializeArrangement({ layout, focusedGroupId }: Arrangement): string {
-  return JSON.stringify({ version: ARRANGEMENT_VERSION, layout, focusedGroupId })
+export function serializeArrangement({ layout, focusedGroupId, captureHeight }: Arrangement): string {
+  return JSON.stringify({ version: ARRANGEMENT_VERSION, layout, focusedGroupId, captureHeight })
+}
+
+/** A stored dock height, or nothing at all when it is not one. */
+function readCaptureHeight(value: unknown): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  return Math.round(Math.min(MAX_CAPTURE_LOG, Math.max(MIN_CAPTURE_LOG, value)))
+}
+
+/** The same clamp, for a drag or an arrow key moving the edge. */
+export function captureHeightWithin(height: number): number {
+  return Math.round(Math.min(MAX_CAPTURE_LOG, Math.max(MIN_CAPTURE_LOG, height)))
 }
 
 /**
@@ -205,7 +241,11 @@ export function restoreArrangement(
     typeof stored === 'string' && groups.some((group) => group.id === stored)
       ? stored
       : groups[0].id
-  return { layout, focusedGroupId }
+
+  const captureHeight = readCaptureHeight(parsed.captureHeight)
+  return captureHeight === undefined
+    ? { layout, focusedGroupId }
+    : { layout, focusedGroupId, captureHeight }
 }
 
 function browserStorage(): StorageLike | null {

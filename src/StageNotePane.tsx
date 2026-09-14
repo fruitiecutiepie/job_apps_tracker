@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { ChevronRight, CornerDownLeft, ExternalLink, PencilLine, X } from 'lucide-react'
 import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
-import { CAPTURE_SECTION, MarkdownNotes } from './markdown'
+import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangement'
+import { CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE, MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
 import { STATE_CONFIG, type StageNote, type StageNoteEditSession, type StateId } from './domain'
 import { noteRefKey, type NoteRef } from './notesLayout'
@@ -62,6 +63,10 @@ interface StageNotePaneProps {
    */
   isCaptureOpen: boolean
   onToggleCapture: () => void
+  /** How tall the captured lines stand, shared by every pane, for the handle to report. */
+  captureHeight: number
+  /** Moves the dock's edge by that many pixels, positive for taller. */
+  onResizeCapture: (delta: number) => void
   /** Stores a rewritten captured line, or removes it when the text is blank. */
   onRevise: (id: string, body: string) => Promise<void>
   /**
@@ -113,6 +118,8 @@ export function StageNotePane({
   onToggleEditLines,
   isCaptureOpen,
   onToggleCapture,
+  captureHeight,
+  onResizeCapture,
   onRevise,
   onJumpToSection,
   onChange,
@@ -127,6 +134,38 @@ export function StageNotePane({
   const [line, setLine] = useState('')
   const [capturing, setCapturing] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+
+  const resizeRef = useRef(onResizeCapture)
+  useEffect(() => {
+    resizeRef.current = onResizeCapture
+  }, [onResizeCapture])
+
+  /*
+   * The drag that moves the dock's edge, held only for as long as one lasts. Re-based on
+   * every move rather than measured from where it started, so the edge tracks the pointer
+   * instead of accelerating away from it as the deltas add up — the same reason the
+   * handles between panes re-base theirs.
+   */
+  const endDrag = useRef<(() => void) | null>(null)
+  // A drag outlives a re-render, but must not outlive the pane it belongs to.
+  useEffect(() => () => endDrag.current?.(), [])
+
+  const beginDrag = useCallback((startY: number) => {
+    let from = startY
+    const move = (event: MouseEvent) => {
+      // Up is taller: the pointer moving towards the note grows the dock under it.
+      resizeRef.current(from - event.clientY)
+      from = event.clientY
+    }
+    const stop = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', stop)
+      endDrag.current = null
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', stop)
+    endDrag.current = stop
+  }, [])
   const bodyRef = useRef<HTMLDivElement | null>(null)
 
   /**
@@ -342,9 +381,38 @@ export function StageNotePane({
           write for a second caret here to race.
         */}
         <div className="stage-note__dock">
+          {isCaptureOpen ? (
+            /*
+             * The dock's own edge, and a real `separator` rather than a styled border: a
+             * drag is the obvious way to move it and no way at all without a pointer, so
+             * it takes the arrow keys too — the same contract the handles between panes
+             * keep. Only while the dock is open, since a closed one has no height to move.
+             */
+            <div
+              aria-label={`Resize ${CAPTURE_SECTION_IN_SENTENCE} in ${label}`}
+              aria-orientation="horizontal"
+              aria-valuemax={MAX_CAPTURE_LOG}
+              aria-valuemin={MIN_CAPTURE_LOG}
+              aria-valuenow={captureHeight}
+              className="stage-note__dock-resize"
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+                event.preventDefault()
+                // Up is taller: the dock grows against the note above it, so the edge
+                // moves the way the key points.
+                onResizeCapture(event.key === 'ArrowUp' ? CAPTURE_STEP : -CAPTURE_STEP)
+              }}
+              onMouseDown={(event) => {
+                event.preventDefault()
+                beginDrag(event.clientY)
+              }}
+              role="separator"
+              tabIndex={0}
+            />
+          ) : null}
           <button
             aria-expanded={isCaptureOpen}
-            aria-label={`${isCaptureOpen ? 'Hide' : 'Show'} ${CAPTURE_SECTION} in ${label}`}
+            aria-label={`${isCaptureOpen ? 'Hide' : 'Show'} ${CAPTURE_SECTION_IN_SENTENCE} in ${label}`}
             className={[
               'stage-note__dock-toggle',
               isCaptureOpen ? '' : 'stage-note__dock-toggle--collapsed',
@@ -407,7 +475,7 @@ export function StageNotePane({
                       event.preventDefault()
                       void capture()
                     }}
-                    placeholder={`What did they say? Enter files it under ${CAPTURE_SECTION}, Shift+Enter starts a line`}
+                    placeholder="What did they say? Enter files it, Shift+Enter starts a line"
                     value={line}
                   />
                 </label>

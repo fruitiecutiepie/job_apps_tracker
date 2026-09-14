@@ -14,6 +14,8 @@ import {
 } from './notesLayout'
 import {
   ARRANGEMENT_VERSION,
+  MAX_CAPTURE_LOG,
+  MIN_CAPTURE_LOG,
   openingLayout,
   restoreArrangement,
   serializeArrangement,
@@ -197,6 +199,46 @@ describe('restoreArrangement', () => {
     })
 
     expect(restoreArrangement(raw, [acme])).toBeNull()
+  })
+})
+
+describe('the captured lines\' height', () => {
+  const stored = (captureHeight: unknown): string =>
+    JSON.stringify({
+      version: ARRANGEMENT_VERSION,
+      layout: singleGroup('pane-1', ref('acme', 'applied')),
+      focusedGroupId: 'pane-1',
+      captureHeight,
+    })
+
+  it('comes back as it was left', () => {
+    expect(restoreArrangement(stored(240), [acme])!.captureHeight).toBe(240)
+  })
+
+  it('is absent when nothing was stored, leaving the stylesheet its own default', () => {
+    const layout = singleGroup('pane-1', ref('acme', 'applied'))
+    const raw = serializeArrangement({ layout, focusedGroupId: 'pane-1' })
+
+    expect(raw).not.toMatch(/captureHeight/)
+    expect(restoreArrangement(raw, [acme])!.captureHeight).toBeUndefined()
+  })
+
+  it('is held between a readable floor and a height that leaves room for the note', () => {
+    expect(restoreArrangement(stored(2), [acme])!.captureHeight).toBe(MIN_CAPTURE_LOG)
+    expect(restoreArrangement(stored(99_999), [acme])!.captureHeight).toBe(MAX_CAPTURE_LOG)
+  })
+
+  it('is dropped rather than guessed at when it is not a height', () => {
+    for (const nonsense of ['240', null, Number.NaN, Infinity, {}]) {
+      expect(restoreArrangement(stored(nonsense), [acme])!.captureHeight).toBeUndefined()
+    }
+  })
+
+  it('survives a round trip through the arrangement it belongs to', () => {
+    const layout = singleGroup('pane-1', ref('acme', 'applied'))
+    const raw = serializeArrangement({ layout, focusedGroupId: 'pane-1', captureHeight: 300 })
+
+    expect(restoreArrangement(raw, [acme])).toEqual({ layout, focusedGroupId: 'pane-1', captureHeight: 300 })
   })
 })
 

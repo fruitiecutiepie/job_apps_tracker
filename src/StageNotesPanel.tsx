@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { ChevronRight, Columns2, Keyboard, PanelLeft, Plus, Search, X } from 'lucide-react'
 import {
   closeStageNoteEditor,
@@ -55,7 +55,7 @@ import {
   type NoteRequest,
   type TabGroup,
 } from './notesLayout'
-import type { Arrangement } from './notesArrangement'
+import { captureHeightWithin, DEFAULT_CAPTURE_LOG, type Arrangement } from './notesArrangement'
 import { StageNotePane } from './StageNotePane'
 import {
   DROP_EDGE,
@@ -111,7 +111,7 @@ interface StageNotesPanelProps {
    */
   request: NoteRequest | null
   /** Reports the arrangement after every change, so the view can remember it. */
-  onArrange: (layout: LayoutNode, focusedGroupId: string) => void
+  onArrange: (arrangement: Arrangement) => void
   /** The last tab just closed: there is nothing left for the panel to show. */
   onEmpty: () => void
   /**
@@ -407,6 +407,13 @@ export function StageNotesPanel({
    * flag because the + that opens it sits in a pane's own tab strip: what it opens belongs
    * beside the tabs it was pressed among, not in whichever pane happened to be read last.
    */
+  /**
+   * How tall the captured lines are, in every pane at once. One height rather than one per
+   * note: dragging the dock open for an interview is the reader sizing their workspace,
+   * and a height that reset with every tab switch would have to be dragged again each
+   * time. Undefined until one is dragged, which leaves the stylesheet its own default.
+   */
+  const [captureHeight, setCaptureHeight] = useState(initial.captureHeight ?? DEFAULT_CAPTURE_LOG)
   const [quickOpen, setQuickOpen] = useState<string | null>(null)
   /** The section the breadcrumbs name: the last heading scrolled past. */
   const [trailKey, setTrailKey] = useState<string | null>(null)
@@ -824,8 +831,8 @@ export function StageNotesPanel({
    * tab.
    */
   useEffect(() => {
-    arrangeRef.current(layout, focusedGroupId)
-  }, [focusedGroupId, layout])
+    arrangeRef.current({ layout, focusedGroupId, captureHeight })
+  }, [captureHeight, focusedGroupId, layout])
 
   /*
    * A note asked for from outside the panel. Only the nonce is watched: the ref alone
@@ -839,6 +846,17 @@ export function StageNotesPanel({
     showRef(request.ref)
     panelRef.current?.focus()
   }, [request, showRef])
+
+  /**
+   * Moves the dock's edge. The pane hands over how far to move, not where to land: one
+   * height is shared by every pane, so where it lands is the panel's to decide.
+   *
+   * The floor stops the drag rather than closing the dock — the toggle above it is the way
+   * to put the log away, and one control per outcome is the rule this panel keeps.
+   */
+  const resizeCapture = useCallback((delta: number) => {
+    setCaptureHeight((current) => captureHeightWithin(current + delta))
+  }, [])
 
   const showKey = useCallback(
     (key: string) => {
@@ -1580,7 +1598,9 @@ export function StageNotesPanel({
           formatDate={formatShortDate}
           heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
           isCurrentState={shownApplication?.state === shown.state}
+          captureHeight={captureHeight}
           isCaptureOpen={captureOpen.includes(shownKey)}
+          onResizeCapture={resizeCapture}
           isEditing={editing.includes(shownKey) && !open}
           isEditingLines={editingLines.includes(shownKey)}
           isFocused={isFocusedGroup}
@@ -1633,7 +1653,14 @@ export function StageNotesPanel({
      * Focusable, but not a tab stop: the panel is where focus lands after the find bar or
      * the picker closes, and after a note is opened into it from another view.
      */
-    <div className="panel" ref={panelRef} tabIndex={-1}>
+    <div
+      className="panel"
+      ref={panelRef}
+      /* Set on the panel rather than on each dock: the height is shared, and one variable
+         is what makes every pane agree without passing it down twice. */
+      style={{ '--capture-log': `${captureHeight}px` } as CSSProperties}
+      tabIndex={-1}
+    >
         <div className="panel__titlebar">
           {/* The view is already named by the tab that reached it and by the heading over
               it, so the title bar carries only what the panel itself is showing. */}

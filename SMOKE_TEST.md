@@ -127,7 +127,10 @@ neither a finger nor any browser automation.
    import and confirm the saved data is unchanged; try a valid zip or JSON import and
    confirm the replacement prompt appears.
 8. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
-   app goes to the **Prep notes** view rather than opening a dialog over the board, that the
+   app goes to the **Prep notes** destination in the header rather than opening a dialog over the
+   board, that the view strip no longer marks any view as current, that the bar above the panel
+   offers a search over the notes themselves rather than the collection's filters — type a word you
+   know is in another application's note and confirm picking the result opens it — that the
    application's current stage appears first and is badged, and that saved notes render as an outline
    rather than raw text. Open a second company's notes from the picker, split the panes, then leave
    for another view and come back — and reload the page — and confirm the same arrangement is there.
@@ -194,7 +197,7 @@ neither a finger nor any browser automation.
    the note opening twice. Close one pane, then **Unsplit**, and confirm the other note is untouched.
    Press `Ctrl`/`Cmd+B` and confirm the outline collapses away, the notes take the width, and it
    comes back. On a narrow window, confirm a split panel stacks its panes instead of squeezing them.
-   Scroll a long note and confirm the **Heard** dock stays pinned to the bottom of its own pane
+   Scroll a long note and confirm the **What they said** dock stays pinned to the bottom of its own pane
    with the note scrolling under it, opaque against both a plain stage and the tinted current one.
    Type a line, press Enter, and confirm it appears at the end of the log under today's date and
    stamped with the time it was captured, that the notice reports it, and that closing the panel with Escape and reopening it shows the line
