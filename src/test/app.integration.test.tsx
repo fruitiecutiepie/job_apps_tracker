@@ -537,6 +537,70 @@ describe('job applications tracker', () => {
     expect(views.queryByRole('button', { current: 'page' })).not.toBeInTheDocument()
   })
 
+  it('closes the note being read with the panel\'s own close binding', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    expect(within(panel).getAllByRole('tab')).toHaveLength(3)
+    expect(within(panel).getByRole('tab', { selected: true })).toHaveTextContent('Interview 2')
+
+    await user.keyboard('{Control>}{Alt>}w{/Alt}{/Control}')
+
+    expect(within(panel).getAllByRole('tab')).toHaveLength(2)
+    expect(within(panel).queryByRole('tab', { name: /Interview 2/ })).not.toBeInTheDocument()
+  })
+
+  it('closes the note when Option rewrites the key, as macOS does', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    expect(within(panel).getAllByRole('tab')).toHaveLength(3)
+
+    /*
+     * What a Mac actually sends for ⌘⌥W. Option is a layout modifier there, so `key` is
+     * the character it produces — `∑` on a US layout — and only `code` still says which
+     * physical key was pressed. Dispatched rather than typed because neither user-event
+     * nor a browser driver reproduces that translation: both set `key` to the letter, so
+     * a test driving them passes while the binding does nothing on the machine it is for.
+     */
+    fireEvent.keyDown(document, { key: '∑', code: 'KeyW', metaKey: true, altKey: true })
+
+    expect(within(panel).getAllByRole('tab')).toHaveLength(2)
+    expect(within(panel).queryByRole('tab', { name: /Interview 2/ })).not.toBeInTheDocument()
+  })
+
+  it('closes the note on a layout where W is not where QWERTY keeps it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // AZERTY puts W where QWERTY puts Z, so the key someone presses to type a `w` reports
+    // `code: 'KeyZ'`. Matching only the physical position would leave them without the
+    // binding, the mirror of the bug matching only the character left macOS with.
+    fireEvent.keyDown(document, { key: 'w', code: 'KeyZ', ctrlKey: true, altKey: true })
+
+    expect(within(panel).getAllByRole('tab')).toHaveLength(2)
+  })
+
+  it('leaves a bare close binding to the browser, whose own it is', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // Ctrl/Cmd+W closes the browser's own tab and cannot be taken from it, so answering it
+    // here would close a note on the way out of the page — losing the tab and the note.
+    await user.keyboard('{Control>}w{/Control}')
+    expect(within(panel).getAllByRole('tab')).toHaveLength(3)
+  })
+
   it('browses every written note from the sidebar, grouped by stage', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
@@ -1280,6 +1344,8 @@ describe('job applications tracker', () => {
       'Ctrl+P',
       'Ctrl+B',
       'Ctrl+K',
+      // Closing carries Alt because a bare Ctrl/Cmd+W belongs to the browser.
+      'Ctrl+Alt+W',
       // The two that arrange the panes carry a second modifier, and each covers the pair
       // of arrows as one row rather than two that would have to be worded twice.
       'Ctrl+Shift+←/→',

@@ -83,9 +83,18 @@ export const AUTOSAVE_MS = 800
 /** Names the sentence that tells a reader the tabs can be dragged or arrowed. */
 const TABS_HINT_ID = 'stage-notes-tabs-hint'
 
-/** The two bindings that arrange the panes, looked up rather than restated. */
-const MOVE_TAB_SHORTCUT = PANEL_SHORTCUTS.find((shortcut) => shortcut.shift)!
-const REORDER_TAB_SHORTCUT = PANEL_SHORTCUTS.find((shortcut) => shortcut.alt)!
+/**
+ * The bindings the tabs name, looked up rather than restated. By key as well as modifier:
+ * two of these carry Alt, so a lookup by modifier alone would hand one of them the other's
+ * label the moment a third Alt binding arrived — which is exactly what it did.
+ */
+const byKey = (key: string, modifier: 'shift' | 'alt' | null) =>
+  PANEL_SHORTCUTS.find((shortcut) => shortcut.key === key && (!modifier || shortcut[modifier]))!
+
+const MOVE_TAB_SHORTCUT = byKey('←/→', 'shift')
+const REORDER_TAB_SHORTCUT = byKey('←/→', 'alt')
+/** Closing carries Alt: a bare Ctrl/Cmd+W is the browser's own and cannot be taken. */
+const CLOSE_TAB_SHORTCUT = byKey('W', 'alt')
 
 /**
  * Drafts to store, grouped by the application they belong to. `applyStageNotes` allows one
@@ -870,6 +879,17 @@ export function StageNotesPanel({
     setCaptureHeight((current) => captureHeightWithin(current + delta))
   }, [])
 
+  /**
+   * Closes the note on show in the pane being read. Off the refs rather than the rendered
+   * values, so the document listener that calls it is not rebound every time a tab changes.
+   */
+  const closeFocusedTab = useCallback(() => {
+    const groups = groupsOf(layoutRef.current)
+    const group = groups.find((entry) => entry.id === focusedGroupRef.current) ?? groups[0]
+    if (!group?.activeKey) return
+    applyLayout(closeTab(layoutRef.current, group.id, group.activeKey))
+  }, [applyLayout])
+
   const showKey = useCallback(
     (key: string) => {
       const ref = refByKey.get(key)
@@ -1086,6 +1106,25 @@ export function StageNotesPanel({
         setSidebarPanel((current) => (current === 'outline' ? null : 'outline'))
         return
       }
+      /*
+       * Either reading will do, because neither is right on its own. Option is a layout
+       * modifier on macOS, so ⌘⌥W arrives with `key` set to the character it produces —
+       * `∑` on a US layout — and only `code` still names the key pressed; matching `key`
+       * alone bound a shortcut that did nothing on the platform whose modifier it carries.
+       * But `code` names a position rather than a letter, and AZERTY puts W where QWERTY
+       * puts Z, so matching that alone takes the binding away from anyone not on QWERTY.
+       * The letters above are pressed without Option and are fine on `key`.
+       *
+       * Alt is not decoration either. A bare Ctrl/Cmd+W is the browser's own close, a page
+       * in a tab cannot take it, and answering it anyway would close a note on the way out
+       * of the document — costing the tab and the note rather than either.
+       */
+      if (event.code === 'KeyW' || key === 'w') {
+        if (!event.altKey) return
+        event.preventDefault()
+        closeFocusedTab()
+        return
+      }
       if (key === 'k') {
         event.preventDefault()
         // Opens the dock first if it is collapsed, the same shortcut either way: reaching
@@ -1096,7 +1135,7 @@ export function StageNotesPanel({
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [activeKey, openFind, toggleSplit])
+  }, [activeKey, closeFocusedTab, openFind, toggleSplit])
 
   /**
    * Focuses the capture box once the dock the "K" shortcut just opened has actually
@@ -1559,10 +1598,14 @@ export function StageNotesPanel({
                   {tabMatches ? <span className="panel__tab-count">{tabMatches.count}</span> : null}
                 </button>
                 <button
+                  // The binding is named on the control that does the same thing, the way
+                  // Split and Find name theirs: a shortcut nothing on screen names is one
+                  // only the README has.
+                  aria-keyshortcuts={shortcutKeys(CLOSE_TAB_SHORTCUT)}
                   aria-label={`Close the ${label} tab`}
                   className="icon-button panel__tab-close"
                   onClick={() => closeNote(group.id, key)}
-                  title={`Close the ${label} tab. Its notes are kept.`}
+                  title={`Close the ${label} tab (${shortcutLabel(CLOSE_TAB_SHORTCUT)}). Its notes are kept.`}
                   type="button"
                 >
                   <X aria-hidden="true" size={12} />

@@ -195,13 +195,14 @@ When nothing is configured and the server looks like it is on a remote host, the
 
 ### Keyboard shortcuts
 
-The stage notes panel binds five shortcuts while it is open. They are bound to the document rather than to a particular field, so they work wherever the caret is in the panel. You do not have to come back here for them: the keyboard button in the panel's title bar lists all five, and the **Split**, **Go to stage**, **Find**, and outline controls each name the shortcut they share, in a tooltip and to a screen reader. The panel answers `Ctrl` and `Cmd` alike whatever you are on; the labels show the one your own platform writes.
+The stage notes panel binds six shortcuts while it is open. They are bound to the document rather than to a particular field, so they work wherever the caret is in the panel. You do not have to come back here for them: the keyboard button in the panel's title bar lists all six, and the **Split**, **Go to stage**, **Find**, and outline controls each name the shortcut they share, in a tooltip and to a screen reader. The panel answers `Ctrl` and `Cmd` alike whatever you are on; the labels show the one your own platform writes.
 
 - `Ctrl`/`Cmd+\` opens a second pane beside the one you are reading, on the first other note that is open, and folds the panes back into one when pressed again. Unsplitting gathers the tabs rather than closing them: a pane is where a note is shown, not what keeps it open. With only one note open there is nothing to split to, so nothing happens.
 - `Ctrl`/`Cmd+F` opens the find bar. It deliberately takes over the browser's own find, which cannot see text inside a folded note. `Enter` steps to the next match and `Shift+Enter` to the previous; `Escape` closes the bar. It does not close the view — there is nothing to dismiss, and the header is how you leave.
 - `Ctrl`/`Cmd+P` opens the note picker. It reaches every stage of the application you are working on, plus every note already written and every application's current stage, so a second company's notes are a few keystrokes away. Type to narrow it, `ArrowUp` and `ArrowDown` move through the results, `Enter` opens the highlighted note—reopening one you had closed, or adding a stage you have not reached—and `Escape` dismisses it.
 - `Ctrl`/`Cmd+B` shows and hides the outline sidebar.
 - `Ctrl`/`Cmd+K` puts the caret in the capture box, and in a split panel it lands in the pane you are reading.
+- `Ctrl`/`Cmd+Alt+W` closes the note you are reading, leaving its notes where they are. The Alt is not decoration: `Ctrl`/`Cmd+W` closes the browser's own tab, and a page in a tab cannot take that key from it, so a binding without Alt would cost you the tab and the note at once. If you do press it by habit, the workspace comes back as you left it when you reopen the page.
 - `Ctrl`/`Cmd+Shift+←`, `→`, `↑` and `↓` send the tab you are reading towards that edge: into the pane already there, or into a new one split open when there is none. Moving the last tab out of a pane closes that pane and folds the split back.
 - `Ctrl`/`Cmd+Alt+←` and `→` reorder the tab you are reading within its own pane, wrapping at either end.
 

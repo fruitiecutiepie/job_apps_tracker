@@ -39,6 +39,7 @@ describe('shortcut labels', () => {
       'P',
       'B',
       'K',
+      'W',
       '←/→',
       '←/→',
     ])

@@ -36,6 +36,11 @@ export const PANEL_SHORTCUTS: readonly Shortcut[] = [
   { key: 'B', description: 'Show and hide the outline' },
   { key: 'K', description: 'Put the caret in the capture box' },
   {
+    key: 'W',
+    alt: true,
+    description: 'Close the note you are reading',
+  },
+  {
     key: '←/→',
     domKeys: ['ArrowLeft', 'ArrowRight'],
     shift: true,
