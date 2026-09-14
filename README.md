@@ -2,11 +2,11 @@
 
 A polished, local-first job search organizer built with React and TypeScript. It keeps every application in one JSON file that you hold, and provides focused views for tracking progress, upcoming work, stale applications, and pipeline statistics — without an account, a backend, or a synchronization service.
 
-**[Try the demo](https://fruitiecutiepie.github.io/job_apps_tracker/demo/)** — nineteen fictional applications, one in every stage, nothing to install. **[Open the tracker](https://fruitiecutiepie.github.io/job_apps_tracker/)** when you want to enter your own.
+**[Try the demo](https://fruitiecutiepie.com/job_apps_tracker/demo/)** — nineteen fictional applications, one in every stage, nothing to install. **[Open the tracker](https://fruitiecutiepie.com/job_apps_tracker/)** when you want to enter your own.
 
 ## Start here
 
-**Use the hosted app.** Open [the tracker](https://fruitiecutiepie.github.io/job_apps_tracker/) and it starts empty, with three ways in: choose a folder, import a file you already have, or just start typing. Every change saves as you make it — there is no Save button anywhere in this app.
+**Use the hosted app.** Open [the tracker](https://fruitiecutiepie.com/job_apps_tracker/) and it starts empty, with three ways in: choose a folder, import a file you already have, or just start typing. Every change saves as you make it — there is no Save button anywhere in this app.
 
 Choosing a folder is the one worth doing first. It puts a real `tracker.json` on your disk that you can back up, sync, or open in any text editor, and the app writes to it on every change. Chrome and Edge support this; Firefox and Safari do not, and there the top bar says *Saved in this browser* and **Export** is how you get a copy out. Either way nothing is uploaded — the site is static files, with no account and nowhere to send anything.
 
@@ -339,7 +339,7 @@ The global search, state, activity, company, and source filters apply across vie
 
 - **Export** downloads a zip archive with `tracker.json` and any attachment files. This is a complete copy: it is what you import into another browser, another machine, or a fresh checkout.
 - **Import** accepts zip archives or legacy JSON. Zip import validates the document before asking to replace all current applications and attachments. On the hosted app, importing is also offered on the first visit, before there is anything to look at.
-- **Reset demo data** appears only in the demo — `pnpm dev:demo`, `pnpm start:demo`, or the [hosted demo](https://fruitiecutiepie.github.io/job_apps_tracker/demo/). It asks for confirmation and restores the original 19 examples.
+- **Reset demo data** appears only in the demo — `pnpm dev:demo`, `pnpm start:demo`, or the [hosted demo](https://fruitiecutiepie.com/job_apps_tracker/demo/). It asks for confirmation and restores the original 19 examples.
 
 Import **replaces everything**. It does not merge, so exporting first is the only way back.
 
@@ -373,13 +373,15 @@ Durability follows from that: a connected folder is a file you own, and browser 
 
 ### The demo
 
-<https://fruitiecutiepie.github.io/job_apps_tracker/demo/> is a second build of the same app under the demo profile: the 19 fictional examples, one in each configured state, seeded on a first visit. **Reset demo data** restores them and exists only there.
+<https://fruitiecutiepie.com/job_apps_tracker/demo/> is a second build of the same app under the demo profile: the 19 fictional examples, one in each configured state, seeded on a first visit. **Reset demo data** restores them and exists only there.
 
 It is the same origin as the tracker, so the one thing keeping them apart is that each gets its own IndexedDB database. Emptying the demo sticks — it is not reseeded on every load — and a standing banner says whose data it is, with a link back.
 
 ### Publishing it yourself
 
 `.github/workflows/pages.yml` typechecks, lints, tests, builds both sites and deploys on every push to `master`. A fork needs two things: **Settings → Pages → Source** set to **GitHub Actions**, and the `VITE_BASE_PATH` values in `package.json`'s `build:pages` and `build:pages-demo` changed to match the repository name.
+
+The base path is the repository name because that is where GitHub serves a project page, and it has to be baked in at build time — the asset URLs carry it. A custom domain does not change that. This repository is served at `fruitiecutiepie.com` rather than `fruitiecutiepie.github.io` because the domain is configured on the account's user-site repository, and project pages are then served underneath it at the same `/{repository}/` path. No `CNAME` file belongs in this repository; the one on the user site covers it.
 
 ## Development checks
 
