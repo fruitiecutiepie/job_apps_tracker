@@ -841,10 +841,14 @@ describe('TableView', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
+    // Sorting by urgency bands the rows; the ranking inside each band is what this asserts.
     expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Dated, soonest first2',
       'Overdue Co',
       'Deadline Co',
+      'Live, nothing dated1',
       'Quiet Co',
+      'Finished1',
       'Rejected Co',
     ])
 
@@ -853,6 +857,133 @@ describe('TableView', () => {
     expect(
       within(screen.getByRole('row', { name: /Rejected Co/ })).getByLabelText('Not ranked'),
     ).toBeInTheDocument()
+  })
+
+  it('bands the rows under headings when sorted by urgency, and only then', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    const applications = [
+      application('Quiet Co'),
+      application('Loose End Co', {
+        state: 'auto_rejected',
+        state_history: [{ state: 'auto_rejected', at: localDate(-2) }],
+        next_action: 'Ask for feedback',
+      }),
+      application('Closed Co', {
+        state: 'auto_rejected',
+        state_history: [{ state: 'auto_rejected', at: localDate(-2) }],
+      }),
+      application('Overdue Co', { next_action: 'Follow up', next_action_at: localDate(-3) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    // Sorted by Last update to begin with, so no band separates anything.
+    expect(screen.queryByText('Dated, soonest first')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
+
+    expect(
+      screen.getAllByRole('rowgroup')
+        .flatMap((group) => within(group).queryAllByRole('rowheader'))
+        .map((cell) => cell.textContent),
+    ).toEqual([
+      'Dated, soonest first1',
+      'Overdue Co',
+      'Live, nothing dated1',
+      'Quiet Co',
+      'Finished, action outstanding1',
+      'Loose End Co',
+      'Finished1',
+      'Closed Co',
+    ])
+
+    // Flipping the direction takes the bands away: the order no longer follows their rule.
+    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
+    expect(screen.queryByText('Dated, soonest first')).not.toBeInTheDocument()
+    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Loose End Co',
+      'Closed Co',
+      'Quiet Co',
+      'Overdue Co',
+    ])
+  })
+
+  it('prints no heading for a band that holds nothing', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    render(
+      <TableView
+        applications={[application('Quiet Co')]}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
+
+    expect(screen.getByText('Live, nothing dated')).toBeInTheDocument()
+    expect(screen.queryByText('Dated, soonest first')).not.toBeInTheDocument()
+    expect(screen.queryByText('Finished')).not.toBeInTheDocument()
+  })
+
+  it('orders a dated band by its date rather than by the score, as its heading says', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    const applications = [
+      // An invite decays over 21 days and a self-set action over 7, so at these distances
+      // the invite scores higher while the action falls due first.
+      application('Invite Co', {
+        state_events: [
+          {
+            id: '00000000-0000-7000-8000-000000000009',
+            state: 'recruiter_interview',
+            summary: 'Recruiter interview',
+            starts_at: localDate(6),
+            ends_at: null,
+            location: null,
+            url: null,
+            ics_uid: null,
+            sequence: 0,
+            cancelled: false,
+            created_at: localDate(-1),
+            updated_at: localDate(-1),
+          },
+        ],
+      }),
+      application('Action Co', { next_action: 'Send the draft', next_action_at: localDate(2) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
+
+    expect(
+      screen.getAllByRole('rowheader')
+        .map((cell) => cell.textContent)
+        .filter((text) => text?.endsWith(' Co')),
+    ).toEqual(['Action Co', 'Invite Co'])
   })
 
   it('filters the urgency column by its reason', () => {

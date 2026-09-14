@@ -1032,6 +1032,27 @@ tbody tr:hover {
   background: var(--surface-2);
 }
 
+/* A band heading spans the table, so it gets no hover and no row treatment. */
+.table-view__band:hover {
+  background: transparent;
+}
+
+.table-view__band th {
+  padding: var(--s5) var(--s3) var(--s2);
+  background: transparent;
+  text-align: left;
+}
+
+/* Matches the notes panel's section title: the quietest heading in the interface. */
+.table-view__band-heading {
+  margin-right: var(--s3);
+  color: var(--ink-3);
+  font-size: var(--t1);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .table-sort,
 .table-link {
   padding: 0;

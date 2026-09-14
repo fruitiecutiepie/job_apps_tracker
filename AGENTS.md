@@ -13,7 +13,7 @@ This file applies to the entire repository. Keep changes within the app's curren
 - `src/dateInput.ts` is the only place `datetime-local` wall time is converted to and from stored timestamps.
 - `src/domain/noteEditing.ts` and `noteEditingPaths.ts` hold the client and pure halves of external note editing; `vite/note-edit-fs.ts` holds the filesystem and process side.
 - `src/domain/` is the source of truth for types, state, rating and compensation configuration, mutations, validation, storage, IDs, and demo data.
-- `src/views/` contains view components and their derived-data helpers.
+- `src/views/` contains view components and their derived-data helpers. `urgency.ts` scores and explains the ranking; `urgencyBands.ts` reads that ranking coarsely enough to band a sorted table, and is the only source for band ids, order and headings. A band is not a second ranking: it never changes a score, and the Urgency column still says on the row itself what the band is too coarse to.
 - `src/test/` contains app integration and smoke tests; view-focused tests live beside the views.
 - `src/styles.css` contains the responsive visual system. Spacing, radius, type size, colour,
   control height, shadow, and focus all come from the token scale in its `:root` block; reuse a
@@ -29,6 +29,8 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 - `StateId` is a closed union of exactly 19 states. `STATE_CONFIG` in `src/domain/states.ts` is the only source for state order and display labels.
 - `classifyLifecycle` in `src/domain/states.ts` is the only source for whether a state is live, rejected or closed, and `LIVE_STATE_IDS` for the live set. It lives in the domain rather than in `src/views/urgency.ts` because the `live` state filter and the urgency ranking both read it, and two definitions of "still running" would let what a view shows drift from what it scores. Like `isRejectedState` it is a view-only grouping: it never restricts moves.
+- The table bands its rows only when sorted by Urgency, descending. A band is a coarse urgency reading, so under any other sort its headings would separate rows on a rule the visible order does not follow. A band holding nothing prints no heading.
+- Inside a band the urgency score decides, except in `due`, which reads by date because its heading promises soonest first and the two disagree: each pressure decays over its own horizon, so an invite three weeks out can outscore a deadline next week. Preference is the last tiebreak and is never folded into the score, exactly as it was in the Focus grouping this replaced.
 - `live` is not a synonym for `not_rejected`. They differ over `accepted` and `no_openings`, which nobody turned down and nobody is still working, so both filter options exist.
 - Preserve the configured labels exactly, including the em dashes in rejection labels.
 - Name things `state` in code and stored data — `StateId`, `state`, `state_history`, `state_events`. Use

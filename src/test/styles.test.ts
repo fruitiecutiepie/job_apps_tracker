@@ -40,6 +40,28 @@ describe('idle pill', () => {
   })
 })
 
+describe('table band heading', () => {
+  it('reads as the quietest heading in the interface, in tokens only', () => {
+    const body = ruleBody('.table-view__band-heading')
+
+    // The same treatment the notes panel gives its section title.
+    const sidebar = ruleBody('.panel__sidebar-title')
+    expect(body).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(body).toMatch(/font-size:\s*var\(--t1\)/)
+    expect(sidebar).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(sidebar).toMatch(/font-size:\s*var\(--t1\)/)
+    // A band separates rows; it never signals state.
+    expect(body).not.toMatch(/--accent|--danger/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(body).not.toMatch(/\d+px/)
+
+    // The heading row spans the table, so it takes neither the row hover nor a cell fill.
+    expect(ruleBody('.table-view__band:hover')).toMatch(/background:\s*transparent/)
+    expect(ruleBody('.table-view__band th')).toMatch(/background:\s*transparent/)
+    expect(ruleBody('.table-view__band th')).not.toMatch(/\d+px/)
+  })
+})
+
 describe('shortcut keys', () => {
   it('draws the key chip from the token scale, like every other chip', () => {
     const body = ruleBody('.panel__shortcut-key')

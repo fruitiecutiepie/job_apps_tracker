@@ -15,7 +15,14 @@ import {
 import type { MovableApplicationsViewProps } from "./types";
 import { describeIdle, idleStatusFor } from "./idle";
 import { describePreference, preferenceFor, type PreferenceScore } from "./preference";
-import { rankByUrgency, type UrgencyRanking } from "./urgency";
+import { SCORE_EPSILON, rankByUrgency, type UrgencyRanking } from "./urgency";
+import {
+  URGENCY_BANDS,
+  bandRank,
+  urgencyBandFor,
+  type BandPlacement,
+  type UrgencyBandId,
+} from "./urgencyBands";
 import { formatShortDate, parseTimestamp, upcomingStateEvent } from "./viewUtils";
 
 type SortField =
@@ -163,6 +170,54 @@ function comparableValue(
   if (field === "created_at") return parseTimestamp(application.created_at)?.getTime() ?? 0;
   if (field === "updated_at") return parseTimestamp(application.updated_at)?.getTime() ?? 0;
   return (application[field] ?? "").toLocaleLowerCase();
+}
+
+type BandLookup = ReadonlyMap<string, BandPlacement>;
+
+/**
+ * The order inside a banded table: band first, then the band's own rule, then the urgency
+ * score, then preference, then company so the comparison is total.
+ *
+ * A dated band reads by date rather than by score, which is what its heading says. The two
+ * disagree because each pressure decays over its own horizon, so an invite three weeks out
+ * can outscore a deadline next week; in a band that promises "soonest first", the date is
+ * the honest reading. Everywhere else the score decides, unchanged.
+ *
+ * Preference is never added to or multiplied into the score and cannot overturn it. It
+ * speaks only where the score has already tied, where the fallback would otherwise be an
+ * arbitrary input order. A null sinks in both directions, the way the Preference column
+ * treats one, because never rated is not the same as rated badly.
+ */
+function compareBanded(
+  left: Application,
+  right: Application,
+  bands: BandLookup,
+  urgency: UrgencyLookup,
+  preference: PreferenceLookup,
+): number {
+  const leftBand = bands.get(left.id)!;
+  const rightBand = bands.get(right.id)!;
+
+  const byBand = bandRank(leftBand.band) - bandRank(rightBand.band);
+  if (byBand !== 0) return byBand;
+
+  if (leftBand.days !== null && rightBand.days !== null && leftBand.days !== rightBand.days) {
+    return leftBand.days - rightBand.days;
+  }
+
+  const leftScore = urgency.get(left.id)?.score ?? 0;
+  const rightScore = urgency.get(right.id)?.score ?? 0;
+  if (Math.abs(leftScore - rightScore) > SCORE_EPSILON) return rightScore - leftScore;
+
+  const leftPreference = preference.get(left.id)?.score ?? null;
+  const rightPreference = preference.get(right.id)?.score ?? null;
+  if (leftPreference !== rightPreference) {
+    if (leftPreference === null) return 1;
+    if (rightPreference === null) return -1;
+    return rightPreference - leftPreference;
+  }
+
+  return left.company.localeCompare(right.company);
 }
 
 function includesQuery(value: string, query: string): boolean {
@@ -336,11 +391,34 @@ export function TableView({
     return lookup;
   }, [applications]);
 
+  /**
+   * Bands appear only on the urgency column, sorted the way the ranking itself reads. A
+   * band is a coarse urgency reading, so under any other sort its headings would separate
+   * rows on a rule the visible order does not follow. Sort by Company and they go away.
+   */
+  const banded = sortField === "urgency" && sortDirection === "descending";
+
+  const bandById = useMemo(() => {
+    const lookup = new Map<string, BandPlacement>();
+    const today = new Date();
+    for (const application of applications) {
+      lookup.set(application.id, urgencyBandFor(application, today));
+    }
+    return lookup;
+  }, [applications]);
+
   const visibleApplications = useMemo(() => {
-    return applications
-      .filter((application) =>
-        matchesColumnFilters(application, filters, urgencyById, preferenceById),
-      )
+    const matching = applications.filter((application) =>
+      matchesColumnFilters(application, filters, urgencyById, preferenceById),
+    );
+
+    if (banded) {
+      return matching
+        .slice()
+        .sort((left, right) => compareBanded(left, right, bandById, urgencyById, preferenceById));
+    }
+
+    return matching
       .sort((left, right) => {
         const leftValue = comparableValue(left, sortField, urgencyById, preferenceById);
         const rightValue = comparableValue(right, sortField, urgencyById, preferenceById);
@@ -362,7 +440,30 @@ export function TableView({
               });
         return sortDirection === "ascending" ? result : -result;
       });
-  }, [applications, filters, preferenceById, sortDirection, sortField, urgencyById]);
+  }, [
+    applications,
+    bandById,
+    banded,
+    filters,
+    preferenceById,
+    sortDirection,
+    sortField,
+    urgencyById,
+  ]);
+
+  /** The bands actually present, in order, so an empty band prints no heading at all. */
+  const bandedRows = useMemo(() => {
+    if (!banded) return null;
+    const grouped = new Map<UrgencyBandId, Application[]>();
+    for (const application of visibleApplications) {
+      const { band } = bandById.get(application.id)!;
+      grouped.set(band, [...(grouped.get(band) ?? []), application]);
+    }
+    return URGENCY_BANDS.flatMap((band) => {
+      const rows = grouped.get(band.id);
+      return rows && rows.length > 0 ? [{ ...band, rows }] : [];
+    });
+  }, [bandById, banded, visibleApplications]);
 
   const setSort = (field: SortField) => {
     if (field === sortField) {
@@ -510,6 +611,132 @@ export function TableView({
       <td data-column={column}>{content}</td>
     );
 
+  const renderRow = (application: Application) => (
+    <tr key={application.id}>
+      {bodyCell(
+        "company",
+        <button type="button" className="table-link" onClick={() => onOpen(application.id)}>
+          {application.company}
+        </button>,
+        { header: true },
+      )}
+      {bodyCell("role", application.role || <span aria-label="Not set">—</span>)}
+      {bodyCell("source", application.source || <span aria-label="Not set">—</span>)}
+      {bodyCell(
+        "state",
+        <select
+          aria-label={`Move ${application.company} to state`}
+          className="table-state-select"
+          value={application.state}
+          onChange={(event) => onMove(application.id, event.target.value as StateId)}
+        >
+          {STATE_CONFIG.map((state) => (
+            <option key={state.id} value={state.id}>
+              {state.label}
+            </option>
+          ))}
+        </select>,
+      )}
+      {/* describeIdle is empty for a row that is not idle, which is the dash case. */}
+      {bodyCell(
+        "activity",
+        describeIdle(idleStatusFor(application)) || <span aria-label="Not idle">—</span>,
+      )}
+      {bodyCell(
+        "next_action",
+        application.next_action?.trim() ? (
+          <>
+            <span>{application.next_action}</span>
+            {application.next_action_at ? (
+              <time className="table-view__date" dateTime={application.next_action_at}>
+                {formatShortDate(application.next_action_at)}
+              </time>
+            ) : null}
+            <CompleteActionButton
+              application={application}
+              onCompleteAction={onCompleteAction}
+              variant="table"
+            />
+          </>
+        ) : (
+          <span aria-label="Not set">—</span>
+        ),
+      )}
+      {bodyCell(
+        "invites",
+        application.state_events.length > 0 ? (
+          <InviteSummaries invites={application.state_events} />
+        ) : (
+          <span aria-label="Not set">—</span>
+        ),
+      )}
+      {bodyCell(
+        "deadline_at",
+        application.deadline_at ? (
+          <time dateTime={application.deadline_at}>
+            {formatShortDate(application.deadline_at)}
+          </time>
+        ) : (
+          <span aria-label="Not set">—</span>
+        ),
+      )}
+      {bodyCell(
+        "urgency",
+        urgencyById.has(application.id) ? (
+          <span className="table-view__urgency">
+            {urgencyById.get(application.id)!.reason}
+          </span>
+        ) : (
+          <span aria-label="Not ranked">—</span>
+        ),
+      )}
+      {bodyCell(
+        "preference",
+        preferenceById.has(application.id) ? (
+          <span className="table-view__urgency">
+            {describePreference(preferenceById.get(application.id)!)}
+          </span>
+        ) : (
+          <span aria-label="Not rated">—</span>
+        ),
+      )}
+      {bodyCell(
+        "compensation",
+        compensationById.has(application.id) ? (
+          <span className="table-view__urgency">
+            {compensationById.get(application.id)}
+          </span>
+        ) : (
+          <span aria-label="Not recorded">—</span>
+        ),
+      )}
+      {bodyCell(
+        "attachments",
+        application.attachments.length > 0 ? (
+          <AttachmentFilenames attachments={application.attachments} variant="table" />
+        ) : (
+          <span aria-label="Not set">—</span>
+        ),
+      )}
+      {bodyCell(
+        "prep_notes",
+        <StageNotesButton
+          application={application}
+          onOpenStageNotes={onOpenStageNotes}
+          variant="table"
+        />,
+      )}
+      {bodyCell(
+        "created_at",
+        <time dateTime={application.created_at}>{formatShortDate(application.created_at)}</time>,
+      )}
+      {bodyCell(
+        "updated_at",
+        <time dateTime={application.updated_at}>{formatShortDate(application.updated_at)}</time>,
+      )}
+    </tr>
+  );
+
   const filtersActive = columnFiltersAreActive(filters);
 
   return (
@@ -614,133 +841,25 @@ export function TableView({
               )}
             </tr>
           </thead>
-          <tbody>
-            {visibleApplications.map((application) => (
-              <tr key={application.id}>
-                {bodyCell(
-                  "company",
-                  <button type="button" className="table-link" onClick={() => onOpen(application.id)}>
-                    {application.company}
-                  </button>,
-                  { header: true },
-                )}
-                {bodyCell("role", application.role || <span aria-label="Not set">—</span>)}
-                {bodyCell("source", application.source || <span aria-label="Not set">—</span>)}
-                {bodyCell(
-                  "state",
-                  <select
-                    aria-label={`Move ${application.company} to state`}
-                    className="table-state-select"
-                    value={application.state}
-                    onChange={(event) => onMove(application.id, event.target.value as StateId)}
-                  >
-                    {STATE_CONFIG.map((state) => (
-                      <option key={state.id} value={state.id}>
-                        {state.label}
-                      </option>
-                    ))}
-                  </select>,
-                )}
-                {/* describeIdle is empty for a row that is not idle, which is the dash case. */}
-                {bodyCell(
-                  "activity",
-                  describeIdle(idleStatusFor(application)) || <span aria-label="Not idle">—</span>,
-                )}
-                {bodyCell(
-                  "next_action",
-                  application.next_action?.trim() ? (
-                    <>
-                      <span>{application.next_action}</span>
-                      {application.next_action_at ? (
-                        <time className="table-view__date" dateTime={application.next_action_at}>
-                          {formatShortDate(application.next_action_at)}
-                        </time>
-                      ) : null}
-                      <CompleteActionButton
-                        application={application}
-                        onCompleteAction={onCompleteAction}
-                        variant="table"
-                      />
-                    </>
-                  ) : (
-                    <span aria-label="Not set">—</span>
-                  ),
-                )}
-                {bodyCell(
-                  "invites",
-                  application.state_events.length > 0 ? (
-                    <InviteSummaries invites={application.state_events} />
-                  ) : (
-                    <span aria-label="Not set">—</span>
-                  ),
-                )}
-                {bodyCell(
-                  "deadline_at",
-                  application.deadline_at ? (
-                    <time dateTime={application.deadline_at}>
-                      {formatShortDate(application.deadline_at)}
-                    </time>
-                  ) : (
-                    <span aria-label="Not set">—</span>
-                  ),
-                )}
-                {bodyCell(
-                  "urgency",
-                  urgencyById.has(application.id) ? (
-                    <span className="table-view__urgency">
-                      {urgencyById.get(application.id)!.reason}
-                    </span>
-                  ) : (
-                    <span aria-label="Not ranked">—</span>
-                  ),
-                )}
-                {bodyCell(
-                  "preference",
-                  preferenceById.has(application.id) ? (
-                    <span className="table-view__urgency">
-                      {describePreference(preferenceById.get(application.id)!)}
-                    </span>
-                  ) : (
-                    <span aria-label="Not rated">—</span>
-                  ),
-                )}
-                {bodyCell(
-                  "compensation",
-                  compensationById.has(application.id) ? (
-                    <span className="table-view__urgency">
-                      {compensationById.get(application.id)}
-                    </span>
-                  ) : (
-                    <span aria-label="Not recorded">—</span>
-                  ),
-                )}
-                {bodyCell(
-                  "attachments",
-                  application.attachments.length > 0 ? (
-                    <AttachmentFilenames attachments={application.attachments} variant="table" />
-                  ) : (
-                    <span aria-label="Not set">—</span>
-                  ),
-                )}
-                {bodyCell(
-                  "prep_notes",
-                  <StageNotesButton
-                    application={application}
-                    onOpenStageNotes={onOpenStageNotes}
-                    variant="table"
-                  />,
-                )}
-                {bodyCell(
-                  "created_at",
-                  <time dateTime={application.created_at}>{formatShortDate(application.created_at)}</time>,
-                )}
-                {bodyCell(
-                  "updated_at",
-                  <time dateTime={application.updated_at}>{formatShortDate(application.updated_at)}</time>,
-                )}
-              </tr>
-            ))}
-          </tbody>
+          {bandedRows
+            ? bandedRows.map(({ id, heading, rows }) => (
+                <tbody key={id}>
+                  <tr className="table-view__band">
+                    {/*
+                      * `rowgroup` rather than `colgroup`: the heading applies to the rows
+                      * under it in this tbody, not to a set of columns.
+                      */}
+                    <th scope="rowgroup" colSpan={COLUMN_ORDER.length}>
+                      <span className="table-view__band-heading">{heading}</span>
+                      <span className="count-badge" aria-label={`${rows.length} applications`}>
+                        {rows.length}
+                      </span>
+                    </th>
+                  </tr>
+                  {rows.map(renderRow)}
+                </tbody>
+              ))
+            : <tbody>{visibleApplications.map(renderRow)}</tbody>}
         </table>
       </div>
       {visibleApplications.length === 0 ? (
@@ -751,3 +870,4 @@ export function TableView({
     </section>
   );
 }
+
