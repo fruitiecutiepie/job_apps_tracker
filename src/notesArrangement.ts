@@ -81,18 +81,25 @@ export const SIDEBAR_STEP = 16
 export const DEFAULT_SIDEBAR = 208
 
 /**
- * How the sidebar's two halves share it: the outline takes a height and the notes tree
- * takes what is left. The floor is a couple of rows — below that the heading's own fold is
- * the way to put it away, one control per outcome — and the ceiling leaves the tree
- * something to show.
+ * How the sidebar's two halves share it: a share of the column rather than a height for
+ * the outline, so the handle means the same thing in a tall window and a short one, and so
+ * what one half gives up the other takes. Half each to begin with, neither being the more
+ * important — the outline is where you are, the tree is everywhere else.
+ *
+ * The floor and the ceiling leave whichever half is losing a heading and a row or two;
+ * below that the heading's own fold is the way to put a half away, one control per
+ * outcome. A folded half is not a share at all: the one still open takes the column.
  */
-export const MIN_OUTLINE = 48
-export const MAX_OUTLINE = 480
-export const OUTLINE_STEP = 16
-export const DEFAULT_OUTLINE = 180
+export const MIN_OUTLINE_SHARE = 0.15
+export const MAX_OUTLINE_SHARE = 0.85
+export const OUTLINE_SHARE_STEP = 0.05
+export const DEFAULT_OUTLINE_SHARE = 0.5
 
-export function outlineHeightWithin(height: number): number {
-  return Math.round(Math.min(MAX_OUTLINE, Math.max(MIN_OUTLINE, height)))
+export function outlineShareWithin(share: number): number {
+  const held = Math.min(MAX_OUTLINE_SHARE, Math.max(MIN_OUTLINE_SHARE, share))
+  // To the hundredth, so a drag stores a number that reads as a share rather than as the
+  // pixel arithmetic it came out of.
+  return Math.round(held * 100) / 100
 }
 
 export interface Arrangement {
@@ -110,7 +117,7 @@ export interface Arrangement {
    */
   sidebarWidth?: number
   /** How much of the sidebar the outline takes, the notes tree taking the rest. */
-  outlineHeight?: number
+  outlineShare?: number
 }
 
 /**
@@ -122,7 +129,7 @@ export function arrangementKey(profile: string = trackerProfile()): string {
 }
 
 export function serializeArrangement(
-  { layout, focusedGroupId, captureHeight, sidebarWidth, outlineHeight }: Arrangement,
+  { layout, focusedGroupId, captureHeight, sidebarWidth, outlineShare }: Arrangement,
 ): string {
   return JSON.stringify({
     version: ARRANGEMENT_VERSION,
@@ -130,7 +137,7 @@ export function serializeArrangement(
     focusedGroupId,
     captureHeight,
     sidebarWidth,
-    outlineHeight,
+    outlineShare,
   })
 }
 
@@ -306,10 +313,16 @@ export function restoreArrangement(
   if (captureHeight !== undefined) restored.captureHeight = captureHeight
   const sidebarWidth = readSidebarWidth(parsed.sidebarWidth)
   if (sidebarWidth !== undefined) restored.sidebarWidth = sidebarWidth
-  const outlineHeight = typeof parsed.outlineHeight === 'number' && Number.isFinite(parsed.outlineHeight)
-    ? outlineHeightWithin(parsed.outlineHeight)
+  /*
+   * Only `outlineShare` is read. An arrangement stored before the handle was a share holds
+   * `outlineHeight`, a number of pixels, and reading that as a share would clamp to the
+   * ceiling and hand the outline the whole column. Nothing else in that arrangement is
+   * stale, so it restores as it always did and the division goes back to half each.
+   */
+  const outlineShare = typeof parsed.outlineShare === 'number' && Number.isFinite(parsed.outlineShare)
+    ? outlineShareWithin(parsed.outlineShare)
     : undefined
-  if (outlineHeight !== undefined) restored.outlineHeight = outlineHeight
+  if (outlineShare !== undefined) restored.outlineShare = outlineShare
   return restored
 }
 

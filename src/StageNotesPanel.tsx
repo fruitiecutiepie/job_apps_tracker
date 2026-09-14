@@ -67,11 +67,11 @@ import {
   SIDEBAR_STEP,
   MAX_SIDEBAR,
   MIN_SIDEBAR,
-  MAX_OUTLINE,
-  MIN_OUTLINE,
-  OUTLINE_STEP,
-  DEFAULT_OUTLINE,
-  outlineHeightWithin,
+  MAX_OUTLINE_SHARE,
+  MIN_OUTLINE_SHARE,
+  OUTLINE_SHARE_STEP,
+  DEFAULT_OUTLINE_SHARE,
+  outlineShareWithin,
   sidebarWidthWithin,
   type Arrangement,
 } from './notesArrangement'
@@ -318,17 +318,21 @@ function wordCount(text: string): number {
  */
 function SidebarHeading({
   label,
+  names,
   shown,
   onToggle,
 }: {
   label: string
+  /** What the button says it acts on, which is not always the heading with "the" in front
+   *  of it: "Hide the all prep notes" is what that rule produces. */
+  names: string
   shown: boolean
   onToggle: () => void
 }) {
   return (
     <button
       aria-expanded={shown}
-      aria-label={`${shown ? 'Hide' : 'Show'} the ${label.toLowerCase()}`}
+      aria-label={`${shown ? 'Hide' : 'Show'} ${names}`}
       className={`panel__sidebar-title${shown ? '' : ' panel__sidebar-title--folded'}`}
       onClick={onToggle}
       type="button"
@@ -467,11 +471,9 @@ export function StageNotesPanel({
    */
   const [outlineShown, setOutlineShown] = useState(true)
   const [notesShown, setNotesShown] = useState(true)
-  const [outlineHeight, setOutlineHeight] = useState(initial.outlineHeight ?? DEFAULT_OUTLINE)
-  const outlineHeightRef = useRef(outlineHeight)
-  useEffect(() => {
-    outlineHeightRef.current = outlineHeight
-  }, [outlineHeight])
+  const [outlineShare, setOutlineShare] = useState(initial.outlineShare ?? DEFAULT_OUTLINE_SHARE)
+  /** The column itself, so a drag can say what a pixel of it is worth as a share. */
+  const sidebarRef = useRef<HTMLElement>(null)
   const sidebarOpenRef = useRef(sidebarOpen)
   useEffect(() => {
     sidebarOpenRef.current = sidebarOpen
@@ -479,10 +481,20 @@ export function StageNotesPanel({
 
   const toggleSidebar = useCallback(() => setSidebarOpen((open) => !open), [])
 
-  /** How the two halves of the sidebar share it: the outline's height, the tree takes the rest. */
+  /**
+   * How the two halves of the sidebar share it. A share rather than a height, so what one
+   * half gives up the other takes, and so the handle sits in the same place in a window of
+   * any height. A drag arrives in pixels and is divided by the column it moved across.
+   */
   const resizeOutline = useCallback((delta: number) => {
-    setOutlineHeight((current) => outlineHeightWithin(current + delta))
+    setOutlineShare((current) => outlineShareWithin(current + delta))
   }, [])
+
+  const dragOutline = useCallback((pixels: number) => {
+    const column = sidebarRef.current?.getBoundingClientRect().height ?? 0
+    if (column <= 0) return
+    resizeOutline(pixels / column)
+  }, [resizeOutline])
 
   const endOutlineDrag = useRef<(() => void) | null>(null)
   useEffect(() => () => endOutlineDrag.current?.(), [])
@@ -491,7 +503,7 @@ export function StageNotesPanel({
     (startY: number) => {
       let from = startY
       const move = (event: MouseEvent) => {
-        resizeOutline(event.clientY - from)
+        dragOutline(event.clientY - from)
         from = event.clientY
       }
       const stop = () => {
@@ -503,7 +515,7 @@ export function StageNotesPanel({
       window.addEventListener('mouseup', stop)
       endOutlineDrag.current = stop
     },
-    [resizeOutline],
+    [dragOutline],
   )
   // Find state. `findSeq` remounts the widget so a second Ctrl+F refocuses and selects
   // the query already in it, the way reopening find in an editor does.
@@ -988,8 +1000,8 @@ export function StageNotesPanel({
    * tab.
    */
   useEffect(() => {
-    arrangeRef.current({ layout, focusedGroupId, captureHeight, sidebarWidth, outlineHeight })
-  }, [captureHeight, focusedGroupId, layout, outlineHeight, sidebarWidth])
+    arrangeRef.current({ layout, focusedGroupId, captureHeight, sidebarWidth, outlineShare })
+  }, [captureHeight, focusedGroupId, layout, outlineShare, sidebarWidth])
 
   /*
    * A note asked for from outside the panel. Only the nonce is watched: the ref alone
@@ -2057,23 +2069,39 @@ export function StageNotesPanel({
              * switched between, so choosing which of the two you want is not a question you
              * have to answer before you can look at either.
              */
-            <aside aria-label="Notes and outline" className="panel__sidebar">
+            <aside
+              aria-label="Notes and outline"
+              className="panel__sidebar"
+              ref={sidebarRef}
+              /*
+               * The two halves divide the column between them, so what one gives up the
+               * other takes — a folded half is a heading and nothing more, and the one
+               * still open has the rest. `fr` says exactly that, where a height on the
+               * outline said only how tall the outline was and left the space it was not
+               * using to no one.
+               */
+              style={{
+                gridTemplateRows: outlineShown && notesShown
+                  ? `minmax(0, ${outlineShare}fr) auto minmax(0, ${
+                      Math.round((1 - outlineShare) * 100) / 100
+                    }fr)`
+                  : outlineShown
+                    ? 'minmax(0, 1fr) auto'
+                    : notesShown
+                      ? 'auto minmax(0, 1fr)'
+                      : 'auto auto',
+              }}
+            >
               <section aria-label="Outline" className="panel__sidebar-section">
                 <SidebarHeading
                   label="Outline"
+                  names="the outline"
                   onToggle={() => setOutlineShown((shown) => !shown)}
                   shown={outlineShown}
                 />
-                {/* The dragged height is a cap rather than a height, so a note with two
-                    headings does not reserve room for twenty: the dock over the captured
-                    lines makes the same trade, and dead space is the thing this sidebar can
-                    least afford. Dragging it shorter than its content still shortens it. */}
                 {outlineShown ? (
                   outline.length > 0 ? (
-                    <div
-                      className="panel__outline-scroll"
-                      style={{ maxHeight: `${outlineHeight}px` }}
-                    >
+                    <div className="panel__outline-scroll">
                       <OutlineList
                         current={trailKey}
                         depth={0}
@@ -2097,14 +2125,15 @@ export function StageNotesPanel({
                 <div
                   aria-label="Resize the outline"
                   aria-orientation="horizontal"
-                  aria-valuemax={MAX_OUTLINE}
-                  aria-valuemin={MIN_OUTLINE}
-                  aria-valuenow={outlineHeight}
+                  aria-valuemax={Math.round(MAX_OUTLINE_SHARE * 100)}
+                  aria-valuemin={Math.round(MIN_OUTLINE_SHARE * 100)}
+                  aria-valuenow={Math.round(outlineShare * 100)}
+                  aria-valuetext={`Outline takes ${Math.round(outlineShare * 100)}% of the sidebar`}
                   className="panel__sidebar-split"
                   onKeyDown={(event) => {
                     if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
                     event.preventDefault()
-                    resizeOutline(event.key === 'ArrowDown' ? OUTLINE_STEP : -OUTLINE_STEP)
+                    resizeOutline(event.key === 'ArrowDown' ? OUTLINE_SHARE_STEP : -OUTLINE_SHARE_STEP)
                   }}
                   onMouseDown={(event) => {
                     event.preventDefault()
@@ -2118,6 +2147,7 @@ export function StageNotesPanel({
               <section aria-label="All prep notes" className="panel__sidebar-section">
                 <SidebarHeading
                   label="All prep notes"
+                  names="all prep notes"
                   onToggle={() => setNotesShown((shown) => !shown)}
                   shown={notesShown}
                 />

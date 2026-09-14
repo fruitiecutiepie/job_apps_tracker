@@ -18,6 +18,9 @@ import {
   MAX_SIDEBAR,
   MIN_CAPTURE_LOG,
   MIN_SIDEBAR,
+  DEFAULT_OUTLINE_SHARE,
+  MAX_OUTLINE_SHARE,
+  MIN_OUTLINE_SHARE,
   openingLayout,
   restoreArrangement,
   serializeArrangement,
@@ -286,6 +289,66 @@ describe('the sidebar width', () => {
     for (const nonsense of ['260', null, Number.NaN, {}]) {
       expect(restoreArrangement(stored(nonsense), [acme])!.sidebarWidth).toBeUndefined()
     }
+  })
+})
+
+describe("the sidebar's own division", () => {
+  const stored = (outlineShare: unknown): string =>
+    JSON.stringify({
+      version: ARRANGEMENT_VERSION,
+      layout: singleGroup('pane-1', ref('acme', 'applied')),
+      focusedGroupId: 'pane-1',
+      outlineShare,
+    })
+
+  it('comes back as it was left', () => {
+    expect(restoreArrangement(stored(0.7), [acme])!.outlineShare).toBe(0.7)
+  })
+
+  it('is a share of the column rather than a height, so it means the same at any size', () => {
+    // Half each is what the two halves start on, and half stays half whether the sidebar
+    // is as tall as a laptop or as tall as a phone. A stored height could not say that.
+    expect(DEFAULT_OUTLINE_SHARE).toBe(0.5)
+    expect(MIN_OUTLINE_SHARE).toBeGreaterThan(0)
+    expect(MAX_OUTLINE_SHARE).toBeLessThan(1)
+  })
+
+  it('leaves each half something to show, however far the handle was pushed', () => {
+    expect(restoreArrangement(stored(0), [acme])!.outlineShare).toBe(MIN_OUTLINE_SHARE)
+    expect(restoreArrangement(stored(1), [acme])!.outlineShare).toBe(MAX_OUTLINE_SHARE)
+  })
+
+  it('is dropped rather than guessed at when it is not a share', () => {
+    for (const nonsense of ['0.5', null, Number.NaN, Infinity, {}]) {
+      expect(restoreArrangement(stored(nonsense), [acme])!.outlineShare).toBeUndefined()
+    }
+  })
+
+  it('ignores the height it used to be stored as, rather than reading it as a share', () => {
+    // A stored 180 is one hundred and eighty pixels of an older arrangement, and reading
+    // it as a share would clamp to "the outline takes everything". The rest of that
+    // arrangement — which notes are open, and where — is still good and still restored.
+    const raw = JSON.stringify({
+      version: ARRANGEMENT_VERSION,
+      layout: singleGroup('pane-1', ref('acme', 'applied')),
+      focusedGroupId: 'pane-1',
+      outlineHeight: 180,
+    })
+    const restored = restoreArrangement(raw, [acme])!
+
+    expect(restored.outlineShare).toBeUndefined()
+    expect(orderedRefs(restored.layout)).toHaveLength(1)
+  })
+
+  it('survives a round trip through the arrangement it belongs to', () => {
+    const layout = singleGroup('pane-1', ref('acme', 'applied'))
+    const raw = serializeArrangement({ layout, focusedGroupId: 'pane-1', outlineShare: 0.35 })
+
+    expect(restoreArrangement(raw, [acme])).toEqual({
+      layout,
+      focusedGroupId: 'pane-1',
+      outlineShare: 0.35,
+    })
   })
 })
 

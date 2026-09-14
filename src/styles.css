@@ -2669,12 +2669,15 @@ tbody tr:hover {
   grid-template-columns: auto minmax(0, 1fr);
 }
 
+/* The rows come from the panel, which divides them between the two halves; the column
+   itself does not scroll, because each half scrolls what it was given. A column that
+   scrolled as a whole would make the division meaningless — the handle would set how tall
+   the outline was and the tree would start wherever that ended. */
 .panel__sidebar {
   display: grid;
-  align-content: start;
-  gap: var(--s5);
-  padding: var(--s4);
-  overflow-y: auto;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  overflow: hidden;
   border-right: 1px solid var(--line);
   background: var(--surface-2);
 }
@@ -2723,17 +2726,21 @@ tbody tr:hover {
 }
 
 /* The handle the two halves share, the same measure as every other one in the panel. */
+/* Drawn rather than merely present. An invisible handle is one nobody finds: it is the
+   only thing between the two halves, and the line it draws is also what separates them, so
+   it earns its pixels twice. It bleeds through the column's padding to both edges, which
+   is what makes it read as a divider instead of a floating bar. */
 .panel__sidebar-split {
   height: var(--pane-handle);
-  margin: 0 calc(var(--s2) * -1);
-  background: transparent;
+  margin: var(--s1) calc(var(--s4) * -1);
+  background: var(--line-strong);
   cursor: row-resize;
   touch-action: none;
 }
 
 .panel__sidebar-split:hover,
 .panel__sidebar-split:focus-visible {
-  background: var(--line-strong);
+  background: var(--accent);
 }
 
 /*
@@ -3890,10 +3897,13 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
  * it in place: the grouping is most of what tells two notes apart, and losing it on the
  * first keystroke would trade the one thing the tree is for.
  */
+/* A search that stays put over a tree that scrolls under it, so the row the section was
+   given is spent on notes rather than on chrome. The hint between them is `sr-only` and so
+   out of flow, which leaves these two rows the whole of it. */
 .notes-tree {
   display: grid;
-  gap: var(--s3);
-  align-content: start;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--s2);
   min-height: 0;
 }
 
@@ -4077,14 +4087,17 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 }
 
 /* One column of two sections and the control under them, each taking what it needs. */
+/* A heading that stays, over a body that scrolls what does not fit the row the section was
+   given. Both halves are shaped the same way, so neither pushes the other off the column. */
 .panel__sidebar-section {
   display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
   min-height: 0;
   gap: var(--s2);
 }
 
-/* The height is set from the handle between the two halves; this only has to scroll what
-   does not fit in it. */
+/* The row is set by the handle between the two halves; this only has to scroll what does
+   not fit in it. */
 .panel__outline-scroll {
   min-height: 0;
   overflow-y: auto;

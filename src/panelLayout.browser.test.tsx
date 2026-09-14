@@ -418,6 +418,48 @@ describe('the panel in a real browser', () => {
     expect(screen.getAllByRole('tab').map((tab) => tab.textContent)).toEqual(before)
   })
 
+  it('divides the sidebar between its two halves, and hands it over when one folds', async () => {
+    renderPanel()
+
+    const sidebar = () => document.querySelector('.panel__sidebar')!.getBoundingClientRect()
+    const half = (name: string) =>
+      screen.getByRole('region', { name }).getBoundingClientRect()
+    const outline = () => half('Outline')
+    const tree = () => half('All prep notes')
+
+    // Half each to begin with. Measured against one another rather than against a number,
+    // since what the column is worth depends on the window the test is running in.
+    expect(Math.abs(outline().height - tree().height)).toBeLessThan(sidebar().height * 0.1)
+
+    // Folded, a half is its heading and nothing more, and the column it was holding goes
+    // to the other one rather than to the empty space underneath — which is what it did
+    // when the outline was sized by a height of its own.
+    const before = outline().height
+    await userEvent.click(screen.getByRole('button', { name: 'Hide all prep notes' }))
+    expect(outline().height).toBeGreaterThan(before * 1.5)
+    expect(tree().height).toBeLessThan(sidebar().height * 0.2)
+    expect(outline().bottom).toBeLessThanOrEqual(sidebar().bottom + 1)
+  })
+
+  it('draws the handle between the two halves rather than hiding it', async () => {
+    renderPanel()
+
+    const handle = screen.getByRole('separator', { name: 'Resize the outline' })
+    const box = handle.getBoundingClientRect()
+    const sidebar = document.querySelector('.panel__sidebar')!.getBoundingClientRect()
+
+    // Painted at rest, not only under the pointer: it is the only thing between the two
+    // halves, and a reader cannot reach for what is not drawn.
+    const painted = getComputedStyle(handle).backgroundColor
+    expect(painted).not.toBe('transparent')
+    expect(painted).not.toMatch(/rgba\(0, 0, 0, 0\)/)
+
+    // Edge to edge, so it reads as the line dividing them rather than as a bar floating
+    // between them, and tall enough to be worth aiming at.
+    expect(box.width).toBeGreaterThanOrEqual(sidebar.width - 1)
+    expect(box.height).toBeGreaterThanOrEqual(3)
+  })
+
   it('reorders a tab dragged within its own strip', async () => {
     renderPanel()
 
