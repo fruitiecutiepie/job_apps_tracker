@@ -1514,32 +1514,44 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
 
     await user.click(within(dialog).getByRole('button', { name: 'Go to stage' }))
-    const picker = within(dialog).getByLabelText('Go to stage')
-    const choices = () => within(within(dialog).getByRole('list', { name: 'Stages' }))
+    const picker = within(dialog).getByRole('textbox', { name: 'Go to stage' })
+    const choices = () => within(within(dialog).getByRole('list', { name: 'Applications' }))
 
-    // Every stage of this application is reachable, and the ones already open say so.
-    // The other seeded applications contribute their own current stage, since the picker
-    // is how a second company's notes get into the panel.
-    const labels = () => choices().getAllByRole('button').map((entry) => entry.textContent)
-    expect(labels().filter((label) => label?.startsWith('Halcyon Maps · '))).toHaveLength(19)
-    expect(labels().some((label) => label?.startsWith('Echo Robotics · '))).toBe(true)
-    // Exact, because "Interview 2" is also the start of "Interview 2 — Rejected".
-    const interviewTwo = choices().getByText('Halcyon Maps · Interview 2', { selector: '.quick-open__label' })
-    expect(interviewTwo.closest('button')).toHaveTextContent('Open')
+    // One row per application, grouped under its company rather than repeating it, and
+    // labelled by role rather than by stage — the stage is what its own menu is for.
+    // Clicking the row opens its current stage directly, said so on the row when that
+    // stage is already open. The application being worked on can reach every stage; the
+    // other seeded applications only offer their own current one, since the picker is how
+    // a second company's notes get into the panel.
+    expect(choices().getByText('Halcyon Maps')).toBeInTheDocument()
+    const halcyonRole = choices().getByRole('button', { name: 'Engineering ManagerOpen' })
+    expect(halcyonRole).toBeInTheDocument()
+    const halcyonOtherStages = () =>
+      choices().getByRole('combobox', { name: 'Other stages for Halcyon Maps, Engineering Manager' })
+    expect(within(halcyonOtherStages()).getAllByRole('option')).toHaveLength(20) // + placeholder
+    expect(
+      choices().getByRole('combobox', {
+        name: 'Other stages for Echo Robotics, Human Factors Researcher',
+      }),
+    ).toBeInTheDocument()
 
-    await user.type(picker, 'takeh')
-    expect(choices().getAllByRole('button')[0]).toHaveTextContent('Take-home assessment')
+    await user.type(picker, 'Echo Robotics')
+    expect(choices().getByText('Echo Robotics')).toBeInTheDocument()
+    expect(choices().queryByText('Halcyon Maps')).not.toBeInTheDocument()
+    await user.clear(picker)
 
     // Escape leaves the picker without opening anything.
     await user.keyboard('{Escape}')
-    expect(within(dialog).queryByLabelText('Go to stage')).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole('textbox', { name: 'Go to stage' })).not.toBeInTheDocument()
     expect(within(dialog).getAllByRole('tab')).toHaveLength(3)
     expect(screen.getByRole('dialog', { name: 'Stage prep notes' })).toBeInTheDocument()
 
-    // Picking one opens it as a tab, ready to type into.
+    // Picking a stage from a row's menu opens it as a tab, ready to type into.
     await user.click(within(dialog).getByRole('button', { name: 'Go to stage' }))
-    await user.type(within(dialog).getByLabelText('Go to stage'), 'takeh')
-    await user.keyboard('{Enter}')
+    await user.selectOptions(
+      choices().getByRole('combobox', { name: 'Other stages for Halcyon Maps, Engineering Manager' }),
+      'Take-home assessment',
+    )
 
     expect(within(dialog).getAllByRole('tab')).toHaveLength(4)
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Take-home assessment')
@@ -1624,8 +1636,10 @@ describe('job applications tracker', () => {
 
     // Quick open reaches every stage, not only the ones already on screen.
     await user.keyboard('{Control>}p{/Control}')
-    await user.type(within(dialog).getByLabelText('Go to stage'), 'inter1')
-    await user.keyboard('{Enter}')
+    await user.selectOptions(
+      within(dialog).getByRole('combobox', { name: 'Other stages for Orbit & Oak, Operations Lead' }),
+      'Interview 1',
+    )
 
     expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent('Interview 1')
     await user.type(

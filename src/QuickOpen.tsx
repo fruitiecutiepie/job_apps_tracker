@@ -1,13 +1,27 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { fuzzyScore } from './quickOpenMatch'
 
-export interface QuickOpenEntry {
-  /** What picking this entry opens. A note's key, not a bare state: the picker spans
-   *  every application, so the same stage appears once per company. */
+export interface QuickOpenStageOption {
+  /** What picking this option opens: a note's key. */
   id: string
   label: string
-  /** Whether the panel is already showing this note, so picking it only switches tab. */
+  /** Whether the panel is already showing this stage, so picking it only switches tab. */
   open: boolean
+}
+
+export interface QuickOpenEntry {
+  /** The application, not a stage: one row per (company, role) keeps the list the length
+   *  of the applications rather than the length of every stage any of them could reach. */
+  id: string
+  /** Rows for the same company group under one heading rather than repeating it. */
+  company: string
+  role: string
+  /** Every stage this application can reach, offered on its row's stage menu. */
+  stages: readonly QuickOpenStageOption[]
+  /** What the row itself opens: the application's current stage, the one most likely
+   *  wanted, so reaching it costs one click or Enter rather than a trip through a menu. */
+  defaultStageId: string
 }
 
 interface QuickOpenProps {
@@ -32,11 +46,27 @@ export function QuickOpen({ entries, onPick, onClose }: QuickOpenProps) {
 
   const matches = useMemo(() => {
     const scored = entries
-      .map((entry, index) => ({ entry, index, score: fuzzyScore(entry.label, query) }))
+      .map((entry, index) => ({
+        entry,
+        index,
+        score: fuzzyScore(`${entry.company} ${entry.role}`, query),
+      }))
       .filter((row): row is { entry: QuickOpenEntry; index: number; score: number } => row.score !== null)
     scored.sort((left, right) => left.score - right.score || left.index - right.index)
     return scored.map((row) => row.entry)
   }, [entries, query])
+
+  // Grouped by company without disturbing the match order above: a Map remembers each
+  // key's first insertion, so the group with the best-scoring role still sorts first.
+  const groups = useMemo(() => {
+    const byCompany = new Map<string, QuickOpenEntry[]>()
+    for (const entry of matches) {
+      const rows = byCompany.get(entry.company) ?? []
+      rows.push(entry)
+      byCompany.set(entry.company, rows)
+    }
+    return [...byCompany.entries()].map(([company, rows]) => ({ company, rows }))
+  }, [matches])
 
   const active = matches[Math.min(highlighted, matches.length - 1)]
 
@@ -49,7 +79,7 @@ export function QuickOpen({ entries, onPick, onClose }: QuickOpenProps) {
     }
     if (event.key === 'Enter') {
       event.preventDefault()
-      if (active) onPick(active.id)
+      if (active) onPick(active.defaultStageId)
       return
     }
     if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return
@@ -72,25 +102,66 @@ export function QuickOpen({ entries, onPick, onClose }: QuickOpenProps) {
           setHighlighted(0)
         }}
         onKeyDown={onKeyDown}
-        placeholder="Go to stage…"
+        placeholder="Search company or role…"
         ref={inputRef}
         type="text"
         value={query}
       />
       {matches.length === 0 ? (
-        <p className="quick-open__empty">No stage matches that.</p>
+        <p className="quick-open__empty">No application matches that.</p>
       ) : (
-        <ul aria-label="Stages" className="quick-open__list">
-          {matches.map((entry) => (
-            <li key={entry.id}>
-              <button
-                className={`quick-open__entry${entry === active ? ' quick-open__entry--active' : ''}`}
-                onClick={() => onPick(entry.id)}
-                type="button"
-              >
-                <span className="quick-open__label">{entry.label}</span>
-                {entry.open ? <span className="quick-open__badge">Open</span> : null}
-              </button>
+        <ul aria-label="Applications" className="quick-open__list">
+          {groups.map((group) => (
+            <li className="quick-open__group" key={group.company}>
+              <p className="quick-open__company">{group.company}</p>
+              <ul className="quick-open__roles">
+                {group.rows.map((entry) => {
+                  const isActive = entry === active
+                  const isDefaultOpen = entry.stages.find(
+                    (stage) => stage.id === entry.defaultStageId,
+                  )?.open
+
+                  return (
+                    <li
+                      className={`quick-open__role${isActive ? ' quick-open__role--active' : ''}`}
+                      key={entry.id}
+                    >
+                      <button
+                        className="quick-open__role-button"
+                        onClick={() => onPick(entry.defaultStageId)}
+                        onFocus={() => setHighlighted(matches.indexOf(entry))}
+                        type="button"
+                      >
+                        {entry.role}
+                        {isDefaultOpen ? <span className="quick-open__badge">Open</span> : null}
+                      </button>
+                      <span className="quick-open__stage-trigger">
+                        <ChevronDown aria-hidden="true" size={14} />
+                        <select
+                          aria-label={`Other stages for ${entry.company}, ${entry.role}`}
+                          className="quick-open__stage-select"
+                          onChange={(event) => {
+                            const stageId = event.target.value
+                            if (stageId) onPick(stageId)
+                          }}
+                          onFocus={() => setHighlighted(matches.indexOf(entry))}
+                          value=""
+                        >
+                          <option disabled value="">
+                            Other stages…
+                          </option>
+                          {entry.stages.map((stage) => (
+                            <option key={stage.id} value={stage.id}>
+                              {stage.label}
+                              {stage.open ? ' — Open' : ''}
+                            </option>
+                          ))}
+                        </select>
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
             </li>
           ))}
         </ul>

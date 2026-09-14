@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { ChevronRight, Columns2, CornerDownLeft, Keyboard, PanelLeft, Search, X } from 'lucide-react'
+import { ChevronRight, Columns2, Keyboard, PanelLeft, Plus, Search, X } from 'lucide-react'
 import {
   closeStageNoteEditor,
   openStageNoteInEditor,
   readStageNoteFromEditor,
+  supportsExternalEditor,
   STATE_CONFIG,
   stateLabel,
   stateRank,
@@ -325,6 +326,13 @@ export function StageNotesDialog({
     },
     [applicationsById],
   )
+
+  /**
+   * What tells two applications at the same company apart in the picker, where the stage
+   * is not on the row at all: the role, grouped under the company rather than repeating
+   * it on every row.
+   */
+  const applicationRole = useCallback((application: Application) => application.role?.trim() || 'No role', [])
 
   /**
    * Ids for the panes this sitting creates. A counter rather than a uuid: it is only ever
@@ -1067,15 +1075,35 @@ export function StageNotesDialog({
     return found
   }, [activeRef.applicationId, applications, labelOf])
 
-  const quickOpenEntries: QuickOpenEntry[] = useMemo(
-    () =>
-      [...pickable].map(([key, entry]) => ({
-        id: key,
-        label: entry.label,
-        open: refByKey.has(key),
-      })),
-    [pickable, refByKey],
-  )
+  /**
+   * One row per application rather than one per stage: the stage is what the dropdown on
+   * that row is for, so the list the fuzzy search runs over stays the length of the
+   * applications instead of the length of every stage any of them could reach.
+   */
+  const quickOpenEntries: QuickOpenEntry[] = useMemo(() => {
+    const byApplication = new Map<string, { application: Application; refs: NoteRef[] }>()
+    for (const { ref } of pickable.values()) {
+      const application = applicationsById.get(ref.applicationId)
+      if (!application) continue
+      const group = byApplication.get(application.id) ?? { application, refs: [] }
+      group.refs.push(ref)
+      byApplication.set(application.id, group)
+    }
+    return [...byApplication.values()].map(({ application, refs }) => {
+      const ordered = [...refs].sort((left, right) => stateRank(left.state) - stateRank(right.state))
+      return {
+        id: application.id,
+        company: application.company,
+        role: applicationRole(application),
+        stages: ordered.map((ref) => ({
+          id: noteRefKey(ref),
+          label: stateLabel(ref.state),
+          open: refByKey.has(noteRefKey(ref)),
+        })),
+        defaultStageId: noteRefKey({ applicationId: application.id, state: application.state }),
+      }
+    })
+  }, [applicationRole, applicationsById, pickable, refByKey])
 
   const openFromPicker = (key: string) => {
     const ref = pickable.get(key)?.ref
@@ -1429,6 +1457,16 @@ export function StageNotesDialog({
               </div>
             )
           })}
+          <button
+            aria-keyshortcuts={shortcutKeys('P')}
+            aria-label="Go to stage"
+            className="icon-button panel__tab-add"
+            onClick={() => setQuickOpen(true)}
+            title={`Open the note picker (${shortcutLabel('P')})`}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={14} />
+          </button>
         </div>
 
         {/*
@@ -1484,7 +1522,7 @@ export function StageNotesDialog({
           // Only the focused pane, which is the one the jump scrolls; a link clicked in
           // another pane focuses it first, so this is that pane by the time it lands.
           onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
-          onOpenInEditor={() => openInEditor(shown)}
+          onOpenInEditor={supportsExternalEditor() ? () => openInEditor(shown) : undefined}
           onRevise={(entryId, revised) =>
             onRevise(shown.applicationId, shown.state, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}
@@ -1541,16 +1579,6 @@ export function StageNotesDialog({
           >
             <Columns2 aria-hidden="true" size={14} />
             {isSplit ? 'Unsplit' : 'Split'}
-          </button>
-          <button
-            aria-keyshortcuts={shortcutKeys('P')}
-            className="button button--quiet panel__chrome-button"
-            onClick={() => setQuickOpen(true)}
-            title={`Open the note picker (${shortcutLabel('P')})`}
-            type="button"
-          >
-            <CornerDownLeft aria-hidden="true" size={14} />
-            Go to stage
           </button>
           <button
             aria-keyshortcuts={shortcutKeys('F')}
