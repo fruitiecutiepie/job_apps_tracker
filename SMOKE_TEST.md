@@ -129,8 +129,10 @@ neither a finger nor any browser automation.
 8. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
    app goes to the **Prep notes** destination in the header rather than opening a dialog over the
    board, that the view strip no longer marks any view as current, that the bar above the panel offers none of the
-   collection's filters, that the rail at the sidebar's edge switches between **Outline** and
-   **All prep notes** and leaves only itself when both are closed, that the tree groups notes by
+   collection's filters, that the sidebar stacks **Outline** over **All prep notes** with
+   **Go to a stage** under them, that each half folds from its own heading and the handle
+   between them sizes the two, that **Sidebar** in the title bar puts the whole thing away and
+   brings it back, that the tree groups notes by
    stage down the pipeline and lists no stage you have written nothing for — type a word you know is
    in another application's note and confirm the tree filters to it and picking it opens it, then
    drag a row onto the other pane's tabs and onto a pane edge and confirm it lands where it was
@@ -233,7 +235,7 @@ neither a finger nor any browser automation.
    Reopen the panel and select the keyboard button in the title bar. Confirm the list names all
    five shortcuts, that on macOS they read `⌘F` and elsewhere `Ctrl+F`, that Tab reaches the button
    and Enter opens it, that Escape closes the list and returns focus to it without closing the
-   panel, and that hovering **Split**, **Go to stage**, **Find**, and the outline toggle shows the
+   panel, and that hovering **Split**, **Find**, and the sidebar toggle shows the
    same shortcut each one answers.
 9. With `VISUAL` or `EDITOR` set to a GUI editor, select **Editor** on a stage note. Confirm the file
    opens, that `data/editing/` holds it, and that the banner names the editor and path. Save a change

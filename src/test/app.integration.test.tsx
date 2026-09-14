@@ -610,7 +610,6 @@ describe('job applications tracker', () => {
 
     // The rail carries both panels, so the outline is not what has to be given up to
     // browse the rest.
-    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
     const tree = within(panel).getByRole('list', { name: 'Prep notes by stage' })
 
     // Grouped by the stage they prepare for, down the pipeline rather than by company.
@@ -638,7 +637,6 @@ describe('job applications tracker', () => {
 
     // The search belongs with the notes it searches, not with the collection's filters.
     expect(screen.queryByRole('searchbox', { name: 'Search applications' })).not.toBeInTheDocument()
-    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
     await user.type(within(panel).getByRole('searchbox', { name: 'Search prep notes' }), 'teleoperation')
 
     const tree = within(panel).getByRole('list', { name: 'Prep notes by stage' })
@@ -680,11 +678,11 @@ describe('job applications tracker', () => {
     ).toBe(wider)
 
     // Dragged past the point of being readable it closes, rather than leaving a column
-    // nobody could use. The rail is still there to bring it back.
+    // nobody could use. The title bar's control is still there to bring it back.
     within(restored).getByRole('separator', { name: 'Resize the sidebar' }).focus()
     await user.keyboard('{ArrowLeft>40/}')
     expect(within(restored).queryByText('Outline')).not.toBeInTheDocument()
-    expect(within(restored).getByRole('button', { name: 'Show the outline' })).toBeInTheDocument()
+    expect(within(restored).getByRole('button', { name: 'Sidebar' })).toBeInTheDocument()
   })
 
   it('marks the searched words in a hit, and lands on them when it is picked', async () => {
@@ -693,7 +691,6 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
     await user.type(within(panel).getByRole('searchbox', { name: 'Search prep notes' }), 'teleoperation')
 
     const hits = within(panel).getByRole('list', { name: /^Matches in Echo Robotics/ })
@@ -721,7 +718,6 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
 
     const edge = () => within(panel).getByRole('separator', { name: 'Resize the sidebar' })
     edge().focus()
@@ -730,9 +726,8 @@ describe('job applications tracker', () => {
 
     // The edge is still there with the sidebar shut, because it is how the sidebar comes
     // back as well as how it goes: a width is something to drag to, not only from. And it
-    // is beside the rail rather than somewhere else on the row — the collapsed body keeps
-    // a track for it, or the grid wraps it onto a row of its own.
-    expect(edge().previousElementSibling).toHaveClass('panel__rail')
+    // is the first thing in the body, the column having nothing else left to hold.
+    expect(edge().previousElementSibling).toBeNull()
     edge().focus()
     await user.keyboard('{ArrowRight}')
 
@@ -741,18 +736,67 @@ describe('job applications tracker', () => {
     expect(Number(edge().getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(96)
   })
 
-  it('keeps the rail when both sidebar panels are closed', async () => {
+  it('collapses each half of the sidebar on its own, and sizes the two', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
 
+    // Each section folds away from its own heading, leaving the heading to bring it back.
     await user.click(within(panel).getByRole('button', { name: 'Hide the outline' }))
-    // A control inside the thing it hides would have nowhere to be once it is hidden.
+    expect(within(panel).queryByRole('list', { name: 'Outline' })).not.toBeInTheDocument()
+    expect(within(panel).getByRole('list', { name: 'Prep notes by stage' })).toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: 'Show the outline' })).toBeInTheDocument()
-    expect(within(panel).getByRole('button', { name: 'Show every prep note' })).toBeInTheDocument()
+
+    await user.click(within(panel).getByRole('button', { name: 'Show the outline' }))
+    expect(within(panel).getByRole('list', { name: 'Outline' })).toBeInTheDocument()
+
+    // And the two share the column on a handle, like the panes do.
+    const edge = within(panel).getByRole('separator', { name: 'Resize the outline' })
+    const height = () => Number(edge.getAttribute('aria-valuenow'))
+    const before = height()
+    edge.focus()
+    await user.keyboard('{ArrowDown}{ArrowDown}')
+    expect(height()).toBeGreaterThan(before)
+  })
+
+  it('shows and hides the whole sidebar from the title bar', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // In the title bar with Split and Find rather than in a rail of its own: a column kept
+    // permanently to hold one button costs more than the button is worth.
+    const toggle = within(panel).getByRole('button', { name: 'Sidebar' })
+    expect(toggle.closest('.panel__titlebar')).not.toBeNull()
+    expect(panel.querySelector('.panel__rail')).toBeNull()
+
+    await user.click(toggle)
     expect(within(panel).queryByRole('list', { name: 'Prep notes by stage' })).not.toBeInTheDocument()
+    await user.click(toggle)
+    expect(within(panel).getByRole('list', { name: 'Prep notes by stage' })).toBeInTheDocument()
+  })
+
+  it('keeps the sidebar reachable when it is closed', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    await user.click(within(panel).getByRole('button', { name: 'Sidebar' }))
+    // Everything it held goes together, being one panel rather than two.
+    expect(within(panel).queryByRole('list', { name: 'Prep notes by stage' })).not.toBeInTheDocument()
+    expect(within(panel).queryByText('Outline')).not.toBeInTheDocument()
+    expect(within(panel).queryByRole('button', { name: /^Go to a stage/ })).not.toBeInTheDocument()
+
+    // The control that brings it back is in the title bar, where it was when it sent it
+    // away — and the edge is still there to pull it out by.
+    expect(within(panel).getByRole('button', { name: 'Sidebar' })).toBeInTheDocument()
+    expect(within(panel).getByRole('separator', { name: 'Resize the sidebar' })).toBeInTheDocument()
   })
 
   it('leaves the notes when a view is picked from the strip', async () => {
@@ -903,7 +947,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const opened = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(opened).getByRole('button', { name: 'Go to stage' }))
+    await user.click(within(opened).getByRole('button', { name: /^Go to a stage/ }))
     await user.click(
       within(within(opened).getByRole('list', { name: 'Applications' })).getByRole('button', {
         name: /^Human Factors Researcher/,
@@ -1134,7 +1178,7 @@ describe('job applications tracker', () => {
     const reopened = screen.getByRole('region', { name: 'Stage prep notes' })
     expect(within(reopened).queryByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })).not.toBeInTheDocument()
 
-    await user.click(within(reopened).getByRole('button', { name: 'Go to stage' }))
+    await user.click(within(reopened).getByRole('button', { name: /^Go to a stage/ }))
     await user.selectOptions(
       within(reopened).getByRole('combobox', {
         name: 'Other stages for Halcyon Maps, Engineering Manager',
@@ -1404,14 +1448,15 @@ describe('job applications tracker', () => {
     const find = within(dialog).getByRole('button', { name: 'Find' })
     expect(find).toHaveAttribute('aria-keyshortcuts', 'Meta+F Control+F')
     expect(find).toHaveAttribute('title', 'Open the find bar (Ctrl+F)')
-    expect(within(dialog).getByRole('button', { name: 'Go to stage' })).toHaveAttribute(
+    // The picker's control carries its shortcut on its face rather than in a tooltip: it
+    // sits in the sidebar, where a reader is already looking for a note, and is the only
+    // visible thing that names the binding now that the strips have no + of their own.
+    const picker = within(dialog).getByRole('button', { name: /^Go to a stage/ })
+    expect(picker).toHaveAttribute('aria-keyshortcuts', 'Meta+P Control+P')
+    expect(picker).toHaveTextContent('Ctrl+P')
+    expect(within(dialog).getByRole('button', { name: 'Sidebar' })).toHaveAttribute(
       'title',
-      'Open the note picker (Ctrl+P)',
-    )
-    // This one lives in the sidebar beside the outline it collapses, not in the title bar.
-    expect(within(dialog).getByRole('button', { name: 'Hide the outline' })).toHaveAttribute(
-      'title',
-      'Hide the outline (Ctrl+B)',
+      'Hide the sidebar (Ctrl+B)',
     )
     expect(within(dialog).getByRole('button', { name: 'Split' })).toHaveAttribute(
       'title',
@@ -1917,7 +1962,6 @@ describe('job applications tracker', () => {
     // Panes hold Interview 2 and Interview 1. Reading the first, ask for the note the
     // second is showing: that is a request to have it here, not to be sent over there.
     await user.click(within(strip(1)).getByRole('tab', { name: /Interview 2/ }))
-    await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
     const tree = within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
     await user.click(
       within(tree.getByRole('listitem', { name: 'Stage Interview 1' }))
@@ -1938,7 +1982,6 @@ describe('job applications tracker', () => {
     const before = tabs()
 
     await user.click(within(dialog).getByRole('tab', { name: /Offer/ }))
-    await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
     const tree = within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
     await user.click(
       within(tree.getByRole('listitem', { name: 'Stage Interview 2' }))
@@ -1985,23 +2028,18 @@ describe('job applications tracker', () => {
     expect(panes[0]).toHaveAccessibleName('Halcyon Maps · Offer')
     expect(panes[1]).toHaveAccessibleName('Halcyon Maps · Interview 1')
 
-    // The outline collapses away to give the notes the full width, and comes back. The
-    // control that does it lives in the rail beside the outline it acts on, not up in the
-    // title bar among the actions that act on the notes — and it is in the rail whether
-    // the outline is showing or not, so it never moves when it is pressed.
+    // The sidebar goes away to give the notes the full width, and comes back. The control
+    // is in the title bar and stays there either way, so it never moves when it is pressed
+    // — a column kept permanently to hold one button costs more than the button is worth.
     expect(within(dialog).getByText('Outline')).toBeInTheDocument()
-    const toggle = within(dialog).getByRole('button', { name: 'Hide the outline' })
-    expect(toggle.closest('.panel__rail')).not.toBeNull()
-    expect(toggle.closest('.panel__titlebar')).toBeNull()
+    const toggle = within(dialog).getByRole('button', { name: 'Sidebar' })
+    expect(toggle.closest('.panel__titlebar')).not.toBeNull()
 
     await user.click(toggle)
     expect(within(dialog).queryByText('Outline')).not.toBeInTheDocument()
+    expect(within(dialog).getByRole('button', { name: 'Sidebar' })).toBe(toggle)
 
-    const railToggle = within(dialog).getByRole('button', { name: 'Show the outline' })
-    expect(railToggle.closest('.panel__rail')).not.toBeNull()
-    expect(railToggle).toBe(toggle)
-
-    await user.click(railToggle)
+    await user.click(toggle)
     expect(within(dialog).getByText('Outline')).toBeInTheDocument()
   })
 
@@ -2097,7 +2135,7 @@ describe('job applications tracker', () => {
     expect(within(panel).getByRole('button', { name: 'Hide what they said in Halcyon Maps · Interview 2' })).toBeInTheDocument()
   })
 
-  it('opens a picked note into the pane whose + was pressed', async () => {
+  it('opens a picked note into the pane being read, there being one picker now', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -2106,27 +2144,18 @@ describe('job applications tracker', () => {
     await user.click(within(panel).getByRole('button', { name: 'Split' }))
 
     const strip = (paneNumber: number) =>
-      within(within(panel).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` }))
+      within(panel).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
     const choices = () => within(within(panel).getByRole('list', { name: 'Applications' }))
 
-    // The second pane is the one being read, so its tab is the one the picker would have
-    // opened beside if the + were the panel's rather than this strip's.
-    await user.click(strip(2).getAllByRole('tab')[0])
-
-    await user.click(strip(1).getByRole('button', { name: 'Go to stage' }))
+    // Reading the second pane, so that is where a picked note belongs: the picker is one
+    // control in the sidebar now rather than one per strip, and the pane being read is
+    // what says where a note lands — the same rule every other way of opening one keeps.
+    await user.click(within(strip(2)).getAllByRole('tab')[0])
+    await user.click(within(panel).getByRole('button', { name: /^Go to a stage/ }))
     await user.click(choices().getByRole('button', { name: /^Human Factors Researcher/ }))
 
-    expect(strip(1).getByRole('tab', { name: /Echo Robotics/ })).toBeInTheDocument()
-    expect(strip(2).queryByRole('tab', { name: /Echo Robotics/ })).not.toBeInTheDocument()
-
-    // And the other way round: reading the first pane, the second pane's + still opens
-    // into the second pane.
-    await user.click(strip(1).getAllByRole('tab')[0])
-    await user.click(strip(2).getByRole('button', { name: 'Go to stage' }))
-    await user.click(choices().getByRole('button', { name: /^Operations Lead/ }))
-
-    expect(strip(2).getByRole('tab', { name: /Orbit & Oak/ })).toBeInTheDocument()
-    expect(strip(1).queryByRole('tab', { name: /Orbit & Oak/ })).not.toBeInTheDocument()
+    expect(within(strip(2)).getByRole('tab', { name: /Echo Robotics/ })).toBeInTheDocument()
+    expect(within(strip(1)).queryByRole('tab', { name: /Echo Robotics/ })).not.toBeInTheDocument()
   })
 
   it('opens any stage from the quick open picker, and closes it with Escape', async () => {
@@ -2136,7 +2165,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
 
-    await user.click(within(dialog).getByRole('button', { name: 'Go to stage' }))
+    await user.click(within(dialog).getByRole('button', { name: /^Go to a stage/ }))
     const picker = within(dialog).getByRole('textbox', { name: 'Go to stage' })
     const choices = () => within(within(dialog).getByRole('list', { name: 'Applications' }))
 
@@ -2170,7 +2199,7 @@ describe('job applications tracker', () => {
     expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
 
     // Picking a stage from a row's menu opens it as a tab, ready to type into.
-    await user.click(within(dialog).getByRole('button', { name: 'Go to stage' }))
+    await user.click(within(dialog).getByRole('button', { name: /^Go to a stage/ }))
     await user.selectOptions(
       choices().getByRole('combobox', { name: 'Other stages for Halcyon Maps, Engineering Manager' }),
       'Take-home assessment',
@@ -3047,7 +3076,6 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
     await user.click(within(panel).getByRole('button', { name: 'Split' }))
-    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
 
     const strip = (paneNumber: number) =>
       within(panel).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
@@ -3068,7 +3096,6 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
     expect(within(panel).getAllByRole('tabpanel')).toHaveLength(1)
 
     pointerDragToEdge(within(panel).getByRole('button', { name: /^Echo Robotics/ }), 'right')
@@ -3085,7 +3112,6 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
     await user.click(within(panel).getByRole('button', { name: 'Split' }))
-    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
 
     const strip = (paneNumber: number) =>
       within(panel).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
@@ -3115,7 +3141,6 @@ describe('job applications tracker', () => {
     try {
       await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
       const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-      await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
 
       scrolled.length = 0
       await user.click(
@@ -3137,7 +3162,6 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
     await user.click(within(dialog).getByRole('button', { name: 'Split' }))
-    await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
 
     const strip = (paneNumber: number) =>
       within(dialog).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
@@ -3170,7 +3194,6 @@ describe('job applications tracker', () => {
       within(dialog).getByLabelText('Marble & Finch · Applied prep notes'),
       'Ask about the rebrand',
     )
-    await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
 
     // The tree reads the stored notes, so it lists this one once the autosave has landed.
     const row = await waitFor(
@@ -3197,7 +3220,6 @@ describe('job applications tracker', () => {
     await user.type(within(dialog).getByLabelText('Find in notes'), 'the')
     const before = within(dialog).getByText(/of \d+/).textContent
 
-    await user.click(within(dialog).getByRole('button', { name: 'Show every prep note' }))
     const row = within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
       .getByRole('listitem', { name: 'Stage Interview 2' })
     pointerDragToEdge(within(row).getByRole('button', { name: /^Halcyon Maps/ }), 'right')

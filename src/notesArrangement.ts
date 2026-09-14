@@ -64,8 +64,8 @@ export const CAPTURE_STEP = 24
  * it goes and the point past which it closes: a column too thin to read its own rows is
  * not a narrower sidebar, it is a sidebar in the way, so asking for one closes it instead.
  * One rule rather than a floor and a separate collapse point below it — with both, the
- * clamp held the width above the threshold and the collapse could never be reached.
- * The rail stays, so the way back is where the way out was, and the width is kept.
+ * clamp held the width above the threshold and the collapse could never be reached. The
+ * edge stays either way, so the way back is where the way out was, and the width is kept.
  *
  * The floor is what the sidebar's own contents can be squeezed into, not a guess: the
  * search box gives up the `9rem` the context bar's copy holds, and a stage heading
@@ -79,6 +79,21 @@ export const SIDEBAR_STEP = 16
 
 /** The width the stylesheet gives it before anyone drags it, matching `--sidebar`. */
 export const DEFAULT_SIDEBAR = 208
+
+/**
+ * How the sidebar's two halves share it: the outline takes a height and the notes tree
+ * takes what is left. The floor is a couple of rows — below that the heading's own fold is
+ * the way to put it away, one control per outcome — and the ceiling leaves the tree
+ * something to show.
+ */
+export const MIN_OUTLINE = 48
+export const MAX_OUTLINE = 480
+export const OUTLINE_STEP = 16
+export const DEFAULT_OUTLINE = 180
+
+export function outlineHeightWithin(height: number): number {
+  return Math.round(Math.min(MAX_OUTLINE, Math.max(MIN_OUTLINE, height)))
+}
 
 export interface Arrangement {
   layout: LayoutNode
@@ -94,6 +109,8 @@ export interface Arrangement {
    * its own width.
    */
   sidebarWidth?: number
+  /** How much of the sidebar the outline takes, the notes tree taking the rest. */
+  outlineHeight?: number
 }
 
 /**
@@ -105,7 +122,7 @@ export function arrangementKey(profile: string = trackerProfile()): string {
 }
 
 export function serializeArrangement(
-  { layout, focusedGroupId, captureHeight, sidebarWidth }: Arrangement,
+  { layout, focusedGroupId, captureHeight, sidebarWidth, outlineHeight }: Arrangement,
 ): string {
   return JSON.stringify({
     version: ARRANGEMENT_VERSION,
@@ -113,6 +130,7 @@ export function serializeArrangement(
     focusedGroupId,
     captureHeight,
     sidebarWidth,
+    outlineHeight,
   })
 }
 
@@ -288,6 +306,10 @@ export function restoreArrangement(
   if (captureHeight !== undefined) restored.captureHeight = captureHeight
   const sidebarWidth = readSidebarWidth(parsed.sidebarWidth)
   if (sidebarWidth !== undefined) restored.sidebarWidth = sidebarWidth
+  const outlineHeight = typeof parsed.outlineHeight === 'number' && Number.isFinite(parsed.outlineHeight)
+    ? outlineHeightWithin(parsed.outlineHeight)
+    : undefined
+  if (outlineHeight !== undefined) restored.outlineHeight = outlineHeight
   return restored
 }
 

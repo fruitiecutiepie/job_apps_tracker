@@ -85,6 +85,12 @@
   /* Prep notes panel: sidebar width, and the height of one stage's sticky header
      (a --control row, --s3 above and below it, and a 1px bottom border) */
   --sidebar: 208px;
+  /* How much of the sidebar the outline may take before it scrolls on its own. In rem for
+     the same reason as the capture log: it holds the same number of rows as the text
+     scales, and the outline's length is not the reader's to control — a note with thirty
+     headings would otherwise push every note in the collection off the bottom. */
+  --outline-max: 13rem;
+
   /* How much of a pane the captured lines may take before they scroll on their own. The
      panel sets this from the height the reader dragged the dock to; this is the fallback
      for a render that has not been given one, and matches `DEFAULT_CAPTURE_LOG`. */
@@ -2594,7 +2600,7 @@ tbody tr:hover {
 
 .panel__body {
   display: grid;
-  grid-template-columns: auto var(--sidebar) auto minmax(0, 1fr);
+  grid-template-columns: var(--sidebar) auto minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -2615,32 +2621,11 @@ tbody tr:hover {
   background: var(--line-strong);
 }
 
-/* With no panel open the rail is all that is left of the column: the controls that bring
-   one back have to be where the ones that sent it away were, or they are no more findable
-   than a shortcut. Still three tracks, because the edge stays too — it is how the sidebar
-   is pulled back out — and a grid given fewer tracks than it has children wraps the rest
-   onto a row of their own, which is where the edge went. `auto` rather than a width token
-   for both: the rail is one icon button wide and the edge one handle. */
+/* Closed, the edge is all that is left of the column — one handle wide, where a rail kept
+   for one button was forty. The control that brings the sidebar back lives in the title
+   bar, so nothing has to be kept here to hold it. */
 .panel__body--rail {
-  grid-template-columns: auto auto minmax(0, 1fr);
-}
-
-/* The switcher, and the only part of the sidebar that is always there. Two panels over one
-   column: the outline is the note you are reading, the tree is the ones you are not, and
-   reaching for either never costs the width of the other. */
-.panel__rail {
-  display: grid;
-  gap: var(--s2);
-  align-content: start;
-  justify-items: center;
-  padding: var(--s3) var(--s2);
-  border-right: 1px solid var(--line);
-  background: var(--surface-2);
-}
-
-.panel__rail .icon-button[aria-pressed='true'] {
-  color: var(--accent);
-  background: var(--accent-weak);
+  grid-template-columns: auto minmax(0, 1fr);
 }
 
 .panel__sidebar {
@@ -2663,13 +2648,51 @@ tbody tr:hover {
   margin: 0 0 var(--s2);
 }
 
+/* The heading is the control that folds its own section away, so it reads as a heading and
+   behaves as a disclosure: quiet until it is reached for. */
 .panel__sidebar-title {
+  display: flex;
+  gap: var(--s1);
+  align-items: center;
+  width: 100%;
   margin: 0;
+  padding: var(--s1) 0;
+  border: 0;
   color: var(--ink-3);
+  background: none;
   font-size: var(--t1);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.panel__sidebar-title:hover {
+  color: var(--ink);
+}
+
+.panel__sidebar-title svg {
+  transition: transform 120ms ease;
+  transform: rotate(90deg);
+}
+
+.panel__sidebar-title--folded svg {
+  transform: rotate(0deg);
+}
+
+/* The handle the two halves share, the same measure as every other one in the panel. */
+.panel__sidebar-split {
+  height: var(--pane-handle);
+  margin: 0 calc(var(--s2) * -1);
+  background: transparent;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.panel__sidebar-split:hover,
+.panel__sidebar-split:focus-visible {
+  background: var(--line-strong);
 }
 
 /*
@@ -3237,24 +3260,6 @@ tbody tr:hover {
  */
 .panel__tab-slot--drop-target .panel__tab {
   background: var(--accent-weak);
-}
-
-/* Sits at the end of the strip like one more tab, not a boxed chrome control. */
-.panel__tab-add {
-  flex: 0 0 auto;
-  /* It sets the strip's height, so it takes the chrome's dense measure with the tabs
-     rather than the form measure it would inherit as an icon button. */
-  min-height: var(--control);
-  border: 0;
-  border-radius: 0;
-  color: var(--ink-3);
-  background: none;
-}
-
-.panel__tab-add:hover {
-  color: var(--ink);
-  background: var(--surface-3);
-  border-color: transparent;
 }
 
 .panel__tab-badge {
@@ -4005,6 +4010,39 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   color: var(--ink-3);
 }
 
+/*
+ * The picker, named where a reader is already looking for a note. It sits at the foot of
+ * the tree because it answers what the tree cannot: a stage nothing is written for yet.
+ * The shortcut is on the face of it rather than in a tooltip — this is the visible half of
+ * a binding that was otherwise only in the README and a hover.
+ */
+.panel__sidebar-picker {
+  justify-content: start;
+  width: 100%;
+  gap: var(--s2);
+  color: var(--ink-2);
+}
+
+.panel__sidebar-picker-key {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
+/* One column of two sections and the control under them, each taking what it needs. */
+.panel__sidebar-section {
+  display: grid;
+  min-height: 0;
+  gap: var(--s2);
+}
+
+/* The height is set from the handle between the two halves; this only has to scroll what
+   does not fit in it. */
+.panel__outline-scroll {
+  min-height: 0;
+  overflow-y: auto;
+}
+
 .notes-tree__more {
   padding: 0 var(--s2);
   color: var(--ink-3);
@@ -4220,21 +4258,15 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     grid-template-rows: auto minmax(0, 1fr);
   }
 
-  .panel__sidebar,
-  .panel__rail {
+  .panel__sidebar {
     gap: var(--s3);
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
 
-  /* The body is one column here, so the rail is a row across the top of the notes. */
+  /* The body is one column here, so a closed sidebar leaves nothing but the notes. */
   .panel__body--rail {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .panel__rail {
-    justify-items: start;
-    padding: var(--s3) var(--s4);
   }
 
   /* A strip rather than a column, so it is capped and scrolls instead of pushing the

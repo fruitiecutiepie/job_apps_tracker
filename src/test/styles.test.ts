@@ -59,20 +59,14 @@ describe('shortcut keys', () => {
   })
 })
 
-describe('collapsed outline', () => {
-  it('keeps a rail where the sidebar was, rather than closing the column away', () => {
-    // A control inside the thing it hides has nowhere to be once it is hidden, so the
-    // collapsed state is a narrower first column, never a missing one.
-    // Three tracks even with no panel open, the edge staying so the sidebar can be pulled
-    // back out: a grid given fewer tracks than children wraps the rest onto their own row.
-    expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto auto minmax\(0, 1fr\)/)
-
-    const rail = ruleBody('.panel__rail')
-    // It reads as the sidebar it stands in for: same face, same edge.
-    expect(rail).toMatch(/background:\s*var\(--surface-2\)/)
-    expect(rail).toMatch(/border-right:\s*1px solid var\(--line\)/)
+describe('a closed sidebar', () => {
+  it('leaves its edge and nothing else', () => {
+    // The control that brings it back is in the title bar, so the column has nothing to
+    // hold but the handle the sidebar is pulled out by — one handle wide, where a rail
+    // kept for one button was forty.
+    expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\)/)
+    expect(ruleBody('.panel__sidebar-resize')).toMatch(/width:\s*var\(--pane-handle\)/)
     expect(ruleBody('.panel__sidebar')).toMatch(/background:\s*var\(--surface-2\)/)
-    expect(rail.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
   })
 })
 
@@ -228,23 +222,17 @@ describe('prep notes view', () => {
     expect(ruleBody('.panel__notes .stage-note__header')).toMatch(/padding:\s*var\(--s2\) var\(--s3\)/)
   })
 
-  it('sizes the tab strip by the chrome measure, including the control that sets it', () => {
-    // The + is what the strip takes its height from, so a form-sized icon button there
-    // makes every tab strip in the panel taller than the tabs in it ask for.
+  it('sizes the tab strip by the chrome measure', () => {
+    // A strip of tabs is chrome, and takes the dense measure the rest of the chrome does
+    // rather than the form measure a button would inherit.
     expect(ruleBody('.panel__tab')).toMatch(/min-height:\s*var\(--control\)/)
-    expect(ruleBody('.panel__tab-add')).toMatch(/min-height:\s*var\(--control\)/)
   })
 
-  it('leaves the rail and the edge when both sidebar panels are closed', () => {
-    // The rail is the switcher and the way back, so it is what the column collapses to —
-    // one icon wide, and the same element whether a panel is open or not. The edge stays
-    // beside it, being how the sidebar is pulled back out as well as pushed in, so the
-    // collapsed body still has a track for it: a grid given fewer tracks than it has
-    // children wraps the rest onto a row of their own, which is where the edge went.
-    expect(ruleBody('.panel__body')).toMatch(/grid-template-columns:\s*auto var\(--sidebar\) auto minmax\(0, 1fr\)/)
-    expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto auto minmax\(0, 1fr\)/)
-    // Which panel is showing is a pressed state on its own control, not a mark elsewhere.
-    expect(ruleBody(".panel__rail .icon-button\\[aria-pressed='true'\\]")).toMatch(/--accent/)
+  it('leaves only the edge when the sidebar is closed', () => {
+    // One handle wide, where a rail kept for one button was forty. What brings the sidebar
+    // back is in the title bar, so the column has nothing left to hold.
+    expect(ruleBody('.panel__body')).toMatch(/grid-template-columns:\s*var\(--sidebar\) auto minmax\(0, 1fr\)/)
+    expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\)/)
   })
 
   it('marks a tree row by what it is rather than by colour alone', () => {

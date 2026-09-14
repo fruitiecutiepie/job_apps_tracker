@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { ChevronRight, Columns2, Keyboard, ListTree, PanelLeft, Plus, Search, X } from 'lucide-react'
+import { ChevronRight, Columns2, Keyboard, PanelLeft, Plus, Search, X } from 'lucide-react'
 import {
   closeStageNoteEditor,
   openStageNoteInEditor,
@@ -67,6 +67,11 @@ import {
   SIDEBAR_STEP,
   MAX_SIDEBAR,
   MIN_SIDEBAR,
+  MAX_OUTLINE,
+  MIN_OUTLINE,
+  OUTLINE_STEP,
+  DEFAULT_OUTLINE,
+  outlineHeightWithin,
   sidebarWidthWithin,
   type Arrangement,
 } from './notesArrangement'
@@ -306,6 +311,34 @@ function wordCount(text: string): number {
   return trimmed ? trimmed.split(/\s+/).length : 0
 }
 
+/**
+ * A sidebar section's heading, which is also what folds it away. The control is inside the
+ * thing it hides for once, and that works here because the heading stays: what goes is the
+ * list under it, not the row that names it.
+ */
+function SidebarHeading({
+  label,
+  shown,
+  onToggle,
+}: {
+  label: string
+  shown: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      aria-expanded={shown}
+      aria-label={`${shown ? 'Hide' : 'Show'} the ${label.toLowerCase()}`}
+      className={`panel__sidebar-title${shown ? '' : ' panel__sidebar-title--folded'}`}
+      onClick={onToggle}
+      type="button"
+    >
+      <ChevronRight aria-hidden="true" size={12} />
+      {label}
+    </button>
+  )
+}
+
 /** One external editing session, with the note it belongs to. */
 interface OpenSession {
   ref: NoteRef
@@ -420,30 +453,58 @@ export function StageNotesPanel({
   const savingRef = useRef(false)
   const mountedRef = useRef(true)
   /**
-   * Which panel the sidebar shows, and whether it is showing at all. Two panels over one
-   * column rather than a column each: the outline is the note you are reading and the tree
-   * is the ones you are not, and reaching for either should never cost the width of the
-   * other. Closed leaves the rail, because a control inside the thing it hides has nowhere
-   * to be once hidden.
-   *
-   * Which panel and whether it is open are two facts rather than one nullable one, because
-   * the sidebar can be closed by dragging its edge in — and pulling the edge back out has
-   * to bring back what was there, not a default.
+   * Whether the sidebar is showing. One panel holding both things a reader navigates with
+   * — the outline of the note in front of them, and every note behind it — stacked in one
+   * column rather than switched between: having to choose which of the two you want is a
+   * question the panel can answer for you by showing both. Closed leaves the rail, because
+   * a control inside the thing it hides has nowhere to be once hidden.
    */
-  const [sidebarPanel, setSidebarPanel] = useState<'outline' | 'notes'>('outline')
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  /**
+   * Whether each half of the sidebar is showing. Held here rather than persisted, the way
+   * the capture dock's own fold is: what a reader wants beside them changes with what they
+   * are doing, and the heading that folds one away is always there to bring it back.
+   */
+  const [outlineShown, setOutlineShown] = useState(true)
+  const [notesShown, setNotesShown] = useState(true)
+  const [outlineHeight, setOutlineHeight] = useState(initial.outlineHeight ?? DEFAULT_OUTLINE)
+  const outlineHeightRef = useRef(outlineHeight)
+  useEffect(() => {
+    outlineHeightRef.current = outlineHeight
+  }, [outlineHeight])
   const sidebarOpenRef = useRef(sidebarOpen)
-  const sidebarPanelRef = useRef(sidebarPanel)
   useEffect(() => {
     sidebarOpenRef.current = sidebarOpen
-    sidebarPanelRef.current = sidebarPanel
-  }, [sidebarOpen, sidebarPanel])
+  }, [sidebarOpen])
 
-  /** Shows a panel, or closes the sidebar when it is the one already showing. */
-  const toggleSidebar = useCallback((panel: 'outline' | 'notes') => {
-    setSidebarOpen((open) => !(open && panel === sidebarPanelRef.current))
-    setSidebarPanel(panel)
+  const toggleSidebar = useCallback(() => setSidebarOpen((open) => !open), [])
+
+  /** How the two halves of the sidebar share it: the outline's height, the tree takes the rest. */
+  const resizeOutline = useCallback((delta: number) => {
+    setOutlineHeight((current) => outlineHeightWithin(current + delta))
   }, [])
+
+  const endOutlineDrag = useRef<(() => void) | null>(null)
+  useEffect(() => () => endOutlineDrag.current?.(), [])
+
+  const beginOutlineDrag = useCallback(
+    (startY: number) => {
+      let from = startY
+      const move = (event: MouseEvent) => {
+        resizeOutline(event.clientY - from)
+        from = event.clientY
+      }
+      const stop = () => {
+        window.removeEventListener('mousemove', move)
+        window.removeEventListener('mouseup', stop)
+        endOutlineDrag.current = null
+      }
+      window.addEventListener('mousemove', move)
+      window.addEventListener('mouseup', stop)
+      endOutlineDrag.current = stop
+    },
+    [resizeOutline],
+  )
   // Find state. `findSeq` remounts the widget so a second Ctrl+F refocuses and selects
   // the query already in it, the way reopening find in an editor does.
   const [findOpen, setFindOpen] = useState(false)
@@ -927,8 +988,8 @@ export function StageNotesPanel({
    * tab.
    */
   useEffect(() => {
-    arrangeRef.current({ layout, focusedGroupId, captureHeight, sidebarWidth })
-  }, [captureHeight, focusedGroupId, layout, sidebarWidth])
+    arrangeRef.current({ layout, focusedGroupId, captureHeight, sidebarWidth, outlineHeight })
+  }, [captureHeight, focusedGroupId, layout, outlineHeight, sidebarWidth])
 
   /*
    * A note asked for from outside the panel. Only the nonce is watched: the ref alone
@@ -1305,7 +1366,7 @@ export function StageNotesPanel({
       }
       if (key === 'b') {
         event.preventDefault()
-        toggleSidebar('outline')
+        toggleSidebar()
         return
       }
       /*
@@ -1675,34 +1736,6 @@ export function StageNotesPanel({
    * the sidebar collapses to a rail holding just this button, and the button does not
    * move when it is pressed.
    */
-  const showingOutline = sidebarOpen && sidebarPanel === 'outline'
-  const showingNotes = sidebarOpen && sidebarPanel === 'notes'
-
-  const sidebarRail = (
-    <div className="panel__rail">
-      <button
-        aria-keyshortcuts={shortcutKeys('B')}
-        aria-label={showingOutline ? 'Hide the outline' : 'Show the outline'}
-        aria-pressed={showingOutline}
-        className="icon-button"
-        onClick={() => toggleSidebar('outline')}
-        title={`${showingOutline ? 'Hide the outline' : 'Show the outline'} (${shortcutLabel('B')})`}
-        type="button"
-      >
-        <PanelLeft aria-hidden="true" size={16} />
-      </button>
-      <button
-        aria-label={showingNotes ? 'Hide every prep note' : 'Show every prep note'}
-        aria-pressed={showingNotes}
-        className="icon-button"
-        onClick={() => toggleSidebar('notes')}
-        title={showingNotes ? 'Hide every prep note' : 'Show every prep note'}
-        type="button"
-      >
-        <ListTree aria-hidden="true" size={16} />
-      </button>
-    </div>
-  )
 
   /**
    * One pane: its own strip of tabs over the note on show. The tabs belong to the pane
@@ -1830,16 +1863,6 @@ export function StageNotesPanel({
               </div>
             )
           })}
-          <button
-            aria-keyshortcuts={shortcutKeys('P')}
-            aria-label="Go to stage"
-            className="icon-button panel__tab-add"
-            onClick={() => setQuickOpen(group.id)}
-            title={`Open the note picker (${shortcutLabel('P')})`}
-            type="button"
-          >
-            <Plus aria-hidden="true" size={14} />
-          </button>
         </div>
 
         {/*
@@ -1981,6 +2004,17 @@ export function StageNotesPanel({
             <Search aria-hidden="true" size={14} />
             Find
           </button>
+          <button
+            aria-keyshortcuts={shortcutKeys('B')}
+            aria-pressed={sidebarOpen}
+            className="button button--quiet panel__chrome-button"
+            onClick={toggleSidebar}
+            title={`${sidebarOpen ? 'Hide' : 'Show'} the sidebar (${shortcutLabel('B')})`}
+            type="button"
+          >
+            <PanelLeft aria-hidden="true" size={14} />
+            Sidebar
+          </button>
           <ShortcutsHelp />
         </div>
 
@@ -1991,48 +2025,107 @@ export function StageNotesPanel({
           // Enter guard is written against the panel being one form around every note.
           onSubmit={(event) => event.preventDefault()}
         >
-          {sidebarRail}
+          {sidebarOpen ? (
+            /*
+             * One sidebar holding both things a reader navigates with: where they are in
+             * the note in front of them, and every note behind it. Stacked rather than
+             * switched between, so choosing which of the two you want is not a question you
+             * have to answer before you can look at either.
+             */
+            <aside aria-label="Notes and outline" className="panel__sidebar">
+              <section aria-label="Outline" className="panel__sidebar-section">
+                <SidebarHeading
+                  label="Outline"
+                  onToggle={() => setOutlineShown((shown) => !shown)}
+                  shown={outlineShown}
+                />
+                {/* The dragged height is a cap rather than a height, so a note with two
+                    headings does not reserve room for twenty: the dock over the captured
+                    lines makes the same trade, and dead space is the thing this sidebar can
+                    least afford. Dragging it shorter than its content still shortens it. */}
+                {outlineShown ? (
+                  outline.length > 0 ? (
+                    <div
+                      className="panel__outline-scroll"
+                      style={{ maxHeight: `${outlineHeight}px` }}
+                    >
+                      <OutlineList
+                        current={trailKey}
+                        depth={0}
+                        nodes={outline}
+                        onPick={jumpToSection}
+                        path={trailKeys}
+                      />
+                    </div>
+                  ) : (
+                    <p className="stage-notes__hint">
+                      {activeBody.trim()
+                        ? 'This note has no headings to outline.'
+                        : 'Nothing written for this stage yet.'}
+                    </p>
+                  )
+                ) : null}
+              </section>
 
-          {showingOutline ? (
-            <aside aria-label="Outline" className="panel__sidebar">
-              <div>
-                <p className="panel__sidebar-title">Outline</p>
-                {outline.length > 0 ? (
-                  <OutlineList
-                    current={trailKey}
-                    depth={0}
-                    nodes={outline}
-                    onPick={jumpToSection}
-                    path={trailKeys}
-                  />
-                ) : (
-                  <p className="stage-notes__hint">
-                    {activeBody.trim()
-                      ? 'This note has no headings to outline.'
-                      : 'Nothing written for this stage yet.'}
-                  </p>
-                )}
-              </div>
+              {/* Only with something on either side of it to divide. */}
+              {outlineShown && notesShown ? (
+                <div
+                  aria-label="Resize the outline"
+                  aria-orientation="horizontal"
+                  aria-valuemax={MAX_OUTLINE}
+                  aria-valuemin={MIN_OUTLINE}
+                  aria-valuenow={outlineHeight}
+                  className="panel__sidebar-split"
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+                    event.preventDefault()
+                    resizeOutline(event.key === 'ArrowDown' ? OUTLINE_STEP : -OUTLINE_STEP)
+                  }}
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    beginOutlineDrag(event.clientY)
+                  }}
+                  role="separator"
+                  tabIndex={0}
+                />
+              ) : null}
 
-              <p className="stage-notes__hint">
-                Notes save as you type. Clearing a stage’s removes its note, but not what you
-                were told in it.
-              </p>
-            </aside>
-          ) : null}
+              <section aria-label="All prep notes" className="panel__sidebar-section">
+                <SidebarHeading
+                  label="All prep notes"
+                  onToggle={() => setNotesShown((shown) => !shown)}
+                  shown={notesShown}
+                />
+                {notesShown ? (
+                <NotesTreeView
+                  applications={applications}
+                  currentKey={activeKey}
+                  draggingKey={drag.key}
+                  onDragStart={drag.start}
+                  onPick={showRef}
+                  onPickMatch={findInNote}
+                  openKeys={openKeys}
+                  wasDragged={drag.wasDragged}
+                />
+                ) : null}
+              </section>
 
-          {showingNotes ? (
-            <aside aria-label="All prep notes" className="panel__sidebar">
-              <NotesTreeView
-                applications={applications}
-                currentKey={activeKey}
-                draggingKey={drag.key}
-                onDragStart={drag.start}
-                onPick={showRef}
-                onPickMatch={findInNote}
-                openKeys={openKeys}
-                wasDragged={drag.wasDragged}
-              />
+              {/*
+                * The one thing the tree above cannot reach: a stage nothing is written for
+                * yet. Named here as well as on the + in every strip, so the picker is
+                * findable from the place a reader is already looking for a note rather than
+                * only from a shortcut and a tooltip.
+                */}
+              <button
+                aria-keyshortcuts={shortcutKeys('P')}
+                className="button button--quiet panel__sidebar-picker"
+                onClick={() => setQuickOpen(focusedGroupId)}
+                type="button"
+              >
+                <Plus aria-hidden="true" size={14} />
+                Go to a stage
+                <span className="panel__sidebar-picker-key">{shortcutLabel('P')}</span>
+              </button>
             </aside>
           ) : null}
 
@@ -2058,13 +2151,9 @@ export function StageNotesPanel({
             }}
             onMouseDown={(event) => {
               event.preventDefault()
-              // From the rail's own right edge, which is where the sidebar begins —
-              // with it shut there is no sidebar box to measure against.
-              beginSidebarDrag(
-                event.currentTarget.parentElement
-                  ?.querySelector('.panel__rail')
-                  ?.getBoundingClientRect().right ?? 0,
-              )
+              // From the body's own left edge, which is where the sidebar begins — with it
+              // shut there is no sidebar box to measure against.
+              beginSidebarDrag(event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0)
             }}
             role="separator"
             tabIndex={0}
