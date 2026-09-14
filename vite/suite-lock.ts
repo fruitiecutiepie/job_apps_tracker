@@ -91,6 +91,15 @@ export default async function setup(context?: { config?: { watch?: boolean } }) 
   while (!take()) {
     const pid = holder()
 
+    /*
+     * This run already holds it. Vitest calls a global setup once per project and this
+     * file is listed for every one of them, so the second call along finds the lock taken
+     * by its own pid — alive, and never going to let go while it waits. A run cannot be
+     * the thing it is waiting for; it went ahead only after the fifteen-minute give-way
+     * below, which made every multi-project run a quarter of an hour slower than it is.
+     */
+    if (pid === process.pid) return
+
     // A run that died holding the lock is not a run to wait for.
     if (pid !== null && !alive(pid)) {
       rmSync(LOCK, { force: true, recursive: true })

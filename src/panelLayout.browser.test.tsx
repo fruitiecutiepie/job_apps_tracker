@@ -192,9 +192,12 @@ describe('the panel in a real browser', () => {
     const strip = () => document.querySelector('.panel__tabs')!
     const activeTab = () => strip().querySelector<HTMLElement>('[role="tab"][aria-selected="true"]')!
 
-    // Enough tabs that the strip overflows, which is the only state this is about.
-    for (const state of ['applied', 'recruiter_interview', 'interview_1', 'offer'] as const) {
-      await userEvent.click(screen.getByRole('button', { name: 'Go to stage' }))
+    // Enough tabs that the strip overflows, which is the only state this is about. None
+    // of them is a stage the fixture already has open — the picker offers a row's other
+    // stages, and one already on a tab is not among them.
+    const opening = ['applied', 'recruiter_messaged', 'recruiter_interview', 'take_home_assessment'] as const
+    for (const state of opening) {
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
       await userEvent.selectOptions(
         screen.getByRole('combobox', { name: new RegExp(`Other stages for ${halcyon.company}`) }),
         [stateLabel(state)],
@@ -376,7 +379,7 @@ describe('the panel in a real browser', () => {
       const before = names()
       expect(before).toHaveLength(3)
 
-      const offer = screen.getByRole('tab', { name: 'Halcyon Maps · Offer' })
+      const offer = screen.getByRole('tab', { name: /^Halcyon Maps · .* · Offer$/ })
       const first = screen.getAllByRole('tab')[0].closest('.panel__tab-slot')!
       await touchDrag(offer, first)
 
@@ -390,7 +393,7 @@ describe('the panel in a real browser', () => {
       renderPanel()
 
       const before = screen.getAllByRole('tab').map((tab) => tab.textContent)
-      const offer = screen.getByRole('tab', { name: 'Halcyon Maps · Offer' })
+      const offer = screen.getByRole('tab', { name: /^Halcyon Maps · .* · Offer$/ })
       const box = offer.getBoundingClientRect()
       const point = (x: number) => ({ clientX: x, clientY: box.top + box.height / 2 })
       const send = (target: EventTarget, type: string, x: number) =>
@@ -435,7 +438,16 @@ describe('the panel in a real browser', () => {
 
   it('moves a tab dragged onto another pane’s strip', async () => {
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: 'Split' }))
+    /*
+     * Split from the keyboard rather than by clicking the button, because of the driver
+     * rather than the panel. Playwright's WebKit swallows the `pointerdown` of the first
+     * press after a click in the same test — the drag below then arrives as two moves and
+     * a release, nothing is ever picked up, and the failure reads as a WebKit bug in the
+     * drag. Measured: with the click the sequence is `pointermove, pointermove, pointerup`
+     * and without it `pointermove, pointerdown, pointermove, pointerup`, in the same
+     * browser on the same drag. Chromium and Firefox send the press either way.
+     */
+    await splitDown()
 
     const strips = () => screen.getAllByRole('tablist')
     const counts = () => strips().map((strip) => within(strip).getAllByRole('tab').length)
