@@ -251,6 +251,17 @@ describe('prep notes view', () => {
     expect(ruleBody('.notes-tree__note')).toMatch(/border-left:\s*2px solid var\(--line\)/)
   })
 
+  it('tints the tab as well as the slot a drag is aimed at', () => {
+    // The tab a pane is showing paints its own opaque surface, which sits over the slot
+    // behind it: without this the drop mark showed on every tab except the one you were
+    // most likely to aim at, and a pane holding one tab never showed it at all.
+    expect(ruleBody('.panel__tab-slot--drop-target .panel__tab')).toMatch(/background:\s*var\(--accent-weak\)/)
+    // Both selectors are two classes deep, so source order is what decides between them.
+    expect(css.indexOf('.panel__tab--open')).toBeLessThan(
+      css.indexOf('.panel__tab-slot--drop-target .panel__tab'),
+    )
+  })
+
   it('wraps the chrome rather than letting a narrow panel clip it', () => {
     // The panel clips its own overflow, so a title bar that cannot wrap loses its last
     // control rather than scrolling to it. The stage header already wraps for this reason.

@@ -3208,6 +3208,17 @@ tbody tr:hover {
   border-bottom-color: var(--accent);
 }
 
+/*
+ * A drop aimed at an open tab has to show on the tab itself, not only on the slot behind
+ * it: the rule above paints an opaque surface over that slot, so the mark appeared on
+ * every tab except the one a pane was showing — and never at all in a pane holding one
+ * tab, that tab always being the open one. Same specificity as the rule it answers, so it
+ * has to stay below it.
+ */
+.panel__tab-slot--drop-target .panel__tab {
+  background: var(--accent-weak);
+}
+
 /* Sits at the end of the strip like one more tab, not a boxed chrome control. */
 .panel__tab-add {
   flex: 0 0 auto;
