@@ -2214,6 +2214,30 @@ describe('job applications tracker', () => {
     ).toBeInTheDocument()
   })
 
+  it('closes the picker from its own button, and by pressing outside it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const picker = () => within(dialog).queryByRole('textbox', { name: 'Go to stage' })
+
+    // A visible way out, because Escape is not one to a reader who does not know it is
+    // there. The picker is a palette over the panel rather than a dialog, so nothing
+    // else on screen says how to dismiss it.
+    await user.click(within(dialog).getByRole('button', { name: 'Open' }))
+    expect(picker()).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Close the picker' }))
+    expect(picker()).not.toBeInTheDocument()
+
+    // And pressing anywhere else puts it away, which is what a palette over a page is
+    // expected to do and the first thing a reader tries.
+    await user.click(within(dialog).getByRole('button', { name: 'Open' }))
+    expect(picker()).toBeInTheDocument()
+    await user.click(within(dialog).getAllByRole('tab')[0])
+    expect(picker()).not.toBeInTheDocument()
+  })
+
   it('folds headings and sub-points in the reading view without changing saved notes', async () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()
