@@ -1,12 +1,18 @@
 # Job Applications Tracker
 
-A polished, local-first job search organizer built with React and TypeScript. It keeps application data in a JSON file on disk and provides focused views for tracking progress, upcoming work, stale applications, and pipeline statistics—without an account, backend, or synchronization service.
+A polished, local-first job search organizer built with React and TypeScript. It keeps every application in one JSON file that you hold, and provides focused views for tracking progress, upcoming work, stale applications, and pipeline statistics — without an account, a backend, or a synchronization service.
 
 **[Try the demo](https://fruitiecutiepie.github.io/job_apps_tracker/demo/)** — nineteen fictional applications, one in every stage, nothing to install. **[Open the tracker](https://fruitiecutiepie.github.io/job_apps_tracker/)** when you want to enter your own.
 
-Both are the same app, hosted as static files, and both are still local-first: nothing is uploaded, and every change is saved on the machine looking at it. The demo keeps its data separately, so it can never reach a real tracker. See [Where your data lives](#where-your-data-lives).
+## Start here
 
-On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:demo` for the 19 fictional examples (exactly one in each configured state). Those demo records live under `data/demo/` so they never overwrite real applications.
+**Use the hosted app.** Open [the tracker](https://fruitiecutiepie.github.io/job_apps_tracker/) and it starts empty, with three ways in: choose a folder, import a file you already have, or just start typing. Every change saves as you make it — there is no Save button anywhere in this app.
+
+Choosing a folder is the one worth doing first. It puts a real `tracker.json` on your disk that you can back up, sync, or open in any text editor, and the app writes to it on every change. Chrome and Edge support this; Firefox and Safari do not, and there the top bar says *Saved in this browser* and **Export** is how you get a copy out. Either way nothing is uploaded — the site is static files, with no account and nowhere to send anything.
+
+The catch worth knowing up front: without a connected folder, your data lives only in that browser profile. Clearing site data takes it with it. Connect a folder, or export regularly. See [Where your data lives](#where-your-data-lives).
+
+**Run it yourself** if you would rather the file sat in a project directory you control, or you want to write stage notes in your own editor — the one feature the hosted app cannot offer, because it needs a machine to start the editor on. See [Running it yourself](#running-it-yourself).
 
 ## Features
 
@@ -28,7 +34,7 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 - Append-only state history whenever an application actually changes state
 - Responsive layouts, keyboard-accessible forms and dialogs, and keyboard shortcuts for splitting, finding, and navigating the stage notes panel
 
-## Quick start
+## Running it yourself
 
 You need Node.js and pnpm. The repository pins pnpm 10.30.3 through Corepack.
 
@@ -38,15 +44,15 @@ pnpm install --frozen-lockfile
 pnpm dev
 ```
 
-Open the local address printed by Vite. The tracker reads and writes `data/tracker.json` in the project directory through the dev server.
+Open the local address printed by Vite. The tracker reads and writes `data/tracker.json` in the project directory through the dev server, creating an empty one on first launch.
 
-To work with the 19 example applications instead:
+To work with the 19 fictional examples instead — exactly one in each configured state:
 
 ```sh
 pnpm dev:demo
 ```
 
-That command uses `data/demo/tracker.json` and `data/demo/attachments/`, separate from live data.
+That command uses `data/demo/tracker.json` and `data/demo/attachments/`, separate from live data, so demo records never overwrite real applications.
 
 For a production build with the same file-backed database:
 
@@ -93,6 +99,22 @@ does not put the task back on your plan — undoing the record is not the same a
 work, and the app does not guess which you meant.
 
 Open an existing application from any view to edit or delete it. Moving to another state adds a timestamped history entry. You can move a Kanban card by dragging it or by using its state selector, which also works for keyboard and touch interaction.
+
+### Attach a file
+
+Open an application and select **Add files** under Attachments to keep a job description, a
+take-home brief, or the CV you actually sent. Several can be picked at once. New files are
+listed with their size and are staged — **Remove** drops one, and nothing is written until you
+save the dialog. Files already saved get **Open**, which downloads a copy, and **Remove**, which
+deletes it on save. Each file is capped at 25 MiB. Filenames show on Kanban cards and fill the
+table's Attachments column, so you can see what an application carries without opening it.
+
+Where the bytes land depends on how you are running the app. Running it yourself, they go under
+`data/attachments/{applicationId}/{attachmentId}`. On the hosted app they go into browser
+storage, and into your connected folder as well if you have one — **which means that without a
+connected folder, Export is the only way an attachment leaves that browser.** Prep notes and
+captures are text and survive in the exported `tracker.json`; attachments are files, and only
+the zip export carries them.
 
 ### Link a calendar invite to a stage
 
@@ -315,26 +337,39 @@ The global search, state, activity, company, and source filters apply across vie
 
 ### Back up or replace data
 
-- **Export** downloads a zip archive with `tracker.json` and any attachment files.
-- **Import** accepts zip archives or legacy JSON. Zip import validates the document before asking to replace all current applications and attachments.
-- **Reset demo data** appears only when running `pnpm dev:demo` or `pnpm start:demo`. It asks for confirmation and restores the original 19 examples in `data/demo/`.
-- On the hosted site, importing a file is also offered on first visit, before there is anything to look at.
+- **Export** downloads a zip archive with `tracker.json` and any attachment files. This is a complete copy: it is what you import into another browser, another machine, or a fresh checkout.
+- **Import** accepts zip archives or legacy JSON. Zip import validates the document before asking to replace all current applications and attachments. On the hosted app, importing is also offered on the first visit, before there is anything to look at.
+- **Reset demo data** appears only in the demo — `pnpm dev:demo`, `pnpm start:demo`, or the [hosted demo](https://fruitiecutiepie.github.io/job_apps_tracker/demo/). It asks for confirmation and restores the original 19 examples.
 
-Export a backup before importing or resetting if you may need the current data again.
+Import **replaces everything**. It does not merge, so exporting first is the only way back.
+
+How often to export depends on where your data already is. With a connected folder, or running it
+yourself, you have a real file on disk and exports are for moving between machines. With neither —
+the hosted app in Firefox or Safari, or in Chrome before you have chosen a folder — the export
+is your only copy, and clearing site data would otherwise be the end of it.
 
 ## Where your data lives
 
-There are two builds, and they differ in one thing: who holds the file.
+There are two builds, and they differ in one thing: who writes the file.
 
-**Running it yourself** (`pnpm dev`, `pnpm start`) — all live data stays in `data/tracker.json` inside the project directory (gitignored), with attachment files in `data/attachments/` (also gitignored). Demo data uses `data/demo/tracker.json` and `data/demo/attachments/`. The dev server and preview commands read and write the active profile's paths through `/__db` and `/__attachments`. There is no remote server copy.
+**Running it yourself** (`pnpm dev`, `pnpm start`) — live data stays in `data/tracker.json` inside the project directory (gitignored), with attachment files in `data/attachments/` (also gitignored). Demo data uses `data/demo/tracker.json` and `data/demo/attachments/`. The dev server and preview commands read and write the active profile's paths through `/__db` and `/__attachments`.
 
 On first launch after upgrading from the browser-storage era, a valid legacy `localStorage` document from the same browser origin is copied into `data/tracker.json` once, then browser storage is cleared.
 
-**The hosted site** has no server to write that file, so the browser does it instead. Every change is saved into the browser's own storage immediately, and — in Chrome, Edge and other Chromium browsers — into a folder you choose, using the File System Access API. That folder gets the same layout the dev server writes: `tracker.json` at the top, attachments under `attachments/`, so the same folder opens in either build.
+**The hosted app** has no server to write that file, so the browser does it. Every change goes into the browser's own storage immediately, and into your connected folder as well when there is one. Those are not alternatives: the folder is the copy that outlives the browser profile, and the browser copy is what survives a folder permission the browser decided to withdraw.
 
-Pick the folder from **Choose a folder** in the top bar. The browser remembers it across reloads, and will sometimes ask for permission again, which the same control turns into a **Reconnect** button. Firefox and Safari have no File System Access API; there the top bar says *Saved in this browser*, everything still works, and **Export** is how you get a copy out.
+A connected folder gets the same layout the dev server writes — `tracker.json` at the top, attachments under `attachments/{applicationId}/{attachmentId}` — so one folder opens in either build. Point the hosted app at your checkout's `data/` directory and both are looking at the same file.
 
-Nothing is uploaded anywhere in either build. The hosted site is static files; there is no account and no endpoint to send anything to. What the browser's storage holds is only as durable as the browser profile, which is the reason to connect a folder or export regularly.
+The top bar always says which of these you have:
+
+| It says | What that means |
+| --- | --- |
+| **Choose a folder** | Browser storage only, so far. Click to pick a folder. |
+| *Saving to `<folder>`* | Both copies are current. Click to switch folders. |
+| **Reconnect `<folder>`** | The folder is still yours but its permission lapsed, which browsers do. Edits are still being saved to browser storage; click to grant it again and the folder catches up. |
+| *Saved in this browser* | This browser has no File System Access API — Firefox and Safari. Nothing is wrong, but **Export** is the only way a copy leaves. |
+
+Durability follows from that: a connected folder is a file you own, and browser storage is only as durable as the browser profile. Nothing is uploaded in either build — the hosted app is static files, with no account and no endpoint to send anything to.
 
 ### The demo
 
@@ -354,7 +389,11 @@ pnpm lint
 pnpm test
 pnpm test:smoke
 pnpm build
+pnpm build:pages && pnpm build:pages-demo
 ```
+
+The last line is what CI deploys, and it is the only check that exercises the browser
+storage backend end to end rather than through jsdom.
 
 A browser suite covers what jsdom cannot judge: where the panel's panes actually end up,
 whether a pane stays wide enough to read a note in, how a narrow window rearranges them,

@@ -116,6 +116,34 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     return subdirectory(attachments, applicationId, create)
   }
 
+  /*
+   * Pushes everything held in browser storage into the folder.
+   *
+   * This runs on reconnect, and the direction matters: while the permission was lapsed the
+   * browser copy kept taking writes and the folder's stopped, so the browser copy is the
+   * newer of the two. Reading the folder instead would replace however long someone spent
+   * typing with the file as it stood when the permission went, and report it as a success.
+   *
+   * Attachments are rewritten wholesale rather than tracked as dirty. Reconnecting is rare,
+   * the alternative is a second set of bookkeeping that can itself go stale, and an
+   * attachment that never reached the folder is indistinguishable from one that did
+   * without reading both back.
+   */
+  async function flushToFolder(): Promise<void> {
+    if (!directory) return
+    const cached = (await store.get('state', DOCUMENT_KEY)) as string | null
+    if (cached !== null) await writeFileIn(directory, TRACKER_FILENAME, cached)
+
+    for (const key of await store.keys('attachments')) {
+      const [applicationId, attachmentId] = key.split('/')
+      if (!applicationId || !attachmentId) continue
+      const bytes = (await store.get('attachments', key)) as ArrayBuffer | null
+      if (!bytes) continue
+      const application = await applicationDirectory(applicationId, true)
+      if (application) await writeFileIn(application, attachmentId, bytes)
+    }
+  }
+
   async function writeDocument(document: TrackerDatabase): Promise<void> {
     const text = serialize(document)
     await store.put('state', DOCUMENT_KEY, text)
@@ -154,6 +182,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
         return announce({ kind: 'needs-permission', name: stored.name })
       }
       directory = stored
+      await flushToFolder()
       return announce({ kind: 'connected', name: stored.name })
     },
 

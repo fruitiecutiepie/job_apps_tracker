@@ -255,7 +255,12 @@ describe('browser backend, when the folder permission lapses', () => {
     })
   })
 
-  it('keeps accepting saves while disconnected, then flushes on reconnect', async () => {
+  /*
+   * The edits made while locked out are the newest thing anywhere: the folder's copy
+   * stopped at the moment the permission lapsed. Reconnecting has to push them, because
+   * pulling would replace an hour of typing with the stale file and report success.
+   */
+  it('carries the edits made while locked out into the folder on reconnect', async () => {
     folder.permission = 'prompt'
     const backend = connected(store, folder)
     await backend.loadDocument()
@@ -267,8 +272,26 @@ describe('browser backend, when the folder permission lapses', () => {
       kind: 'connected',
       name: 'job-applications',
     })
+    expect(folder.readText(TRACKER_FILENAME)).toContain('Saved while locked out')
+    const loaded = await backend.loadDocument()
+    expect(loaded.applications.map((application) => application.company)).toEqual([
+      'Saved while locked out',
+    ])
+
     await backend.saveDocument(withApplication('Saved after reconnecting'))
     expect(folder.readText(TRACKER_FILENAME)).toContain('Saved after reconnecting')
+  })
+
+  it('carries attachments added while locked out as well', async () => {
+    folder.permission = 'prompt'
+    const backend = connected(store, folder)
+    await backend.loadDocument()
+    await backend.writeAttachment(APPLICATION_ID, ATTACHMENT_ID, new Blob(['resume']), null)
+
+    expect(folder.read(`attachments/${APPLICATION_ID}/${ATTACHMENT_ID}`)).toBeNull()
+
+    await backend.storage!.reconnect()
+    expect(folder.readText(`attachments/${APPLICATION_ID}/${ATTACHMENT_ID}`)).toBe('resume')
   })
 
   it('stays disconnected when the viewer refuses the permission', async () => {
