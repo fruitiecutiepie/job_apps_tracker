@@ -441,6 +441,49 @@ describe('the panel in a real browser', () => {
     expect(outline().bottom).toBeLessThanOrEqual(sidebar().bottom + 1)
   })
 
+  it('stacks both headings at the top when both halves are folded', async () => {
+    renderPanel()
+
+    await userEvent.click(screen.getByRole('button', { name: 'Hide the outline' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Hide all prep notes' }))
+
+    const outline = screen.getByRole('button', { name: 'Show the outline' }).getBoundingClientRect()
+    const tree = screen.getByRole('button', { name: 'Show all prep notes' }).getBoundingClientRect()
+
+    // One under the other, not one at each end of the column. With nothing to divide, the
+    // two headings are a list of two things, and a grid row that grows to fill what is
+    // left is what pushed them apart.
+    expect(tree.top - outline.bottom).toBeLessThan(24)
+  })
+
+  it('spaces the tree by its own rhythm when it has the column to itself', async () => {
+    renderPanel()
+    await userEvent.click(screen.getByRole('button', { name: 'Hide the outline' }))
+
+    const stages = screen.getAllByRole('listitem', { name: /^Stage / })
+    expect(stages.length).toBeGreaterThan(1)
+
+    const sidebar = document.querySelector('.panel__sidebar')!.getBoundingClientRect()
+
+    /*
+     * A stretched row shows up as slack inside the group rather than as a wider gap
+     * between groups: the box grows, its rows stay where they are, and the space lands
+     * under the last note in it. So this measures each group against what is in it.
+     */
+    for (const stage of stages) {
+      const box = stage.getBoundingClientRect()
+      const last = stage.lastElementChild!.getBoundingClientRect()
+      expect(box.bottom - last.bottom).toBeLessThan(4)
+    }
+
+    // And the column really is taller than the tree needs, which is the only condition
+    // under which any of that could happen.
+    const list = document.querySelector('.notes-tree__stages')!.getBoundingClientRect()
+    const end = stages[stages.length - 1].getBoundingClientRect().bottom
+    expect(list.bottom - end).toBeGreaterThan(24)
+    expect(sidebar.height).toBeGreaterThan(400)
+  })
+
   it('draws the handle between the two halves rather than hiding it', async () => {
     renderPanel()
 

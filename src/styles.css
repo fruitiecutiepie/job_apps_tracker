@@ -2675,6 +2675,11 @@ tbody tr:hover {
    the outline was and the tree would start wherever that ended. */
 .panel__sidebar {
   display: grid;
+  /* Rows sit where they are put. A grid hands leftover height to its auto rows by default,
+     which with both halves folded put one heading at each end of an empty column instead
+     of one under the other. The `fr` rows above consume the leftover themselves, so this
+     only ever speaks for the folded cases. */
+  align-content: start;
   gap: var(--s2);
   padding: var(--s3) var(--s4);
   overflow: hidden;
@@ -3936,10 +3941,22 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   list-style: none;
 }
 
+/* Its own rhythm at any height: a list with room to spare keeps the spacing the stylesheet
+   gives it and leaves the rest of the column empty, rather than dealing the slack out
+   between its groups — spread apart, a short tree reads as fragments rather than a list.
+   The slack lands inside each group, under its last note, so it shows as a stage that has
+   drifted from the one under it. */
 .notes-tree__stages {
+  align-content: start;
   gap: var(--s3);
   min-height: 0;
   overflow-y: auto;
+}
+
+.notes-tree__stages > li {
+  display: grid;
+  align-content: start;
+  gap: var(--s1);
 }
 
 /* The stage a row sits under, not itself a place to go: the same quiet heading the picker
