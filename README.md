@@ -42,7 +42,7 @@ To work with the 19 example applications instead:
 pnpm dev:demo
 ```
 
-That command uses `data/demo/tracker.json` and `data/demo/attachments/`, separate from live data.
+That command uses `data/demo/tracker.json` and `data/demo/attachments/`, separate from live data, and serves on port 5273 so it can run alongside `pnpm dev` on its own 5173.
 
 For a production build with the same file-backed database:
 
@@ -51,7 +51,7 @@ pnpm build
 pnpm start
 ```
 
-Use `pnpm start:demo` after a build to preview against the demo database.
+Use `pnpm start:demo` after a build to preview against the demo database. It serves on port 4273, leaving `pnpm start` on its own 4173.
 
 ## Using the app
 

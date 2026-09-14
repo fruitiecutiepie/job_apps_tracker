@@ -6,9 +6,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:demo": "VITE_TRACKER_PROFILE=demo vite",
+    "dev:demo": "VITE_TRACKER_PROFILE=demo vite --port 5273",
     "start": "vite preview",
-    "start:demo": "VITE_TRACKER_PROFILE=demo vite preview",
+    "start:demo": "VITE_TRACKER_PROFILE=demo vite preview --port 4273",
     "build": "tsc -b && vite build",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
