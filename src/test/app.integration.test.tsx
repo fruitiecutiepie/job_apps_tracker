@@ -2918,6 +2918,65 @@ describe('job applications tracker', () => {
   const tabNames = (dialog: HTMLElement) =>
     within(dialog).getAllByRole('tab').map((tab) => tab.textContent)
 
+  it('drags a note out of the tree onto a pane that is not the focused one', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(within(panel).getByRole('button', { name: 'Split' }))
+    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
+
+    const strip = (paneNumber: number) =>
+      within(panel).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
+    const row = within(panel).getByRole('button', { name: /^Echo Robotics/ })
+    expect(within(strip(2)).queryByRole('tab', { name: /Echo Robotics/ })).not.toBeInTheDocument()
+
+    // Dropped among the second pane's tabs, not opened into whichever pane was focused:
+    // a drag says where it lands, which is the whole of why it is a drag.
+    pointerDrag(row, slotOf(within(strip(2)).getAllByRole('tab')[0]))
+
+    expect(within(strip(2)).getByRole('tab', { name: /Echo Robotics/ })).toBeInTheDocument()
+    expect(within(strip(1)).queryByRole('tab', { name: /Echo Robotics/ })).not.toBeInTheDocument()
+  })
+
+  it('splits a pane open by dragging a note from the tree onto its edge', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
+    expect(within(panel).getAllByRole('tabpanel')).toHaveLength(1)
+
+    pointerDragToEdge(within(panel).getByRole('button', { name: /^Echo Robotics/ }), 'right')
+
+    const panes = within(panel).getAllByRole('tabpanel')
+    expect(panes).toHaveLength(2)
+    expect(panes[1]).toHaveAccessibleName(expect.stringContaining('Echo Robotics'))
+  })
+
+  it('does not open a note into the focused pane when the drag landed elsewhere', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(within(panel).getByRole('button', { name: 'Split' }))
+    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
+
+    const strip = (paneNumber: number) =>
+      within(panel).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
+    pointerDrag(
+      within(panel).getByRole('button', { name: /^Echo Robotics/ }),
+      slotOf(within(strip(2)).getAllByRole('tab')[0]),
+    )
+
+    // The click a browser sends after a pointer sequence must not also open it where a
+    // plain click would have — dropping a note somewhere is not also asking to read it here.
+    expect(within(panel).getAllByRole('tab', { name: /Echo Robotics/ })).toHaveLength(1)
+  })
+
   it('reorders a tab within its pane by dragging it', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

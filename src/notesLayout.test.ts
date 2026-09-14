@@ -14,6 +14,8 @@ import {
   noteRefKey,
   openInGroup,
   orderedRefs,
+  parseNoteRefKey,
+  placeTab,
   prune,
   replaceTab,
   resizeSplit,
@@ -22,6 +24,7 @@ import {
   type LayoutNode,
   type NoteRef,
   type SplitNode,
+  type TabGroup,
 } from './notesLayout'
 
 const acme = (state: NoteRef['state']): NoteRef => ({ applicationId: 'acme', state })
@@ -577,5 +580,41 @@ describe('groupHolding', () => {
   it('finds nothing for a note that is not open', () => {
     const tree = singleGroup('g1', acme('applied'))
     expect(groupHolding(tree, noteRefKey(globex('offer')))).toBeNull()
+  })
+})
+
+describe('placeTab', () => {
+  const tree = makeGroup('pane-1', [acme('applied')], noteRefKey(acme('applied')))
+
+  it('opens a note that was not in the tree at the index asked for', () => {
+    const placed = placeTab(tree, globex('offer'), 'pane-1', 0)
+
+    expect(refKeys(placed)).toEqual([noteRefKey(globex('offer')), noteRefKey(acme('applied'))])
+    expect((placed as TabGroup).activeKey).toBe(noteRefKey(globex('offer')))
+  })
+
+  it('moves one that was, rather than opening it twice', () => {
+    const split = splitWith(tree, 'pane-1', 'right', globex('offer'), ids('pane-2'))
+    const placed = placeTab(split, globex('offer'), 'pane-1', 0)
+
+    // A note lives in at most one pane, so the pane it left is pruned away behind it.
+    expect(groupsOf(placed)).toHaveLength(1)
+    expect(refKeys(placed)).toEqual([noteRefKey(globex('offer')), noteRefKey(acme('applied'))])
+  })
+
+  it('leaves the tree alone when the pane is not there', () => {
+    expect(placeTab(tree, globex('offer'), 'pane-9', 0)).toBe(tree)
+  })
+})
+
+describe('parseNoteRefKey', () => {
+  it('reads back what noteRefKey wrote', () => {
+    expect(parseNoteRefKey(noteRefKey(acme('interview_1')))).toEqual(acme('interview_1'))
+  })
+
+  it('refuses anything that is not one', () => {
+    expect(parseNoteRefKey('acme')).toBeNull()
+    expect(parseNoteRefKey('acme::not_a_state')).toBeNull()
+    expect(parseNoteRefKey('::applied')).toBeNull()
   })
 })

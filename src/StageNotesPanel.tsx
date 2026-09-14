@@ -41,11 +41,12 @@ import {
   groupsOf,
   highestPaneNumber,
   makeGroup,
-  moveTab,
   neighbourGroup,
   noteRefKey,
   openInGroup,
   orderedRefs,
+  parseNoteRefKey,
+  placeTab,
   replaceTab,
   resizeSplit,
   splitWith,
@@ -1006,23 +1007,33 @@ export function StageNotesPanel({
    * the two cannot drift: whatever a drag can arrange, the arrows can arrange too, which
    * is the whole reason the layout operations are pure.
    */
+  /**
+   * Where a dragged note lands. The key is resolved to a note rather than looked up on an
+   * open tab, because a drag can start in the tree of notes that are not open — there is no
+   * tab to read the ref off, and `placeTab` does not need one.
+   */
+  const refForKey = useCallback(
+    (key: string) => refByKey.get(key) ?? parseNoteRefKey(key),
+    [refByKey],
+  )
+
   const dropTab = useCallback(
     (key: string, groupId: string, index: number) => {
-      applyLayout(moveTab(layoutRef.current, key, groupId, index), groupId)
+      const ref = refForKey(key)
+      if (!ref) return
+      applyLayout(placeTab(layoutRef.current, ref, groupId, index), groupId)
     },
-    [applyLayout],
+    [applyLayout, refForKey],
   )
 
   /** Opens a new pane on one side of an existing one, holding the tab that was moved. */
   const splitTabOff = useCallback(
     (key: string, targetGroupId: string, edge: Edge) => {
-      const ref = groupHolding(layoutRef.current, key)?.tabs.find(
-        (tab) => noteRefKey(tab) === key,
-      )
+      const ref = refForKey(key)
       if (!ref) return
       applyLayout(splitWith(layoutRef.current, targetGroupId, edge, ref, newId))
     },
-    [applyLayout, newId],
+    [applyLayout, newId, refForKey],
   )
 
   /**
@@ -1805,8 +1816,11 @@ export function StageNotesPanel({
               <NotesTreeView
                 applications={applications}
                 currentKey={activeKey}
+                draggingKey={drag.key}
+                onDragStart={drag.start}
                 onPick={showRef}
                 openKeys={openKeys}
+                wasDragged={drag.wasDragged}
               />
             </aside>
           ) : null}

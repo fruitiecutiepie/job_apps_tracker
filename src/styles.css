@@ -3836,6 +3836,9 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 .notes-tree__note {
   display: grid;
   gap: var(--s1);
+  /* A row can be dragged onto a pane, and the pointer owns it for the length of that:
+     without this a touch drag scrolls the tree instead of picking a note up. */
+  touch-action: none;
   width: 100%;
   padding: var(--s1) var(--s2);
   border: 0;
@@ -3864,6 +3867,12 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 .notes-tree__note--current {
   border-left-color: var(--accent);
   background: var(--accent-weak);
+}
+
+/* Picked up: the row stays where it is and fades, the way a dragged tab does, so the tree
+   does not reflow under a pointer that is aiming at something else. */
+.notes-tree__note--dragging {
+  opacity: 0.4;
 }
 
 .notes-tree__name {

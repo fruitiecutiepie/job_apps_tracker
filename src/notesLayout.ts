@@ -12,7 +12,7 @@
  * one set of find ordinals.
  */
 
-import type { StateId } from './domain'
+import { isStateId, type StateId } from './domain'
 
 export interface NoteRef {
   applicationId: string
@@ -265,16 +265,30 @@ export function closeGroup(tree: LayoutNode, groupId: string): LayoutNode | null
  * and the insertion happen in one pass and the tree is pruned only afterwards, so moving
  * the last tab out of a group cannot invalidate the destination mid-move.
  */
-export function moveTab(
+/**
+ * Puts a note in a pane at a given position, whether or not it was open.
+ *
+ * One function for both because they are one operation from the reader's side: a note
+ * dragged onto a strip lands there, and whether it came from another pane or from the tree
+ * of notes that are not open is the panel's business rather than theirs. A note lives in at
+ * most one pane, so arriving somewhere is also leaving wherever it was.
+ */
+export function placeTab(
   tree: LayoutNode,
-  key: string,
+  ref: NoteRef,
   toGroupId: string,
   index: number,
 ): LayoutNode {
+  if (!findGroup(tree, toGroupId)) return tree
+  const key = noteRefKey(ref)
   const source = groupHolding(tree, key)
-  if (!source) return tree
-  const ref = source.tabs.find((tab) => noteRefKey(tab) === key)
-  if (!ref) return tree
+
+  if (!source) {
+    return mapGroup(tree, toGroupId, (group) => {
+      const at = Math.max(0, Math.min(index, group.tabs.length))
+      return { ...group, tabs: [...group.tabs.slice(0, at), ref, ...group.tabs.slice(at)], activeKey: key }
+    })
+  }
 
   const sameGroup = source.id === toGroupId
   const moved = mapGroups(tree, (group) => {
@@ -293,6 +307,29 @@ export function moveTab(
 
   // A move within one group can never empty it, so pruning is only needed across groups.
   return sameGroup ? moved : (prune(moved) ?? moved)
+}
+
+/** The same, for a caller that knows a tab's key rather than the note behind it. */
+export function moveTab(
+  tree: LayoutNode,
+  key: string,
+  toGroupId: string,
+  index: number,
+): LayoutNode {
+  const ref = groupHolding(tree, key)?.tabs.find((tab) => noteRefKey(tab) === key)
+  return ref ? placeTab(tree, ref, toGroupId, index) : tree
+}
+
+/**
+ * A key read back as the note it names, for a drag that carries one out of the tree of
+ * notes the panel does not have open — there is no tab to look the ref up on. Neither half
+ * can hold the separator: an application id is a uuid and a state is an identifier from
+ * `STATE_CONFIG`, which is also what makes the state worth checking rather than trusting.
+ */
+export function parseNoteRefKey(key: string): NoteRef | null {
+  const [applicationId, state, ...rest] = key.split('::')
+  if (!applicationId || rest.length > 0 || !isStateId(state)) return null
+  return { applicationId, state }
 }
 
 /**
