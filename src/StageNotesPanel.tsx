@@ -420,12 +420,30 @@ export function StageNotesPanel({
   const savingRef = useRef(false)
   const mountedRef = useRef(true)
   /**
-   * Which sidebar panel is showing, or none. Two panels over one column rather than a
-   * column each: the outline is the note you are reading and the tree is the ones you are
-   * not, and reaching for either should never cost the width of the other. Closed leaves
-   * the rail, because a control inside the thing it hides has nowhere to be once hidden.
+   * Which panel the sidebar shows, and whether it is showing at all. Two panels over one
+   * column rather than a column each: the outline is the note you are reading and the tree
+   * is the ones you are not, and reaching for either should never cost the width of the
+   * other. Closed leaves the rail, because a control inside the thing it hides has nowhere
+   * to be once hidden.
+   *
+   * Which panel and whether it is open are two facts rather than one nullable one, because
+   * the sidebar can be closed by dragging its edge in — and pulling the edge back out has
+   * to bring back what was there, not a default.
    */
-  const [sidebarPanel, setSidebarPanel] = useState<'outline' | 'notes' | null>('outline')
+  const [sidebarPanel, setSidebarPanel] = useState<'outline' | 'notes'>('outline')
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const sidebarOpenRef = useRef(sidebarOpen)
+  const sidebarPanelRef = useRef(sidebarPanel)
+  useEffect(() => {
+    sidebarOpenRef.current = sidebarOpen
+    sidebarPanelRef.current = sidebarPanel
+  }, [sidebarOpen, sidebarPanel])
+
+  /** Shows a panel, or closes the sidebar when it is the one already showing. */
+  const toggleSidebar = useCallback((panel: 'outline' | 'notes') => {
+    setSidebarOpen((open) => !(open && panel === sidebarPanelRef.current))
+    setSidebarPanel(panel)
+  }, [])
   // Find state. `findSeq` remounts the widget so a second Ctrl+F refocuses and selects
   // the query already in it, the way reopening find in an editor does.
   const [findOpen, setFindOpen] = useState(false)
@@ -445,6 +463,10 @@ export function StageNotesPanel({
    */
   const [captureHeight, setCaptureHeight] = useState(initial.captureHeight ?? DEFAULT_CAPTURE_LOG)
   const [sidebarWidth, setSidebarWidth] = useState(initial.sidebarWidth ?? DEFAULT_SIDEBAR)
+  const sidebarWidthRef = useRef(sidebarWidth)
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth
+  }, [sidebarWidth])
   const [quickOpen, setQuickOpen] = useState<string | null>(null)
   /** The section the breadcrumbs name: the last heading scrolled past. */
   const [trailKey, setTrailKey] = useState<string | null>(null)
@@ -932,36 +954,52 @@ export function StageNotesPanel({
     setCaptureHeight((current) => captureHeightWithin(current + delta))
   }, [])
 
-  /**
-   * Moves the sidebar's edge. Asked for a width below what its own rows can be read at,
-   * the panel closes instead of narrowing further: a column too thin to read is not a
-   * narrower sidebar, it is a sidebar in the way. The rail stays, so the way back is where
-   * the way out was, and the width it had is kept for when it comes back.
-   */
   const endSidebarDrag = useRef<(() => void) | null>(null)
   // A drag outlives a re-render, but must not outlive the panel it belongs to.
   useEffect(() => () => endSidebarDrag.current?.(), [])
 
-  const resizeSidebar = useCallback((delta: number) => {
-    setSidebarWidth((current) => {
-      const wanted = current + delta
-      if (wanted < MIN_SIDEBAR) {
-        setSidebarPanel(null)
-        return current
-      }
-      return sidebarWidthWithin(wanted)
-    })
+  /**
+   * Puts the sidebar's edge at a width. Below what its own rows can be read at it closes
+   * rather than narrowing further — a column too thin to read is not a narrower sidebar,
+   * it is a sidebar in the way — and at or above it the sidebar opens, whether or not it
+   * was open a moment ago. The edge works both ways because a width is something to drag
+   * *to*, not only away from, and what comes back is the panel that went.
+   */
+  const sidebarTo = useCallback((width: number) => {
+    if (width < MIN_SIDEBAR) {
+      setSidebarOpen(false)
+      return
+    }
+    setSidebarOpen(true)
+    setSidebarWidth(sidebarWidthWithin(width))
   }, [])
+
+  /**
+   * The arrow keys, which move by a step rather than to a place. Closed, the only step
+   * that means anything is the one that opens it, and it comes back at the width it had:
+   * stepping out from nothing would take a dozen presses to reach a readable column.
+   */
+  const resizeSidebar = useCallback(
+    (delta: number) => {
+      if (!sidebarOpenRef.current) {
+        if (delta > 0) setSidebarOpen(true)
+        return
+      }
+      sidebarTo(sidebarWidthRef.current + delta)
+    },
+    [sidebarTo],
+  )
 
   /**
    * The drag that moves it, re-based on every move so the edge tracks the pointer rather
    * than accelerating away from it — the same reason the other handles re-base theirs.
    */
-  const beginSidebarDrag = useCallback((startX: number) => {
-    let from = startX
+  const beginSidebarDrag = useCallback((railRight: number) => {
     const move = (event: MouseEvent) => {
-      resizeSidebar(event.clientX - from)
-      from = event.clientX
+      // Measured from where the sidebar starts rather than accumulated from where the drag
+      // did: a closed sidebar has no width to add to, and a pointer at a place says the
+      // whole of what the reader means by it.
+      sidebarTo(event.clientX - railRight)
     }
     const stop = () => {
       window.removeEventListener('mousemove', move)
@@ -971,7 +1009,7 @@ export function StageNotesPanel({
     window.addEventListener('mousemove', move)
     window.addEventListener('mouseup', stop)
     endSidebarDrag.current = stop
-  }, [resizeSidebar])
+  }, [sidebarTo])
 
   /**
    * Closes the note on show in the pane being read. Off the refs rather than the rendered
@@ -1267,7 +1305,7 @@ export function StageNotesPanel({
       }
       if (key === 'b') {
         event.preventDefault()
-        setSidebarPanel((current) => (current === 'outline' ? null : 'outline'))
+        toggleSidebar('outline')
         return
       }
       /*
@@ -1299,7 +1337,7 @@ export function StageNotesPanel({
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [activeKey, closeFocusedTab, openFind, toggleSplit])
+  }, [activeKey, closeFocusedTab, openFind, toggleSidebar, toggleSplit])
 
   /**
    * Focuses the capture box once the dock the "K" shortcut just opened has actually
@@ -1637,25 +1675,28 @@ export function StageNotesPanel({
    * the sidebar collapses to a rail holding just this button, and the button does not
    * move when it is pressed.
    */
+  const showingOutline = sidebarOpen && sidebarPanel === 'outline'
+  const showingNotes = sidebarOpen && sidebarPanel === 'notes'
+
   const sidebarRail = (
     <div className="panel__rail">
       <button
         aria-keyshortcuts={shortcutKeys('B')}
-        aria-label={sidebarPanel === 'outline' ? 'Hide the outline' : 'Show the outline'}
-        aria-pressed={sidebarPanel === 'outline'}
+        aria-label={showingOutline ? 'Hide the outline' : 'Show the outline'}
+        aria-pressed={showingOutline}
         className="icon-button"
-        onClick={() => setSidebarPanel((current) => (current === 'outline' ? null : 'outline'))}
-        title={`${sidebarPanel === 'outline' ? 'Hide the outline' : 'Show the outline'} (${shortcutLabel('B')})`}
+        onClick={() => toggleSidebar('outline')}
+        title={`${showingOutline ? 'Hide the outline' : 'Show the outline'} (${shortcutLabel('B')})`}
         type="button"
       >
         <PanelLeft aria-hidden="true" size={16} />
       </button>
       <button
-        aria-label={sidebarPanel === 'notes' ? 'Hide every prep note' : 'Show every prep note'}
-        aria-pressed={sidebarPanel === 'notes'}
+        aria-label={showingNotes ? 'Hide every prep note' : 'Show every prep note'}
+        aria-pressed={showingNotes}
         className="icon-button"
-        onClick={() => setSidebarPanel((current) => (current === 'notes' ? null : 'notes'))}
-        title={sidebarPanel === 'notes' ? 'Hide every prep note' : 'Show every prep note'}
+        onClick={() => toggleSidebar('notes')}
+        title={showingNotes ? 'Hide every prep note' : 'Show every prep note'}
         type="button"
       >
         <ListTree aria-hidden="true" size={16} />
@@ -1944,7 +1985,7 @@ export function StageNotesPanel({
         </div>
 
         <form
-          className={`panel__body${sidebarPanel ? '' : ' panel__body--rail'}`}
+          className={`panel__body${sidebarOpen ? '' : ' panel__body--rail'}`}
           // There is nothing to submit — the notes write themselves. The form element
           // stays because it carries the panel's layout, and because the capture box's
           // Enter guard is written against the panel being one form around every note.
@@ -1952,7 +1993,7 @@ export function StageNotesPanel({
         >
           {sidebarRail}
 
-          {sidebarPanel === 'outline' ? (
+          {showingOutline ? (
             <aside aria-label="Outline" className="panel__sidebar">
               <div>
                 <p className="panel__sidebar-title">Outline</p>
@@ -1980,7 +2021,7 @@ export function StageNotesPanel({
             </aside>
           ) : null}
 
-          {sidebarPanel === 'notes' ? (
+          {showingNotes ? (
             <aside aria-label="All prep notes" className="panel__sidebar">
               <NotesTreeView
                 applications={applications}
@@ -1995,34 +2036,39 @@ export function StageNotesPanel({
             </aside>
           ) : null}
 
-          {sidebarPanel === 'outline' || sidebarPanel === 'notes' ? (
-            /*
-             * The sidebar's own edge, a real `separator` with arrow keys like the handles
-             * between panes and the one over the dock. Drawn once beside whichever panel is
-             * open rather than once per panel: it moves the column, not what is in it — and
-             * after the panel rather than before it, the body being a grid whose columns are
-             * filled in the order its children appear.
-             */
-            <div
-              aria-label="Resize the sidebar"
-              aria-orientation="vertical"
-              aria-valuemax={MAX_SIDEBAR}
-              aria-valuemin={MIN_SIDEBAR}
-              aria-valuenow={sidebarWidth}
-              className="panel__sidebar-resize"
-              onKeyDown={(event) => {
-                if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
-                event.preventDefault()
-                resizeSidebar(event.key === 'ArrowRight' ? SIDEBAR_STEP : -SIDEBAR_STEP)
-              }}
-              onMouseDown={(event) => {
-                event.preventDefault()
-                beginSidebarDrag(event.clientX)
-              }}
-              role="separator"
-              tabIndex={0}
-            />
-          ) : null}
+          {/*
+            * The sidebar's own edge, a real `separator` with arrow keys like the handles
+            * between panes and the one over the dock. Drawn once beside whichever panel is
+            * open rather than once per panel — it moves the column, not what is in it —
+            * after the panel rather than before it, the body being a grid whose columns are
+            * filled in the order its children appear, and whether the sidebar is open or
+            * shut, because it is how the sidebar comes back as well as how it goes.
+            */}
+          <div
+            aria-label="Resize the sidebar"
+            aria-orientation="vertical"
+            aria-valuemax={MAX_SIDEBAR}
+            aria-valuemin={MIN_SIDEBAR}
+            aria-valuenow={sidebarWidth}
+            className="panel__sidebar-resize"
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+              event.preventDefault()
+              resizeSidebar(event.key === 'ArrowRight' ? SIDEBAR_STEP : -SIDEBAR_STEP)
+            }}
+            onMouseDown={(event) => {
+              event.preventDefault()
+              // From the rail's own right edge, which is where the sidebar begins —
+              // with it shut there is no sidebar box to measure against.
+              beginSidebarDrag(
+                event.currentTarget.parentElement
+                  ?.querySelector('.panel__rail')
+                  ?.getBoundingClientRect().right ?? 0,
+              )
+            }}
+            role="separator"
+            tabIndex={0}
+          />
 
           <div className="panel__main">
             <p className="panel__breadcrumbs">

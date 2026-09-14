@@ -715,6 +715,32 @@ describe('job applications tracker', () => {
     )
   })
 
+  it('opens the sidebar again by pulling its edge back out', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
+
+    const edge = () => within(panel).getByRole('separator', { name: 'Resize the sidebar' })
+    edge().focus()
+    await user.keyboard('{ArrowLeft>40/}')
+    expect(within(panel).queryByRole('list', { name: 'Prep notes by stage' })).not.toBeInTheDocument()
+
+    // The edge is still there with the sidebar shut, because it is how the sidebar comes
+    // back as well as how it goes: a width is something to drag to, not only from. And it
+    // is beside the rail rather than somewhere else on the row — the collapsed body keeps
+    // a track for it, or the grid wraps it onto a row of its own.
+    expect(edge().previousElementSibling).toHaveClass('panel__rail')
+    edge().focus()
+    await user.keyboard('{ArrowRight}')
+
+    // And it comes back showing what it was showing, not a default.
+    expect(within(panel).getByRole('list', { name: 'Prep notes by stage' })).toBeInTheDocument()
+    expect(Number(edge().getAttribute('aria-valuenow'))).toBeGreaterThanOrEqual(96)
+  })
+
   it('keeps the rail when both sidebar panels are closed', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

@@ -63,7 +63,9 @@ describe('collapsed outline', () => {
   it('keeps a rail where the sidebar was, rather than closing the column away', () => {
     // A control inside the thing it hides has nowhere to be once it is hidden, so the
     // collapsed state is a narrower first column, never a missing one.
-    expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\)/)
+    // Three tracks even with no panel open, the edge staying so the sidebar can be pulled
+    // back out: a grid given fewer tracks than children wraps the rest onto their own row.
+    expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto auto minmax\(0, 1fr\)/)
 
     const rail = ruleBody('.panel__rail')
     // It reads as the sidebar it stands in for: same face, same edge.
@@ -233,11 +235,14 @@ describe('prep notes view', () => {
     expect(ruleBody('.panel__tab-add')).toMatch(/min-height:\s*var\(--control\)/)
   })
 
-  it('leaves only the rail when both sidebar panels are closed', () => {
+  it('leaves the rail and the edge when both sidebar panels are closed', () => {
     // The rail is the switcher and the way back, so it is what the column collapses to —
-    // one icon wide, and the same element whether a panel is open or not.
+    // one icon wide, and the same element whether a panel is open or not. The edge stays
+    // beside it, being how the sidebar is pulled back out as well as pushed in, so the
+    // collapsed body still has a track for it: a grid given fewer tracks than it has
+    // children wraps the rest onto a row of their own, which is where the edge went.
     expect(ruleBody('.panel__body')).toMatch(/grid-template-columns:\s*auto var\(--sidebar\) auto minmax\(0, 1fr\)/)
-    expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto minmax\(0, 1fr\)/)
+    expect(ruleBody('.panel__body--rail')).toMatch(/grid-template-columns:\s*auto auto minmax\(0, 1fr\)/)
     // Which panel is showing is a pressed state on its own control, not a mark elsewhere.
     expect(ruleBody(".panel__rail .icon-button\\[aria-pressed='true'\\]")).toMatch(/--accent/)
   })
@@ -261,6 +266,19 @@ describe('prep notes view', () => {
     const text = ruleBody('.notes-tree__hit-text')
     expect(text).toMatch(/min-width:\s*0/)
     expect(text).toMatch(/text-overflow:\s*ellipsis/)
+  })
+
+  it('lets the sidebar narrow to its floor without anything hanging past it', () => {
+    // The shared search field holds a 9rem floor — right in the context bar, wider than
+    // the whole sidebar at its narrowest — so this is where it gives that width up.
+    expect(ruleBody('.notes-tree__search')).toMatch(/min-width:\s*0/)
+    expect(ruleBody('.search-field')).toMatch(/min-width:\s*9rem/)
+    // And the input inside it, which keeps an intrinsic width of its own: the rule that
+    // sizes the context bar's copy is scoped to that bar and never reaches this one.
+    expect(ruleBody('.notes-tree__search input')).toMatch(/width:\s*100%/)
+    // A long stage heading gives way; the count beside it does not.
+    expect(ruleBody('.notes-tree__stage-name')).toMatch(/text-overflow:\s*ellipsis/)
+    expect(ruleBody('.notes-tree__count')).toMatch(/flex:\s*none/)
   })
 
   it('tints the tab as well as the slot a drag is aimed at', () => {

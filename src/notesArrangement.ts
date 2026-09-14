@@ -66,8 +66,12 @@ export const CAPTURE_STEP = 24
  * One rule rather than a floor and a separate collapse point below it — with both, the
  * clamp held the width above the threshold and the collapse could never be reached.
  * The rail stays, so the way back is where the way out was, and the width is kept.
+ *
+ * The floor is what the sidebar's own contents can be squeezed into, not a guess: the
+ * search box gives up the `9rem` the context bar's copy holds, and a stage heading
+ * truncates, so what has to fit is a handful of characters and the padding around them.
  */
-export const MIN_SIDEBAR = 140
+export const MIN_SIDEBAR = 96
 export const MAX_SIDEBAR = 420
 
 /** How far one arrow key moves the sidebar's edge. */

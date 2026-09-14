@@ -2617,9 +2617,12 @@ tbody tr:hover {
 
 /* With no panel open the rail is all that is left of the column: the controls that bring
    one back have to be where the ones that sent it away were, or they are no more findable
-   than a shortcut. `auto` rather than a width token — the rail is one icon button wide. */
+   than a shortcut. Still three tracks, because the edge stays too — it is how the sidebar
+   is pulled back out — and a grid given fewer tracks than it has children wraps the rest
+   onto a row of their own, which is where the edge went. `auto` rather than a width token
+   for both: the rail is one icon button wide and the edge one handle. */
 .panel__body--rail {
-  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-columns: auto auto minmax(0, 1fr);
 }
 
 /* The switcher, and the only part of the sidebar that is always there. Two panels over one
@@ -3823,7 +3826,23 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   min-height: 0;
 }
 
+/*
+ * The shared search field holds a `9rem` floor, which is right in the context bar where it
+ * sits among other controls and wrong here where it is the column: at the sidebar's
+ * narrowest that floor is wider than the sidebar itself, so the box hung past the edge
+ * rather than narrowing with it. This is the one place it gives that width up.
+ */
+.notes-tree__search {
+  min-width: 0;
+}
+
 .notes-tree__search input {
+  /* An input carries an intrinsic width of about twenty characters and keeps it however
+     narrow the box around it gets — the context bar's copy is sized by a rule scoped to
+     that bar, which this one never sees. Without these the field shrank and the input
+     inside it hung out over the notes. */
+  width: 100%;
+  min-width: 0;
   font-size: var(--t2);
 }
 
@@ -3850,11 +3869,25 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   align-items: baseline;
   justify-content: space-between;
   margin: 0 0 var(--s1);
+  min-width: 0;
   color: var(--ink-3);
   font-size: var(--t1);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+}
+
+/* "Take-home assessment" is wider than a narrow sidebar, and the count beside it is the
+   part that must not be pushed out: the heading gives way, the number does not. */
+.notes-tree__stage-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-tree__count {
+  flex: none;
 }
 
 .notes-tree__count {

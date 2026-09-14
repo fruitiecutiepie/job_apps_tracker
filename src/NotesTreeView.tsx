@@ -104,7 +104,11 @@ export function NotesTreeView({
             // picker's company heading names the roles beneath it.
             <li aria-label={`Stage ${group.label}`} key={group.state}>
               <p className="notes-tree__stage">
-                {group.label}
+                {/* Its own element so it can give way to the count beside it when the
+                    sidebar is narrow, rather than pushing the count out of the row. */}
+                <span className="notes-tree__stage-name" title={group.label}>
+                  {group.label}
+                </span>
                 <span className="notes-tree__count">{group.notes.length}</span>
               </p>
               <ul className="notes-tree__notes">
