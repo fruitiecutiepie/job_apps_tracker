@@ -4,6 +4,7 @@ import {
   closeStageNoteEditor,
   openStageNoteInEditor,
   readStageNoteFromEditor,
+  supportsExternalEditor,
   STATE_CONFIG,
   stateLabel,
   stateRank,
@@ -1521,7 +1522,7 @@ export function StageNotesDialog({
           // Only the focused pane, which is the one the jump scrolls; a link clicked in
           // another pane focuses it first, so this is that pane by the time it lands.
           onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
-          onOpenInEditor={() => openInEditor(shown)}
+          onOpenInEditor={supportsExternalEditor() ? () => openInEditor(shown) : undefined}
           onRevise={(entryId, revised) =>
             onRevise(shown.applicationId, shown.state, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}

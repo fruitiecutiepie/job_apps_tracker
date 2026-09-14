@@ -3,8 +3,17 @@ import react from '@vitejs/plugin-react'
 
 import { trackerDbPlugin } from './vite/tracker-db-plugin'
 
+/*
+ * The static build talks to browser storage, so the filesystem middleware must not be
+ * registered for it: `vite preview` serves that middleware too, and a preview that can
+ * still reach `data/tracker.json` would not be the thing GitHub Pages runs.
+ */
+const staticBuild = process.env.VITE_TRACKER_BACKEND === 'browser'
+
 export default defineConfig({
-  plugins: [react(), trackerDbPlugin()],
+  // A project page is served from a subpath, so the asset URLs have to carry it.
+  base: process.env.VITE_BASE_PATH ?? '/',
+  plugins: staticBuild ? [react()] : [react(), trackerDbPlugin()],
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',

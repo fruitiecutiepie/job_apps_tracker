@@ -2,6 +2,8 @@
 
 A polished, local-first job search organizer built with React and TypeScript. It keeps application data in a JSON file on disk and provides focused views for tracking progress, upcoming work, stale applications, and pipeline statistics—without an account, backend, or synchronization service.
 
+There is a hosted copy at **<https://fruitiecutiepie.github.io/job_apps_tracker/>**. It is the same app with the same data file, and it is still local-first: nothing is uploaded, and every change is saved on the machine looking at it. See [Where your data lives](#where-your-data-lives).
+
 On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:demo` for the 19 fictional examples (exactly one in each configured state). Those demo records live under `data/demo/` so they never overwrite real applications.
 
 ## Features
@@ -52,6 +54,13 @@ pnpm start
 ```
 
 Use `pnpm start:demo` after a build to preview against the demo database.
+
+To build the static site that GitHub Pages serves — the same app with browser storage in place of the dev server's filesystem routes:
+
+```sh
+pnpm build:pages
+pnpm preview:pages
+```
 
 ## Using the app
 
@@ -162,6 +171,8 @@ Folds follow the lines they belong to as you type: writing a new section above a
 it folded, and deleting a heading takes its fold with it.
 
 ### Write notes in your own editor
+
+This one needs the dev server, because it starts an editor process on the machine running it. The hosted site has no such machine, so it leaves the button out and the in-app Markdown editor is the only one.
 
 Select **Editor** on a stage note to open it in a real editor. The current draft is written to `data/editing/{applicationId}/{state}.md`, that file is handed to your editor, and anything you save there is pulled back and stored automatically—an editor has no Save button to press, so the app does it for you. The stage's in-app textarea steps aside while the session is live; **Stop** ends it, and closing the dialog ends every session and deletes the scratch files.
 
@@ -302,14 +313,27 @@ The global search, state, activity, company, and source filters apply across vie
 - **Export** downloads a zip archive with `tracker.json` and any attachment files.
 - **Import** accepts zip archives or legacy JSON. Zip import validates the document before asking to replace all current applications and attachments.
 - **Reset demo data** appears only when running `pnpm dev:demo` or `pnpm start:demo`. It asks for confirmation and restores the original 19 examples in `data/demo/`.
+- On the hosted site, importing a file is also offered on first visit, before there is anything to look at.
 
 Export a backup before importing or resetting if you may need the current data again.
 
-## Data and privacy
+## Where your data lives
 
-All live data stays in `data/tracker.json` inside the project directory (gitignored), with attachment files in `data/attachments/` (also gitignored). Demo data uses `data/demo/tracker.json` and `data/demo/attachments/`. The dev server and preview commands read and write the active profile's paths through `/__db` and `/__attachments`. There is no remote server copy. Export a backup before importing or resetting if you may need the current data again.
+There are two builds, and they differ in one thing: who holds the file.
 
-On first launch after this upgrade, a valid legacy `localStorage` document from the same browser origin is copied into `data/tracker.json` once, then browser storage is cleared.
+**Running it yourself** (`pnpm dev`, `pnpm start`) — all live data stays in `data/tracker.json` inside the project directory (gitignored), with attachment files in `data/attachments/` (also gitignored). Demo data uses `data/demo/tracker.json` and `data/demo/attachments/`. The dev server and preview commands read and write the active profile's paths through `/__db` and `/__attachments`. There is no remote server copy.
+
+On first launch after upgrading from the browser-storage era, a valid legacy `localStorage` document from the same browser origin is copied into `data/tracker.json` once, then browser storage is cleared.
+
+**The hosted site** has no server to write that file, so the browser does it instead. Every change is saved into the browser's own storage immediately, and — in Chrome, Edge and other Chromium browsers — into a folder you choose, using the File System Access API. That folder gets the same layout the dev server writes: `tracker.json` at the top, attachments under `attachments/`, so the same folder opens in either build.
+
+Pick the folder from **Choose a folder** in the top bar. The browser remembers it across reloads, and will sometimes ask for permission again, which the same control turns into a **Reconnect** button. Firefox and Safari have no File System Access API; there the top bar says *Saved in this browser*, everything still works, and **Export** is how you get a copy out.
+
+Nothing is uploaded anywhere in either build. The hosted site is static files; there is no account and no endpoint to send anything to. What the browser's storage holds is only as durable as the browser profile, which is the reason to connect a folder or export regularly.
+
+### Publishing it yourself
+
+`.github/workflows/pages.yml` typechecks, lints, tests and deploys on every push to `master`. A fork needs two things: **Settings → Pages → Source** set to **GitHub Actions**, and `VITE_BASE_PATH` in that workflow changed to match the repository name.
 
 ## Development checks
 

@@ -52,7 +52,8 @@ interface StageNotePaneProps {
   /** Files one line under the note's capture section and stores it there and then. */
   onCapture: (line: string) => Promise<void>
   onToggleEditing: () => void
-  onOpenInEditor: () => void
+  /** Absent when the build cannot reach an editor process, which the static site cannot. */
+  onOpenInEditor?: () => void
   onStopExternal: () => void
   paneRef: RefCallback<HTMLDivElement>
   formatDate: (iso: string) => string
@@ -180,15 +181,17 @@ export function StageNotePane({
               </button>
             ) : (
               <>
-                <button
-                  aria-label={`Open ${label} in an editor`}
-                  className="button button--quiet stage-note__mode"
-                  onClick={onOpenInEditor}
-                  type="button"
-                >
-                  <ExternalLink aria-hidden="true" size={14} />
-                  Open in Editor
-                </button>
+                {onOpenInEditor && (
+                  <button
+                    aria-label={`Open ${label} in an editor`}
+                    className="button button--quiet stage-note__mode"
+                    onClick={onOpenInEditor}
+                    type="button"
+                  >
+                    <ExternalLink aria-hidden="true" size={14} />
+                    Open in Editor
+                  </button>
+                )}
                 <button
                   aria-label={`${isEditing ? 'Read' : 'Edit'} ${label}`}
                   className="button button--quiet stage-note__mode"

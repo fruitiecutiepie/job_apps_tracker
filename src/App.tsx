@@ -65,6 +65,8 @@ import {
   type TrackerDocument,
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
+import { backend, isBrowserBackend } from './backend'
+import { StorageIntro, StorageStatus, useStorageConnection } from './StorageStatus'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
 import { RatingFields } from './RatingFields'
 import { StateHistory } from './StateHistory'
@@ -649,6 +651,8 @@ export default function App() {
   const dialogOpenerRef = useRef<HTMLElement | null>(null)
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const storageConnection = useStorageConnection()
+  const [introDismissed, setIntroDismissed] = useState(false)
   const dialogIsOpen = editor !== null || stageNotesId !== null
   const [theme, toggleTheme] = useTheme()
 
@@ -657,7 +661,12 @@ export default function App() {
 
     async function initialize() {
       try {
-        const legacy = tryLoadLegacyLocalStorage()
+        /*
+         * The migration is from the browser-storage era into the local JSON file, so it
+         * only makes sense for the backend that owns that file. The static build has its
+         * own storage and must not adopt a document it never wrote.
+         */
+        const legacy = isBrowserBackend() ? null : tryLoadLegacyLocalStorage()
         if (legacy && !isDemoTrackerProfile()) {
           await saveTrackerDatabase(legacy)
           clearLegacyLocalStorage()
@@ -836,6 +845,16 @@ export default function App() {
     )
   }
 
+  /*
+   * Only while there is nothing to look at. Once the first application exists the banner
+   * would be in the way, and the topbar control says the same thing in a line.
+   */
+  const showStorageIntro =
+    storageConnection !== null
+    && !introDismissed
+    && storageConnection.kind !== 'connected'
+    && tracker.applications.length === 0
+
   const editingApplication = editor?.mode === 'edit'
     ? tracker.applications.find((application) => application.id === editor.id) ?? null
     : null
@@ -879,6 +898,32 @@ export default function App() {
   const openStageNotes = (id: string) => {
     rememberDialogOpener()
     setStageNotesId(id)
+  }
+
+  /*
+   * Connecting adopts whatever the folder already holds, so the document has to be read
+   * back rather than assumed unchanged: pointing the site at last week's export is one of
+   * the two reasons anyone presses this.
+   */
+  const reloadAfter = async (connect: () => Promise<unknown>, message: string) => {
+    try {
+      await connect()
+      const loaded = await loadTrackerDatabase()
+      trackerRef.current = loaded
+      setTracker(loaded)
+      setIntroDismissed(true)
+      setNotice(message)
+    } catch (error) {
+      setNotice(`Could not open the folder: ${errorMessage(error)}`)
+    }
+  }
+
+  const connectStorage = () => {
+    void reloadAfter(() => backend.storage!.connect(), 'Changes are now saved to that folder too.')
+  }
+
+  const reconnectStorage = () => {
+    void reloadAfter(() => backend.storage!.reconnect(), 'Reconnected to your folder.')
   }
 
   const closeEditor = () => setEditor(null)
@@ -967,6 +1012,14 @@ export default function App() {
         </nav>
 
         <div className="topbar__actions">
+          {storageConnection && (
+            <StorageStatus
+              connection={storageConnection}
+              onConnect={connectStorage}
+              onReconnect={reconnectStorage}
+            />
+          )}
+
           <button
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             className="icon-button"
@@ -1187,6 +1240,15 @@ export default function App() {
             )}
           </div>
         </section>
+
+        {showStorageIntro && (
+          <StorageIntro
+            connection={storageConnection}
+            onConnect={connectStorage}
+            onDismiss={() => setIntroDismissed(true)}
+            onImport={() => importInputRef.current?.click()}
+          />
+        )}
 
         {notice && (
           <div className="notice" role="status">

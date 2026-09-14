@@ -430,6 +430,78 @@ p {
   white-space: nowrap;
 }
 
+/* -------------------------------------------------------- storage status --- */
+
+/*
+ * Where the data is going, in one line. It sits left of everything else in the topbar
+ * because "is this reaching a folder I can find again" outranks every other control here
+ * on a site that holds the only copy.
+ */
+.storage-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: var(--control);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  color: var(--ink-2);
+  background: var(--surface-2);
+  font-size: var(--t2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.storage-status:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.storage-status--inert {
+  margin: 0;
+  cursor: default;
+}
+
+.storage-status--inert:hover {
+  border-color: var(--line);
+  color: var(--ink-2);
+}
+
+/* Nothing is wrong, but a copy the browser could clear is the only copy. */
+.storage-status--attention {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--accent-weak);
+}
+
+.storage-intro {
+  margin: 0 var(--gutter) var(--s3);
+  padding: var(--s5);
+  border: 1px solid var(--line);
+  border-radius: var(--r3);
+  background: var(--surface);
+}
+
+.storage-intro h2 {
+  margin: 0 0 var(--s2);
+  color: var(--ink);
+  font-size: var(--t5);
+  font-weight: 600;
+}
+
+.storage-intro p {
+  max-width: 62ch;
+  margin: 0 0 var(--s4);
+  color: var(--ink-2);
+  font-size: var(--t3);
+}
+
+.storage-intro__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+
 /* --------------------------------------------------- header actions menu --- */
 
 .actions-menu {
