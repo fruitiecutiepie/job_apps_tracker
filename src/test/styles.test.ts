@@ -269,6 +269,17 @@ describe('prep notes view', () => {
     expect(ruleBody('.notes-tree__count')).toMatch(/flex:\s*none/)
   })
 
+  it('draws the title bar controls as icons rather than boxes', () => {
+    // Five outlined buttons are five frames inside a bar that already has one. The box
+    // comes back under the pointer, which is when it says something.
+    const chrome = ruleBody('.panel__chrome-button')
+    expect(chrome).toMatch(/border-color:\s*transparent/)
+    expect(chrome).toMatch(/background:\s*none/)
+    expect(ruleBody('.panel__chrome-button:hover:not\\(:disabled\\)')).toMatch(/background:\s*var\(--surface-3\)/)
+    // Pressed is a state of the thing the button controls, so it reads as the accent.
+    expect(ruleBody(".panel__chrome-button\\[aria-pressed='true'\\]")).toMatch(/--accent/)
+  })
+
   it('tints the tab as well as the slot a drag is aimed at', () => {
     // The tab a pane is showing paints its own opaque surface, which sits over the slot
     // behind it: without this the drop mark showed on every tab except the one you were

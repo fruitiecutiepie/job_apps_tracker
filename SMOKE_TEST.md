@@ -130,9 +130,9 @@ neither a finger nor any browser automation.
    app goes to the **Prep notes** destination in the header rather than opening a dialog over the
    board, that the view strip no longer marks any view as current, that the bar above the panel offers none of the
    collection's filters, that the sidebar stacks **Outline** over **All prep notes** with
-   **Go to a stage** under them, that each half folds from its own heading and the handle
-   between them sizes the two, that **Sidebar** in the title bar puts the whole thing away and
-   brings it back, that the tree groups notes by
+   that each half folds from its own heading and the handle
+   between them sizes the two, that the title bar's icons name themselves on hover, that **Open**
+   there reaches a stage with no note and **Sidebar** puts the whole column away and brings it back, that the tree groups notes by
    stage down the pipeline and lists no stage you have written nothing for — type a word you know is
    in another application's note and confirm the tree filters to it and picking it opens it, then
    drag a row onto the other pane's tabs and onto a pane edge and confirm it lands where it was

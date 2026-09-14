@@ -270,7 +270,7 @@ function ShortcutsHelp() {
       <button
         aria-expanded={open}
         aria-label="Keyboard shortcuts"
-        className="icon-button"
+        className="icon-button panel__chrome-button"
         onClick={() => setOpen((current) => !current)}
         ref={triggerRef}
         type="button"
@@ -1976,10 +1976,27 @@ export function StageNotesPanel({
           {/* The view is already named by the tab that reached it and by the heading over
               it, so the title bar carries only what the panel itself is showing. */}
           <p className="panel__subject">{title}</p>
+          {/*
+            * Icons alone, each naming itself on hover and to a screen reader. Four labelled
+            * buttons spent more of the title bar on saying what they are than on the note
+            * the bar belongs to, and these are reached rarely enough that carrying their
+            * names all the time was the wrong trade.
+            */}
+          <button
+            aria-keyshortcuts={shortcutKeys('P')}
+            aria-label="Open"
+            className="icon-button panel__chrome-button"
+            onClick={() => setQuickOpen(focusedGroupId)}
+            title={`Open a note or a stage (${shortcutLabel('P')})`}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} />
+          </button>
           <button
             aria-keyshortcuts={shortcutKeys('\\')}
+            aria-label={isSplit ? 'Unsplit' : 'Split'}
             aria-pressed={isSplit}
-            className="button button--quiet panel__chrome-button"
+            className="icon-button panel__chrome-button"
             disabled={!isSplit && openCount < 2}
             onClick={toggleSplit}
             // Why it cannot be pressed outranks how to press it: a shortcut hint on a
@@ -1991,29 +2008,28 @@ export function StageNotesPanel({
             }
             type="button"
           >
-            <Columns2 aria-hidden="true" size={14} />
-            {isSplit ? 'Unsplit' : 'Split'}
+            <Columns2 aria-hidden="true" size={16} />
           </button>
           <button
             aria-keyshortcuts={shortcutKeys('F')}
-            className="button button--quiet panel__chrome-button"
+            aria-label="Find"
+            className="icon-button panel__chrome-button"
             onClick={openFind}
             title={`Open the find bar (${shortcutLabel('F')})`}
             type="button"
           >
-            <Search aria-hidden="true" size={14} />
-            Find
+            <Search aria-hidden="true" size={16} />
           </button>
           <button
             aria-keyshortcuts={shortcutKeys('B')}
+            aria-label="Sidebar"
             aria-pressed={sidebarOpen}
-            className="button button--quiet panel__chrome-button"
+            className="icon-button panel__chrome-button"
             onClick={toggleSidebar}
             title={`${sidebarOpen ? 'Hide' : 'Show'} the sidebar (${shortcutLabel('B')})`}
             type="button"
           >
-            <PanelLeft aria-hidden="true" size={14} />
-            Sidebar
+            <PanelLeft aria-hidden="true" size={16} />
           </button>
           <ShortcutsHelp />
         </div>
@@ -2110,22 +2126,6 @@ export function StageNotesPanel({
                 ) : null}
               </section>
 
-              {/*
-                * The one thing the tree above cannot reach: a stage nothing is written for
-                * yet. Named here as well as on the + in every strip, so the picker is
-                * findable from the place a reader is already looking for a note rather than
-                * only from a shortcut and a tooltip.
-                */}
-              <button
-                aria-keyshortcuts={shortcutKeys('P')}
-                className="button button--quiet panel__sidebar-picker"
-                onClick={() => setQuickOpen(focusedGroupId)}
-                type="button"
-              >
-                <Plus aria-hidden="true" size={14} />
-                Go to a stage
-                <span className="panel__sidebar-picker-key">{shortcutLabel('P')}</span>
-              </button>
             </aside>
           ) : null}
 

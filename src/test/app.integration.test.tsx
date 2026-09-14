@@ -791,10 +791,11 @@ describe('job applications tracker', () => {
     // Everything it held goes together, being one panel rather than two.
     expect(within(panel).queryByRole('list', { name: 'Prep notes by stage' })).not.toBeInTheDocument()
     expect(within(panel).queryByText('Outline')).not.toBeInTheDocument()
-    expect(within(panel).queryByRole('button', { name: /^Go to a stage/ })).not.toBeInTheDocument()
+    // The picker is in the title bar now, so closing the sidebar does not take it away.
+    expect(within(panel).getByRole('button', { name: 'Open' })).toBeInTheDocument()
 
-    // The control that brings it back is in the title bar, where it was when it sent it
-    // away — and the edge is still there to pull it out by.
+    // The control that brings the sidebar back is in the title bar, where it was when it
+    // sent it away — and the edge is still there to pull it out by.
     expect(within(panel).getByRole('button', { name: 'Sidebar' })).toBeInTheDocument()
     expect(within(panel).getByRole('separator', { name: 'Resize the sidebar' })).toBeInTheDocument()
   })
@@ -947,7 +948,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const opened = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(opened).getByRole('button', { name: /^Go to a stage/ }))
+    await user.click(within(opened).getByRole('button', { name: 'Open' }))
     await user.click(
       within(within(opened).getByRole('list', { name: 'Applications' })).getByRole('button', {
         name: /^Human Factors Researcher/,
@@ -1178,7 +1179,7 @@ describe('job applications tracker', () => {
     const reopened = screen.getByRole('region', { name: 'Stage prep notes' })
     expect(within(reopened).queryByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })).not.toBeInTheDocument()
 
-    await user.click(within(reopened).getByRole('button', { name: /^Go to a stage/ }))
+    await user.click(within(reopened).getByRole('button', { name: 'Open' }))
     await user.selectOptions(
       within(reopened).getByRole('combobox', {
         name: 'Other stages for Halcyon Maps, Engineering Manager',
@@ -1448,12 +1449,12 @@ describe('job applications tracker', () => {
     const find = within(dialog).getByRole('button', { name: 'Find' })
     expect(find).toHaveAttribute('aria-keyshortcuts', 'Meta+F Control+F')
     expect(find).toHaveAttribute('title', 'Open the find bar (Ctrl+F)')
-    // The picker's control carries its shortcut on its face rather than in a tooltip: it
-    // sits in the sidebar, where a reader is already looking for a note, and is the only
-    // visible thing that names the binding now that the strips have no + of their own.
-    const picker = within(dialog).getByRole('button', { name: /^Go to a stage/ })
+    // Every control in this bar is an icon that names itself on hover and to a screen
+    // reader, so the shortcut rides in the tooltip with the name rather than on the face.
+    const picker = within(dialog).getByRole('button', { name: 'Open' })
     expect(picker).toHaveAttribute('aria-keyshortcuts', 'Meta+P Control+P')
-    expect(picker).toHaveTextContent('Ctrl+P')
+    expect(picker).toHaveAttribute('title', 'Open a note or a stage (Ctrl+P)')
+    expect(picker).toHaveTextContent('')
     expect(within(dialog).getByRole('button', { name: 'Sidebar' })).toHaveAttribute(
       'title',
       'Hide the sidebar (Ctrl+B)',
@@ -2151,7 +2152,7 @@ describe('job applications tracker', () => {
     // control in the sidebar now rather than one per strip, and the pane being read is
     // what says where a note lands — the same rule every other way of opening one keeps.
     await user.click(within(strip(2)).getAllByRole('tab')[0])
-    await user.click(within(panel).getByRole('button', { name: /^Go to a stage/ }))
+    await user.click(within(panel).getByRole('button', { name: 'Open' }))
     await user.click(choices().getByRole('button', { name: /^Human Factors Researcher/ }))
 
     expect(within(strip(2)).getByRole('tab', { name: /Echo Robotics/ })).toBeInTheDocument()
@@ -2165,7 +2166,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
 
-    await user.click(within(dialog).getByRole('button', { name: /^Go to a stage/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Open' }))
     const picker = within(dialog).getByRole('textbox', { name: 'Go to stage' })
     const choices = () => within(within(dialog).getByRole('list', { name: 'Applications' }))
 
@@ -2199,7 +2200,7 @@ describe('job applications tracker', () => {
     expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
 
     // Picking a stage from a row's menu opens it as a tab, ready to type into.
-    await user.click(within(dialog).getByRole('button', { name: /^Go to a stage/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Open' }))
     await user.selectOptions(
       choices().getByRole('combobox', { name: 'Other stages for Halcyon Maps, Engineering Manager' }),
       'Take-home assessment',

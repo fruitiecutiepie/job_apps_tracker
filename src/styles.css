@@ -2594,8 +2594,36 @@ tbody tr:hover {
   min-height: var(--control);
 }
 
+/*
+ * Icons alone in the title bar, so the row is as wide as the controls are rather than as
+ * wide as their names — each says what it is on hover and to a screen reader. Unboxed for
+ * the same reason the labels went: five outlined buttons in a row are five frames drawn
+ * around a bar whose own frame is already there, and the icons read as a group without
+ * them. The box comes back under the pointer, which is when it means something.
+ */
 .panel__chrome-button {
-  gap: var(--s2);
+  min-width: var(--control);
+  min-height: var(--control);
+  border-color: transparent;
+  color: var(--ink-2);
+  background: none;
+}
+
+.panel__chrome-button:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+
+.panel__chrome-button:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+/* Pressed is a state of the thing it controls, not of the button, so it is the accent
+   rather than a heavier frame: the sidebar is open, the panel is split. */
+.panel__chrome-button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-weak);
 }
 
 .panel__body {
@@ -4008,25 +4036,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 .notes-tree__hit-where {
   flex: none;
   color: var(--ink-3);
-}
-
-/*
- * The picker, named where a reader is already looking for a note. It sits at the foot of
- * the tree because it answers what the tree cannot: a stage nothing is written for yet.
- * The shortcut is on the face of it rather than in a tooltip — this is the visible half of
- * a binding that was otherwise only in the README and a hover.
- */
-.panel__sidebar-picker {
-  justify-content: start;
-  width: 100%;
-  gap: var(--s2);
-  color: var(--ink-2);
-}
-
-.panel__sidebar-picker-key {
-  margin-left: auto;
-  color: var(--ink-3);
-  font-size: var(--t1);
 }
 
 /* One column of two sections and the control under them, each taking what it needs. */
