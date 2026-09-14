@@ -441,6 +441,42 @@ describe('the panel in a real browser', () => {
     expect(outline().bottom).toBeLessThanOrEqual(sidebar().bottom + 1)
   })
 
+  it('sets the outline as densely as the tree it shares the column with', async () => {
+    renderPanel()
+
+    // Scoped to the sidebar's own lists: the note body folds its headings with buttons of
+    // the same name, and one of those is not an outline row.
+    const outline = screen.getByRole('list', { name: 'Outline' })
+    const rows = within(outline).getAllByRole('button')
+    expect(rows.length).toBeGreaterThan(1)
+
+    const tree = screen.getByRole('list', { name: 'Prep notes by stage' })
+    const notes = within(tree)
+      .getAllByRole('button')
+      .filter((button) => button.classList.contains('notes-tree__note'))
+
+    // Against the tree rather than against a number: the two lists sit in one column, a
+    // step apart in rhythm reads as a step apart in kind, and the outline was carrying a
+    // control's height for a row that is one line of text.
+    const height = (element: Element) => element.getBoundingClientRect().height
+    expect(height(rows[0])).toBeLessThan(height(notes[0]) + 4)
+
+    // And the rows sit against one another, so a note's spine reads as one thing.
+    const gap = rows[1].getBoundingClientRect().top - rows[0].getBoundingClientRect().bottom
+    expect(gap).toBeLessThan(6)
+  })
+
+  it('keeps the outline reachable by finger where the pointer is coarse', async () => {
+    await page.viewport(480, 800)
+    renderPanel()
+
+    // Dense is for a mouse. The narrow layout raises `--control` for touch, and the
+    // outline's rows are aimed at as well as read.
+    const outline = screen.getByRole('list', { name: 'Outline' })
+    const row = within(outline).getAllByRole('button')[0]
+    expect(row.getBoundingClientRect().height).toBeGreaterThanOrEqual(32)
+  })
+
   it('stacks both headings at the top when both halves are folded', async () => {
     renderPanel()
 

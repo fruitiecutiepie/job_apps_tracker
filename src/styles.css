@@ -2756,6 +2756,7 @@ tbody tr:hover {
  */
 .panel__outline {
   display: grid;
+  align-content: start;
   gap: var(--s1);
   margin: 0;
   padding: 0;
@@ -2763,7 +2764,7 @@ tbody tr:hover {
 }
 
 .panel__outline--nested {
-  margin-left: var(--s3);
+  margin-left: var(--s2);
   padding-left: var(--s3);
   border-left: 1px solid var(--line);
 }
@@ -2780,7 +2781,10 @@ tbody tr:hover {
  */
 .panel__outline-entry {
   width: 100%;
-  min-height: var(--control);
+  /* No control height: a row is one line of text, and the tree it shares the column with
+     is padding alone. Carrying `--control` here made the outline a third taller than the
+     list under it, which reads as two lists of different kinds rather than one sidebar.
+     The touch floor is put back where the pointer is coarse, at the foot of this file. */
   padding: var(--s1) var(--s2);
   border: 0;
   border-radius: var(--r1);
@@ -4161,6 +4165,11 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   /* Comfortable targets for touch: dense controls grow to 40px. */
   :root {
     --control: 40px;
+  }
+
+  /* The outline gives up its control height for a mouse; a finger still needs one. */
+  .panel__outline-entry {
+    min-height: var(--control);
   }
 
   .context-bar select,
