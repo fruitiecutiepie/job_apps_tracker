@@ -35,17 +35,16 @@ import {
   downloadTrackerArchive,
   formatFileSize,
   importTrackerArchive,
-  isZipArchive,
+  describeImportErrors,
+  readTrackerImport,
   loadTrackerDatabase,
   MAX_ATTACHMENT_BYTES,
   moveApplication,
   openAttachmentFile,
-  parseTrackerDocument,
   readFileAsUint8Array,
   resetTrackerDatabase,
   saveTrackerDatabase,
   tryLoadLegacyLocalStorage,
-  unpackTrackerArchive,
   clearApplicationRating,
   updateApplication,
   reviseApplicationStageCapture,
@@ -67,6 +66,7 @@ import {
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
 import { backend, isBrowserBackend } from './backend'
 import { DemoBanner, StorageIntro, StorageStatus, useStorageConnection } from './StorageStatus'
+import { useFileImport } from './useFileImport'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
 import { RatingFields } from './RatingFields'
 import { StateHistory } from './StateHistory'
@@ -761,6 +761,44 @@ export default function App() {
     return done
   }
 
+  /**
+   * The single way a file becomes the tracker, whichever of the three ways it arrived by.
+   *
+   * Reading and validating happen before the confirmation rather than after, so the
+   * question names what is actually in the file. A file that cannot be read never gets as
+   * far as asking, and says why instead.
+   */
+  const importFile = async (file: File) => {
+    try {
+      const result = readTrackerImport(await readFileAsUint8Array(file))
+      if (!result.ok) {
+        setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
+        return
+      }
+
+      const { applications } = result.document
+      const attachments = result.files.length
+      const carrying = attachments > 0 ? ` and ${attachments} attachments` : ''
+      if (!window.confirm(
+        `Replace your current tracker with ${applications.length} imported applications${carrying}?`,
+      )) {
+        return
+      }
+
+      const saved = await importTrackerArchive(result.document, result.files)
+      trackerRef.current = saved
+      setTracker(saved)
+      setNotice(`Imported ${saved.applications.length} applications.`)
+    } catch (error) {
+      setNotice(`Import failed: ${errorMessage(error)}`)
+    }
+  }
+
+  const dragging = useFileImport({
+    onFile: (file) => void importFile(file),
+    onRefused: setNotice,
+  })
+
   const companies = useMemo(() => {
     const names = [...new Set((tracker?.applications ?? []).map((application) => application.company))]
     return names.sort((left, right) => left.localeCompare(right))
@@ -1092,36 +1130,24 @@ export default function App() {
       <input
         accept="application/json,.json,application/zip,.zip"
         className="sr-only"
-        onChange={async (event) => {
+        onChange={(event) => {
           const file = event.target.files?.[0]
           event.target.value = ''
-          if (!file) return
-          try {
-            const bytes = await readFileAsUint8Array(file)
-            if (isZipArchive(bytes)) {
-              const { document, files } = unpackTrackerArchive(bytes)
-              if (window.confirm(`Replace your current tracker with ${document.applications.length} imported applications and ${files.length} attachments?`)) {
-                const saved = await importTrackerArchive(document, files)
-                setTracker(saved)
-                setNotice(`Imported ${saved.applications.length} applications.`)
-              }
-              return
-            }
-
-            const imported = parseTrackerDocument(new TextDecoder().decode(bytes))
-            if (window.confirm(`Replace your current tracker with ${imported.applications.length} imported applications?`)) {
-              await importTrackerArchive(imported, [])
-              const saved = await loadTrackerDatabase()
-              setTracker(saved)
-              setNotice(`Imported ${saved.applications.length} applications.`)
-            }
-          } catch (error) {
-            setNotice(`Import failed: ${errorMessage(error)}`)
-          }
+          if (file) void importFile(file)
         }}
         ref={importInputRef}
         type="file"
       />
+
+      {/*
+        * Drop anywhere is invisible without this: the window is the target, so there is
+        * nothing on screen for someone holding a file to aim at.
+        */}
+      {dragging && (
+        <div aria-hidden="true" className="import-drop">
+          <p>Drop to import — replaces everything here</p>
+        </div>
+      )}
 
       <main id="main">
         {/*

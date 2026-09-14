@@ -430,6 +430,36 @@ p {
   white-space: nowrap;
 }
 
+/* ----------------------------------------------------------- drop target --- */
+
+/*
+ * Shown only while a file is over the window. It covers everything because the drop
+ * target is everything: an outline around one panel would say the opposite.
+ */
+.import-drop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s6);
+  border: 2px dashed var(--accent);
+  color: var(--accent-strong);
+  background: var(--scrim);
+  pointer-events: none;
+}
+
+.import-drop p {
+  margin: 0;
+  padding: var(--s4) var(--s6);
+  border-radius: var(--r3);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: var(--t5);
+  font-weight: 600;
+}
+
 /* -------------------------------------------------------- storage status --- */
 
 /*
