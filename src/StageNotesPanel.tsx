@@ -792,7 +792,12 @@ export function StageNotesPanel({
    * with `written` recording where the second starts.
    */
   const findMatches = useCallback(
-    (value: string) => {
+    /**
+     * `tabs` defaults to what is open now, and is passed in by a caller numbering the
+     * matches of an arrangement it is about to apply — a note being opened is not in
+     * `openTabs` until the render after, and its matches have to be found before then.
+     */
+    (value: string, tabs: { groupId: string; ref: NoteRef }[] = openTabs) => {
       const perTab = new Map<
         string,
         { base: number; count: number; written: number; inEditor: boolean; key: string }
@@ -804,7 +809,7 @@ export function StageNotesPanel({
       const countIn = (source: string) =>
         source.trim() ? searchNote(buildSections(parseMarkdown(source)), value).count : 0
 
-      for (const { groupId, ref } of openTabs) {
+      for (const { groupId, ref } of tabs) {
         // Two ids in play, and the difference is the point: the note's key says what the
         // text is, and is shared by every copy of it, while the tab's says which copy is
         // being numbered. Matches belong to a copy; drafts belong to a note.
@@ -1050,6 +1055,37 @@ export function StageNotesPanel({
     const [first] = findMatches(value).order
     if (first) showTab(first)
   }
+
+  /**
+   * A hit picked in the notes tree: open the note here, then hand the words to the panel's
+   * own find. Everything that makes a match legible — the highlight, the fold opened to
+   * show one, the count in the find bar, the step to the next — already lives there, and a
+   * second way of showing the same thing would be a second thing to keep right.
+   *
+   * The cursor is worked out against the arrangement being applied rather than the one on
+   * screen: the note is being opened now, so it is not among the open tabs until the render
+   * after this, and its matches would be numbered from a panel it is not yet in.
+   */
+  const findInNote = useCallback(
+    (ref: NoteRef, query: string) => {
+      if (!query) return
+      const groups = groupsOf(layoutRef.current)
+      const target = groups.find((group) => group.id === focusedGroupRef.current) ?? groups[0]
+      const next = openInGroup(layoutRef.current, target.id, ref)
+      applyLayout(next, target.id)
+      setFindQuery(query)
+      setFindOpen(true)
+      setFindSeq((current) => current + 1)
+
+      // Its first match rather than the snippet's own position: the tree counts hits in the
+      // note read as prose and the find counts them in the note as written, and the two
+      // need not agree. Landing in the right note with the find running is the promise;
+      // stepping from there is what the find bar is for.
+      const found = findMatches(query, orderedTabs(next)).perTab.get(tabId(target.id, ref))
+      setMatchCursor(found ? found.base : 0)
+    },
+    [applyLayout, findMatches],
+  )
 
   const closeFind = () => {
     setFindOpen(false)
@@ -1952,6 +1988,7 @@ export function StageNotesPanel({
                 draggingKey={drag.key}
                 onDragStart={drag.start}
                 onPick={showRef}
+                onPickMatch={findInNote}
                 openKeys={openKeys}
                 wasDragged={drag.wasDragged}
               />

@@ -687,6 +687,34 @@ describe('job applications tracker', () => {
     expect(within(restored).getByRole('button', { name: 'Show the outline' })).toBeInTheDocument()
   })
 
+  it('marks the searched words in a hit, and lands on them when it is picked', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(within(panel).getByRole('button', { name: 'Show every prep note' }))
+    await user.type(within(panel).getByRole('searchbox', { name: 'Search prep notes' }), 'teleoperation')
+
+    const hits = within(panel).getByRole('list', { name: /^Matches in Echo Robotics/ })
+    const hit = within(hits).getAllByRole('button')[0]
+    // The words that matched are marked in the snippet, not left for the eye to find.
+    expect(hit.querySelector('.markdown__match')).toHaveTextContent('teleoperation')
+
+    await user.click(hit)
+
+    // Landed in the note, with the panel's own find running on the same words — which is
+    // what opens a fold holding a match and paints the highlight.
+    const shown = within(panel).getByRole('tab', { selected: true })
+    expect(shown).toHaveTextContent('Echo Robotics')
+    expect(within(panel).getByLabelText('Find in notes')).toHaveValue('teleoperation')
+    await waitFor(() =>
+      expect(
+        within(panel).getByRole('tabpanel').querySelector('.markdown__match--current'),
+      ).not.toBeNull(),
+    )
+  })
+
   it('keeps the rail when both sidebar panels are closed', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

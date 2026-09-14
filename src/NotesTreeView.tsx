@@ -1,6 +1,7 @@
 import { useMemo, useState, type PointerEvent as ReactPointerEvent } from 'react'
 import { Search } from 'lucide-react'
 import type { Application } from './domain'
+import { splitMatches } from './markdown'
 import { buildNotesTree, notesInTree } from './notesTree'
 import { noteRefKey, type NoteRef } from './notesLayout'
 
@@ -12,6 +13,13 @@ interface NotesTreeProps {
   /** The note on show in the focused pane. */
   currentKey: string | null
   onPick: (ref: NoteRef) => void
+  /**
+   * Opens a note and runs the panel's own find on the words that matched, which is what
+   * paints the highlight and opens a fold holding one. The tree marks its snippets so a
+   * hit can be recognised before it is picked; landing on it is the find's job, not a
+   * second highlighting of the same words by other means.
+   */
+  onPickMatch: (ref: NoteRef, query: string) => void
   /**
    * Takes hold of a row, so a note can be dragged onto the pane it should open in rather
    * than into whichever one happens to be focused. The same drag the tabs use, so a row
@@ -45,6 +53,7 @@ export function NotesTreeView({
   openKeys,
   currentKey,
   onPick,
+  onPickMatch,
   onDragStart,
   draggingKey,
   wasDragged,
@@ -154,12 +163,23 @@ export function NotesTreeView({
                                 className="notes-tree__hit"
                                 onClick={() => {
                                   if (wasDragged()) return
-                                  onPick(note.ref)
+                                  onPickMatch(note.ref, query.trim())
                                 }}
                                 title={match.snippet}
                                 type="button"
                               >
-                                <span className="notes-tree__hit-text">{match.snippet}</span>
+                                <span className="notes-tree__hit-text">
+                                  {splitMatches(match.snippet, query.trim()).map((segment, at) => (
+                                    // Keyed by position: the same word twice in one snippet
+                                    // is two segments with nothing else to tell them apart.
+                                    <span
+                                      className={segment.isMatch ? 'markdown__match' : undefined}
+                                      key={`${at}-${segment.text}`}
+                                    >
+                                      {segment.text}
+                                    </span>
+                                  ))}
+                                </span>
                                 {match.where === 'captured' ? (
                                   <span className="notes-tree__hit-where">said</span>
                                 ) : null}
