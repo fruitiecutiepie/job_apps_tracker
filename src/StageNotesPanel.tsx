@@ -240,11 +240,16 @@ function OutlineList({ nodes, depth, path, current, onPick }: OutlineListProps) 
  * stopped here rather than left to bubble, as the find bar already does, so one key press
  * closes one thing.
  */
+/*
+ * In the order they are read and tabbed through, which the grid then places where they
+ * point: above, left, right, below. Source order is what the keyboard follows, so it walks
+ * the cross top to bottom rather than jumping around it.
+ */
 const SPLIT_CHOICES: readonly { edge: Edge; label: string }[] = [
-  { edge: 'right', label: 'Right' },
-  { edge: 'left', label: 'Left' },
-  { edge: 'bottom', label: 'Below' },
   { edge: 'top', label: 'Above' },
+  { edge: 'left', label: 'Left' },
+  { edge: 'right', label: 'Right' },
+  { edge: 'bottom', label: 'Below' },
 ]
 
 function ShortcutsHelp() {
@@ -386,7 +391,7 @@ function SplitMenu({
           <div className="panel__split-choices">
             {SPLIT_CHOICES.map(({ edge, label }) => (
               <button
-                className="button button--quiet panel__split-choice"
+                className={`button button--quiet panel__split-choice panel__split-choice--${edge}`}
                 key={edge}
                 onClick={() => choose(() => onSplit(edge))}
                 type="button"
@@ -399,13 +404,15 @@ function SplitMenu({
             ))}
           </div>
           {isSplit ? (
-            <button
-              className="button button--quiet panel__split-choice panel__split-choice--collapse"
-              onClick={() => choose(onCollapse)}
-              type="button"
-            >
-              Collapse to one pane
-            </button>
+            <div className="panel__split-collapse">
+              <button
+                className="button button--quiet panel__split-choice panel__split-choice--collapse"
+                onClick={() => choose(onCollapse)}
+                type="button"
+              >
+                Collapse to one pane
+              </button>
+            </div>
           ) : null}
         </div>
       ) : null}

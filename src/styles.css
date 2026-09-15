@@ -2637,25 +2637,41 @@ tbody tr:hover {
 
 /* Open says what it is: it is the way to a note not on screen yet, which is when a reader
    is least able to guess at an icon, and the only visible place its binding is written. */
-/* The directions a pane can open in, as a small block of choices rather than a list of
-   rows: four short words read faster side by side than stacked, and they are a set. */
+/* Laid out as the directions they are: Above over Left and Right, Below under them. A list
+   reading "Right, Left, Below, Above" makes the reader translate a word into a side of the
+   screen; this is the answer drawn. The middle stands empty — it is the pane being split,
+   and nothing goes there. */
 .panel__split-choices {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-areas:
+    '.    above .'
+    'left .     right'
+    '.    below .';
   gap: var(--s2);
+  justify-items: stretch;
 }
 
 .panel__split-choice {
-  justify-content: space-between;
-  gap: var(--s3);
+  justify-content: center;
+  gap: var(--s2);
   min-height: var(--control);
+  padding: 0 var(--s3);
+}
+
+.panel__split-choice--right { grid-area: right; }
+.panel__split-choice--left { grid-area: left; }
+.panel__split-choice--bottom { grid-area: below; }
+.panel__split-choice--top { grid-area: above; }
+
+/* Not one of the directions, so it sits under the rule rather than among them — and it
+   keeps their height and their padding, which is what makes the block read as one menu. */
+.panel__split-collapse {
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
 }
 
 .panel__split-choice--collapse {
-  margin-top: var(--s2);
   width: 100%;
-  border-top: 1px solid var(--line);
-  border-radius: 0;
   color: var(--ink-2);
 }
 
