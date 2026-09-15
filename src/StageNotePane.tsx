@@ -234,7 +234,11 @@ export function StageNotePane({
         role="tabpanel"
       >
         <header className="stage-note__header">
-          <h3 id={stageNoteHeadingId(groupId, noteRef)}>{company} · {role}</h3>
+          {/* Kept and not printed. The tab directly above this says the same words, in
+              every pane and at every width — a pane brings the tab it is showing into
+              view, so it is never the case that the header says something the strip does
+              not. What a screen reader is handed for the note stays. */}
+          <h3 className="sr-only" id={stageNoteHeadingId(groupId, noteRef)}>{company} · {role}</h3>
           <label className="stage-note__state">
             <span className="sr-only">Go to a different stage for {company}</span>
             <select

@@ -14,6 +14,7 @@ import {
   type StateId,
 } from './domain'
 import { QuickOpen, type QuickOpenEntry } from './QuickOpen'
+import { tabLabels } from './notesTabLabel'
 import { PANEL_SHORTCUTS, shortcutKeys, shortcutLabel } from './shortcuts'
 import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
 import {
@@ -1769,6 +1770,21 @@ export function StageNotesPanel({
     const isFocusedGroup = group.id === activeGroup.id
     const shownApplication = applicationsById.get(shown.applicationId)
 
+    /*
+     * Decided across the strip rather than per tab: what a tab has to say depends on what
+     * it sits beside. A strip of one application's stages needs no company on any of them.
+     */
+    const shortLabels = tabLabels(
+      group.tabs.map((tab) => {
+        const application = applicationsById.get(tab.applicationId)
+        return {
+          company: application?.company ?? '',
+          role: application ? applicationRole(application) : '',
+          stage: stateLabel(tab.state),
+        }
+      }),
+    )
+
     return (
       <div className="panel__group" key={group.id}>
         <div
@@ -1784,12 +1800,13 @@ export function StageNotesPanel({
           {group.tabs.map((tab, tabIndex) => {
             const key = noteRefKey(tab)
             const label = labelOf(tab)
+            const shortLabel = shortLabels[tabIndex]
             const tabMatches = matches.perTab.get(tabId(group.id, tab))
             const isActive = key === shownKey
             const application = applicationsById.get(tab.applicationId)
-            // Company and stage alone read the same for two roles at the same company; the
-            // tab is where that has to be told apart, so it carries the role as well.
-            const tabLabel = application
+            // The whole name, for the tooltip and for anyone reading the strip through its
+            // accessible names rather than looking at it.
+            const fullLabel = application
               ? `${application.company} · ${applicationRole(application)} · ${stateLabel(tab.state)}`
               : label
             const isDropTarget =
@@ -1852,8 +1869,13 @@ export function StageNotesPanel({
                   role="tab"
                   tabIndex={isActive ? 0 : -1}
                   type="button"
+                  title={fullLabel}
                 >
-                  {tabLabel}
+                  {/* The whole name to a screen reader, the distinguishing part of it on
+                      screen: a strip is read one tab at a time, where it is looked at all
+                      at once, so what a reader needs is not what a listener does. */}
+                  <span className="sr-only">{fullLabel}</span>
+                  <span aria-hidden="true" className="panel__tab-label">{shortLabel}</span>
                   {application?.state === tab.state ? (
                     <span className="panel__tab-badge">Current</span>
                   ) : null}

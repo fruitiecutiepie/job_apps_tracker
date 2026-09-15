@@ -539,6 +539,27 @@ describe('the panel in a real browser', () => {
     expect(box.height).toBeGreaterThanOrEqual(3)
   })
 
+  it('keeps the middle of a tab the tab, not the close over it', async () => {
+    renderPanel()
+
+    /*
+     * The close sits over the tab's own end and is a control wide whatever its icon
+     * measures, so the tab reserves that much. Without it the control landed on the middle
+     * of a short tab — "Offer" is a whole tab now — and a press meant to read a note closed
+     * it. Hidden it takes no presses at all, which is what a touch screen has instead of a
+     * hover.
+     */
+    for (const tab of screen.getAllByRole('tab')) {
+      const box = tab.getBoundingClientRect()
+      const at = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)
+      expect(at?.closest('.panel__tab-close')).toBeNull()
+      expect(at?.closest('.panel__tab')).not.toBeNull()
+    }
+
+    const close = document.querySelector('.panel__tab-close')!
+    expect(getComputedStyle(close).pointerEvents).toBe('none')
+  })
+
   it('reorders a tab dragged within its own strip', async () => {
     renderPanel()
 

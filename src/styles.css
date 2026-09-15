@@ -2105,18 +2105,6 @@ tbody tr:hover {
   gap: var(--s2) var(--s3);
 }
 
-.stage-note__header h3 {
-  flex: 1 1 8ch;
-  min-width: 0;
-  overflow: hidden;
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--t4);
-  font-weight: 600;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
 .stage-note__badge {
   padding: 0 var(--s2);
   border-radius: var(--pill);
@@ -3283,12 +3271,17 @@ tbody tr:hover {
 /* Sits over the tab's own end rather than beside it, the way its background — set to
    match the tab's own hover background — reads as covering the title underneath rather
    than floating past the tab's edge. */
+/* Laid over the tab's own right end, in the band the tab reserves for it below. Hidden, it
+   takes no presses either: `opacity: 0` alone still answers a pointer, so on a screen where
+   nothing hovers first a tap near the end of a tab closed the note instead of opening it —
+   invisibly, and the shorter the tab the more of it was that. */
 .panel__tab-close {
   position: absolute;
   top: 50%;
   right: var(--s2);
   padding: var(--s1);
   opacity: 0;
+  pointer-events: none;
   color: var(--ink-3);
   background: var(--surface-3);
   translate: 0 -50%;
@@ -3297,6 +3290,7 @@ tbody tr:hover {
 .panel__tab-slot:hover .panel__tab-close,
 .panel__tab-slot:focus-within .panel__tab-close {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .panel__tab {
@@ -3304,13 +3298,29 @@ tbody tr:hover {
   align-items: center;
   gap: var(--s2);
   min-height: var(--control);
-  padding: 0 var(--s4);
+  /* No tab may take the strip. A role reading "Senior Software Engineer - Product &
+     Features (Java)" is a legitimate role and an illegitimate tab: without a ceiling one
+     of them pushes every other tab out of sight, and the strip stops being a way to see
+     what is open. The whole name is on the tooltip and in the accessible name. */
+  max-width: 18rem;
+  /* Room at the end for the close control that sits over it, so a label never runs under
+     the control and the middle of a tab is always the tab. Tabs say much less than they
+     used to, which is what made this worth the width: the close was landing on the middle
+     of "Offer". A control wide, because that is what the close is — an `icon-button` keeps
+     `--control` whatever its icon measures. */
+  padding: 0 calc(var(--control) + var(--s3)) 0 var(--s4);
   border: 0;
   border-bottom: 2px solid transparent;
   color: var(--ink-2);
   background: none;
   font-size: var(--t3);
   white-space: nowrap;
+}
+
+.panel__tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .panel__tab:hover {

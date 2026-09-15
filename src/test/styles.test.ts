@@ -186,16 +186,11 @@ describe('prep notes view', () => {
     expect(ruleBody('.panel__notes')).toMatch(/min-width:\s*0/)
   })
 
-  it('keeps the note header to two rows by letting the name give way', () => {
-    // The header's parts want some seven hundred pixels between them, so in a split pane a
-    // plain wrap gave each of them a line of its own — four rows of chrome over a note that
-    // had less height than they did. The name is the part that gives, being the one thing
-    // here also written in full on the tab directly above.
-    const heading = ruleBody('.stage-note__header h3')
-    expect(heading).toMatch(/text-overflow:\s*ellipsis/)
-    expect(heading).toMatch(/white-space:\s*nowrap/)
-    expect(heading).toMatch(/min-width:\s*0/)
-    // The controls keep their width, so they wrap as one piece rather than splitting up.
+  it('keeps the note header to one row, the name having gone from it entirely', () => {
+    // The header's parts want some seven hundred pixels between them, and in a split pane
+    // a plain wrap gave each of them a line of its own. The name gave way first by
+    // truncating; it is `sr-only` now, the tab above carrying it in full, so what is left
+    // is controls that keep their width and wrap as one piece rather than splitting up.
     expect(ruleBody('.stage-note__actions')).toMatch(/flex:\s*none/)
   })
 

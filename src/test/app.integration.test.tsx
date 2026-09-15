@@ -40,6 +40,15 @@ const states = [
 /** Comfortably past the panel's own wait, for asserting that nothing was written. */
 const AUTOSAVE_SETTLE_MS = 1500
 
+/**
+ * What a tab shows, rather than everything written on it. A tab carries its whole name for
+ * a screen reader as well as the distinguishing part of it on screen, so `textContent` is
+ * both at once; these assertions are about the strip as it is read.
+ */
+function tabText(tab: HTMLElement): string {
+  return tab.querySelector('.panel__tab-label')?.textContent ?? ''
+}
+
 function readSavedDocument() {
   return loadTrackerDocument(testTrackerStore)
 }
@@ -977,7 +986,7 @@ describe('job applications tracker', () => {
     const restored = screen.getByRole('region', { name: 'Stage prep notes' })
     expect(within(restored).getAllByRole('tabpanel')).toHaveLength(2)
     expect(
-      within(restored).getAllByRole('tab').map((tab) => tab.textContent),
+      within(restored).getAllByRole('tab').map(tabText),
     ).toEqual(expect.arrayContaining([expect.stringContaining('Echo Robotics')]))
   })
 
@@ -1173,8 +1182,8 @@ describe('job applications tracker', () => {
       .toBeInTheDocument()
 
     await user.click(within(dialog).getByRole('button', { name: 'Close the Halcyon Maps · Offer tab' }))
-    expect(within(dialog).getAllByRole('tab').map((tab) => tab.textContent))
-      .toEqual(['Halcyon Maps · Engineering Manager · Interview 2Current', 'Halcyon Maps · Engineering Manager · Interview 1'])
+    expect(within(dialog).getAllByRole('tab').map(tabText))
+      .toEqual(['Interview 2', 'Interview 1'])
 
     // Off screen, not deleted: the note itself is untouched.
     expect(
@@ -1526,11 +1535,11 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
 
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    const tabs = within(dialog).getAllByRole('tab').map((tab) => tab.textContent)
+    const tabs = within(dialog).getAllByRole('tab').map(tabText)
     expect(tabs).toEqual([
-      'Halcyon Maps · Engineering Manager · Interview 2Current',
-      'Halcyon Maps · Engineering Manager · Interview 1',
-      'Halcyon Maps · Engineering Manager · Offer',
+      'Interview 2',
+      'Interview 1',
+      'Offer',
     ])
 
     // The current stage is the tab on show, and its saved notes render rather than
@@ -1993,7 +2002,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    const tabs = () => within(dialog).getAllByRole('tab').map((tab) => tab.textContent)
+    const tabs = () => within(dialog).getAllByRole('tab').map(tabText)
     const before = tabs()
 
     await user.click(within(dialog).getByRole('tab', { name: /Offer/ }))
@@ -2225,6 +2234,63 @@ describe('job applications tracker', () => {
     expect(
       within(dialog).getByLabelText('Halcyon Maps · Take-home assessment prep notes'),
     ).toBeInTheDocument()
+  })
+
+  it('says on a tab only what tells it from the tabs beside it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    const strip = () => within(panel).getAllByRole('tab')
+
+    // One application's stages: the company and the role are on every tab and so on none
+    // of them, leaving the stages — the part that actually differs — room to be read.
+    expect(strip().map(tabText)).toEqual(['Interview 2', 'Interview 1', 'Offer'])
+
+    // The whole name is still what the tab is called, so a screen reader hears it and a
+    // query for it finds it.
+    expect(
+      within(panel).getByRole('tab', { name: /^Halcyon Maps · Engineering Manager · Offer/ }),
+    ).toBeInTheDocument()
+    expect(strip()[2]).toHaveAttribute('title', 'Halcyon Maps · Engineering Manager · Offer')
+
+    // A second company arrives and the company comes back on every tab, because now it is
+    // what separates them. The role stays off: neither company has two roles open here.
+    await user.click(within(panel).getByRole('button', { name: 'Open' }))
+    await user.click(
+      within(within(panel).getByRole('list', { name: 'Applications' }))
+        .getByRole('button', { name: /^Human Factors Researcher/ }),
+    )
+
+    expect(strip().map(tabText)).toEqual([
+      'Halcyon Maps · Interview 2',
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Offer',
+      'Echo Robotics · Interview 1',
+    ])
+  })
+
+  it('does not print the note\'s name under the tab that already carries it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    /*
+     * Every pane has its own tab strip and brings the tab it is showing into view, so the
+     * words under it were the words above it, a row apart, in every pane and at every
+     * width. The heading stays for anyone reading the panel through its structure — it is
+     * what a screen reader is given for the note — but it is not printed twice.
+     */
+    const heading = within(panel).getByRole('heading', {
+      level: 3,
+      name: 'Halcyon Maps · Engineering Manager',
+    })
+    expect(heading).toHaveClass('sr-only')
+    expect(within(panel).getByRole('tab', { selected: true }))
+      .toHaveTextContent('Halcyon Maps · Engineering Manager')
   })
 
   it('closes the picker from its own button, and by pressing outside it', async () => {
@@ -3106,7 +3172,7 @@ describe('job applications tracker', () => {
   }
 
   const tabNames = (dialog: HTMLElement) =>
-    within(dialog).getAllByRole('tab').map((tab) => tab.textContent)
+    within(dialog).getAllByRole('tab').map(tabText)
 
   it('drags a note out of the tree onto a pane that is not the focused one', async () => {
     const user = userEvent.setup()
@@ -3275,18 +3341,18 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
     expect(tabNames(dialog)).toEqual([
-      'Halcyon Maps · Engineering Manager · Interview 2Current',
-      'Halcyon Maps · Engineering Manager · Interview 1',
-      'Halcyon Maps · Engineering Manager · Offer',
+      'Interview 2',
+      'Interview 1',
+      'Offer',
     ])
 
     const offer = within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })
     pointerDrag(offer, slotOf(within(dialog).getAllByRole('tab')[0]))
 
     expect(tabNames(dialog)).toEqual([
-      'Halcyon Maps · Engineering Manager · Offer',
-      'Halcyon Maps · Engineering Manager · Interview 2Current',
-      'Halcyon Maps · Engineering Manager · Interview 1',
+      'Offer',
+      'Interview 2',
+      'Interview 1',
     ])
     // Moving a tab is an arrangement, not an edit: the notes are untouched.
     expect(
@@ -3315,9 +3381,9 @@ describe('job applications tracker', () => {
 
     const after = within(dialog).getAllByRole('tablist')
     expect(within(after[0]).getAllByRole('tab')).toHaveLength(1)
-    expect(within(after[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Halcyon Maps · Engineering Manager · Interview 1',
-      'Halcyon Maps · Engineering Manager · Offer',
+    expect(within(after[1]).getAllByRole('tab').map(tabText)).toEqual([
+      'Interview 1',
+      'Offer',
     ])
   })
 
@@ -3333,12 +3399,12 @@ describe('job applications tracker', () => {
     await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
 
     const strips = within(dialog).getAllByRole('tablist')
-    expect(within(strips[0]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Halcyon Maps · Engineering Manager · Offer',
+    expect(within(strips[0]).getAllByRole('tab').map(tabText)).toEqual([
+      'Offer',
     ])
-    expect(within(strips[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Halcyon Maps · Engineering Manager · Interview 2Current',
-      'Halcyon Maps · Engineering Manager · Interview 1',
+    expect(within(strips[1]).getAllByRole('tab').map(tabText)).toEqual([
+      'Interview 2',
+      'Interview 1',
     ])
   })
 
@@ -3351,17 +3417,17 @@ describe('job applications tracker', () => {
 
     await user.keyboard('{Control>}{Alt>}{ArrowRight}{/Alt}{/Control}')
     expect(tabNames(dialog)).toEqual([
-      'Halcyon Maps · Engineering Manager · Interview 1',
-      'Halcyon Maps · Engineering Manager · Interview 2Current',
-      'Halcyon Maps · Engineering Manager · Offer',
+      'Interview 1',
+      'Interview 2',
+      'Offer',
     ])
 
     // Wraps rather than stopping, so the tab can reach either end from either end.
     await user.keyboard('{Control>}{Alt>}{ArrowLeft}{/Alt}{/Control}')
     expect(tabNames(dialog)).toEqual([
-      'Halcyon Maps · Engineering Manager · Interview 2Current',
-      'Halcyon Maps · Engineering Manager · Interview 1',
-      'Halcyon Maps · Engineering Manager · Offer',
+      'Interview 2',
+      'Interview 1',
+      'Offer',
     ])
   })
 
@@ -3492,8 +3558,8 @@ describe('job applications tracker', () => {
 
     const strips = within(dialog).getAllByRole('tablist')
     expect(strips).toHaveLength(2)
-    expect(within(strips[1]).getAllByRole('tab').map((tab) => tab.textContent)).toEqual([
-      'Halcyon Maps · Engineering Manager · Offer',
+    expect(within(strips[1]).getAllByRole('tab').map(tabText)).toEqual([
+      'Offer',
     ])
     expect(within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' }))
       .toHaveAttribute('aria-orientation', 'vertical')
