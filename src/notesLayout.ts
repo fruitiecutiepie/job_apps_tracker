@@ -204,12 +204,17 @@ function withoutTab(group: TabGroup, key: string): TabGroup {
 }
 
 /**
- * Removes emptied groups and collapses a split left holding one child, so no arrangement
- * ever shows an empty pane or a split that splits nothing. Returns null when the whole
- * tree emptied, which is the panel's cue to close.
+ * Collapses a split left holding one child, so no arrangement shows a split that splits
+ * nothing, and renormalises what is left. Returns null when there is nothing left at all.
+ *
+ * An empty pane is **not** swept up here. A pane opened empty is a place the reader made
+ * for the next note, and it has to survive every operation somewhere else in the tree —
+ * closing a tab two panes over must not take it away. A pane that loses its last note is a
+ * different thing, and the operations that empty one say so themselves, through
+ * `withoutGroup` below.
  */
 export function prune(node: LayoutNode): LayoutNode | null {
-  if (isGroup(node)) return node.tabs.length > 0 ? node : null
+  if (isGroup(node)) return node
 
   const kept: LayoutNode[] = []
   const sizes: number[] = []
@@ -223,6 +228,42 @@ export function prune(node: LayoutNode): LayoutNode | null {
   if (kept.length === 0) return null
   if (kept.length === 1) return kept[0]
   return { ...node, children: kept, sizes: normalise(sizes) }
+}
+
+/** Takes a pane out of the tree, collapsing whatever split it leaves behind. */
+export function withoutGroup(node: LayoutNode, groupId: string): LayoutNode | null {
+  if (isGroup(node)) return node.id === groupId ? null : node
+
+  const kept: LayoutNode[] = []
+  const sizes: number[] = []
+  node.children.forEach((child, index) => {
+    const left = withoutGroup(child, groupId)
+    if (!left) return
+    kept.push(left)
+    sizes.push(node.sizes[index] ?? 1 / node.children.length)
+  })
+
+  if (kept.length === 0) return null
+  if (kept.length === 1) return kept[0]
+  return { ...node, children: kept, sizes: normalise(sizes) }
+}
+
+/** Every note open anywhere in the tree, which is what says whether a panel is empty. */
+const holdsNothing = (node: LayoutNode): boolean =>
+  groupsOf(node).every((group) => group.tabs.length === 0)
+
+/**
+ * Opens an empty pane beside one, for a reader making room for the next note rather than
+ * moving one they already have. Nothing is taken from the pane it opens beside.
+ */
+export function splitEmpty(
+  tree: LayoutNode,
+  targetGroupId: string,
+  edge: Edge,
+  makeId: () => string,
+): LayoutNode {
+  if (!findGroup(tree, targetGroupId)) return tree
+  return insertBeside(tree, targetGroupId, axisFor(edge), isBefore(edge), makeGroup(makeId(), [], null), makeId)
 }
 
 /**
@@ -289,12 +330,19 @@ export function replaceTab(tree: LayoutNode, groupId: string, fromKey: string, r
  * undismissable tab per application would only accumulate.
  */
 export function closeTab(tree: LayoutNode, groupId: string, key: string): LayoutNode | null {
-  return prune(mapGroup(tree, groupId, (group) => withoutTab(group, key)))
+  const closed = mapGroup(tree, groupId, (group) => withoutTab(group, key))
+  const emptied = findGroup(closed, groupId)
+  // The pane that lost its last note goes with it; panes opened empty elsewhere stay.
+  const left = emptied && emptied.tabs.length === 0 ? withoutGroup(closed, groupId) : prune(closed)
+  if (!left || holdsNothing(left)) return null
+  return left
 }
 
-/** Closes every tab in a group, taking the pane with it. */
+/** Closes a pane, whatever it was holding. */
 export function closeGroup(tree: LayoutNode, groupId: string): LayoutNode | null {
-  return prune(mapGroup(tree, groupId, (group) => ({ ...group, tabs: [], activeKey: null })))
+  const left = withoutGroup(tree, groupId)
+  if (!left || holdsNothing(left)) return null
+  return left
 }
 
 /**
@@ -365,8 +413,12 @@ export function moveTab(
     return group
   })
 
-  // A move within one group can never empty it, so pruning is only needed across groups.
-  return sameGroup ? moved : (prune(moved) ?? moved)
+  // A move within one group can never empty it; across them, the pane left with nothing
+  // is the one that just gave up its last note, so it goes.
+  if (sameGroup) return moved
+  const drained = findGroup(moved, source.id)
+  const left = drained && drained.tabs.length === 0 ? withoutGroup(moved, source.id) : prune(moved)
+  return left ?? moved
 }
 
 /**
@@ -428,7 +480,12 @@ export function splitWith(
     : tree
 
   const inserted = insertBeside(detached, targetGroupId, axis, before, fresh, makeId)
-  return prune(inserted) ?? inserted
+  // The pane the note came out of goes if that was its last; one opened empty stays.
+  const drained = source ? findGroup(inserted, source.id) : null
+  const left = source && drained && drained.tabs.length === 0
+    ? withoutGroup(inserted, source.id)
+    : prune(inserted)
+  return left ?? inserted
 }
 
 /**

@@ -91,10 +91,13 @@ function renderPanel(applications = fixtureApplications()) {
   return { halcyon }
 }
 
-/** The box a pane occupies, which is the sized wrapper rather than the note inside it. */
+/**
+ * The box a pane occupies, which is the sized wrapper rather than the note inside it. Read
+ * from the panes themselves rather than from the notes in them: a pane can be open and
+ * empty, and it still takes a share of the split.
+ */
 function paneBoxes(): DOMRect[] {
-  return screen
-    .getAllByRole('tabpanel')
+  return [...document.querySelectorAll<HTMLElement>('.panel__group')]
     .map((pane) => (pane.closest('.panel__split-child') ?? pane).getBoundingClientRect())
 }
 
@@ -301,7 +304,7 @@ describe('the panel in a real browser', () => {
     expect(share).toBeGreaterThan(0.1)
     expect(share).toBeLessThan(0.25)
     expect(left.width).toBeGreaterThan(0)
-    expect(screen.getAllByRole('tabpanel')).toHaveLength(2)
+    expect(paneBoxes()).toHaveLength(2)
   })
 
   it('answers the keyboard chord that moves a tab, if the browser lets it through', async () => {
@@ -309,14 +312,19 @@ describe('the panel in a real browser', () => {
     await splitRight()
 
     const tabCounts = () =>
-      screen.getAllByRole('tablist').map((strip) => within(strip).getAllByRole('tab').length)
-    expect(tabCounts()).toEqual([2, 1])
+      screen.getAllByRole('tablist').map((strip) => within(strip).queryAllByRole('tab').length)
+    // Three notes in the pane split from, and a pane opened empty beside it.
+    expect(tabCounts()).toEqual([3, 0])
+
+    // Read from the pane holding the notes: a pane opens empty and takes focus with it, and
+    // this chord sends the tab the focused pane is showing.
+    await userEvent.click(screen.getAllByRole('tab')[0])
 
     // Whether this reaches the page at all is the question: nothing intercepts a chord in
     // jsdom, and a real browser or window manager can take one first.
     await userEvent.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
 
-    expect(tabCounts()).toEqual([1, 2])
+    expect(tabCounts()).toEqual([2, 1])
   })
 
   it('scrolls a long note inside its own card, not the page', async () => {

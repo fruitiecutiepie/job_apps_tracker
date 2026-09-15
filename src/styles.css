@@ -2662,6 +2662,33 @@ tbody tr:hover {
   padding: 0 var(--s2);
 }
 
+/* A pane with nothing in it yet: what to do about that, said plainly, in the middle of the
+   room it is offering. Quiet — it is an invitation rather than a warning. */
+.panel__empty-pane {
+  display: grid;
+  /* The pane's whole height, so what it says sits in the middle of the room it is
+     offering rather than tucked under the strip above it. */
+  flex: 1;
+  min-height: 0;
+  gap: var(--s2);
+  place-content: center;
+  justify-items: center;
+  padding: var(--s5);
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.panel__empty-pane-hint {
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+.panel__empty-pane-close {
+  margin-top: var(--s3);
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
 /* The pane the new one opens beside. Drawn as a pane rather than as a control — no border
    to press, quiet ink, the panel's own surface — so it reads as the thing being split. */
 .panel__split-here {

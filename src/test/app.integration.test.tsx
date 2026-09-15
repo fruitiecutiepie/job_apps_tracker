@@ -56,6 +56,30 @@ async function splitPane(
 ) {
   await user.click(within(within_).getByRole('button', { name: 'Split' }))
   await user.click(within(within_).getByRole('button', { name: where }))
+
+  /*
+   * A pane opens empty, so this then puts a note in it — the tab beside the one being
+   * read, sent over with the keyboard, which is what Split used to do on its own. Tests
+   * that are about the empty pane itself do not come through here.
+   */
+  const chord: Record<string, string> = {
+    Right: '{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}',
+    Left: '{Control>}{Shift>}{ArrowLeft}{/Shift}{/Control}',
+    Below: '{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}',
+    Above: '{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}',
+  }
+  const strip = () => within(within_).getAllByRole('tablist')[0]
+  const spare = within(strip()).getAllByRole('tab')[1]
+  if (!spare) return
+  // Selected first, because what the chord moves is the tab the pane is showing.
+  await user.click(spare)
+  await user.keyboard(chord[where])
+  // The moved tab takes focus with it, so this hands it back to the pane split from —
+  // which is where Split used to leave it, and what the tests after this assume.
+  const reading = within(strip())
+    .getAllByRole('tab')
+    .find((tab) => tab.getAttribute('aria-selected') === 'true')
+  if (reading) await user.click(reading)
 }
 
 function tabText(tab: HTMLElement): string {
@@ -1463,9 +1487,7 @@ describe('job applications tracker', () => {
     // Split, then read the second pane: capture follows the pane being read rather than
     // the one that was open first. Both panes now show the same "Company · Role" heading
     // once the state is dropped from it, so scope to the pane holding Interview 1.
-    // The shortcut opens the menu and an arrow says which way, so a pane opens to the right.
-    await user.keyboard('{Control>}\\{/Control}')
-    await user.keyboard('{ArrowRight}')
+    await splitPane(user, dialog)
     const interview1Pane = within(dialog)
       .getAllByRole('tabpanel')
       .find((pane) => pane.id.endsWith('--interview_1'))!
@@ -2275,17 +2297,18 @@ describe('job applications tracker', () => {
     const [, second, third] = panes().map((pane) => pane.closest('.panel__split-child') ?? pane)
     expect(second).not.toBe(third)
 
-    // A pane with nothing spare copies the note it is reading rather than refusing: the
-    // control adds a pane, and a panel holding one note is not a reason it cannot.
+    // A pane holding one note can still be split: nothing has to move for a pane to open,
+    // which is what an empty one is for.
     await user.click(within(panel).getByRole('button', { name: 'Split' }))
     await user.click(within(panel).getByRole('button', { name: 'Collapse to one pane' }))
     for (const tab of within(panel).getAllByRole('tab').slice(1)) {
       await user.click(within(tab.parentElement!).getByRole('button', { name: /^Close the / }))
     }
     expect(within(panel).getAllByRole('tab')).toHaveLength(1)
-    await splitPane(user, panel, 'Right')
-    expect(panes()).toHaveLength(2)
-    expect(panes()[0]).toHaveAccessibleName(panes()[1].getAttribute('aria-label')!)
+    await user.click(within(panel).getByRole('button', { name: 'Split' }))
+    await user.click(within(panel).getByRole('button', { name: 'Right' }))
+    expect(within(panel).getAllByRole('tablist')).toHaveLength(2)
+    expect(within(panel).getByText('This pane is empty.')).toBeInTheDocument()
 
     // And the panel still comes back to one pane, by saying so rather than by pressing
     // the same control that has been adding them.
@@ -2311,7 +2334,11 @@ describe('job applications tracker', () => {
     expect(within(panel).getByRole('button', { name: 'Above' })).toHaveFocus()
     await user.keyboard('{ArrowDown}')
 
-    expect(within(panel).getAllByRole('tabpanel')).toHaveLength(2)
+    // A pane, empty and waiting: two strips, one note. The note stays where it was — the
+    // reader asked for room, not for this note to be somewhere else.
+    expect(within(panel).getAllByRole('tablist')).toHaveLength(2)
+    expect(within(panel).getAllByRole('tabpanel')).toHaveLength(1)
+    expect(within(panel).getByText('This pane is empty.')).toBeInTheDocument()
     // The menu closes behind it and hands focus back to the control that opened it.
     expect(within(panel).queryByRole('button', { name: 'Above' })).not.toBeInTheDocument()
     expect(within(panel).getByRole('button', { name: 'Split' })).toHaveFocus()

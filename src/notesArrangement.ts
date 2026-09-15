@@ -242,6 +242,13 @@ function readNode(value: unknown, known: ReadonlySet<string>): LayoutNode | null
       tabs.push({ applicationId, state })
     }
     const activeKey = typeof value.activeKey === 'string' ? value.activeKey : null
+    /*
+     * A pane stored empty is one the reader opened and has not filled yet, and it comes
+     * back as it was. A pane that held notes and holds none now lost them to an
+     * application that is gone, which is a pane with nothing left to be — the difference
+     * is only visible here, while the stored tabs are still in hand.
+     */
+    if (tabs.length === 0 && value.tabs.length > 0) return null
     return makeGroup(value.id, tabs, activeKey)
   }
 
@@ -299,7 +306,9 @@ export function restoreArrangement(
   const read = readNode(parsed.layout, known)
   if (!read) return null
   const layout = prune(read)
-  if (!layout) return null
+  // Panes may be empty; a panel may not. With no note anywhere there is nothing to restore
+  // into, and the view's own empty state is what the reader should see.
+  if (!layout || groupsOf(layout).every((group) => group.tabs.length === 0)) return null
 
   const groups = groupsOf(layout)
   const stored = parsed.focusedGroupId

@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 
 import {
   MIN_PANE_FRACTION,
+  splitEmpty,
+  withoutGroup,
   activateTab,
   closeGroup,
   closeTab,
@@ -548,18 +550,18 @@ describe('resizeSplit', () => {
   })
 })
 
-describe('prune', () => {
+describe('taking a pane out', () => {
   it('collapses a split down to its one remaining child', () => {
     const split: SplitNode = {
       kind: 'split',
       id: 's1',
       direction: 'row',
-      children: [makeGroup('g1', [acme('applied')]), makeGroup('g2', [])],
+      children: [makeGroup('g1', [acme('applied')]), makeGroup('g2', [globex('offer')])],
       sizes: [0.5, 0.5],
     }
-    const pruned = prune(split)!
-    expect(pruned.kind).toBe('group')
-    expect((pruned as { id: string }).id).toBe('g1')
+    const left = withoutGroup(split, 'g2')!
+    expect(left.kind).toBe('group')
+    expect((left as { id: string }).id).toBe('g1')
   })
 
   it('spreads a removed pane’s share over the panes that remain', () => {
@@ -569,17 +571,32 @@ describe('prune', () => {
       direction: 'row',
       children: [
         makeGroup('g1', [acme('applied')]),
-        makeGroup('g2', []),
+        makeGroup('g2', [acme('interview_1')]),
         makeGroup('g3', [globex('offer')]),
       ],
       sizes: [0.2, 0.6, 0.2],
     }
-    const pruned = prune(split) as SplitNode
-    expect(pruned.sizes).toEqual([0.5, 0.5])
+    const left = withoutGroup(split, 'g2') as SplitNode
+    expect(left.sizes).toEqual([0.5, 0.5])
   })
 
-  it('returns nothing for a tree with no notes left in it', () => {
-    expect(prune(makeGroup('g1', []))).toBeNull()
+  it('returns nothing when the pane taken was the only one', () => {
+    expect(withoutGroup(makeGroup('g1', [acme('applied')]), 'g1')).toBeNull()
+  })
+
+  it('leaves an empty pane alone, that being a place made for the next note', () => {
+    // What `prune` used to do, and must not: a pane opened empty has to survive every
+    // operation happening somewhere else in the tree.
+    const split: SplitNode = {
+      kind: 'split',
+      id: 's1',
+      direction: 'row',
+      children: [makeGroup('g1', [acme('applied')]), makeGroup('g2', [])],
+      sizes: [0.5, 0.5],
+    }
+    const kept = prune(split) as SplitNode
+    expect(kept.kind).toBe('split')
+    expect(kept.children).toHaveLength(2)
   })
 })
 
@@ -693,5 +710,40 @@ describe('parseNoteRefKey', () => {
     expect(parseNoteRefKey('acme')).toBeNull()
     expect(parseNoteRefKey('acme::not_a_state')).toBeNull()
     expect(parseNoteRefKey('::applied')).toBeNull()
+  })
+})
+
+describe('a pane opened empty', () => {
+  it('stands beside the pane it was opened from, holding nothing', () => {
+    const tree = singleGroup('pane-1', acme('applied'))
+    const split = splitEmpty(tree, 'pane-1', 'right', () => 'pane-2')
+
+    const panes = groupsOf(split)
+    expect(panes.map((group) => group.id)).toEqual(['pane-1', 'pane-2'])
+    expect(panes[1].tabs).toEqual([])
+    expect(panes[1].activeKey).toBeNull()
+  })
+
+  it('is not swept up by what closes a pane that empties', () => {
+    // The two are different things: a pane opened empty is waiting for a note, a pane that
+    // has lost its last one is finished. Only the second goes.
+    const tree = splitEmpty(singleGroup('pane-1', acme('applied')), 'pane-1', 'right', () => 'pane-2')
+    const opened = openInGroup(tree, 'pane-1', acme('offer'))
+
+    const closed = closeTab(opened, 'pane-1', noteRefKey(acme('offer')))!
+    expect(groupsOf(closed).map((group) => group.id)).toEqual(['pane-1', 'pane-2'])
+
+    const emptied = closeTab(closed, 'pane-1', noteRefKey(acme('applied')))
+    // Nothing is open anywhere, so there is no panel to keep a pane in.
+    expect(emptied).toBeNull()
+  })
+
+  it('takes a note like any other pane, and gives its pane up when that note moves out', () => {
+    const tree = splitEmpty(singleGroup('pane-1', acme('applied')), 'pane-1', 'bottom', () => 'pane-2')
+    const filled = openInGroup(tree, 'pane-2', acme('offer'))
+    expect(groupsOf(filled)[1].tabs).toHaveLength(1)
+
+    const moved = moveTab(filled, 'pane-2', noteRefKey(acme('offer')), 'pane-1', 0)
+    expect(groupsOf(moved).map((group) => group.id)).toEqual(['pane-1'])
   })
 })

@@ -54,6 +54,7 @@ import {
   tabId,
   replaceTab,
   resizeSplit,
+  splitEmpty,
   splitWith,
   type Edge,
   type LayoutNode,
@@ -1026,7 +1027,15 @@ export function StageNotesPanel({
   }, [noteByKey])
 
   const groups = useMemo(() => groupsOf(layout), [layout])
-  const activeGroup = groups.find((group) => group.id === focusedGroupId) ?? groups[0]
+  /*
+   * The pane the chrome describes. Normally the focused one, but a pane can be open and
+   * empty — the outline, the breadcrumbs and the status bar are about a note, so they
+   * follow the nearest pane holding one rather than going blank. Focus itself stays where
+   * it is, which is what makes an opened note land in the empty pane.
+   */
+  const activeGroup = groups.find((group) => group.id === focusedGroupId && group.tabs.length > 0)
+    ?? groups.find((group) => group.tabs.length > 0)
+    ?? groups[0]
   const activeRef =
     activeGroup.tabs.find((tab) => noteRefKey(tab) === activeGroup.activeKey) ?? activeGroup.tabs[0]
   const activeKey = noteRefKey(activeRef)
@@ -1396,27 +1405,22 @@ export function StageNotesPanel({
    * two notes at once, and a second copy of the same note is not what was asked for.
    * Opening one twice is a drag, which says so.
    */
+  /**
+   * Opens a pane, empty. Nothing is moved into it and nothing is copied: what the reader
+   * asked for is room, and which note goes in it is the next thing they say — from the
+   * picker, from the tree, or by dragging a tab across. A pane that arrived holding a note
+   * chosen for it was a guess, and half the time the guess had to be undone first.
+   *
+   * Focus goes with it, so the note opened next lands where the room was made.
+   */
   const splitOff = useCallback((edge: Edge) => {
     const current = layoutRef.current
     const list = groupsOf(current)
     const from = list.find((group) => group.id === focusedGroupRef.current) ?? list[0]
-    const spare = from.tabs.find((tab) => noteRefKey(tab) !== from.activeKey)
-    const shown = from.tabs.find((tab) => noteRefKey(tab) === from.activeKey) ?? from.tabs[0]
-    if (!shown) return
-
-    /*
-     * A spare tab moves; with none, the note being read is copied. Moving is the better
-     * outcome — two panes showing two notes is what a split is usually for — but a pane
-     * holding one note has nothing to give, and refusing there would make Split a control
-     * that sometimes does nothing, which is what it was before. Nothing is taken from
-     * another pane: a press here must not rearrange somewhere the reader is not looking.
-     */
-    applyLayout(
-      spare
-        ? splitWith(current, from.id, edge, spare, newId, from.id)
-        : splitWith(current, from.id, edge, shown, newId, null),
-      from.id,
-    )
+    const before = new Set(list.map((group) => group.id))
+    const split = splitEmpty(current, from.id, edge, newId)
+    const fresh = groupsOf(split).find((group) => !before.has(group.id))
+    applyLayout(split, fresh?.id ?? from.id)
   }, [applyLayout, newId])
 
   /** Every pane back into one, which Split used to do on a second press. */
@@ -1961,6 +1965,51 @@ export function StageNotesPanel({
     const paneNumber = paneNumberOf(group.id)
     const shown =
       group.tabs.find((tab) => noteRefKey(tab) === group.activeKey) ?? group.tabs[0]
+
+    /*
+     * A pane opened empty: room made for the next note rather than a note moved into it.
+     * Its strip is still here, empty, because it is a drop place — a tab dragged onto it
+     * is one of the ways a note gets here — and because a pane with no strip at all would
+     * read as a hole in the panel rather than as a pane.
+     */
+    if (!shown) {
+      return (
+        <div className="panel__group" key={group.id}>
+          <div
+            aria-describedby={TABS_HINT_ID}
+            aria-label={`Prep note tabs, pane ${paneNumber}`}
+            className="panel__tabs"
+            role="tablist"
+            {...{ [DROP_SLOT_GROUP]: group.id, [DROP_SLOT_INDEX]: 0 }}
+          />
+          <div className="panel__empty-pane">
+            <p>This pane is empty.</p>
+            <button
+              className="button button--quiet"
+              onClick={() => {
+                setFocusedGroupId(group.id)
+                setQuickOpen(group.id)
+              }}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={16} />
+              Open a note
+              <span aria-hidden="true" className="panel__chrome-key">{shortcutLabel('P')}</span>
+            </button>
+            <p className="panel__empty-pane-hint">Or drag one here from the sidebar.</p>
+            <button
+              aria-label={`Close pane ${paneNumber}`}
+              className="button button--quiet panel__empty-pane-close"
+              onClick={() => applyLayout(closeGroup(layoutRef.current, group.id))}
+              type="button"
+            >
+              Close this pane
+            </button>
+          </div>
+        </div>
+      )
+    }
+
     const shownKey = noteRefKey(shown)
     const open = sessions[shownKey]
     const found = matches.perTab.get(tabId(group.id, shown))
@@ -2035,6 +2084,14 @@ export function StageNotesPanel({
                   onPointerDown={(event) => drag.start(event, tabId(group.id, tab))}
                   onKeyDown={(event) => {
                     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                    /*
+                     * The bare arrows only. The same arrows with a modifier belong to the
+                     * panel — Ctrl/Cmd+Shift sends this tab to an edge, Alt walks it along
+                     * the strip — and stepping the selection here as well meant the chord
+                     * moved whichever tab the step had just landed on rather than the one
+                     * the reader was looking at.
+                     */
+                    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
                     event.preventDefault()
                     const step = event.key === 'ArrowRight' ? 1 : -1
                     const index = group.tabs.findIndex((entry) => noteRefKey(entry) === key)
