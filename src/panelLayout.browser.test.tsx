@@ -539,6 +539,26 @@ describe('the panel in a real browser', () => {
     expect(box.height).toBeGreaterThanOrEqual(3)
   })
 
+  it('meets the window on every side it can', async () => {
+    renderPanel()
+
+    const surface = document.querySelector('.view-surface--panel')!.getBoundingClientRect()
+    const main = document.querySelector('main')!.getBoundingClientRect()
+
+    /*
+     * The seven views are documents laid on the page, and a card with a margin around it is
+     * how they read. This is a workspace filling the window: the margin, the border and the
+     * corners were drawing a card whose title — the one thing making it a card — is gone,
+     * and every pixel of the inset is a pixel of note.
+     */
+    expect(surface.left).toBeLessThanOrEqual(main.left + 1)
+    expect(surface.right).toBeGreaterThanOrEqual(main.right - 1)
+    expect(surface.bottom).toBeGreaterThanOrEqual(main.bottom - 1)
+
+    const style = getComputedStyle(document.querySelector('.view-surface--panel')!)
+    expect(style.borderRadius).toMatch(/^0/)
+  })
+
   it('gives the whole pane to the note being written in it', async () => {
     renderPanel()
     await userEvent.click(screen.getAllByRole('button', { name: /^Edit / })[0])

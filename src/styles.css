@@ -2563,10 +2563,20 @@ tbody tr:hover {
    one inside the first only narrows the notes. It takes the height the rest of the page
    leaves, which is what keeps the pinned chrome pinned and the notes column the only
    thing that scrolls. */
+/*
+ * Flush to the window, where the other seven views are cards laid on the page. That shape
+ * came with a heading over it saying which view it was; without one the margin, the border
+ * and the rounded corners draw a card around a workspace that fills the screen — and the
+ * inset is charged to the notes, which are the point. The topbar's own bottom border is
+ * the line between the two, so this needs none of its own.
+ */
 .view-surface--panel {
   flex: 1;
   min-height: 0;
+  margin: 0;
   padding: 0;
+  border: 0;
+  border-radius: 0;
   overflow: hidden;
 }
 
