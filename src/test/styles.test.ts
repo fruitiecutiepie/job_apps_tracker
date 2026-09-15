@@ -81,6 +81,20 @@ describe('reject shortcut', () => {
   })
 })
 
+describe('statistics figures', () => {
+  it('keeps a share quieter than the figure it qualifies, in tokens only', () => {
+    const body = ruleBody('.statistics__total small,\n.statistics td small')
+    const figure = ruleBody('.statistics__total strong')
+
+    // The count leads; the percentage beside it is context, not a second headline.
+    expect(figure).toMatch(/font-size:\s*var\(--t6\)/)
+    expect(body).toMatch(/font-size:\s*var\(--t2\)/)
+    expect(body).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(body).not.toMatch(/\d+px/)
+  })
+})
+
 describe('shortcut keys', () => {
   it('draws the key chip from the token scale, like every other chip', () => {
     const body = ruleBody('.panel__shortcut-key')

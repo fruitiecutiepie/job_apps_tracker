@@ -1164,6 +1164,24 @@ tbody tr:hover {
   line-height: 1.1;
 }
 
+/* The share a figure is out of its total, quieter than the label it follows. */
+.statistics__total small,
+.statistics td small {
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+/*
+ * The preference means sit under their table as a sentence rather than as more headline
+ * figures: they describe that table, and promoting them would put two kinds of number on
+ * one baseline at the top.
+ */
+.statistics__note {
+  margin: var(--s3) 0 0;
+  color: var(--ink-2);
+  font-size: var(--t2);
+}
+
 .statistics__table {
   min-width: 30rem;
 }

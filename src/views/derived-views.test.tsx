@@ -1018,52 +1018,114 @@ describe('TableView', () => {
 })
 
 describe('StatisticsView', () => {
-  function stateTable(): HTMLElement {
-    return screen.getByRole('table', {
-      name: 'Current and ever-reached application counts by state',
-    })
+  function tableNamed(name: string): HTMLElement {
+    return screen.getByRole('table', { name })
   }
 
-  function ratingsTable(): HTMLElement {
-    return screen.getByRole('table', {
-      name: 'Judgement counts and mean judged score by rating dimension',
-    })
+  const stagesTable = () =>
+    tableNamed(
+      'Applications that reached each live stage, that sit in it now, and that got no further',
+    )
+  const sourcesTable = () =>
+    tableNamed('Applications, replies, and progress by where the role came from')
+  const ratingsTable = () =>
+    tableNamed('Judgement counts and mean judged score by rating dimension')
+
+  function rowCells(table: HTMLElement, rowHeader: string): string[] {
+    const row = within(table).getByRole('rowheader', { name: rowHeader }).closest('tr')!
+    return within(row).getAllByRole('cell').map((cell) => cell.textContent ?? '')
   }
 
-  it('distinguishes current-state counts from states ever reached', () => {
-    const applications = [
-      application('Completed Journey', {
-        state: 'accepted',
-        state_history: [
-          { state: 'applied', at: localDate(-20) },
-          { state: 'interview_1', at: localDate(-10) },
-          { state: 'accepted', at: localDate(-2) },
-        ],
-      }),
-      application('Fresh Application'),
-    ]
+  /** Two rejected, one live and talking, one live and silent. */
+  const searched = [
+    application('Bounced Co', {
+      state: 'auto_rejected',
+      state_history: [
+        { state: 'applied', at: localDate(-30) },
+        { state: 'auto_rejected', at: localDate(-28) },
+      ],
+      source: 'LinkedIn',
+    }),
+    application('Nearly Co', {
+      state: 'recruiter_interview_rejected',
+      state_history: [
+        { state: 'applied', at: localDate(-40) },
+        { state: 'recruiter_interview', at: localDate(-30) },
+        { state: 'recruiter_interview_rejected', at: localDate(-20) },
+      ],
+      source: 'LinkedIn',
+    }),
+    application('Talking Co', {
+      state: 'recruiter_interview',
+      state_history: [
+        { state: 'applied', at: localDate(-25) },
+        { state: 'recruiter_interview', at: localDate(-12) },
+      ],
+      source: 'Referral',
+    }),
+    application('Silent Co', {
+      state_history: [{ state: 'applied', at: localDate(-20) }],
+      source: 'Referral',
+    }),
+  ]
 
-    render(<StatisticsView applications={applications} />)
+  it('leads with what the search did, not with how many sit in each state', () => {
+    render(<StatisticsView applications={searched} />)
 
+    expect(screen.getByLabelText('Applications: 4')).toBeInTheDocument()
+    expect(screen.getByLabelText('Still live: 2, 50%')).toBeInTheDocument()
+    expect(screen.getByLabelText('Heard back: 3, 75%')).toBeInTheDocument()
+    // Bounced Co heard back without getting anywhere, which is the distinction.
+    expect(screen.getByLabelText('Got past the first stage: 2, 50%')).toBeInTheDocument()
+    // Replies came after 2, 10 and 13 days. Silent Co has none and is left out rather
+    // than counted as zero, which would drag the figure to 2.
+    expect(screen.getByLabelText('Median days to first reply: 10')).toBeInTheDocument()
+  })
+
+  it('separates reaching a stage from sitting in it and from ending there', () => {
+    render(<StatisticsView applications={searched} />)
+
+    expect(rowCells(stagesTable(), 'Applied')).toEqual(['4', '1', '1'])
+    expect(rowCells(stagesTable(), 'Recruiter interview')).toEqual(['2', '1', '1'])
+  })
+
+  it('leaves out the stages nothing has reached rather than listing them as zeros', () => {
+    render(<StatisticsView applications={searched} />)
+
+    // Two stages reached, plus the header row. The old table printed all nineteen states.
+    expect(within(stagesTable()).getAllByRole('row')).toHaveLength(3)
     expect(
-      within(screen.getByRole('row', { name: /^Applied / })).getAllByRole('cell').map((cell) =>
-        cell.textContent,
-      ),
-    ).toEqual(['1', '2'])
-    const interviewOneRow = screen.getByRole('rowheader', { name: 'Interview 1' }).closest('tr')
-    expect(interviewOneRow).not.toBeNull()
+      within(stagesTable()).queryByRole('rowheader', { name: 'Offer' }),
+    ).not.toBeInTheDocument()
+    // Rejected states are outcomes of live stages, never rows of their own.
     expect(
-      within(interviewOneRow!)
-        .getAllByRole('cell')
-        .map((cell) => cell.textContent),
-    ).toEqual(['0', '1'])
-    expect(
-      within(screen.getByRole('row', { name: /^Accepted / })).getAllByRole('cell').map((cell) =>
-        cell.textContent,
-      ),
-    ).toEqual(['1', '1'])
-    // Scoped to the state table, so the ratings table below is free to grow.
-    expect(within(stateTable()).getAllByRole('row')).toHaveLength(20)
+      within(stagesTable()).queryByRole('rowheader', { name: /Rejected/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('reports each source against what came of it', () => {
+    render(<StatisticsView applications={searched} />)
+
+    expect(rowCells(sourcesTable(), 'LinkedIn')).toEqual(['2', '2 100%', '1 50%'])
+    expect(rowCells(sourcesTable(), 'Referral')).toEqual(['2', '1 50%', '1 50%'])
+  })
+
+  it('names an unrecorded source rather than dropping those applications', () => {
+    render(
+      <StatisticsView
+        applications={[
+          ...searched,
+          application('Nowhere Co', { state_history: [{ state: 'applied', at: localDate(-5) }] }),
+        ]}
+      />,
+    )
+
+    const row = within(sourcesTable()).getByLabelText('Not recorded').closest('tr')!
+    expect(within(row).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+      '1',
+      '0 0%',
+      '0 0%',
+    ])
   })
 
   it('summarises how the collection was rated, per dimension', () => {
@@ -1078,29 +1140,27 @@ describe('StatisticsView', () => {
 
     render(<StatisticsView applications={applications} />)
 
-    // Three of four carry a judgement; the mean is of their discounted scores.
-    expect(screen.getByLabelText('3 of 4 applications rated')).toBeInTheDocument()
-    expect(screen.getByLabelText('Mean preference 3.48')).toBeInTheDocument()
-
-    function ratingRow(dimension: string): string[] {
-      const row = within(ratingsTable()).getByRole('rowheader', { name: dimension }).closest('tr')!
-      return within(row).getAllByRole('cell').map((cell) => cell.textContent ?? '')
-    }
-
     // Rated, Don't know, Not rated, Mean of the judged scores.
-    expect(ratingRow('Work')).toEqual(['3', '0', '1', '4.00'])
-    expect(ratingRow('Growth')).toEqual(['2', '1', '1', '4.50'])
+    expect(rowCells(ratingsTable(), 'Work')).toEqual(['3', '0', '1', '4.00'])
+    expect(rowCells(ratingsTable(), 'Growth')).toEqual(['2', '1', '1', '4.50'])
     // People reads low because it was judged low, not because it went unassessed.
-    expect(ratingRow('People')).toEqual(['2', '0', '2', '2.50'])
-    expect(ratingRow('Company & product')).toEqual(['2', '0', '2', '4.50'])
+    expect(rowCells(ratingsTable(), 'People')).toEqual(['2', '0', '2', '2.50'])
+    expect(rowCells(ratingsTable(), 'Company & product')).toEqual(['2', '0', '2', '4.50'])
+    expect(screen.getByText('3 of 4 rated, mean preference 3.48.')).toBeInTheDocument()
   })
 
   it('says so plainly when nothing has been rated', () => {
     render(<StatisticsView applications={[application('Unrated Co')]} />)
 
     expect(screen.getByText('No application has been rated yet.')).toBeInTheDocument()
-    expect(screen.getByLabelText('0 of 1 applications rated')).toBeInTheDocument()
-    expect(screen.queryByLabelText(/^Mean preference /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/mean preference/)).not.toBeInTheDocument()
+  })
+
+  it('offers an empty state rather than a page of dashes when there is nothing yet', () => {
+    render(<StatisticsView applications={[]} />)
+
+    expect(screen.getByRole('heading', { name: 'Nothing to summarise yet' })).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 })
 

@@ -253,10 +253,17 @@ neither a finger nor any browser automation.
     low judgement. Confirm the Kanban card for the same application reads the same text as the
     column. Sort Preference both ways and confirm unrated rows stay at the bottom in
     each direction.
-    On Statistics, confirm the header reads 19 total, 3 rated, and a mean preference of 3.96,
-    and that the **Ratings** table lists all four dimensions with the demo's counts — People
-    judged twice with a mean of 2.50, and one **Don't know**. Filter by a company you have not
-    rated and confirm the table is replaced by a plain sentence rather than a grid of zeros.
+    On Statistics, confirm the five headline figures read 19 applications with the demo's
+    live count, heard-back count, got-past-the-first-stage count and median reply days, and
+    that each shows its share of the total. Confirm the **Stages** table lists only stages
+    something has reached, with no rejected states among them, and that Here now plus Ended
+    here across the table equals 19. Confirm **Sources** lists each of the demo's sources
+    with its own reply and progress counts. Confirm the **Ratings** table lists all four
+    dimensions with the demo's counts — People judged twice with a mean of 2.50, and one
+    **Don't know** — above a line reading 3 of 19 rated with a mean preference of 3.96.
+    Filter by a company you have not rated and confirm that table is replaced by a plain
+    sentence rather than a grid of zeros. Filter to nothing at all and confirm the view
+    offers an empty state rather than a page of dashes.
 13. In the application editor, pick a currency, set an **Advertised** band and an **Expected**
     single figure, save, reopen, and confirm the band reads back in both boxes while the
     single figure leaves its **to** box empty. With the cursor in an amount box, press the up
