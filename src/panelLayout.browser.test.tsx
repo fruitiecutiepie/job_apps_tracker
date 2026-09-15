@@ -539,6 +539,21 @@ describe('the panel in a real browser', () => {
     expect(box.height).toBeGreaterThanOrEqual(3)
   })
 
+  it('gives the whole pane to the note being written in it', async () => {
+    renderPanel()
+    await userEvent.click(screen.getAllByRole('button', { name: /^Edit / })[0])
+
+    const box = screen.getByRole('textbox', { name: /prep notes$/ }).getBoundingClientRect()
+    const body = document.querySelector('.stage-note__body')!.getBoundingClientRect()
+
+    /*
+     * The editor's rows are declared, not counted, so a control moving out of it leaves
+     * the row it was in behind — and the field, landing in a row sized to its content,
+     * became a small box with its own scrollbar in the top of an empty pane.
+     */
+    expect(box.height).toBeGreaterThan(body.height * 0.9)
+  })
+
   it('keeps the middle of a tab the tab, not the close over it', async () => {
     renderPanel()
 

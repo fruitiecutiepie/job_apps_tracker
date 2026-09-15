@@ -3140,8 +3140,11 @@ tbody tr:hover {
 
 .panel__notes .stage-note__editor {
   flex: 1;
-  /* Toolbar, the field that grows, hint. */
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* The field, and nothing else. The toolbar it used to sit under is drawn in the note's
+     header row now, and the hint under it is gone — but the rows here are declared rather
+     than counted, so both left their tracks behind: the field landed in a row sized to its
+     content and became a small box with its own scrollbar at the top of an empty pane. */
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
 
