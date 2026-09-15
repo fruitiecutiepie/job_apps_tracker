@@ -12,11 +12,10 @@ import type {
   StateEvent,
   StateId,
 } from '../domain'
-import { CalendarView } from './CalendarView'
 import { KanbanView } from './KanbanView'
 import { StatisticsView } from './StatisticsView'
 import { TableView } from './TableView'
-import { formatLongDate, kanbanColumnGroups } from './viewUtils'
+import { kanbanColumnGroups } from './viewUtils'
 
 const now = new Date(2026, 7, 14, 12)
 
@@ -114,123 +113,6 @@ function rowCompanies(): (string | null)[] {
     .filter((cell) => !cell.closest('.table-view__band'))
     .map((cell) => cell.textContent)
 }
-
-describe('CalendarView', () => {
-  it('exposes one weekday header row and six week rows in its accessible grid', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-
-    render(<CalendarView applications={[]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
-
-    const rows = within(screen.getByRole('grid')).getAllByRole('row')
-    expect(rows).toHaveLength(7)
-    expect(within(rows[0]!).getAllByRole('columnheader')).toHaveLength(7)
-    for (const row of rows.slice(1)) {
-      expect(within(row).getAllByRole('gridcell')).toHaveLength(7)
-    }
-  })
-
-  it('places only dated next actions on their local day and opens the selected application', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const onOpen = vi.fn()
-    const scheduled = application('Calendar Company', {
-      next_action: 'Talk with hiring manager',
-      next_action_at: new Date(2026, 7, 21, 9, 30).toISOString(),
-    })
-
-    render(
-      <CalendarView
-        applications={[
-          scheduled,
-          application('Undated Company', { next_action: 'Send a note' }),
-          application('Orphaned Date', { next_action_at: new Date(2026, 7, 22, 9).toISOString() }),
-        ]}
-        onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByRole('heading', { name: 'August 2026' })).toBeInTheDocument()
-    const event = screen.getByRole('button', { name: /Calendar Company.*Talk with hiring manager/ })
-    expect(event).toBeInTheDocument()
-    expect(screen.queryByText('Undated Company')).not.toBeInTheDocument()
-    expect(screen.getByText('Orphaned Date')).toBeInTheDocument()
-    expect(screen.getByText('Scheduled action')).toBeInTheDocument()
-
-    fireEvent.click(event)
-    expect(onOpen).toHaveBeenCalledWith(scheduled.id)
-  })
-
-  it('places invites beside dated next actions in time order', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const onOpen = vi.fn()
-    const scheduled = application('Panel Company', {
-      next_action: 'Reread the brief',
-      next_action_at: new Date(2026, 7, 21, 16).toISOString(),
-      state_events: [
-        stateEvent({ summary: 'Research panel', starts_at: new Date(2026, 7, 21, 9, 30).toISOString() }),
-      ],
-    })
-
-    render(<CalendarView applications={[scheduled]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
-
-    const day = screen.getByRole('gridcell', {
-      name: formatLongDate(new Date(2026, 7, 21)),
-    })
-    expect(within(day).getAllByRole('button').map((button) => button.textContent)).toEqual([
-      expect.stringContaining('Research panel'),
-      expect.stringContaining('Reread the brief'),
-    ])
-
-    fireEvent.click(within(day).getByRole('button', { name: /Research panel/ }))
-    expect(onOpen).toHaveBeenCalledWith(scheduled.id)
-  })
-
-  it('marks a cancelled invite as cancelled', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    render(
-      <CalendarView
-        applications={[
-          application('Called Off', {
-            state_events: [
-              stateEvent({
-                summary: 'Leadership interview',
-                starts_at: new Date(2026, 7, 25, 10).toISOString(),
-                cancelled: true,
-              }),
-            ],
-          }),
-        ]}
-        onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()}
-        onCompleteAction={vi.fn()}
-      />,
-    )
-
-    expect(
-      screen.getByRole('button', { name: /Cancelled.*Leadership interview/ }),
-    ).toBeInTheDocument()
-  })
-
-  it('moves between months and returns to the current month', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-
-    render(<CalendarView applications={[]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Next month' }))
-    expect(screen.getByRole('heading', { name: 'September 2026' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))
-    expect(screen.getByRole('heading', { name: 'August 2026' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
-    expect(screen.getByRole('heading', { name: 'August 2026' })).toBeInTheDocument()
-  })
-})
 
 describe('TableView', () => {
   beforeAll(() => {

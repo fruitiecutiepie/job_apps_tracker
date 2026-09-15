@@ -9,7 +9,7 @@ pnpm test:smoke
 ```
 
 This checks the demo-profile journey: 19 first-load examples, navigation through all five views
-(Kanban, Table, Calendar, Statistics), creating and searching for an application,
+(Kanban, Table, Statistics), creating and searching for an application,
 changing its state and recording history, marking a next action done and logging it in the
 notes, recording stage prep notes against it, persistence across an app reload, and confirmed
 demo-data reset.
@@ -78,7 +78,7 @@ neither a finger nor any browser automation.
    plain score, and that an unrated card shows no preference line at all.
 3. Confirm the view name and the "N of M applications shown" count each appear exactly
    once, in the context bar, and that no view repeats them as a visible heading.
-   Open Table, Calendar, and Statistics. Confirm each view is
+   Open Table and Statistics. Confirm each view is
    readable at both wide and narrow window sizes.
    On Table, confirm it opens sorted by Urgency with the rows banded under headings, that
    each band shows a count, that every band holds at least one application so each heading
@@ -122,7 +122,7 @@ neither a finger nor any browser automation.
    **Prep notes**. Reload the page and confirm it remains.
    Add a second application with only a deadline and no next action, and confirm the
    deadline saves, shows in the Table deadline column and bands the row under **Dated,
-   soonest first**, and does not appear on the Calendar.
+   soonest first**.
 6. Use Tab, Shift+Tab, Enter, and Escape to navigate controls and the application
    dialog. Confirm focus is visible and every form field has a useful label.
 7. Open **More actions**, close it with Escape, reopen it and close it by clicking
@@ -242,10 +242,10 @@ neither a finger nor any browser automation.
     the description, times, place, and any joining link are filled in, and that the stage defaults to
     the application's current state. Save, reopen, and confirm the invite persisted. Import the same
     file again and confirm it updates that invite rather than adding a second one. Confirm the invite
-    appears on the Calendar on its local day, on the Kanban card, and in the table's Invites column,
+    appears on the Kanban card and in the table's Invites column,
     and that searching its description finds the application. On Table, sort by **Invites** and
     confirm rows with nothing coming sink to the bottom. Tick **Cancelled**, save, and confirm the
-    calendar entry and the table cell read as cancelled and the card no longer shows it.
+    table cell reads as cancelled and the card no longer shows it.
 12. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
     Set one to **Don't know** and another back to **Not rated**, save, and confirm the Table
     Preference cell distinguishes the two. Confirm the demo's Lumen Pantry row reads

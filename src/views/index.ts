@@ -1,4 +1,3 @@
-export { CalendarView } from "./CalendarView";
 export { CompareNotesView } from "./CompareNotesView";
 export { CompleteActionButton } from "./CompleteActionButton";
 export { RejectButton } from "./RejectButton";

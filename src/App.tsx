@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  CalendarDays,
   CircleCheck,
   ChartNoAxesColumnIncreasing,
   ClipboardCopy,
@@ -89,19 +88,17 @@ import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
 import {
-  CalendarView,
   CompareNotesView,
   KanbanView,
   StatisticsView,
   TableView,
 } from './views'
 
-type ViewId = 'kanban' | 'table' | 'calendar' | 'statistics' | 'compare'
+type ViewId = 'kanban' | 'table' | 'statistics' | 'compare'
 
 const VIEW_OPTIONS = [
   { id: 'kanban', label: 'Kanban', icon: KanbanSquare },
   { id: 'table', label: 'Table', icon: Table2 },
-  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
   { id: 'compare', label: 'Compare', icon: Columns3 },
 ] as const
@@ -912,8 +909,6 @@ export default function App() {
     switch (activeView) {
       case 'table':
         return <TableView {...shared} onMove={move} />
-      case 'calendar':
-        return <CalendarView {...shared} />
       case 'statistics':
         return <StatisticsView applications={filteredApplications} />
       case 'compare':
