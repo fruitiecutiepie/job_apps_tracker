@@ -125,6 +125,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 ### View behavior
 
+- The topbar has two sides: where you are, and what you can do. The view strip and the prep notes toggle share the left cell, divided by a hairline so the toggle does not read as an eighth item in the strip; the action cluster on the right is theme, `Add application`, overflow, and ends on the primary button. The toggle does not belong there — it changes which surface you are on rather than doing anything to the collection, it is `aria-pressed` and lights up, and lit beside a filled accent CTA the two would compete for the same glance. Under 1000px the whole left cell drops to its own row: place it by the cell, never by the strip inside it, which is a flex item there and takes an `order` while ignoring a grid placement.
 - One context bar under the topbar carries the view title, the filtered count, and the global
   filters. The active view's name is the page `h1` for document structure only — the nav tab
   already shows it, so no view repeats it as a visible heading. Table, Stale, and Statistics keep

@@ -319,4 +319,14 @@ describe('prep notes view', () => {
     expect(ruleBody('.panel .button')).toMatch(/min-height:\s*var\(--control-form\)/)
     expect(css.indexOf('.panel .button')).toBeLessThan(css.indexOf('.panel__titlebar .button'))
   })
+
+  it('promotes the whole places cell to its own row when the bar is tight, not the strip inside it', () => {
+    // The strip is a flex item of that cell now, so grid placement on it is ignored while
+    // any `order` it carried is not — which reorders the strip past the toggle beside it.
+    const narrow = css.slice(css.indexOf('@media (max-width: 1000px)'))
+    const block = narrow.slice(0, narrow.indexOf('@media', 1))
+
+    expect(block).toMatch(/\.topbar__places\s*\{[^}]*grid-row: 2/)
+    expect(block).not.toMatch(/\.view-nav\s*\{[^}]*order:/)
+  })
 })

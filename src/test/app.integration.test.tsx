@@ -529,6 +529,12 @@ describe('job applications tracker', () => {
     const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
     expect(views.queryByRole('button', { name: 'Prep notes' })).not.toBeInTheDocument()
 
+    // Beside the strip rather than among the actions: it says where you are, and the
+    // cluster on the other side says what can be done to the collection.
+    const notes = screen.getByRole('button', { name: 'Prep notes' })
+    expect(notes.closest('.topbar__places')).not.toBeNull()
+    expect(notes.closest('.topbar__actions')).toBeNull()
+
     await user.click(screen.getByRole('button', { name: 'Prep notes' }))
     expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
     /*

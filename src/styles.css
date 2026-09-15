@@ -328,12 +328,35 @@ p {
   font-weight: 600;
 }
 
+/* Where you are: the strip of views, and the prep notes toggle that lays a workspace over
+   whichever of them you were reading. One cell, because both answer the same question —
+   the actions on the other side answer what you can do to the collection. */
+.topbar__places {
+  display: flex;
+  min-width: 0;
+  gap: var(--s3);
+  align-items: center;
+}
+
+/* The strip is what gives way when the bar is tight; the toggle beside it keeps its width,
+   being one control rather than a list that can scroll. */
 .view-nav {
   display: flex;
   min-width: 0;
   gap: var(--s1);
   overflow-x: auto;
   scrollbar-width: thin;
+}
+
+.topbar__divider {
+  align-self: stretch;
+  flex: none;
+  margin: var(--s2) 0;
+  border-left: 1px solid var(--line);
+}
+
+.topbar__notes {
+  flex: none;
 }
 
 .view-nav__item {
@@ -4145,7 +4168,10 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     grid-template-columns: 1fr auto;
   }
 
-  .view-nav {
+  /* The cell, not the strip inside it. Targeting the strip put its grid placement on an
+     element that is no longer a grid item — ignored — while the `order` it carried was not,
+     and reordered the strip past the toggle sharing the cell with it. */
+  .topbar__places {
     grid-column: 1 / -1;
     grid-row: 2;
     order: 3;

@@ -1039,30 +1039,41 @@ export default function App() {
           </span>
         </a>
 
-        <nav aria-label="Tracker views" className="view-nav">
-          {VIEW_OPTIONS.map(({ id, label, icon: Icon }) => (
-            <button
-              // Nothing in the strip is the page while the notes are up over it: what is
-              // on screen is the workspace, not the view it was opened from.
-              aria-current={!notesOpen && activeView === id ? 'page' : undefined}
-              className="view-nav__item"
-              key={id}
-              // Picking a view is also a way out of the notes: the strip is how you get
-              // back to the collection, and a tab that changed only what was underneath
-              // would look like a button that does nothing.
-              onClick={() => {
-                setActiveView(id)
-                setNotesOpen(false)
-              }}
-              type="button"
-            >
-              <Icon aria-hidden="true" size={16} />
-              <span>{label}</span>
-            </button>
-          ))}
-        </nav>
+        {/*
+          * Where you are, in one cell: the seven views of the collection, and the prep
+          * notes layer that goes over whichever of them you were reading. The layer keeps
+          * out of the strip — it shares none of the filters, and it is a toggle rather
+          * than a place in a list — but it belongs on this side of the bar rather than
+          * among the actions, which act on the collection and not on where you stand.
+          */}
+        <div className="topbar__places">
+          <nav aria-label="Tracker views" className="view-nav">
+            {VIEW_OPTIONS.map(({ id, label, icon: Icon }) => (
+              <button
+                // Nothing in the strip is the page while the notes are up over it: what is
+                // on screen is the workspace, not the view it was opened from.
+                aria-current={!notesOpen && activeView === id ? 'page' : undefined}
+                className="view-nav__item"
+                key={id}
+                // Picking a view is also a way out of the notes: the strip is how you get
+                // back to the collection, and a tab that changed only what was underneath
+                // would look like a button that does nothing.
+                onClick={() => {
+                  setActiveView(id)
+                  setNotesOpen(false)
+                }}
+                type="button"
+              >
+                <Icon aria-hidden="true" size={16} />
+                <span>{label}</span>
+              </button>
+            ))}
+          </nav>
 
-        <div className="topbar__actions">
+          {/* A hairline rather than a gap: sharing a cell with the strip, the toggle would
+              otherwise read as an eighth item in it, which is the one thing it is not. */}
+          <span aria-hidden="true" className="topbar__divider" />
+
           {/*
             * A workspace shown over whatever view you are on, so it is a toggle: pressed
             * again it goes, and the view underneath comes back. `aria-pressed` rather than
@@ -1083,7 +1094,9 @@ export default function App() {
             <NOTES_VIEW.icon aria-hidden="true" size={16} />
             <span>{NOTES_VIEW.label}</span>
           </button>
+        </div>
 
+        <div className="topbar__actions">
           <button
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             className="icon-button"
