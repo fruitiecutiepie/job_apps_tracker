@@ -553,7 +553,13 @@ describe('the panel in a real browser', () => {
      */
     expect(surface.left).toBeLessThanOrEqual(main.left + 1)
     expect(surface.right).toBeGreaterThanOrEqual(main.right - 1)
-    expect(surface.bottom).toBeGreaterThanOrEqual(main.bottom - 1)
+
+    // The foot is the exception. The status bar and the dock above it sit on the window's
+    // own edge otherwise, which is where a line is hardest to read — a step of space is
+    // enough to lift them off it without the panel becoming a card again.
+    const foot = main.bottom - surface.bottom
+    expect(foot).toBeGreaterThan(0)
+    expect(foot).toBeLessThanOrEqual(12)
 
     const style = getComputedStyle(document.querySelector('.view-surface--panel')!)
     expect(style.borderRadius).toMatch(/^0/)
