@@ -52,6 +52,21 @@ describe('what a tab says', () => {
     ).toEqual(['Senior Software Engineer · Offer', 'Frontend Engineer · Offer'])
   })
 
+  it('counts what is open in every pane, not only in this one', () => {
+    /*
+     * Two panes side by side, one company each. Asked pane by pane, neither pane has a
+     * second company in it and both drop the name — so the screen reads "Interview 2" and
+     * "Offer" with nothing anywhere saying whose. What a tab competes with is everything
+     * else on screen, not everything else in its own strip.
+     */
+    expect(
+      tabLabels([
+        tab('Halcyon Maps', 'Engineering Manager', 'Interview 2'),
+        tab('Lumen Pantry', 'Head of Growth', 'Offer'),
+      ]),
+    ).toEqual(['Halcyon Maps · Interview 2', 'Lumen Pantry · Offer'])
+  })
+
   it('says the stage alone for a strip of one', () => {
     expect(tabLabels([tab('Halcyon Maps', 'Engineering Manager', 'Offer')])).toEqual(['Offer'])
   })

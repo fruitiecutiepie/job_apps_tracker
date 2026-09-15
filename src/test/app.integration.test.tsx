@@ -2302,6 +2302,22 @@ describe('job applications tracker', () => {
       'Halcyon Maps · Offer',
       'Echo Robotics · Interview 1',
     ])
+
+    /*
+     * And a pane is not an island. Dragged into a pane of its own, the second company's
+     * tab is the only one in that strip — but it is still on screen beside three tabs of
+     * another company, and a strip reading "Interview 1" next to one reading "Offer" says
+     * nothing about whose. Every tab open in the panel is what a tab is told apart from.
+     */
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+    const strips = within(panel).getAllByRole('tablist')
+    expect(strips).toHaveLength(2)
+    expect(within(strips[1]).getAllByRole('tab').map(tabText)).toEqual(['Echo Robotics · Interview 1'])
+    expect(within(strips[0]).getAllByRole('tab').map(tabText)).toEqual([
+      'Halcyon Maps · Interview 2',
+      'Halcyon Maps · Interview 1',
+      'Halcyon Maps · Offer',
+    ])
   })
 
   it('does not print the note\'s name under the tab that already carries it', async () => {

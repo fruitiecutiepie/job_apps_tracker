@@ -609,6 +609,29 @@ export function StageNotesPanel({
   const openTabs = useMemo(() => orderedTabs(layout), [layout])
 
   /**
+   * What each tab says, worked out over every tab in the panel rather than strip by strip.
+   * A pane is not an island: two panes holding one company each would both find nothing to
+   * tell their tabs from their neighbours and both drop the company, leaving "Interview 2"
+   * beside "Offer" with nothing on screen saying whose. What a tab competes with is
+   * everything else open, wherever it is.
+   */
+  const shortLabels = useMemo(() => {
+    const labels = tabLabels(
+      openTabs.map(({ ref }) => {
+        const application = applicationsById.get(ref.applicationId)
+        return {
+          company: application?.company ?? '',
+          role: application ? applicationRole(application) : '',
+          stage: stateLabel(ref.state),
+        }
+      }),
+    )
+    // Keyed by the copy rather than by the note: one note open in two panes is two tabs,
+    // and each pane looks its own up.
+    return new Map(openTabs.map(({ groupId, ref }, index) => [tabId(groupId, ref), labels[index]]))
+  }, [applicationRole, applicationsById, openTabs])
+
+  /**
    * Which tab each pane is showing, as one string, so the effect below runs when a strip
    * changes what it is showing rather than on every arrangement of anything.
    */
@@ -1770,21 +1793,6 @@ export function StageNotesPanel({
     const isFocusedGroup = group.id === activeGroup.id
     const shownApplication = applicationsById.get(shown.applicationId)
 
-    /*
-     * Decided across the strip rather than per tab: what a tab has to say depends on what
-     * it sits beside. A strip of one application's stages needs no company on any of them.
-     */
-    const shortLabels = tabLabels(
-      group.tabs.map((tab) => {
-        const application = applicationsById.get(tab.applicationId)
-        return {
-          company: application?.company ?? '',
-          role: application ? applicationRole(application) : '',
-          stage: stateLabel(tab.state),
-        }
-      }),
-    )
-
     return (
       <div className="panel__group" key={group.id}>
         <div
@@ -1800,7 +1808,7 @@ export function StageNotesPanel({
           {group.tabs.map((tab, tabIndex) => {
             const key = noteRefKey(tab)
             const label = labelOf(tab)
-            const shortLabel = shortLabels[tabIndex]
+            const shortLabel = shortLabels.get(tabId(group.id, tab)) ?? label
             const tabMatches = matches.perTab.get(tabId(group.id, tab))
             const isActive = key === shownKey
             const application = applicationsById.get(tab.applicationId)
