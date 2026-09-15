@@ -2639,13 +2639,13 @@ tbody tr:hover {
    is least able to guess at an icon, and the only visible place its binding is written. */
 /* Laid out as the directions they are: Above over Left and Right, Below under them. A list
    reading "Right, Left, Below, Above" makes the reader translate a word into a side of the
-   screen; this is the answer drawn. The middle stands empty — it is the pane being split,
-   and nothing goes there. */
+   screen; this is the answer drawn. The middle is the pane being split, drawn so the four
+   around it read as its sides. */
 .panel__split-choices {
   display: grid;
   grid-template-areas:
     '.    above .'
-    'left .     right'
+    'left here  right'
     '.    below .';
   gap: var(--s2);
   justify-items: stretch;
@@ -2656,6 +2656,24 @@ tbody tr:hover {
   gap: var(--s2);
   min-height: var(--control);
   padding: 0 var(--s3);
+}
+
+/* The pane the new one opens beside. Drawn as a pane rather than as a control — no border
+   to press, quiet ink, the panel's own surface — so it reads as the thing being split. */
+.panel__split-here {
+  grid-area: here;
+  display: grid;
+  place-content: center;
+  /* The same height as the choices around it, so the middle row is one row rather than a
+     tall thing beside a short one. */
+  min-height: var(--control);
+  padding: var(--s1) var(--s2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink-3);
+  background: var(--surface-2);
+  font-size: var(--t1);
+  text-align: center;
 }
 
 .panel__split-choice--right { grid-area: right; }

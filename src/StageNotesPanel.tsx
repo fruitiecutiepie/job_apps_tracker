@@ -389,6 +389,11 @@ function SplitMenu({
             Open another pane
           </p>
           <div className="panel__split-choices">
+            {/* The pane being split, standing in the middle of the four so the choices
+                around it read as sides of it rather than as a list of words. Decoration:
+                each button already says where it opens, and a screen reader hearing
+                "this pane" between them would be told the layout twice. */}
+            <span aria-hidden="true" className="panel__split-here">This pane</span>
             {SPLIT_CHOICES.map(({ edge, label }) => (
               <button
                 className={`button button--quiet panel__split-choice panel__split-choice--${edge}`}
