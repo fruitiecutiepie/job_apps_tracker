@@ -240,6 +240,13 @@ function OutlineList({ nodes, depth, path, current, onPick }: OutlineListProps) 
  * stopped here rather than left to bubble, as the find bar already does, so one key press
  * closes one thing.
  */
+const SPLIT_CHOICES: readonly { edge: Edge; label: string }[] = [
+  { edge: 'right', label: 'Right' },
+  { edge: 'left', label: 'Left' },
+  { edge: 'bottom', label: 'Below' },
+  { edge: 'top', label: 'Above' },
+]
+
 function ShortcutsHelp() {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -301,6 +308,105 @@ function ShortcutsHelp() {
               </div>
             ))}
           </dl>
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+/**
+ * Where the next pane goes.
+ *
+ * Split adds one, every time. It used to toggle — a second press gathered every pane back
+ * into one — which put "take me back to a single pane" on the control a reader presses when
+ * they want a third, at exactly the point they have two. Adding is what the control is for;
+ * coming back is a thing to ask for by name, at the foot of this list.
+ *
+ * The directions are offered rather than assumed because there is no right default at three
+ * panes: side by side is for reading two notes against each other, stacked is for following
+ * one into another, and only the reader knows which they are doing.
+ */
+function SplitMenu({
+  isSplit,
+  onSplit,
+  onCollapse,
+}: {
+  isSplit: boolean
+  onSplit: (edge: Edge) => void
+  onCollapse: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [open])
+
+  const choose = (run: () => void) => {
+    run()
+    setOpen(false)
+    triggerRef.current?.focus()
+  }
+
+  return (
+    <div
+      className="panel__shortcuts"
+      onKeyDown={(event) => {
+        if (!open || event.key !== 'Escape') return
+        event.preventDefault()
+        event.stopPropagation()
+        setOpen(false)
+        triggerRef.current?.focus()
+      }}
+      ref={containerRef}
+    >
+      <button
+        aria-expanded={open}
+        aria-keyshortcuts={shortcutKeys('\\')}
+        aria-label="Split"
+        className="icon-button panel__chrome-button"
+        onClick={() => setOpen((current) => !current)}
+        ref={triggerRef}
+        title={`Open another pane (${shortcutLabel('\\')} opens one to the right)`}
+        type="button"
+      >
+        <Columns2 aria-hidden="true" size={16} />
+      </button>
+      {open ? (
+        <div aria-labelledby="stage-notes-split-title" className="panel__shortcuts-panel" role="group">
+          <p className="panel__shortcuts-title" id="stage-notes-split-title">
+            Open another pane
+          </p>
+          <div className="panel__split-choices">
+            {SPLIT_CHOICES.map(({ edge, label }) => (
+              <button
+                className="button button--quiet panel__split-choice"
+                key={edge}
+                onClick={() => choose(() => onSplit(edge))}
+                type="button"
+              >
+                {label}
+                {edge === 'right' ? (
+                  <span aria-hidden="true" className="panel__chrome-key">{shortcutLabel('\\')}</span>
+                ) : null}
+              </button>
+            ))}
+          </div>
+          {isSplit ? (
+            <button
+              className="button button--quiet panel__split-choice panel__split-choice--collapse"
+              onClick={() => choose(onCollapse)}
+              type="button"
+            >
+              Collapse to one pane
+            </button>
+          ) : null}
         </div>
       ) : null}
     </div>
@@ -1239,28 +1345,47 @@ export function StageNotesPanel({
    * into one. Unsplitting gathers every tab rather than dropping the panes it closes: a
    * pane is where a note is shown, not what keeps it open.
    */
-  const toggleSplit = useCallback(() => {
+  /**
+   * Opens another pane, always — the pane being read keeps the note it is showing, and one
+   * of its other tabs moves into the new one. Taken out rather than copied: a split shows
+   * two notes at once, and a second copy of the same note is not what was asked for.
+   * Opening one twice is a drag, which says so.
+   */
+  const splitOff = useCallback((edge: Edge) => {
     const current = layoutRef.current
     const list = groupsOf(current)
-    if (list.length > 1) {
-      const first = list[0]
-      // One strip cannot hold a note twice, so copies gathered from several panes collapse
-      // back into the one tab they are copies of.
-      const gathered: NoteRef[] = []
-      for (const tab of list.flatMap((group) => group.tabs)) {
-        if (!gathered.some((kept) => noteRefKey(kept) === noteRefKey(tab))) gathered.push(tab)
-      }
-      applyLayout(makeGroup(first.id, gathered, first.activeKey), first.id)
-      return
-    }
-    const only = list[0]
-    const other = only.tabs.find((tab) => noteRefKey(tab) !== only.activeKey)
-    if (!other) return
-    // Taken out of the pane it was in rather than copied beside it: Split shows two notes
-    // at once, and a second copy of one of them is not what was asked for. Opening a note
-    // twice is a drag, which says so.
-    applyLayout(splitWith(current, only.id, 'right', other, newId, only.id), only.id)
+    const from = list.find((group) => group.id === focusedGroupRef.current) ?? list[0]
+    const spare = from.tabs.find((tab) => noteRefKey(tab) !== from.activeKey)
+    const shown = from.tabs.find((tab) => noteRefKey(tab) === from.activeKey) ?? from.tabs[0]
+    if (!shown) return
+
+    /*
+     * A spare tab moves; with none, the note being read is copied. Moving is the better
+     * outcome — two panes showing two notes is what a split is usually for — but a pane
+     * holding one note has nothing to give, and refusing there would make Split a control
+     * that sometimes does nothing, which is what it was before. Nothing is taken from
+     * another pane: a press here must not rearrange somewhere the reader is not looking.
+     */
+    applyLayout(
+      spare
+        ? splitWith(current, from.id, edge, spare, newId, from.id)
+        : splitWith(current, from.id, edge, shown, newId, null),
+      from.id,
+    )
   }, [applyLayout, newId])
+
+  /** Every pane back into one, which Split used to do on a second press. */
+  const collapseSplit = useCallback(() => {
+    const list = groupsOf(layoutRef.current)
+    const first = list[0]
+    // One strip cannot hold a note twice, so copies gathered from several panes collapse
+    // back into the one tab they are copies of.
+    const gathered: NoteRef[] = []
+    for (const tab of list.flatMap((group) => group.tabs)) {
+      if (!gathered.some((kept) => noteRefKey(kept) === noteRefKey(tab))) gathered.push(tab)
+    }
+    applyLayout(makeGroup(first.id, gathered, first.activeKey), first.id)
+  }, [applyLayout])
 
   const closeNote = (groupId: string, key: string) => {
     applyLayout(closeTab(layoutRef.current, groupId, key))
@@ -1382,7 +1507,10 @@ export function StageNotesPanel({
       if (!(event.metaKey || event.ctrlKey)) return
       if (event.key === '\\') {
         event.preventDefault()
-        toggleSplit()
+        // One press, one more pane, to the right. The menu on the control is where the
+        // other three directions are; a shortcut that opened a menu would be a shortcut
+        // to a decision rather than to a result.
+        splitOff('right')
         return
       }
       const key = event.key.toLowerCase()
@@ -1434,7 +1562,7 @@ export function StageNotesPanel({
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [activeKey, closeFocusedTab, openFind, toggleSidebar, toggleSplit])
+  }, [activeKey, closeFocusedTab, openFind, splitOff, toggleSidebar])
 
   /**
    * Focuses the capture box once the dock the "K" shortcut just opened has actually
@@ -2043,24 +2171,11 @@ export function StageNotesPanel({
             Open
             <span aria-hidden="true" className="panel__chrome-key">{shortcutLabel('P')}</span>
           </button>
-          <button
-            aria-keyshortcuts={shortcutKeys('\\')}
-            aria-label={isSplit ? 'Unsplit' : 'Split'}
-            aria-pressed={isSplit}
-            className="icon-button panel__chrome-button"
-            disabled={!isSplit && openCount < 2}
-            onClick={toggleSplit}
-            // Why it cannot be pressed outranks how to press it: a shortcut hint on a
-            // dead control only invites the key that does nothing either.
-            title={
-              openCount < 2
-                ? 'Only one note is open'
-                : `${isSplit ? 'Close back to one pane' : 'Open a second pane'} (${shortcutLabel('\\')})`
-            }
-            type="button"
-          >
-            <Columns2 aria-hidden="true" size={16} />
-          </button>
+          <SplitMenu
+            isSplit={isSplit}
+            onCollapse={collapseSplit}
+            onSplit={splitOff}
+          />
           <button
             aria-keyshortcuts={shortcutKeys('F')}
             aria-label="Find"

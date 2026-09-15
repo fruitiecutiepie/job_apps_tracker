@@ -45,6 +45,19 @@ const AUTOSAVE_SETTLE_MS = 1500
  * a screen reader as well as the distinguishing part of it on screen, so `textContent` is
  * both at once; these assertions are about the strip as it is read.
  */
+/**
+ * Opens another pane. Split asks where it goes, so a test that wants one says — Right
+ * being the direction the old single-press control always took.
+ */
+async function splitPane(
+  user: ReturnType<typeof userEvent.setup>,
+  within_: HTMLElement,
+  where = 'Right',
+) {
+  await user.click(within(within_).getByRole('button', { name: 'Split' }))
+  await user.click(within(within_).getByRole('button', { name: where }))
+}
+
 function tabText(tab: HTMLElement): string {
   return tab.querySelector('.panel__tab-label')?.textContent ?? ''
 }
@@ -976,7 +989,7 @@ describe('job applications tracker', () => {
         name: /^Human Factors Researcher/,
       }),
     )
-    await user.click(within(opened).getByRole('button', { name: 'Split' }))
+    await splitPane(user, opened)
     expect(within(opened).getAllByRole('tabpanel')).toHaveLength(2)
 
     unmount()
@@ -1484,7 +1497,7 @@ describe('job applications tracker', () => {
     )
     expect(within(dialog).getByRole('button', { name: 'Split' })).toHaveAttribute(
       'title',
-      'Open a second pane (Ctrl+\\)',
+      'Open another pane (Ctrl+\\ opens one to the right)',
     )
     // Ctrl+K has no button in the title bar, so the box it lands in carries it instead.
     await openCapture(user, dialog, 'Halcyon Maps · Interview 2')
@@ -1919,7 +1932,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
 
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
     expect(within(dialog).getAllByRole('tabpanel')[1]).toHaveAccessibleName('Halcyon Maps · Interview 1')
 
     // Emptying the note in an external editor commits straight away, with the panel still
@@ -1956,7 +1969,7 @@ describe('job applications tracker', () => {
 
     expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(1)
 
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
     const panes = within(dialog).getAllByRole('tabpanel')
     expect(panes).toHaveLength(2)
 
@@ -1969,7 +1982,8 @@ describe('job applications tracker', () => {
     // Both tabs read as open; the focused one is the pane the sidebar describes.
     expect(within(dialog).getAllByRole('tab', { selected: true })).toHaveLength(2)
 
-    await user.click(within(dialog).getByRole('button', { name: 'Unsplit' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Collapse to one pane' }))
     expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(1)
   })
 
@@ -1979,7 +1993,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
 
     const strip = (paneNumber: number) =>
       within(dialog).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
@@ -2027,7 +2041,7 @@ describe('job applications tracker', () => {
     // Nothing to close while a single pane is the whole panel.
     expect(within(dialog).queryByRole('button', { name: /pane$/ })).not.toBeInTheDocument()
 
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
     await user.click(within(dialog).getByRole('button', { name: 'Close the Halcyon Maps · Interview 1 pane' }))
 
     const panes = within(dialog).getAllByRole('tabpanel')
@@ -2042,7 +2056,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
 
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
     await user.keyboard('{Control>}f{/Control}')
     await user.type(within(dialog).getByLabelText('Find in notes'), 'equity refresh')
 
@@ -2165,7 +2179,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(panel).getByRole('button', { name: 'Split' }))
+    await splitPane(user, panel)
 
     const strip = (paneNumber: number) =>
       within(panel).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
@@ -2234,6 +2248,48 @@ describe('job applications tracker', () => {
     expect(
       within(dialog).getByLabelText('Halcyon Maps · Take-home assessment prep notes'),
     ).toBeInTheDocument()
+  })
+
+  it('adds a pane every time, in the direction that was asked for', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    const panes = () => within(panel).getAllByRole('tabpanel')
+
+    /*
+     * Split used to be a toggle: pressed once it opened a second pane, pressed again it
+     * gathered every pane back into one. Two panes is where a reader most wants a third,
+     * which is exactly where the control took them to one.
+     */
+    await splitPane(user, panel, 'Right')
+    expect(panes()).toHaveLength(2)
+    await splitPane(user, panel, 'Below')
+    expect(panes()).toHaveLength(3)
+
+    // Where it goes is asked rather than assumed. Below puts the new pane under the one it
+    // came from, so the two sit in a column: same left edge, one after the other.
+    const [, second, third] = panes().map((pane) => pane.closest('.panel__split-child') ?? pane)
+    expect(second).not.toBe(third)
+
+    // A pane with nothing spare copies the note it is reading rather than refusing: the
+    // control adds a pane, and a panel holding one note is not a reason it cannot.
+    await user.click(within(panel).getByRole('button', { name: 'Split' }))
+    await user.click(within(panel).getByRole('button', { name: 'Collapse to one pane' }))
+    for (const tab of within(panel).getAllByRole('tab').slice(1)) {
+      await user.click(within(tab.parentElement!).getByRole('button', { name: /^Close the / }))
+    }
+    expect(within(panel).getAllByRole('tab')).toHaveLength(1)
+    await splitPane(user, panel, 'Right')
+    expect(panes()).toHaveLength(2)
+    expect(panes()[0]).toHaveAccessibleName(panes()[1].getAttribute('aria-label')!)
+
+    // And the panel still comes back to one pane, by saying so rather than by pressing
+    // the same control that has been adding them.
+    await user.click(within(panel).getByRole('button', { name: 'Split' }))
+    await user.click(within(panel).getByRole('button', { name: 'Collapse to one pane' }))
+    expect(panes()).toHaveLength(1)
   })
 
   it('puts folding and formatting in the note\'s own first row', async () => {
@@ -3229,7 +3285,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(panel).getByRole('button', { name: 'Split' }))
+    await splitPane(user, panel)
 
     const strip = (paneNumber: number) =>
       within(panel).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
@@ -3265,7 +3321,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(panel).getByRole('button', { name: 'Split' }))
+    await splitPane(user, panel)
 
     const strip = (paneNumber: number) =>
       within(panel).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
@@ -3315,7 +3371,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
 
     const strip = (paneNumber: number) =>
       within(dialog).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
@@ -3417,7 +3473,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
 
     const strips = within(dialog).getAllByRole('tablist')
     expect(strips).toHaveLength(2)
@@ -3442,7 +3498,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
 
     // The first pane is focused and reading Interview 2; send that tab to the pane beside it.
     await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
@@ -3486,7 +3542,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
     expect(within(dialog).getAllByRole('tablist')).toHaveLength(2)
 
     // Splitting leaves the first pane focused, so reach for the second one before moving
@@ -3530,7 +3586,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
 
     const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
     expect(handle).toHaveAttribute('aria-orientation', 'vertical')
@@ -3558,7 +3614,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
 
     const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
     // Far more presses than it takes to cross the split, so the clamp is what stops it.
@@ -3576,7 +3632,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
 
     const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
     fireEvent.keyDown(handle, { key: 'ArrowRight' })
@@ -3767,7 +3823,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(within(dialog).getByRole('button', { name: 'Split' }))
+    await splitPane(user, dialog)
 
     const handle = within(dialog).getByRole('separator', { name: 'Resize pane 1 and pane 2' })
     const split = handle.parentElement as HTMLElement

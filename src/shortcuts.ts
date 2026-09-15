@@ -30,7 +30,7 @@ export interface Shortcut {
  * has seen one recognises the other.
  */
 export const PANEL_SHORTCUTS: readonly Shortcut[] = [
-  { key: '\\', description: 'Open a second pane, or close back to one' },
+  { key: '\\', description: 'Open another pane to the right' },
   { key: 'F', description: 'Open the find bar' },
   { key: 'P', description: 'Open the note picker' },
   { key: 'B', description: 'Show and hide the sidebar' },

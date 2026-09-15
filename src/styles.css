@@ -2637,6 +2637,28 @@ tbody tr:hover {
 
 /* Open says what it is: it is the way to a note not on screen yet, which is when a reader
    is least able to guess at an icon, and the only visible place its binding is written. */
+/* The directions a pane can open in, as a small block of choices rather than a list of
+   rows: four short words read faster side by side than stacked, and they are a set. */
+.panel__split-choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--s2);
+}
+
+.panel__split-choice {
+  justify-content: space-between;
+  gap: var(--s3);
+  min-height: var(--control);
+}
+
+.panel__split-choice--collapse {
+  margin-top: var(--s2);
+  width: 100%;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  color: var(--ink-2);
+}
+
 .panel__chrome-button--labelled {
   gap: var(--s2);
   min-width: 0;

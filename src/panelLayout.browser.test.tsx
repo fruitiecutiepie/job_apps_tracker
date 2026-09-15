@@ -104,6 +104,12 @@ const splitBox = () =>
 /** Splits downward, which the keyboard reaches without depending on a drag. */
 const splitDown = () => userEvent.keyboard('{Control>}{Shift>}{ArrowDown}{/Shift}{/Control}')
 
+/** Split asks where the pane goes, so a test that wants one to the right says so. */
+const splitRight = async () => {
+  await userEvent.click(screen.getByRole('button', { name: 'Split' }))
+  await userEvent.click(screen.getByRole('button', { name: 'Right' }))
+}
+
 describe('the panel in a real browser', () => {
   beforeEach(async () => {
     // Explicit per test: `page.viewport` outlives the test that called it.
@@ -112,7 +118,7 @@ describe('the panel in a real browser', () => {
 
   it('lays two panes side by side, each wide enough to read a note in', async () => {
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: 'Split' }))
+    await splitRight()
 
     const [left, right] = paneBoxes()
     expect(paneBoxes()).toHaveLength(2)
@@ -215,7 +221,7 @@ describe('the panel in a real browser', () => {
 
   it('stacks the panes when the panel is narrow in a window that is not', async () => {
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: 'Split' }))
+    await splitRight()
     expect(paneBoxes()[1].left).toBeGreaterThan(paneBoxes()[0].left)
 
     // A wide window with a narrow panel in it — what a media query cannot tell apart from
@@ -245,7 +251,7 @@ describe('the panel in a real browser', () => {
 
   it('stacks a row of panes at a narrow window, where jsdom applies no media query', async () => {
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: 'Split' }))
+    await splitRight()
 
     // Wide: side by side.
     expect(paneBoxes()[1].left).toBeGreaterThan(paneBoxes()[0].left)
@@ -262,7 +268,7 @@ describe('the panel in a real browser', () => {
 
   it('resizes both panes when the handle is dragged, and keeps them tiling the split', async () => {
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: 'Split' }))
+    await splitRight()
 
     const before = paneBoxes()
     const handle = screen.getByRole('separator', { name: 'Resize pane 1 and pane 2' })
@@ -283,7 +289,7 @@ describe('the panel in a real browser', () => {
 
   it('holds a pane at its minimum rather than dragging it out of sight', async () => {
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: 'Split' }))
+    await splitRight()
 
     const handle = screen.getByRole('separator', { name: 'Resize pane 1 and pane 2' })
     // The outline sidebar is the leftmost thing on screen, so this drags well past the limit.
@@ -300,7 +306,7 @@ describe('the panel in a real browser', () => {
 
   it('answers the keyboard chord that moves a tab, if the browser lets it through', async () => {
     renderPanel()
-    await userEvent.click(screen.getByRole('button', { name: 'Split' }))
+    await splitRight()
 
     const tabCounts = () =>
       screen.getAllByRole('tablist').map((strip) => within(strip).getAllByRole('tab').length)
