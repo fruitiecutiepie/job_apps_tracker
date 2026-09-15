@@ -1,4 +1,4 @@
-import { createContext, useContext, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from 'react'
 import { ChevronRight } from 'lucide-react'
 import { inlineText, parseMarkdown, type BlockNode, type InlineNode, type ListBlock, type QuoteBlock, type TableBlock } from './parseMarkdown'
 import { tokenizeCode } from './highlightCode'
@@ -450,6 +450,13 @@ interface MarkdownNotesProps {
    * heading on its own, which is all a note rendered outside the panel can do.
    */
   onJumpToSection?: (key: string) => void
+  /**
+   * Hands the fold-all control to whoever is drawing the chrome around this note, instead
+   * of drawing it here. The panel puts it in the note's own header row: inside the column
+   * it scrolls away with what it folds, and the reader reaching for it has to scroll back
+   * up to find it. Called with `null` when there is nothing foldable, and on unmount.
+   */
+  onFoldControls?: (controls: { allFolded: boolean; toggle: () => void } | null) => void
 }
 
 export function MarkdownNotes({
@@ -461,6 +468,7 @@ export function MarkdownNotes({
   foldAll = true,
   revealKeys,
   onJumpToSection,
+  onFoldControls,
 }: MarkdownNotesProps) {
   const section = useMemo(() => buildSections(parseMarkdown(source)), [source])
   const keys = useMemo(() => collectFoldableKeys(section), [section])
@@ -526,6 +534,30 @@ export function MarkdownNotes({
   }
 
   const allCollapsed = keys.length > 0 && keys.every((key) => collapsed.has(key))
+
+  /*
+   * Stable across renders, so reporting it upward cannot become a loop: the keys it needs
+   * are read when it runs rather than captured when it is made.
+   */
+  const keysRef = useRef(keys)
+  // Written after the render rather than during it: the callback below is read when a
+  // button is pressed, never while drawing, and keeping it stable is what stops the
+  // report upward from being a new value on every render — and so a loop.
+  useEffect(() => {
+    keysRef.current = keys
+  }, [keys])
+  const toggleAll = useCallback(() => {
+    setCollapsed((current) => {
+      const every = keysRef.current.length > 0 && keysRef.current.every((key) => current.has(key))
+      return every ? new Set() : new Set(keysRef.current)
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!onFoldControls) return
+    onFoldControls(keys.length > 0 ? { allFolded: allCollapsed, toggle: toggleAll } : null)
+    return () => onFoldControls(null)
+  }, [allCollapsed, keys.length, onFoldControls, toggleAll])
 
   return (
     <div className="markdown" ref={root}>

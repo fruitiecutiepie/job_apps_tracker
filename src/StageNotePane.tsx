@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from 'react'
-import { CornerDownLeft, ExternalLink, PencilLine, X } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ChevronRight, CornerDownLeft, ExternalLink, PencilLine, X } from 'lucide-react'
 import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
-import { CAPTURE_SECTION, MarkdownNotes } from './markdown'
+import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangement'
+import { CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE, MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
-import type { StageNote, StageNoteEditSession } from './domain'
-import { noteRefKey, type NoteRef } from './notesLayout'
+import { FORMATS, type Format } from './noteFormats'
+import { STATE_CONFIG, type StageNote, type StageNoteEditSession, type StateId } from './domain'
+import { noteRefKey, tabId, type NoteRef } from './notesLayout'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
 import { shortcutKeys } from './shortcuts'
 
@@ -13,8 +15,21 @@ interface StageNotePaneProps {
   /** Which application's note, and for which stage. */
   noteRef: NoteRef
   label: string
+  /**
+   * The application's own name and role, not restated per stage: the header names the
+   * application once, and the stage-switch dropdown beside it — not a second line of
+   * text — is what says which of its stages this is.
+   */
+  company: string
+  role: string
   /** Whether this is the application's own stage, which the panel tints. */
   isCurrentState: boolean
+  /**
+   * Swaps this pane's own tab for a different one of the application's stages — a change
+   * to what this tab is showing, not a change to the application itself, and not a second
+   * tab opened alongside it.
+   */
+  onSwitchStage: (state: StateId) => void
   body: string
   saved: StageNote | undefined
   session: StageNoteEditSession | undefined
@@ -40,6 +55,21 @@ interface StageNotePaneProps {
   /** Whether the captured lines are open for correcting rather than being read. */
   isEditingLines: boolean
   onToggleEditLines: () => void
+  /**
+   * Whether the whole capture dock — the log and the box you type into — is open.
+   * Collapsed by default: what you were told is not what you are looking at most of the
+   * time you have a note open. Held by the panel rather than in here, the same way
+   * `isEditingLines` is, so it survives this pane unmounting when its tab is switched
+   * away from and back to.
+   */
+  isCaptureOpen: boolean
+  onToggleCapture: () => void
+  /** The pane this copy is in, since one note may be open in several. */
+  groupId: string
+  /** How tall the captured lines stand, shared by every pane, for the handle to report. */
+  captureHeight: number
+  /** Moves the dock's edge by that many pixels, positive for taller. */
+  onResizeCapture: (delta: number) => void
   /** Stores a rewritten captured line, or removes it when the text is blank. */
   onRevise: (id: string, body: string) => Promise<void>
   /**
@@ -70,7 +100,10 @@ interface StageNotePaneProps {
 export function StageNotePane({
   noteRef,
   label,
+  company,
+  role,
   isCurrentState,
+  onSwitchStage,
   body,
   saved,
   session,
@@ -86,6 +119,11 @@ export function StageNotePane({
   lines,
   isEditingLines,
   onToggleEditLines,
+  isCaptureOpen,
+  onToggleCapture,
+  groupId,
+  captureHeight,
+  onResizeCapture,
   onRevise,
   onJumpToSection,
   onChange,
@@ -100,7 +138,46 @@ export function StageNotePane({
   const [line, setLine] = useState('')
   const [capturing, setCapturing] = useState(false)
   const logRef = useRef<HTMLDivElement>(null)
+
+  const resizeRef = useRef(onResizeCapture)
+  useEffect(() => {
+    resizeRef.current = onResizeCapture
+  }, [onResizeCapture])
+
+  /*
+   * The drag that moves the dock's edge, held only for as long as one lasts. Re-based on
+   * every move rather than measured from where it started, so the edge tracks the pointer
+   * instead of accelerating away from it as the deltas add up — the same reason the
+   * handles between panes re-base theirs.
+   */
+  const endDrag = useRef<(() => void) | null>(null)
+  // A drag outlives a re-render, but must not outlive the pane it belongs to.
+  useEffect(() => () => endDrag.current?.(), [])
+
+  const beginDrag = useCallback((startY: number) => {
+    let from = startY
+    const move = (event: MouseEvent) => {
+      // Up is taller: the pointer moving towards the note grows the dock under it.
+      resizeRef.current(from - event.clientY)
+      from = event.clientY
+    }
+    const stop = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', stop)
+      endDrag.current = null
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', stop)
+    endDrag.current = stop
+  }, [])
   const bodyRef = useRef<HTMLDivElement | null>(null)
+  /*
+   * The two things the header draws on behalf of whichever mode is showing. The fold
+   * control is state — its label says which way it will go — so it arrives as state; the
+   * formatter is only ever called, so it arrives as a ref and costs no render.
+   */
+  const [foldControls, setFoldControls] = useState<{ allFolded: boolean; toggle: () => void } | null>(null)
+  const formatRef = useRef<((entry: Format) => void) | null>(null)
 
   /**
    * The note itself takes focus when the pane opens with nothing else claiming it (no
@@ -156,17 +233,80 @@ export function StageNotePane({
       }}
     >
       <section
-        aria-labelledby={stageNoteHeadingId(noteRef)}
+        // Named by the stage explicitly rather than by the heading below: two open panes
+        // for the same application's different stages would otherwise share a heading —
+        // "Halcyon Maps · Engineering Manager" — and read as the same region twice.
+        aria-label={label}
         className={`stage-note${isCurrentState ? ' stage-note--current' : ''}`}
-        id={stageNotePanelId(noteRef)}
+        id={stageNotePanelId(groupId, noteRef)}
         role="tabpanel"
       >
         <header className="stage-note__header">
-          <h3 id={stageNoteHeadingId(noteRef)}>{label}</h3>
+          {/* Kept and not printed. The tab directly above this says the same words, in
+              every pane and at every width — a pane brings the tab it is showing into
+              view, so it is never the case that the header says something the strip does
+              not. What a screen reader is handed for the note stays. */}
+          <h3 className="sr-only" id={stageNoteHeadingId(groupId, noteRef)}>{company} · {role}</h3>
+          <label className="stage-note__state">
+            <span className="sr-only">Go to a different stage for {company}</span>
+            <select
+              className={`stage-note__state-select${isCurrentState ? ' stage-note__state-select--current' : ''}`}
+              onChange={(event) => onSwitchStage(event.target.value as StateId)}
+              value={noteRef.state}
+            >
+              {STATE_CONFIG.map((state) => (
+                <option key={state.id} value={state.id}>
+                  {state.label}
+                </option>
+              ))}
+            </select>
+          </label>
           {saved ? (
+            /*
+             * The date carries the word only to a screen reader. A bare date in a note's
+             * header reads as when it was last written, and spelling that out costs a line
+             * of a narrow pane: with the word, this and the controls beside it cannot share
+             * a row, and the header takes three rows where two will do.
+             */
             <small className="stage-note__meta">
-              Updated <time dateTime={saved.updated_at}>{formatDate(saved.updated_at)}</time>
+              <span className="sr-only">Updated </span>
+              <time dateTime={saved.updated_at} title={`Updated ${formatDate(saved.updated_at)}`}>
+                {formatDate(saved.updated_at)}
+              </time>
             </small>
+          ) : null}
+          {/*
+            * What the note is being done to, in the row that names it. Folding was a
+            * button inside the scrolling column — it left the screen with the points it
+            * folds — and formatting was a strip of its own over the box, a row of chrome
+            * charged to every pane. Both are handed up by whichever mode is showing, so
+            * this row draws them and neither owns a row.
+            */}
+          {foldControls ? (
+            <button
+              aria-label={`${foldControls.allFolded ? 'Expand' : 'Collapse'} all points in ${label}`}
+              className="button button--quiet stage-note__fold-all"
+              onClick={foldControls.toggle}
+              type="button"
+            >
+              {foldControls.allFolded ? 'Expand all' : 'Collapse all'}
+            </button>
+          ) : null}
+          {isEditing && !session ? (
+            <span aria-label={`${label} formatting`} className="stage-note__toolbar" role="group">
+              {FORMATS.map((entry) => (
+                <button
+                  aria-label={`${entry.title} in ${label}`}
+                  className="icon-button stage-note__format"
+                  key={entry.id}
+                  onClick={() => formatRef.current?.(entry)}
+                  title={entry.title}
+                  type="button"
+                >
+                  <entry.icon aria-hidden="true" size={16} />
+                </button>
+              ))}
+            </span>
           ) : null}
           <span className="stage-note__actions">
             {session ? (
@@ -250,6 +390,8 @@ export function StageNotePane({
 
         {isEditing ? (
           <StageNoteEditor
+            formatRef={formatRef}
+            onFoldControls={setFoldControls}
             // Only the focused pane may take the caret, or two panes would fight over it.
             autoFocus={isFocused}
             currentMatch={currentMatch}
@@ -259,14 +401,16 @@ export function StageNotePane({
             onChange={onChange}
             query={query}
             revealKeys={revealKeys}
-            sourceId={noteRefKey(noteRef)}
+            sourceId={tabId(groupId, noteRef)}
             value={body}
           />
         ) : body.trim() ? (
           <MarkdownNotes
             currentMatch={currentMatch}
+            foldAll={false}
             label={label}
             matchBase={matchBase}
+            onFoldControls={setFoldControls}
             onJumpToSection={onJumpToSection}
             query={query}
             revealKeys={revealKeys}
@@ -289,79 +433,129 @@ export function StageNotePane({
           write for a second caret here to race.
         */}
         <div className="stage-note__dock">
-          {captured && !isEditingLines ? (
+          {isCaptureOpen ? (
+            /*
+             * The dock's own edge, and a real `separator` rather than a styled border: a
+             * drag is the obvious way to move it and no way at all without a pointer, so
+             * it takes the arrow keys too — the same contract the handles between panes
+             * keep. Only while the dock is open, since a closed one has no height to move.
+             */
             <div
-              aria-label={`${CAPTURE_SECTION} in ${label}`}
-              className="stage-note__log"
-              ref={logRef}
-              role="log"
-            >
-              <MarkdownNotes
-                currentMatch={currentMatch}
-                foldAll={false}
-                label={`${label} captures`}
-                matchBase={heardMatchBase}
-                query={query}
-                source={captured}
-              />
-            </div>
+              aria-label={`Resize ${CAPTURE_SECTION_IN_SENTENCE} in ${label}`}
+              aria-orientation="horizontal"
+              aria-valuemax={MAX_CAPTURE_LOG}
+              aria-valuemin={MIN_CAPTURE_LOG}
+              aria-valuenow={captureHeight}
+              className="stage-note__dock-resize"
+              onKeyDown={(event) => {
+                if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+                event.preventDefault()
+                // Up is taller: the dock grows against the note above it, so the edge
+                // moves the way the key points.
+                onResizeCapture(event.key === 'ArrowUp' ? CAPTURE_STEP : -CAPTURE_STEP)
+              }}
+              onMouseDown={(event) => {
+                event.preventDefault()
+                beginDrag(event.clientY)
+              }}
+              role="separator"
+              tabIndex={0}
+            />
           ) : null}
+          <button
+            aria-expanded={isCaptureOpen}
+            aria-label={`${isCaptureOpen ? 'Hide' : 'Show'} ${CAPTURE_SECTION_IN_SENTENCE} in ${label}`}
+            className={[
+              'stage-note__dock-toggle',
+              isCaptureOpen ? '' : 'stage-note__dock-toggle--collapsed',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            onClick={onToggleCapture}
+            type="button"
+          >
+            <ChevronRight aria-hidden="true" size={14} />
+            {CAPTURE_SECTION}
+            {lines.length > 0 ? <span className="stage-note__dock-count">{lines.length}</span> : null}
+          </button>
 
-          {isEditingLines ? (
-            <div className="stage-note__log stage-note__log--editing" ref={logRef}>
-              <CapturedLines label={label} lines={lines} onRevise={onRevise} />
-            </div>
+          {isCaptureOpen ? (
+            <>
+              {captured && !isEditingLines ? (
+                <div
+                  aria-label={`${CAPTURE_SECTION} in ${label}`}
+                  className="stage-note__log"
+                  ref={logRef}
+                  role="log"
+                >
+                  <MarkdownNotes
+                    currentMatch={currentMatch}
+                    foldAll={false}
+                    label={`${label} captures`}
+                    matchBase={heardMatchBase}
+                    query={query}
+                    source={captured}
+                  />
+                </div>
+              ) : null}
+
+              {isEditingLines ? (
+                <div className="stage-note__log stage-note__log--editing" ref={logRef}>
+                  <CapturedLines label={label} lines={lines} onRevise={onRevise} />
+                </div>
+              ) : null}
+              <div className="stage-note__capture">
+                <label className="field">
+                  <span className="sr-only">Capture a line in {label}</span>
+                  <textarea
+                    // The one shortcut with no button in the title bar to hang a hint on, so
+                    // the box it lands in is what names it. The shortcuts list carries the
+                    // visible half.
+                    aria-keyshortcuts={shortcutKeys('K')}
+                    data-capture-focus={isFocused ? 'true' : undefined}
+                    // Never disabled, not even mid-write: taking the caret away from someone
+                    // typing what they are being told is worse than a write it has to wait for.
+                    onChange={(event) => setLine(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key !== 'Enter') return
+                      // Shift+Enter is the way to a second line, so Enter stays the fast path:
+                      // the box is answered mid-conversation, and reaching for a button to file
+                      // what was just said is the thing this dock exists to avoid.
+                      if (event.shiftKey) return
+                      // The panel is one form around every stage, so Enter would otherwise
+                      // save the lot and close it in the middle of a conversation.
+                      event.preventDefault()
+                      void capture()
+                    }}
+                    placeholder="What did they say? Enter files it, Shift+Enter starts a line"
+                    value={line}
+                  />
+                </label>
+                {lines.length > 0 ? (
+                  <button
+                    aria-label={`${isEditingLines ? 'Read' : 'Correct'} the captured lines in ${label}`}
+                    aria-pressed={isEditingLines}
+                    className="button button--quiet stage-note__mode"
+                    onClick={onToggleEditLines}
+                    type="button"
+                  >
+                    <PencilLine aria-hidden="true" size={14} />
+                    {isEditingLines ? 'Done' : 'Correct'}
+                  </button>
+                ) : null}
+                <button
+                  aria-label={`Capture this line in ${label}`}
+                  className="button button--quiet stage-note__mode"
+                  disabled={capturing || !line.trim()}
+                  onClick={() => void capture()}
+                  type="button"
+                >
+                  <CornerDownLeft aria-hidden="true" size={14} />
+                  Capture
+                </button>
+              </div>
+            </>
           ) : null}
-          <div className="stage-note__capture">
-            <label className="field">
-              <span className="sr-only">Capture a line in {label}</span>
-              <textarea
-                // The one shortcut with no button in the title bar to hang a hint on, so
-                // the box it lands in is what names it. The shortcuts list carries the
-                // visible half.
-                aria-keyshortcuts={shortcutKeys('K')}
-                data-capture-focus={isFocused ? 'true' : undefined}
-                // Never disabled, not even mid-write: taking the caret away from someone
-                // typing what they are being told is worse than a write it has to wait for.
-                onChange={(event) => setLine(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key !== 'Enter') return
-                  // Shift+Enter is the way to a second line, so Enter stays the fast path:
-                  // the box is answered mid-conversation, and reaching for a button to file
-                  // what was just said is the thing this dock exists to avoid.
-                  if (event.shiftKey) return
-                  // The panel is one form around every stage, so Enter would otherwise
-                  // save the lot and close it in the middle of a conversation.
-                  event.preventDefault()
-                  void capture()
-                }}
-                placeholder={`What did they say? Enter files it under ${CAPTURE_SECTION}, Shift+Enter starts a line`}
-                value={line}
-              />
-            </label>
-            {lines.length > 0 ? (
-              <button
-                aria-label={`${isEditingLines ? 'Read' : 'Correct'} the captured lines in ${label}`}
-                aria-pressed={isEditingLines}
-                className="button button--quiet stage-note__mode"
-                onClick={onToggleEditLines}
-                type="button"
-              >
-                <PencilLine aria-hidden="true" size={14} />
-                {isEditingLines ? 'Done' : 'Correct'}
-              </button>
-            ) : null}
-            <button
-              aria-label={`Capture this line in ${label}`}
-              className="button button--quiet stage-note__mode"
-              disabled={capturing || !line.trim()}
-              onClick={() => void capture()}
-              type="button"
-            >
-              <CornerDownLeft aria-hidden="true" size={14} />
-              Capture
-            </button>
-          </div>
         </div>
       </section>
     </div>
