@@ -1189,25 +1189,26 @@ export default function App() {
 
       <main id="main">
         {/*
-          * One row for the whole view context: which view, how much of the
-          * collection is showing, and the filters that decide it. The view name
-          * is not repeated here as a display heading — the nav tab already
-          * carries it — but it stays the page's h1 for document structure.
+          * Prep notes is a workspace rather than a slice of the collection: the count, the
+          * search and the filters all act on the collection, so a bar carrying them here
+          * would offer controls that do nothing over a number that means nothing. The one
+          * search that makes sense is over the notes, and it lives in the sidebar with the
+          * tree it filters. That leaves nothing in this row but the word "Prep notes",
+          * which the lit header button already says — so the heading stays for document
+          * structure and the row it sat in does not, giving the notes a line back on every
+          * window open.
           */}
-        <section aria-label="View context and filters" className="context-bar">
-          <h1>
-            {notesOpen
-              ? NOTES_VIEW.label
-              : VIEW_OPTIONS.find((view) => view.id === activeView)?.label}
-          </h1>
-          {notesOpen ? null : (
-            /*
-             * A workspace, not a slice of the collection: the count, the search and the
-             * filters all act on the collection, so a bar carrying them here would be
-             * offering controls that do nothing over a number that means nothing. The one
-             * search that makes sense here is over the notes, and it lives in the sidebar
-             * with the tree it filters — beside what it searches rather than above it.
-             */
+        {notesOpen ? (
+          <h1 className="sr-only">{NOTES_VIEW.label}</h1>
+        ) : (
+          /*
+           * One row for the whole view context: which view, how much of the collection is
+           * showing, and the filters that decide it. The view name is not repeated here as
+           * a display heading — the nav tab already carries it — but it stays the page's
+           * h1 for document structure.
+           */
+          <section aria-label="View context and filters" className="context-bar">
+            <h1>{VIEW_OPTIONS.find((view) => view.id === activeView)?.label}</h1>
             <>
             <p className="context-bar__count">
               {filteredApplications.length} of {tracker.applications.length} applications shown
@@ -1317,8 +1318,8 @@ export default function App() {
               )}
             </div>
             </>
-          )}
-        </section>
+          </section>
+        )}
 
         {notice && (
           <div className="notice" role="status">

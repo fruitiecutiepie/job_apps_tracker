@@ -531,7 +531,14 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes' }))
     expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { level: 1, name: 'Prep notes' })).toBeInTheDocument()
+    /*
+     * The page still says what it is, but it says it to a screen reader rather than in a
+     * strip of its own: the header button naming this layer is lit while it is up, and a
+     * row carrying a word already on screen costs a line of notes on every window.
+     */
+    const heading = screen.getByRole('heading', { level: 1, name: 'Prep notes' })
+    expect(heading).toHaveClass('sr-only')
+    expect(screen.queryByRole('region', { name: 'View context and filters' })).not.toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Prep notes' })).toHaveAttribute('aria-pressed', 'true')
     // And no view tab claims to be the page while it is showing.
     expect(views.queryByRole('button', { current: 'page' })).not.toBeInTheDocument()

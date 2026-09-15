@@ -36,9 +36,15 @@ it('completes the primary tracker journey and persists it across reloads', async
   const user = userEvent.setup()
   const firstRender = await renderLoadedApp()
 
-  const contextBar = within(screen.getByRole('region', { name: 'View context and filters' }))
+  /*
+   * Looked up each time rather than held: the prep notes layer takes the row away while it
+   * is up — nothing in it acts on a workspace — so a scope captured before that visit is a
+   * detached node by the time it is typed into, and types into nothing without failing.
+   */
+  const contextBar = () =>
+    within(screen.getByRole('region', { name: 'View context and filters' }))
 
-  expect(contextBar.getByText('19 of 19 applications shown')).toBeInTheDocument()
+  expect(contextBar().getByText('19 of 19 applications shown')).toBeInTheDocument()
   expect(readSavedDocument().applications).toHaveLength(19)
 
   /*
@@ -77,7 +83,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   await user.type(within(addDialog).getByLabelText('Next action'), 'Send portfolio')
   await user.click(within(addDialog).getByRole('button', { name: 'Add application' }))
   expect(screen.getByRole('status')).toHaveTextContent('Application added.')
-  await user.type(contextBar.getByRole('searchbox'), 'Smoke Test Co')
+  await user.type(contextBar().getByRole('searchbox'), 'Smoke Test Co')
   await user.click(
     screen.getByRole('button', { name: 'Open Smoke Test Co, Product Designer' }),
   )
