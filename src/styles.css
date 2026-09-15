@@ -2647,6 +2647,10 @@ tbody tr:hover {
     '.    above .'
     'left here  right'
     '.    below .';
+  /* Three columns of one width. Sized to their contents, "Left" and "Right" came out
+     narrower than the pane between them and the block read as a ragged list rather than as
+     a map of a pane's four sides. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--s2);
   justify-items: stretch;
 }
@@ -2655,7 +2659,7 @@ tbody tr:hover {
   justify-content: center;
   gap: var(--s2);
   min-height: var(--control);
-  padding: 0 var(--s3);
+  padding: 0 var(--s2);
 }
 
 /* The pane the new one opens beside. Drawn as a pane rather than as a control — no border

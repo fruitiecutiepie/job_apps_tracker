@@ -1463,7 +1463,9 @@ describe('job applications tracker', () => {
     // Split, then read the second pane: capture follows the pane being read rather than
     // the one that was open first. Both panes now show the same "Company · Role" heading
     // once the state is dropped from it, so scope to the pane holding Interview 1.
+    // The shortcut opens the menu and an arrow says which way, so a pane opens to the right.
     await user.keyboard('{Control>}\\{/Control}')
+    await user.keyboard('{ArrowRight}')
     const interview1Pane = within(dialog)
       .getAllByRole('tabpanel')
       .find((pane) => pane.id.endsWith('--interview_1'))!
@@ -1497,7 +1499,7 @@ describe('job applications tracker', () => {
     )
     expect(within(dialog).getByRole('button', { name: 'Split' })).toHaveAttribute(
       'title',
-      'Open another pane (Ctrl+\\ opens one to the right)',
+      'Open another pane (Ctrl+\\, then an arrow)',
     )
     // Ctrl+K has no button in the title bar, so the box it lands in carries it instead.
     await openCapture(user, dialog, 'Halcyon Maps · Interview 2')
@@ -2290,6 +2292,36 @@ describe('job applications tracker', () => {
     await user.click(within(panel).getByRole('button', { name: 'Split' }))
     await user.click(within(panel).getByRole('button', { name: 'Collapse to one pane' }))
     expect(panes()).toHaveLength(1)
+  })
+
+  it('opens a pane with the shortcut and an arrow, without reaching for the menu', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    /*
+     * The pair, not four chords: every arrow with a modifier already means something in
+     * this panel — Shift sends the tab being read to an edge, Alt walks it along the strip
+     * — so the direction is typed into the menu the shortcut opens. Focus lands in there,
+     * which is what makes the arrow reach it.
+     */
+    await user.keyboard('{Control>}\\{/Control}')
+    expect(within(panel).getByRole('button', { name: 'Above' })).toHaveFocus()
+    await user.keyboard('{ArrowDown}')
+
+    expect(within(panel).getAllByRole('tabpanel')).toHaveLength(2)
+    // The menu closes behind it and hands focus back to the control that opened it.
+    expect(within(panel).queryByRole('button', { name: 'Above' })).not.toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'Split' })).toHaveFocus()
+
+    // Each direction says its own key, the way every other control in this bar does.
+    await user.click(within(panel).getByRole('button', { name: 'Split' }))
+    expect(within(panel).getByRole('button', { name: 'Left' })).toHaveAttribute(
+      'aria-keyshortcuts',
+      'ArrowLeft',
+    )
   })
 
   it('puts folding and formatting in the note\'s own first row', async () => {

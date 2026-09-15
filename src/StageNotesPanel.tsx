@@ -245,11 +245,11 @@ function OutlineList({ nodes, depth, path, current, onPick }: OutlineListProps) 
  * point: above, left, right, below. Source order is what the keyboard follows, so it walks
  * the cross top to bottom rather than jumping around it.
  */
-const SPLIT_CHOICES: readonly { edge: Edge; label: string }[] = [
-  { edge: 'top', label: 'Above' },
-  { edge: 'left', label: 'Left' },
-  { edge: 'right', label: 'Right' },
-  { edge: 'bottom', label: 'Below' },
+const SPLIT_CHOICES: readonly { edge: Edge; label: string; arrow: string; key: string }[] = [
+  { edge: 'top', label: 'Above', arrow: '↑', key: 'ArrowUp' },
+  { edge: 'left', label: 'Left', arrow: '←', key: 'ArrowLeft' },
+  { edge: 'right', label: 'Right', arrow: '→', key: 'ArrowRight' },
+  { edge: 'bottom', label: 'Below', arrow: '↓', key: 'ArrowDown' },
 ]
 
 function ShortcutsHelp() {
@@ -284,7 +284,7 @@ function ShortcutsHelp() {
         aria-expanded={open}
         aria-label="Keyboard shortcuts"
         className="icon-button panel__chrome-button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => setOpen(!open)}
         ref={triggerRef}
         type="button"
       >
@@ -333,16 +333,30 @@ function ShortcutsHelp() {
  */
 function SplitMenu({
   isSplit,
+  open,
+  setOpen,
   onSplit,
   onCollapse,
 }: {
   isSplit: boolean
+  /** Held by the panel, so `Ctrl/Cmd+\` opens the same menu this button does. */
+  open: boolean
+  setOpen: (open: boolean) => void
   onSplit: (edge: Edge) => void
   onCollapse: () => void
 }) {
-  const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const firstChoiceRef = useRef<HTMLButtonElement>(null)
+
+  /*
+   * Focus goes into the menu when it opens, which is what makes the arrows reachable from
+   * the shortcut: opened from the keyboard, focus is still out in the panel, and a key
+   * pressed there would never reach this.
+   */
+  useEffect(() => {
+    if (open) firstChoiceRef.current?.focus()
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -351,7 +365,7 @@ function SplitMenu({
     }
     document.addEventListener('pointerdown', onPointerDown)
     return () => document.removeEventListener('pointerdown', onPointerDown)
-  }, [open])
+  }, [open, setOpen])
 
   const choose = (run: () => void) => {
     run()
@@ -363,11 +377,27 @@ function SplitMenu({
     <div
       className="panel__shortcuts"
       onKeyDown={(event) => {
-        if (!open || event.key !== 'Escape') return
+        if (!open) return
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          setOpen(false)
+          triggerRef.current?.focus()
+          return
+        }
+        /*
+         * The arrows are the menu's own, and they are the whole point of it being a menu:
+         * the direction a pane opens in is a direction, and an arrow is how a direction is
+         * typed. Reached as a pair — the shortcut that opens this, then the arrow — rather
+         * than as four global chords, because every arrow with a modifier already means
+         * something here: Shift sends the tab being read to an edge, Alt walks it along
+         * the strip.
+         */
+        const choice = SPLIT_CHOICES.find((entry) => entry.key === event.key)
+        if (!choice || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
         event.preventDefault()
         event.stopPropagation()
-        setOpen(false)
-        triggerRef.current?.focus()
+        choose(() => onSplit(choice.edge))
       }}
       ref={containerRef}
     >
@@ -376,9 +406,9 @@ function SplitMenu({
         aria-keyshortcuts={shortcutKeys('\\')}
         aria-label="Split"
         className="icon-button panel__chrome-button"
-        onClick={() => setOpen((current) => !current)}
+        onClick={() => setOpen(!open)}
         ref={triggerRef}
-        title={`Open another pane (${shortcutLabel('\\')} opens one to the right)`}
+        title={`Open another pane (${shortcutLabel('\\')}, then an arrow)`}
         type="button"
       >
         <Columns2 aria-hidden="true" size={16} />
@@ -394,17 +424,19 @@ function SplitMenu({
                 each button already says where it opens, and a screen reader hearing
                 "this pane" between them would be told the layout twice. */}
             <span aria-hidden="true" className="panel__split-here">This pane</span>
-            {SPLIT_CHOICES.map(({ edge, label }) => (
+            {SPLIT_CHOICES.map(({ edge, label, arrow, key }) => (
               <button
+                aria-keyshortcuts={key}
                 className={`button button--quiet panel__split-choice panel__split-choice--${edge}`}
                 key={edge}
                 onClick={() => choose(() => onSplit(edge))}
+                ref={edge === SPLIT_CHOICES[0].edge ? firstChoiceRef : undefined}
                 type="button"
               >
                 {label}
-                {edge === 'right' ? (
-                  <span aria-hidden="true" className="panel__chrome-key">{shortcutLabel('\\')}</span>
-                ) : null}
+                {/* The key that does this, on the control that does it — the rule the title
+                    bar keeps for every other shortcut in the panel. */}
+                <span aria-hidden="true" className="panel__chrome-key">{arrow}</span>
               </button>
             ))}
           </div>
@@ -659,6 +691,7 @@ export function StageNotesPanel({
   useEffect(() => {
     sidebarWidthRef.current = sidebarWidth
   }, [sidebarWidth])
+  const [splitMenuOpen, setSplitMenuOpen] = useState(false)
   const [quickOpen, setQuickOpen] = useState<string | null>(null)
   /** The section the breadcrumbs name: the last heading scrolled past. */
   const [trailKey, setTrailKey] = useState<string | null>(null)
@@ -1519,10 +1552,11 @@ export function StageNotesPanel({
       if (!(event.metaKey || event.ctrlKey)) return
       if (event.key === '\\') {
         event.preventDefault()
-        // One press, one more pane, to the right. The menu on the control is where the
-        // other three directions are; a shortcut that opened a menu would be a shortcut
-        // to a decision rather than to a result.
-        splitOff('right')
+        // Opens the menu and lands in it, where an arrow says which way. A pane opens in a
+        // direction, and the four directions cannot each have a chord of their own: every
+        // arrow with a modifier is already spoken for here — Shift sends the tab being
+        // read to an edge, Alt walks it along the strip.
+        setSplitMenuOpen(true)
         return
       }
       const key = event.key.toLowerCase()
@@ -1574,7 +1608,7 @@ export function StageNotesPanel({
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [activeKey, closeFocusedTab, openFind, splitOff, toggleSidebar])
+  }, [activeKey, closeFocusedTab, openFind, toggleSidebar])
 
   /**
    * Focuses the capture box once the dock the "K" shortcut just opened has actually
@@ -2187,6 +2221,8 @@ export function StageNotesPanel({
             isSplit={isSplit}
             onCollapse={collapseSplit}
             onSplit={splitOff}
+            open={splitMenuOpen}
+            setOpen={setSplitMenuOpen}
           />
           <button
             aria-keyshortcuts={shortcutKeys('F')}
