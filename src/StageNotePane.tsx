@@ -5,6 +5,7 @@ import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangement'
 import { CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE, MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
+import { FORMATS, type Format } from './noteFormats'
 import { STATE_CONFIG, type StageNote, type StageNoteEditSession, type StateId } from './domain'
 import { noteRefKey, tabId, type NoteRef } from './notesLayout'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
@@ -170,6 +171,13 @@ export function StageNotePane({
     endDrag.current = stop
   }, [])
   const bodyRef = useRef<HTMLDivElement | null>(null)
+  /*
+   * The two things the header draws on behalf of whichever mode is showing. The fold
+   * control is state — its label says which way it will go — so it arrives as state; the
+   * formatter is only ever called, so it arrives as a ref and costs no render.
+   */
+  const [foldControls, setFoldControls] = useState<{ allFolded: boolean; toggle: () => void } | null>(null)
+  const formatRef = useRef<((entry: Format) => void) | null>(null)
 
   /**
    * The note itself takes focus when the pane opens with nothing else claiming it (no
@@ -267,6 +275,39 @@ export function StageNotePane({
               </time>
             </small>
           ) : null}
+          {/*
+            * What the note is being done to, in the row that names it. Folding was a
+            * button inside the scrolling column — it left the screen with the points it
+            * folds — and formatting was a strip of its own over the box, a row of chrome
+            * charged to every pane. Both are handed up by whichever mode is showing, so
+            * this row draws them and neither owns a row.
+            */}
+          {foldControls ? (
+            <button
+              aria-label={`${foldControls.allFolded ? 'Expand' : 'Collapse'} all points in ${label}`}
+              className="button button--quiet stage-note__fold-all"
+              onClick={foldControls.toggle}
+              type="button"
+            >
+              {foldControls.allFolded ? 'Expand all' : 'Collapse all'}
+            </button>
+          ) : null}
+          {isEditing && !session ? (
+            <span aria-label={`${label} formatting`} className="stage-note__toolbar" role="group">
+              {FORMATS.map((entry) => (
+                <button
+                  aria-label={`${entry.title} in ${label}`}
+                  className="icon-button stage-note__format"
+                  key={entry.id}
+                  onClick={() => formatRef.current?.(entry)}
+                  title={entry.title}
+                  type="button"
+                >
+                  <entry.icon aria-hidden="true" size={16} />
+                </button>
+              ))}
+            </span>
+          ) : null}
           <span className="stage-note__actions">
             {session ? (
               <button
@@ -349,6 +390,8 @@ export function StageNotePane({
 
         {isEditing ? (
           <StageNoteEditor
+            formatRef={formatRef}
+            onFoldControls={setFoldControls}
             // Only the focused pane may take the caret, or two panes would fight over it.
             autoFocus={isFocused}
             currentMatch={currentMatch}
@@ -364,8 +407,10 @@ export function StageNotePane({
         ) : body.trim() ? (
           <MarkdownNotes
             currentMatch={currentMatch}
+            foldAll={false}
             label={label}
             matchBase={matchBase}
+            onFoldControls={setFoldControls}
             onJumpToSection={onJumpToSection}
             query={query}
             revealKeys={revealKeys}

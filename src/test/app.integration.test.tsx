@@ -2236,6 +2236,39 @@ describe('job applications tracker', () => {
     ).toBeInTheDocument()
   })
 
+  it('puts folding and formatting in the note\'s own first row', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    const header = () => panel.querySelector('.stage-note__header')!
+
+    /*
+     * The row that used to print the note's name has the width for these, and they are
+     * what the reader reaches for while reading: folding was a button inside the column
+     * that scrolled away with it, and formatting was a row of its own over the box.
+     */
+    const foldAll = within(panel).getByRole('button', { name: /^Collapse all points in/ })
+    expect(header().contains(foldAll)).toBe(true)
+    expect(foldAll.closest('.stage-note__body')).toBeNull()
+
+    await user.click(foldAll)
+    expect(within(panel).getByRole('button', { name: /^Expand all points in/ })).toBeInTheDocument()
+
+    await user.click(within(panel).getAllByRole('button', { name: /^Edit / })[0])
+    const bold = within(panel).getByRole('button', { name: /^Bold in / })
+    expect(header().contains(bold)).toBe(true)
+
+    // And it still writes into the note it belongs to.
+    const box = within(panel).getByRole('textbox', { name: /Halcyon Maps · Interview 2/ })
+    await user.click(box)
+    await user.click(bold)
+    // Nothing selected, so bold writes the placeholder it always does — the point here is
+    // that a button drawn a row away still reaches this box's own caret.
+    expect((box as HTMLTextAreaElement).value).toContain('**text**')
+  })
+
   it('says on a tab only what tells it from the tabs beside it', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

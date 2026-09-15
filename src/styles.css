@@ -2144,7 +2144,9 @@ tbody tr:hover {
 }
 
 .stage-note__meta {
-  margin-left: auto;
+  /* Takes the row's slack, so what follows it ends the row rather than floating in the
+     middle of it — and the fold and format controls sit with the stage they act on. */
+  margin-right: auto;
   color: var(--ink-3);
   font-size: var(--t2);
 }
@@ -2250,7 +2252,6 @@ tbody tr:hover {
 .stage-note__fold-all {
   min-height: 26px;
   padding: 0 var(--s2);
-  margin-left: auto;
   color: var(--ink-2);
   font-size: var(--t2);
 }
