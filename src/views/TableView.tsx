@@ -4,6 +4,7 @@ import type { Application, StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import { CompleteActionButton } from "./CompleteActionButton";
 import { InviteSummaries, inviteFilterText } from "./InviteSummaries";
+import { RejectButton } from "./RejectButton";
 import { StageNotesButton } from "./StageNotesButton";
 import {
   compensationSortValue,
@@ -582,18 +583,21 @@ export function TableView({
       {bodyCell("source", application.source || <span aria-label="Not set">—</span>)}
       {bodyCell(
         "state",
-        <select
-          aria-label={`Move ${application.company} to state`}
-          className="table-state-select"
-          value={application.state}
-          onChange={(event) => onMove(application.id, event.target.value as StateId)}
-        >
-          {STATE_CONFIG.map((state) => (
-            <option key={state.id} value={state.id}>
-              {state.label}
-            </option>
-          ))}
-        </select>,
+        <>
+          <select
+            aria-label={`Move ${application.company} to state`}
+            className="table-state-select"
+            value={application.state}
+            onChange={(event) => onMove(application.id, event.target.value as StateId)}
+          >
+            {STATE_CONFIG.map((state) => (
+              <option key={state.id} value={state.id}>
+                {state.label}
+              </option>
+            ))}
+          </select>
+          <RejectButton application={application} onMove={onMove} />
+        </>,
       )}
       {/* describeIdle is empty for a row that is not idle, which is the dash case. */}
       {bodyCell(

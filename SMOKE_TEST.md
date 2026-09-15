@@ -9,7 +9,7 @@ pnpm test:smoke
 ```
 
 This checks the demo-profile journey: 19 first-load examples, navigation through all five views
-(Kanban, Table, Calendar, Stale, Statistics), creating and searching for an application,
+(Kanban, Table, Calendar, Statistics), creating and searching for an application,
 changing its state and recording history, marking a next action done and logging it in the
 notes, recording stage prep notes against it, persistence across an app reload, and confirmed
 demo-data reset.
@@ -78,7 +78,7 @@ neither a finger nor any browser automation.
    plain score, and that an unrated card shows no preference line at all.
 3. Confirm the view name and the "N of M applications shown" count each appear exactly
    once, in the context bar, and that no view repeats them as a visible heading.
-   Open Table, Calendar, Stale, and Statistics. Confirm each view is
+   Open Table, Calendar, and Statistics. Confirm each view is
    readable at both wide and narrow window sizes.
    On Table, confirm it opens sorted by Urgency with the rows banded under headings, that
    each band shows a count, that every band holds at least one application so each heading
@@ -89,14 +89,15 @@ neither a finger nor any browser automation.
    Sort by Company and confirm the band headings go away, then sort by Urgency again and
    confirm they come back.
    Confirm Northstar Labs bands under **Live, nothing dated** with a reason naming the
-   silence, and does not appear on Stale at any threshold: it was edited yesterday but has
-   not moved in weeks.
+   silence: it was edited yesterday but has not moved in weeks, and the Activity column
+   reads it as Idle while its band reason names the stage change it has not had.
    Confirm a column filter narrows rows without changing Kanban, and that
    Clear column filters restores the table, including when only the Preference filter is set.
    Confirm the most pressing live applications lead, that each row
    explains itself, and that rejected, accepted, and no-openings rows show an unranked dash.
-   On Stale, confirm a live-state row has Move to Rejected and that already-rejected,
-   accepted, headhunted, and no-openings rows do not.
+   Confirm a live row has a **Reject** button beside its state select and that
+   already-rejected, accepted, and no-openings rows do not. Press it on one and confirm the
+   row moves to that state's rejected counterpart and gains a history entry.
 4. Confirm **Done** appears beside a next action in both places and nowhere else: on the
    Atlas Thread Kanban card — on the **Next** line itself, not down beside Move and Prep notes —
    and in its Table **Next action** cell, but on no card or row without an

@@ -134,16 +134,16 @@ describe('job applications tracker', () => {
     expect(testTrackerStore.getItem('job-applications-tracker:v1')).toBe('{invalid')
   })
 
-  it('offers all six views and keeps the shared collection available while navigating', async () => {
+  it('offers all five views and keeps the shared collection available while navigating', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
     // Scoped to the nav rather than searched for across the page, per AGENTS.md: a role
     // query walks the tree computing an accessible name per candidate, which costs far
-    // more over a thousand-node app than over the six buttons in this one landmark.
+    // more over a thousand-node app than over the five buttons in this one landmark.
     const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
 
-    for (const view of ['Table', 'Calendar', 'Stale', 'Statistics', 'Compare'] as const) {
+    for (const view of ['Table', 'Calendar', 'Statistics', 'Compare'] as const) {
       const viewButton = views.getByRole('button', { name: view })
       await user.click(viewButton)
       expect(viewButton).toHaveAttribute('aria-current', 'page')

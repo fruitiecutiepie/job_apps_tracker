@@ -1,10 +1,10 @@
 export { CalendarView } from "./CalendarView";
 export { CompareNotesView } from "./CompareNotesView";
 export { CompleteActionButton } from "./CompleteActionButton";
+export { RejectButton } from "./RejectButton";
 export { InviteSummaries } from "./InviteSummaries";
 export { KanbanView } from "./KanbanView";
 export { StageNotesButton } from "./StageNotesButton";
-export { StaleView } from "./StaleView";
 export { StatisticsView } from "./StatisticsView";
 export { TableView } from "./TableView";
 export type { ApplicationsViewProps, MovableApplicationsViewProps } from "./types";

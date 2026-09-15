@@ -332,8 +332,7 @@ p {
 /* -------------------------------------------------------------- buttons --- */
 
 .button,
-.icon-button,
-.stale-row__reject {
+.icon-button {
   min-height: var(--control);
   border: 1px solid var(--line-strong);
   border-radius: var(--r1);
@@ -346,8 +345,7 @@ p {
     background 120ms ease;
 }
 
-.button,
-.stale-row__reject {
+.button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -367,8 +365,7 @@ p {
 }
 
 .button:hover,
-.icon-button:hover,
-.stale-row__reject:hover {
+.icon-button:hover {
   border-color: var(--ink-3);
   background: var(--surface-2);
 }
@@ -406,15 +403,13 @@ p {
   cursor: not-allowed;
 }
 
-.button--danger,
-.stale-row__reject {
+.button--danger {
   border-color: transparent;
   color: var(--danger);
   background: var(--danger-weak);
 }
 
-.button--danger:hover,
-.stale-row__reject:hover {
+.button--danger:hover {
   border-color: var(--danger);
   background: var(--danger-weak);
 }
@@ -1147,114 +1142,6 @@ tbody tr:hover {
   font-size: var(--t2);
 }
 
-/* -------------------------------------------------------------- stale --- */
-
-.stale-list {
-  display: grid;
-  gap: var(--s3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.stale-row {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: var(--r2);
-  background: var(--surface);
-}
-
-.stale-row:hover {
-  border-color: var(--line-strong);
-}
-
-.stale-row__open strong {
-  color: var(--ink);
-  font-size: var(--t3);
-  font-weight: 600;
-}
-
-.stale-row__open small {
-  color: var(--ink-2);
-  font-size: var(--t2);
-}
-
-.stale-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s3);
-}
-
-.stale-row__open {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--s4);
-  row-gap: var(--s1);
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  text-align: left;
-}
-
-.stale-row__open > span {
-  display: grid;
-  gap: var(--s1);
-}
-
-.stale-row__open > span:last-child {
-  justify-items: end;
-  text-align: right;
-}
-
-.stale-row__open small {
-  display: block;
-}
-
-.stale-row__reject {
-  flex: none;
-  min-height: 28px;
-  padding: 0 var(--s3);
-  font-size: var(--t2);
-  white-space: nowrap;
-}
-
-.segmented-control {
-  display: inline-flex;
-  min-width: 0;
-  margin: 0;
-  padding: var(--s1);
-  border: 1px solid var(--line);
-  border-radius: var(--r1);
-  background: var(--surface-2);
-}
-
-.segmented-control label {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 26px;
-  padding: 0 var(--s3);
-  border-radius: var(--r1);
-  color: var(--ink-2);
-  font-size: var(--t2);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.segmented-control label:hover {
-  color: var(--ink);
-}
-
-.segmented-control label:has(:checked) {
-  color: var(--ink);
-  background: var(--surface);
-  font-weight: 600;
-}
-
 /* ------------------------------------------------------------ calendar --- */
 
 .calendar__month-nav {
@@ -1959,6 +1846,21 @@ tbody tr:hover {
  */
 .complete-action-button--table {
   margin-top: var(--s2);
+}
+
+/*
+ * Sits under the state select in the same cell, the way Done sits under the action text.
+ * Quieter than the select above it: the select is how a row's state is read, this is only
+ * a shortcut to one of its options.
+ */
+.reject-button {
+  gap: var(--s2);
+  min-height: 28px;
+  margin-top: var(--s2);
+  padding: 0 var(--s3);
+  color: var(--ink-2);
+  font-size: var(--t2);
+  white-space: nowrap;
 }
 
 .stage-note {
@@ -3576,7 +3478,7 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .table-col-header input,
   .table-col-header select,
   .table-state-select,
-  .stale-row__reject,
+  .reject-button,
   .stage-notes-button--table,
   .complete-action-button--table,
   .stage-note__mode {
@@ -3592,10 +3494,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .stage-note__format {
     min-width: 40px;
     min-height: 40px;
-  }
-
-  .segmented-control label {
-    min-height: 34px;
   }
 
   /* Under the floors above, one row would leave every control at its minimum. Wrapping
@@ -3623,20 +3521,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .field--wide {
     grid-column: auto;
-  }
-
-  .stale-row {
-    flex-wrap: wrap;
-  }
-
-  .stale-row__open {
-    flex: 1 1 12rem;
-    grid-template-columns: 1fr;
-  }
-
-  .stale-row__open > span:last-child {
-    justify-items: start;
-    text-align: left;
   }
 
   .dialog-backdrop {
@@ -3757,11 +3641,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .calendar__month-nav {
     justify-content: space-between;
-  }
-
-  .segmented-control {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
   }
 
   .dialog__actions {

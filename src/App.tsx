@@ -92,18 +92,16 @@ import {
   CalendarView,
   CompareNotesView,
   KanbanView,
-  StaleView,
   StatisticsView,
   TableView,
 } from './views'
 
-type ViewId = 'kanban' | 'table' | 'calendar' | 'stale' | 'statistics' | 'compare'
+type ViewId = 'kanban' | 'table' | 'calendar' | 'statistics' | 'compare'
 
 const VIEW_OPTIONS = [
   { id: 'kanban', label: 'Kanban', icon: KanbanSquare },
   { id: 'table', label: 'Table', icon: Table2 },
   { id: 'calendar', label: 'Calendar', icon: CalendarDays },
-  { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
   { id: 'compare', label: 'Compare', icon: Columns3 },
 ] as const
@@ -916,8 +914,6 @@ export default function App() {
         return <TableView {...shared} onMove={move} />
       case 'calendar':
         return <CalendarView {...shared} />
-      case 'stale':
-        return <StaleView {...shared} onMove={move} />
       case 'statistics':
         return <StatisticsView applications={filteredApplications} />
       case 'compare':

@@ -62,6 +62,25 @@ describe('table band heading', () => {
   })
 })
 
+describe('reject shortcut', () => {
+  it('sits quieter than the state select it shortcuts, in tokens only', () => {
+    const body = ruleBody('.reject-button')
+    const select = ruleBody('.table-state-select')
+
+    // Same row height as the select above it, so the cell does not look ragged.
+    expect(body).toMatch(/min-height:\s*28px/)
+    expect(select).toMatch(/min-height:\s*28px/)
+    // Quieter: the select carries the row's state in full ink, this is a shortcut.
+    expect(body).toMatch(/color:\s*var\(--ink-2\)/)
+    expect(select).toMatch(/color:\s*var\(--ink\)/)
+    // Rejecting is an ordinary move, not a destructive act: no danger colour.
+    expect(body).not.toMatch(/--danger|--accent/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    // The 28px control height is the table's own convention; nothing else is raw.
+    expect(body.replace(/28px/g, '')).not.toMatch(/\d+px/)
+  })
+})
+
 describe('shortcut keys', () => {
   it('draws the key chip from the token scale, like every other chip', () => {
     const body = ruleBody('.panel__shortcut-key')

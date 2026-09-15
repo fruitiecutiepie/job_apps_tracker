@@ -72,8 +72,6 @@ export function localDayNumber(date: Date): number {
   return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000);
 }
 
-export const DEFAULT_STALE_THRESHOLD_DAYS = 14
-
 export function applicationAgeInDays(updatedAt: string, today: Date = new Date()): number {
   const updated = parseTimestamp(updatedAt)
   if (!updated) return 0

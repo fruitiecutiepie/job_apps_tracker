@@ -46,16 +46,11 @@ it('completes the primary tracker journey and persists it across reloads', async
    * tree computing an accessible name per candidate, and each of those asks jsdom for a
    * computed style — which costs about 30ms there whether or not any CSS is loaded. Over
    * a thousand-node app that is most of what this journey spends its time on, and the
-   * five buttons it wants are all in one small landmark.
+   * four buttons it wants are all in one small landmark.
    */
   const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
 
-  for (const view of [
-    'Table',
-    'Calendar',
-    'Stale',
-    'Statistics',
-  ]) {
+  for (const view of ['Table', 'Calendar', 'Statistics']) {
     const viewButton = views.getByRole('button', { name: view })
     await user.click(viewButton)
     expect(viewButton).toHaveAttribute('aria-current', 'page')
