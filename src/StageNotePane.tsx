@@ -7,13 +7,13 @@ import { CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE, MarkdownNotes } from './m
 import { StageNoteEditor } from './StageNoteEditor'
 import { FORMATS, type Format } from './noteFormats'
 import { STATE_CONFIG, type StageNote, type StageNoteEditSession, type StateId } from './domain'
-import { noteRefKey, tabId, type NoteRef } from './notesLayout'
+import { noteRefKey, tabId, type StageNoteRef } from './notesLayout'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
 import { shortcutKeys } from './shortcuts'
 
 interface StageNotePaneProps {
   /** Which application's note, and for which stage. */
-  noteRef: NoteRef
+  noteRef: StageNoteRef
   label: string
   /**
    * The application's own name and role, not restated per stage: the header names the

@@ -50,6 +50,7 @@ function application(
     stage_notes: [],
     state_events: [],
     attachments: [],
+    posting: null,
     ratings: [],
     compensation: emptyCompensation(),
     created_at: localDate(-40),

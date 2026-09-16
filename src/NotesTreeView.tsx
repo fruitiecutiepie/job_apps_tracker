@@ -102,7 +102,11 @@ export function NotesTreeView({
           {tree.map((group) => (
             // Labelled so the stage a row sits under is part of what names it, the way the
             // picker's company heading names the roles beneath it.
-            <li aria-label={`Stage ${group.label}`} key={group.state}>
+            // A posting group is named by what it holds; a stage group by the stage.
+            <li
+              aria-label={group.kind === 'posting' ? group.label : `Stage ${group.label}`}
+              key={group.kind === 'posting' ? 'posting' : group.state}
+            >
               <p className="notes-tree__stage">
                 {/* Its own element so it can give way to the count beside it when the
                     sidebar is narrow, rather than pushing the count out of the row. */}

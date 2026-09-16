@@ -2163,6 +2163,72 @@ tbody tr:hover {
   font-size: var(--t2);
 }
 
+/*
+ * The job posting, where the stage-switch dropdown sits on a prep note. A posting prepares
+ * for no stage, so there is nothing to switch to and the pane says what it is instead —
+ * drawn as a label rather than as a control, so nothing here looks pressable.
+ */
+.stage-note__posting-name {
+  flex: none;
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+/*
+ * A posting is the one thing in the panel nobody here wrote, and it cannot be edited in
+ * place. The recessed ground says so before the header does.
+ */
+.stage-note--posting {
+  background: var(--surface-2);
+}
+
+/* Where the posting is pasted in, in the application editor. */
+.posting-field {
+  gap: var(--s3);
+}
+
+.posting-field__name {
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+.posting-field__hint {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--t2);
+  font-weight: 400;
+}
+
+/* Tall, because a posting is long and the box is where it is checked after pasting. */
+.posting-field textarea {
+  min-height: 10rem;
+  font-size: var(--t3);
+}
+
+/*
+ * The source and the capture date read as notes about the text above them, so they sit on
+ * one row under it rather than taking a field row each in the dialog's two-column grid.
+ */
+.posting-field__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s3);
+}
+
+.posting-field__source {
+  flex: 1 1 16rem;
+}
+
+.posting-field__meta {
+  margin-right: auto;
+  color: var(--ink-3);
+  font-size: var(--t2);
+  font-weight: 400;
+}
+
 .stage-note__actions {
   display: flex;
   flex: none;

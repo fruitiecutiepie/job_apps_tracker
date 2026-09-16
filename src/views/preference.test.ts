@@ -42,6 +42,7 @@ function application(scores: Scores): Application {
     stage_notes: [],
     state_events: [],
     attachments: [],
+    posting: null,
     ratings: ratings(scores),
     compensation: emptyCompensation(),
     created_at: at,

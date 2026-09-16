@@ -8,11 +8,13 @@ import {
   stateLabel,
   stateRank,
   type Application,
+  type Posting,
   type StageNote,
   type StageNoteDraft,
   type StageNoteEditSession,
   type StateId,
 } from './domain'
+import { PostingPane } from './PostingPane'
 import { QuickOpen, type QuickOpenEntry } from './QuickOpen'
 import { tabLabels } from './notesTabLabel'
 import { PANEL_SHORTCUTS, shortcutKeys, shortcutLabel } from './shortcuts'
@@ -50,6 +52,8 @@ import {
   orderedTabs,
   parseNoteRefKey,
   parseTabId,
+  postingRef,
+  stageRef,
   placeTab,
   tabId,
   replaceTab,
@@ -60,6 +64,7 @@ import {
   type LayoutNode,
   type NoteRef,
   type NoteRequest,
+  type StageNoteRef,
   type TabGroup,
 } from './notesLayout'
 import {
@@ -93,6 +98,9 @@ import { stageNotePanelId, stageTabId } from './stageNoteIds'
  * server writes nothing on its own, so this is the only way changes come back.
  */
 const EDITOR_POLL_MS = 1000
+
+/** What a posting is called wherever a stage's label would otherwise go. */
+const POSTING_LABEL = 'Job posting'
 
 /**
  * How long typing pauses before the drafts that changed are written. Long enough that a
@@ -178,6 +186,8 @@ interface StageNotesPanelProps {
    * are likelier than a lull the autosave could ride on.
    */
   onCapture: (applicationId: string, state: StateId, line: string) => Promise<void>
+  /** Opens an application's editor: the only place a captured posting can be changed. */
+  onEditApplication: (id: string) => void
   /**
    * Stores a rewritten captured line, or removes it when the text is blank. Like a
    * capture and unlike a draft, it is stored as it is entered: a correction to something
@@ -515,7 +525,9 @@ function SidebarHeading({
 
 /** One external editing session, with the note it belongs to. */
 interface OpenSession {
-  ref: NoteRef
+  /** Stage notes only: the scratch-file route is keyed by application and state, and a
+   * posting is read-only in a pane, so there is no session to open for one. */
+  ref: StageNoteRef
   session: StageNoteEditSession
 }
 
@@ -528,6 +540,7 @@ export function StageNotesPanel({
   onSaveDrafts,
   onExternalChange,
   onCapture,
+  onEditApplication,
   onRevise,
 }: StageNotesPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
@@ -542,8 +555,18 @@ export function StageNotesPanel({
     const entries: [string, StageNote][] = []
     for (const application of applications) {
       for (const note of application.stage_notes) {
-        entries.push([noteRefKey({ applicationId: application.id, state: note.state }), note])
+        entries.push([noteRefKey(stageRef(application.id, note.state)), note])
       }
+    }
+    return new Map(entries)
+  }, [applications])
+
+  /** Every captured posting, keyed the same way. Separate from `noteByKey`: a posting is
+   * not a note anyone wrote, and nothing that reads a note's body should reach one. */
+  const postingByKey = useMemo(() => {
+    const entries: [string, Posting][] = []
+    for (const application of applications) {
+      if (application.posting) entries.push([noteRefKey(postingRef(application.id)), application.posting])
     }
     return new Map(entries)
   }, [applications])
@@ -554,7 +577,7 @@ export function StageNotesPanel({
       // The company leads because that is what tells two open notes apart; the stage is
       // the same word in both. Always present, even with one application open: a name
       // that grows a prefix when a second company arrives is not a stable name.
-      return `${company} · ${stateLabel(ref.state)}`
+      return `${company} · ${ref.kind === 'posting' ? POSTING_LABEL : stateLabel(ref.state)}`
     },
     [applicationsById],
   )
@@ -792,7 +815,7 @@ export function StageNotesPanel({
         return {
           company: application?.company ?? '',
           role: application ? applicationRole(application) : '',
-          stage: stateLabel(ref.state),
+          stage: ref.kind === 'posting' ? POSTING_LABEL : stateLabel(ref.state),
         }
       }),
     )
@@ -834,7 +857,9 @@ export function StageNotesPanel({
    * been written yet.
    */
   useEffect(() => {
-    const missing = openRefs.filter((ref) => draftsRef.current[noteRefKey(ref)] === undefined)
+    const missing = openRefs.filter(
+      (ref) => ref.kind === 'stage' && draftsRef.current[noteRefKey(ref)] === undefined,
+    )
     if (missing.length === 0) return
     const nextDrafts = { ...draftsRef.current }
     const nextStored = { ...storedRef.current }
@@ -869,6 +894,9 @@ export function StageNotesPanel({
   const pendingBatches = (): StageNoteDraftBatch[] => {
     const byApplication = new Map<string, StageNoteDraft[]>()
     for (const ref of orderedRefs(layoutRef.current)) {
+      // A posting is captured in the editor dialog, never typed here, so it has no draft
+      // to write back and must not be turned into a prep note for a stage it names none of.
+      if (ref.kind === 'posting') continue
       const key = noteRefKey(ref)
       const body = draftsRef.current[key]
       if (body === undefined || body === storedRef.current[key]) continue
@@ -899,7 +927,7 @@ export function StageNotesPanel({
         if (!written) break
         for (const batch of batches) {
           for (const draft of batch.drafts) {
-            markStored(noteRefKey({ applicationId: batch.applicationId, state: draft.state }), draft.body)
+            markStored(noteRefKey(stageRef(batch.applicationId, draft.state)), draft.body)
           }
         }
         if (mountedRef.current) setSavedAt(new Date())
@@ -938,7 +966,7 @@ export function StageNotesPanel({
     }
   }, [])
 
-  const openInEditor = async (ref: NoteRef) => {
+  const openInEditor = async (ref: StageNoteRef) => {
     const key = noteRefKey(ref)
     setFormError(null)
     try {
@@ -960,7 +988,7 @@ export function StageNotesPanel({
     }
   }
 
-  const stopEditingExternally = async (ref: NoteRef) => {
+  const stopEditingExternally = async (ref: StageNoteRef) => {
     const key = noteRefKey(ref)
     const remaining = { ...sessionsRef.current }
     delete remaining[key]
@@ -1062,7 +1090,11 @@ export function StageNotesPanel({
     () => new Set(orderedRefs(layout).map(noteRefKey)),
     [layout],
   )
-  const activeBody = drafts[activeKey] ?? ''
+  // A posting's text comes from what was captured rather than from a draft; without this
+  // the outline, the breadcrumbs and the word count all go blank on a posting pane.
+  const activeBody = activeRef.kind === 'posting'
+    ? (postingByKey.get(activeKey)?.body ?? '')
+    : (drafts[activeKey] ?? '')
   const activeLabel = labelOf(activeRef)
   const isSplit = groups.length > 1
 
@@ -1112,15 +1144,22 @@ export function StageNotesPanel({
         // being numbered. Matches belong to a copy; drafts belong to a note.
         const id = tabId(groupId, ref)
         const key = noteRefKey(ref)
-        const inEditor = editing.includes(key) && !sessions[key]
-        const source = drafts[key] ?? ''
+        // A posting is never written here, so it has no draft and is never in the editor:
+        // its text is read straight from what was captured. Counting it is not optional —
+        // a pane left out of this is a pane the find steps straight past while the words
+        // it is looking for are on screen in it.
+        const isPosting = ref.kind === 'posting'
+        const inEditor = !isPosting && editing.includes(key) && !sessions[key]
+        const source = isPosting ? (postingByKey.get(key)?.body ?? '') : (drafts[key] ?? '')
         // A note being written is searched as the source it is. It carries no highlights,
         // so those matches are stepped onto by selecting them in the box instead — but
         // they are counted here with the rest, so one list runs through the whole panel.
         const written = inEditor ? matchOffsets(source, value).length : countIn(source)
         // Lines open for correcting still sit out: each is in a box of its own, and there
         // is no one place to send a caret that stands for all of them.
-        const said = editingLines.includes(key) ? 0 : countIn(capturedByKey.get(key) ?? '')
+        const said = isPosting || editingLines.includes(key)
+          ? 0
+          : countIn(capturedByKey.get(key) ?? '')
         const count = written + said
         if (count === 0) continue
         perTab.set(id, { base: total, count, written, inEditor, key })
@@ -1129,7 +1168,7 @@ export function StageNotesPanel({
       }
       return { perTab, order, total }
     },
-    [capturedByKey, drafts, editing, editingLines, openTabs, sessions],
+    [capturedByKey, drafts, editing, editingLines, openTabs, postingByKey, sessions],
   )
 
   const matches = useMemo(() => findMatches(query), [findMatches, query])
@@ -1630,6 +1669,9 @@ export function StageNotesPanel({
         return
       }
       if (key === 'k') {
+        // Nothing to capture against on a posting: the dock is where what you were told
+        // during a stage goes, and a posting is neither.
+        if (activeRef.kind === 'posting') return
         event.preventDefault()
         // Opens the dock first if it is collapsed, the same shortcut either way: reaching
         // for it should not depend on remembering whether it was left open last time.
@@ -1639,7 +1681,7 @@ export function StageNotesPanel({
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [activeKey, closeFocusedTab, openFind, reorderActiveTab, toggleSidebar])
+  }, [activeKey, activeRef.kind, closeFocusedTab, openFind, reorderActiveTab, toggleSidebar])
 
   /**
    * Focuses the capture box once the dock the "K" shortcut just opened has actually
@@ -1703,13 +1745,15 @@ export function StageNotesPanel({
       if (!found.has(key)) found.set(key, { ref, label: labelOf(ref) })
     }
     for (const application of applications) {
-      add({ applicationId: application.id, state: application.state })
+      // A captured posting is pickable; an application without one has nothing to open.
+      if (application.posting) add(postingRef(application.id))
+      add(stageRef(application.id, application.state))
       for (const note of application.stage_notes) {
-        add({ applicationId: application.id, state: note.state })
+        add(stageRef(application.id, note.state))
       }
     }
     for (const state of STATE_CONFIG) {
-      add({ applicationId: activeRef.applicationId, state: state.id })
+      add(stageRef(activeRef.applicationId, state.id))
     }
     return found
   }, [activeRef.applicationId, applications, labelOf])
@@ -1735,21 +1779,28 @@ export function StageNotesPanel({
       byApplication.set(application.id, group)
     }
     return [...byApplication.values()].map(({ application, refs }) => {
-      const ordered = [...refs].sort((left, right) => stateRank(left.state) - stateRank(right.state))
+      // The posting first: it is what the rest was written against, and it belongs to no
+      // stage, so there is no rank that would put it anywhere else.
+      const ordered = [...refs].sort((left, right) =>
+        (left.kind === 'posting' ? -1 : stateRank(left.state))
+        - (right.kind === 'posting' ? -1 : stateRank(right.state)),
+      )
       return {
         id: application.id,
         company: application.company,
         role: applicationRole(application),
         stages: ordered.map((ref) => ({
           id: noteRefKey(ref),
-          label: stateLabel(ref.state),
+          label: ref.kind === 'posting' ? POSTING_LABEL : stateLabel(ref.state),
           // Open **here**, in the pane this picker belongs to, rather than open anywhere:
           // that is what decides whether picking it shows a tab you have or adds one, and
           // a badge saying Open over a note this pane has not got would be describing
           // somewhere else.
           open: pickingInto?.tabs.some((tab) => noteRefKey(tab) === noteRefKey(ref)) ?? false,
         })),
-        defaultStageId: noteRefKey({ applicationId: application.id, state: application.state }),
+        // Enter still lands on the stage you are at: the posting is a row you choose, not
+        // the one the picker assumes.
+        defaultStageId: noteRefKey(stageRef(application.id, application.state)),
       }
     })
   }, [applicationRole, applicationsById, pickable, pickingInto])
@@ -2065,7 +2116,7 @@ export function StageNotesPanel({
             // The whole name, for the tooltip and for anyone reading the strip through its
             // accessible names rather than looking at it.
             const fullLabel = application
-              ? `${application.company} · ${applicationRole(application)} · ${stateLabel(tab.state)}`
+              ? `${application.company} · ${applicationRole(application)} · ${tab.kind === 'posting' ? POSTING_LABEL : stateLabel(tab.state)}`
               : label
             const isDropTarget =
               drag.target?.kind === 'slot'
@@ -2142,7 +2193,7 @@ export function StageNotesPanel({
                       at once, so what a reader needs is not what a listener does. */}
                   <span className="sr-only">{fullLabel}</span>
                   <span aria-hidden="true" className="panel__tab-label">{shortLabel}</span>
-                  {application?.state === tab.state ? (
+                  {tab.kind === 'stage' && application?.state === tab.state ? (
                     <span className="panel__tab-badge">Current</span>
                   ) : null}
                   {tabMatches ? <span className="panel__tab-count">{tabMatches.count}</span> : null}
@@ -2197,6 +2248,29 @@ export function StageNotesPanel({
           </div>
         ) : null}
 
+        {shown.kind === 'posting' ? (
+        <PostingPane
+          company={shownApplication?.company ?? ''}
+          currentMatch={currentMatch}
+          formatDate={formatShortDate}
+          groupId={group.id}
+          isFocused={isFocusedGroup}
+          label={labelOf(shown)}
+          matchBase={found?.base ?? 0}
+          noteRef={shown}
+          onClose={isSplit ? () => applyLayout(closeGroup(layoutRef.current, group.id)) : null}
+          onEdit={() => onEditApplication(shown.applicationId)}
+          onFocus={() => setFocusedGroupId(group.id)}
+          onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
+          paneRef={(node) => {
+            paneRefs.current[group.id] = node
+          }}
+          posting={postingByKey.get(shownKey) ?? null}
+          query={query}
+          revealKeys={isFocusedGroup ? (revealKeys ?? undefined) : undefined}
+          role={shownApplication ? applicationRole(shownApplication) : 'No role'}
+        />
+        ) : (
         <StageNotePane
           body={drafts[shownKey] ?? ''}
           captured={capturedByKey.get(shownKey) ?? ''}
@@ -2228,7 +2302,7 @@ export function StageNotesPanel({
             onRevise(shown.applicationId, shown.state, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}
           onSwitchStage={(state) =>
-            switchStage(group.id, shownKey, { applicationId: shown.applicationId, state })}
+            switchStage(group.id, shownKey, stageRef(shown.applicationId, state))}
           onToggleCapture={() =>
             setCaptureOpen((current) =>
               current.includes(shownKey)
@@ -2251,6 +2325,7 @@ export function StageNotesPanel({
           saved={noteByKey.get(shownKey)}
           session={open?.session}
         />
+        )}
         </div>
       </div>
     )

@@ -8,7 +8,7 @@ import {
   saveArrangement,
   type Arrangement,
 } from "../notesArrangement";
-import { openInGroup, type NoteRequest } from "../notesLayout";
+import { FIRST_PANE_ID, openInGroup, singleGroup, type NoteRequest } from "../notesLayout";
 import { StageNotesPanel, type StageNoteDraftBatch } from "../StageNotesPanel";
 
 interface PrepNotesViewProps {
@@ -25,6 +25,8 @@ interface PrepNotesViewProps {
   onSaveDrafts: (batches: StageNoteDraftBatch[]) => Promise<boolean>;
   onExternalChange: (applicationId: string, state: StateId, body: string) => Promise<void>;
   onCapture: (applicationId: string, state: StateId, line: string) => Promise<void>;
+  /** Opens an application's editor, which is where a captured posting is changed. */
+  onEditApplication: (id: string) => void;
   onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>;
 }
 
@@ -43,6 +45,7 @@ export function PrepNotesView({
   onSaveDrafts,
   onExternalChange,
   onCapture,
+  onEditApplication,
   onRevise,
 }: PrepNotesViewProps) {
   /**
@@ -121,6 +124,7 @@ export function PrepNotesView({
           initial={initial}
           onArrange={remember}
           onCapture={onCapture}
+          onEditApplication={onEditApplication}
           onEmpty={empty}
           onExternalChange={onExternalChange}
           onRevise={onRevise}
@@ -142,6 +146,10 @@ function openingFor(applications: Application[], request: NoteRequest | null): A
   if (!request) return null;
   const application = applications.find((candidate) => candidate.id === request.ref.applicationId);
   if (!application) return null;
-  const layout = openingLayout(application, request.ref.state);
+  // A posting prepares for no stage, so there are no sibling notes to open beside it: the
+  // arrangement it starts from is the one pane holding it.
+  const layout = request.ref.kind === 'posting'
+    ? singleGroup(FIRST_PANE_ID, request.ref)
+    : openingLayout(application, request.ref.state);
   return { layout, focusedGroupId: layout.id };
 }

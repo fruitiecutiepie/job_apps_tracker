@@ -41,6 +41,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
     stage_notes: [],
     state_events: [],
     attachments: [],
+    posting: null,
     ratings: [],
     compensation: emptyCompensation(),
     // Inside the staleness grace period, so fixtures start with no pressure at all.

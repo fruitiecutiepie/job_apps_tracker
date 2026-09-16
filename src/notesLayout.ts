@@ -6,25 +6,62 @@
  * tested — without rendering anything. What the panel adds on top is which group has
  * focus and how a pointer drag names an edge; the shape itself lives here.
  *
- * A note is identified by the application it belongs to and the state it prepares for.
- * Keying by state alone is what the single-application panel did, and it is exactly what
- * breaks once two applications are open: two notes would claim one tab, one panel id and
- * one set of find ordinals.
+ * A pane shows one of two things: a stage's prep note, identified by the application it
+ * belongs to and the state it prepares for, or the job posting captured for an application,
+ * which prepares for no stage at all. Keying by state alone is what the single-application
+ * panel did, and it is exactly what breaks once two applications are open: two notes would
+ * claim one tab, one panel id and one set of find ordinals.
  */
 
 import { isStateId, type StateId } from './domain'
 
-export interface NoteRef {
+/** A stage's prep note: what you wrote to prepare for one state of one application. */
+export interface StageNoteRef {
+  kind: 'stage'
   applicationId: string
   state: StateId
 }
 
+/** The job posting captured for an application. It prepares for no stage, so it carries none. */
+export interface PostingRef {
+  kind: 'posting'
+  applicationId: string
+}
+
+export type NoteRef = StageNoteRef | PostingRef
+
+/**
+ * The key segment standing where a state would for a posting.
+ *
+ * It shares a namespace with `StateId`, so it is only unambiguous while no state is called
+ * `posting` — `isStateId('posting') === false` is asserted in the tests, because a collision
+ * here would silently read one pane's contents as another's rather than failing.
+ */
+export const POSTING_SEGMENT = 'posting'
+
+export const stageRef = (applicationId: string, state: StateId): StageNoteRef => ({
+  kind: 'stage',
+  applicationId,
+  state,
+})
+
+export const postingRef = (applicationId: string): PostingRef => ({
+  kind: 'posting',
+  applicationId,
+})
+
 /**
  * A note's identity as one string, for keying maps and naming DOM ids. The separator is
- * two colons because neither half can contain one: an application id is a UUID and a
- * state is an identifier from STATE_CONFIG.
+ * two colons because no part can contain one: an application id is a UUID, a state is an
+ * identifier from STATE_CONFIG, and the posting segment is a literal.
+ *
+ * A stage note's key is byte-identical to what this returned before postings existed, which
+ * is what lets every arrangement already in storage restore untouched.
  */
-export const noteRefKey = (ref: NoteRef): string => `${ref.applicationId}::${ref.state}`
+export const noteRefKey = (ref: NoteRef): string =>
+  ref.kind === 'posting'
+    ? `${ref.applicationId}::${POSTING_SEGMENT}`
+    : `${ref.applicationId}::${ref.state}`
 
 /**
  * A note asked for from somewhere outside the panel — a card, a table row, the editor.
@@ -59,7 +96,8 @@ export function parseTabId(id: string): { groupId: string; ref: NoteRef } | null
 }
 
 export function sameRef(left: NoteRef, right: NoteRef): boolean {
-  return left.applicationId === right.applicationId && left.state === right.state
+  if (left.applicationId !== right.applicationId || left.kind !== right.kind) return false
+  return left.kind === 'stage' ? left.state === (right as StageNoteRef).state : true
 }
 
 export interface TabGroup {
@@ -423,14 +461,16 @@ export function moveTab(
 
 /**
  * A key read back as the note it names, for a drag that carries one out of the tree of
- * notes the panel does not have open — there is no tab to look the ref up on. Neither half
- * can hold the separator: an application id is a uuid and a state is an identifier from
- * `STATE_CONFIG`, which is also what makes the state worth checking rather than trusting.
+ * notes the panel does not have open — there is no tab to look the ref up on. No part can
+ * hold the separator: an application id is a uuid and a state is an identifier from
+ * `STATE_CONFIG`, which is also what makes the segment worth checking rather than trusting.
  */
 export function parseNoteRefKey(key: string): NoteRef | null {
-  const [applicationId, state, ...rest] = key.split('::')
-  if (!applicationId || rest.length > 0 || !isStateId(state)) return null
-  return { applicationId, state }
+  const [applicationId, segment, ...rest] = key.split('::')
+  if (!applicationId || rest.length > 0) return null
+  if (segment === POSTING_SEGMENT) return postingRef(applicationId)
+  if (!isStateId(segment)) return null
+  return stageRef(applicationId, segment)
 }
 
 /**

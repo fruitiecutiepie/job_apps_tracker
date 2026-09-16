@@ -12,7 +12,7 @@
 
 import type { Application, StateId } from './domain'
 import { STATE_CONFIG, stateLabel } from './domain'
-import type { NoteRef } from './notesLayout'
+import { postingRef, stageRef, type NoteRef } from './notesLayout'
 
 /** How much of a note a hit shows around the words that matched. */
 export const SNIPPET_CHARS = 96
@@ -50,11 +50,18 @@ export interface NotesTreeEntry {
   hits: number
 }
 
-export interface NotesTreeGroup {
-  state: StateId
-  label: string
-  notes: NotesTreeEntry[]
-}
+/**
+ * A heading in the tree and the rows under it.
+ *
+ * Discriminated because a posting prepares for no stage: it cannot be folded into one of
+ * the stage groups without claiming a state it has not got, so it gets a group of its own.
+ */
+export type NotesTreeGroup =
+  | { kind: 'posting'; label: string; notes: NotesTreeEntry[] }
+  | { kind: 'stage'; state: StateId; label: string; notes: NotesTreeEntry[] }
+
+/** What the postings group is called, and what a posting is searched by. */
+export const POSTING_LABEL = 'Job postings'
 
 /**
  * What a row can be found by. The words of the note are the point, but a reader looking
@@ -116,8 +123,30 @@ export function buildNotesTree(
 ): NotesTreeGroup[] {
   const needle = query.trim().toLowerCase()
   const byState = new Map<StateId, NotesTreeEntry[]>()
+  const postings: NotesTreeEntry[] = []
 
   for (const application of applications) {
+    const posting = application.posting
+    if (posting) {
+      const hay = [application.company, application.role ?? '', POSTING_LABEL, posting.body]
+        .join('\n')
+        .toLowerCase()
+      if (!needle || hay.includes(needle)) {
+        const found = needle ? hitsIn(posting.body, needle, 'written') : []
+        postings.push({
+          ref: postingRef(application.id),
+          company: application.company,
+          role: application.role,
+          // A posting is always something written, and never something captured: nobody
+          // said it to you, and there is no dock under it to say it into.
+          written: true,
+          captured: 0,
+          matches: found.slice(0, MATCHES_SHOWN),
+          hits: found.length,
+        })
+      }
+    }
+
     for (const note of application.stage_notes) {
       const written = note.body.trim().length > 0
       if (!written && note.heard.length === 0) continue
@@ -132,7 +161,7 @@ export function buildNotesTree(
 
       const entries = byState.get(note.state) ?? []
       entries.push({
-        ref: { applicationId: application.id, state: note.state },
+        ref: stageRef(application.id, note.state),
         company: application.company,
         role: application.role,
         written,
@@ -144,17 +173,23 @@ export function buildNotesTree(
     }
   }
 
+  const byName = (left: NotesTreeEntry, right: NotesTreeEntry) =>
+    left.company.localeCompare(right.company) || (left.role ?? '').localeCompare(right.role ?? '')
+
+  // Postings lead: they are what the prep below them was written against, and they belong
+  // to no stage, so there is no rank that would put them anywhere in the walk.
+  const postingGroup: NotesTreeGroup[] = postings.length > 0
+    ? [{ kind: 'posting', label: POSTING_LABEL, notes: [...postings].sort(byName) }]
+    : []
+
   // Walked in `STATE_CONFIG` order rather than sorted after the fact, so the tree reads
   // down the pipeline the way every other list of stages in the app does.
-  return STATE_CONFIG.flatMap(({ id }) => {
+  return postingGroup.concat(STATE_CONFIG.flatMap(({ id }) => {
     const notes = byState.get(id)
     if (!notes || notes.length === 0) return []
-    notes.sort(
-      (left, right) =>
-        left.company.localeCompare(right.company) || (left.role ?? '').localeCompare(right.role ?? ''),
-    )
-    return [{ state: id, label: stateLabel(id), notes }]
-  })
+    notes.sort(byName)
+    return [{ kind: 'stage' as const, state: id, label: stateLabel(id), notes }]
+  }))
 }
 
 /** Every note in the tree, for a count that does not have to walk it twice. */

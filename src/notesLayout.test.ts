@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { isStateId, type StateId } from './domain'
+
 import {
   MIN_PANE_FRACTION,
   splitEmpty,
@@ -19,6 +21,7 @@ import {
   orderedRefs,
   parseNoteRefKey,
   parseTabId,
+  sameRef,
   placeTab,
   tabId,
   prune,
@@ -26,14 +29,17 @@ import {
   resizeSplit,
   singleGroup,
   splitWith,
+  stageRef,
+  postingRef,
+  POSTING_SEGMENT,
   type LayoutNode,
   type NoteRef,
   type SplitNode,
   type TabGroup,
 } from './notesLayout'
 
-const acme = (state: NoteRef['state']): NoteRef => ({ applicationId: 'acme', state })
-const globex = (state: NoteRef['state']): NoteRef => ({ applicationId: 'globex', state })
+const acme = (state: StateId): NoteRef => stageRef('acme', state)
+const globex = (state: StateId): NoteRef => stageRef('globex', state)
 
 /** Ids the assertions can name, rather than whatever a counter happened to reach. */
 function ids(...names: string[]): () => string {
@@ -52,6 +58,60 @@ describe('noteRefKey', () => {
 
   it('tells two stages of one application apart', () => {
     expect(noteRefKey(acme('interview_1'))).not.toBe(noteRefKey(acme('interview_2')))
+  })
+})
+
+describe('posting refs', () => {
+  /*
+   * The whole defence of the key namespace. A posting's key stands where a state's does, so
+   * the two are only unambiguous while no state is called `posting` — and a collision would
+   * not throw, it would quietly hand one pane another's contents.
+   */
+  it('reserves a segment no state can claim', () => {
+    expect(isStateId(POSTING_SEGMENT)).toBe(false)
+  })
+
+  it('keys a stage note exactly as it did before postings existed', () => {
+    // Frozen deliberately: every arrangement in storage is keyed by this string.
+    expect(noteRefKey(stageRef('acme', 'interview_1'))).toBe('acme::interview_1')
+    expect(noteRefKey(postingRef('acme'))).toBe('acme::posting')
+  })
+
+  it('reads every key back as the ref it names', () => {
+    const refs = [stageRef('acme', 'interview_1'), postingRef('acme')]
+    for (const ref of refs) {
+      expect(parseNoteRefKey(noteRefKey(ref))).toEqual(ref)
+      expect(parseTabId(tabId('pane-2', ref))).toEqual({ groupId: 'pane-2', ref })
+    }
+  })
+
+  it('rejects a key naming neither a state nor a posting', () => {
+    expect(parseNoteRefKey('acme::postings')).toBeNull()
+    expect(parseNoteRefKey('acme::nope')).toBeNull()
+    expect(parseNoteRefKey('acme::posting::extra')).toBeNull()
+  })
+
+  it('tells a posting from a stage note of the same application', () => {
+    expect(sameRef(postingRef('acme'), stageRef('acme', 'applied'))).toBe(false)
+    expect(sameRef(postingRef('acme'), postingRef('acme'))).toBe(true)
+    expect(sameRef(postingRef('acme'), postingRef('globex'))).toBe(false)
+  })
+
+  it('carries a posting through the layout operations beside a stage note', () => {
+    const posting = postingRef('acme')
+    const group = makeGroup('g1', [posting, acme('interview_1')])
+    expect(group.tabs).toHaveLength(2)
+
+    // Opening it again activates the tab that is there rather than adding a second.
+    const reopened = openInGroup(group, 'g1', posting)
+    expect(orderedRefs(reopened)).toHaveLength(2)
+    expect((reopened as TabGroup).activeKey).toBe(noteRefKey(posting))
+
+    const split = splitWith(group, 'g1', 'right', posting, ids('g2'))
+    expect(orderedRefs(split!)).toContainEqual(posting)
+
+    const closed = closeTab(group, 'g1', noteRefKey(posting))
+    expect(orderedRefs(closed!)).toEqual([acme('interview_1')])
   })
 })
 

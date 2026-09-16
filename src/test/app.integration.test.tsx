@@ -3477,10 +3477,14 @@ describe('job applications tracker', () => {
     )
 
     // The tree reads the stored notes, so it lists this one once the autosave has landed.
+    // Scoped to the stage group: this company's job posting is a row of the same name under
+    // the postings group, and the note being dragged here is the one just typed.
     const row = await waitFor(
       () =>
-        within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
-          .getByRole('button', { name: /^Marble & Finch/ }),
+        within(
+          within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
+            .getByRole('listitem', { name: 'Stage Applied' }),
+        ).getByRole('button', { name: /^Marble & Finch/ }),
       { timeout: 4000 },
     )
     pointerDragToEdge(row, 'right')
@@ -4034,6 +4038,117 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Select none' }))
     expect(screen.getByText('Select at least one application to compare.')).toBeInTheDocument()
+  })
+
+  it('keeps a pasted job posting and shows it back in the editor', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Echo Robotics/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.type(
+      within(dialog).getByLabelText('Job posting text'),
+      '## Robotics Engineer\n\nClearance required for the role.',
+    )
+    await user.type(within(dialog).getByLabelText('Where you read it'), 'https://example.com/jobs/echo')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const saved = readSavedDocument().applications.find(
+      (application) => application.company === 'Echo Robotics',
+    )!
+    expect(saved.posting!.body).toContain('Clearance required')
+    expect(saved.posting!.source_url).toBe('https://example.com/jobs/echo')
+    // Findable with everything else, by its words rather than by its link.
+    expect(readSavedDocument().indexes.search_text[saved.id]).toContain('clearance required')
+
+    await user.click(screen.getByRole('button', { name: /^Open Echo Robotics/ }))
+    expect(
+      within(screen.getByRole('dialog', { name: 'Edit application' }))
+        .getByLabelText('Job posting text'),
+    ).toHaveValue('## Robotics Engineer\n\nClearance required for the role.')
+  })
+
+  it('refuses a posting that is only a link, and one whose link is not one', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: /^Open Echo Robotics/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.type(within(dialog).getByLabelText('Where you read it'), 'https://example.com/jobs/echo')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(within(dialog).getByText('A posting needs its text, not only a link to it.'))
+      .toBeInTheDocument()
+    expect(
+      readSavedDocument().applications.find((entry) => entry.company === 'Echo Robotics')!.posting,
+    ).toBeNull()
+  })
+
+  it('forgets a posting whose text is cleared', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: /^Open Marble & Finch/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: /Clear posting/ }))
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(
+      readSavedDocument().applications.find((entry) => entry.company === 'Marble & Finch')!.posting,
+    ).toBeNull()
+  })
+
+  it('reads a posting in a pane beside the prep note written against it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // Dragged out of the postings group at the top of the tree, into a pane of its own.
+    const tree = within(dialog).getByRole('list', { name: 'Prep notes by stage' })
+    const row = within(within(tree).getByRole('listitem', { name: 'Job postings' }))
+      .getByRole('button', { name: /^Marble & Finch/ })
+    pointerDragToEdge(row, 'right')
+
+    const panes = within(dialog).getAllByRole('tabpanel')
+    expect(panes).toHaveLength(2)
+    // One pane holds the posting, the other the stage it was opened for.
+    expect(panes.some((pane) => pane.textContent?.includes('independent booksellers'))).toBe(true)
+    expect(
+      within(dialog).getByRole('tab', { name: /Marble & Finch · Product Manager · Job posting/ }),
+    ).toBeInTheDocument()
+    // Nothing to type into: a posting is captured in the editor, not written here.
+    expect(within(dialog).getByRole('button', { name: 'Edit the Marble & Finch posting' }))
+      .toBeInTheDocument()
+  })
+
+  it('counts a hit inside a posting in the panel-wide find', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const tree = within(dialog).getByRole('list', { name: 'Prep notes by stage' })
+    await user.click(
+      within(within(tree).getByRole('listitem', { name: 'Job postings' }))
+        .getByRole('button', { name: /^Marble & Finch/ }),
+    )
+
+    await user.click(within(dialog).getByRole('button', { name: 'Find' }))
+    await user.type(within(dialog).getByLabelText('Find in notes'), 'booksellers')
+
+    /*
+     * A posting carries no draft, so without being counted here it reports nothing and drops
+     * out of the panel-wide ordinal sequence — the find would step straight past a pane with
+     * the word on screen in it. "No results" is what that bug looks like.
+     */
+    expect(within(dialog).getByText('1 of 2')).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('tab', { name: /Job posting/ }),
+    ).toHaveTextContent('2')
   })
 
   it('opens the full editor from a comparison card', async () => {

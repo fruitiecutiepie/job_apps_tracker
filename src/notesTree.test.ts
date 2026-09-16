@@ -33,6 +33,55 @@ const heardOnly = application('Echo', { interview_2: { body: '', heard: ['They s
 const shape = (tree: ReturnType<typeof buildNotesTree>) =>
   tree.map((group) => [group.label, group.notes.map((note) => note.company)])
 
+const posted = (company: string, body: string): Application => ({
+  ...application(company, { interview_2: { body: 'Prep written against it' } }),
+  posting: { body, captured_at: '2026-01-01T00:00:00.000Z', source_url: null },
+})
+
+describe('job postings in the tree', () => {
+  const marble = posted('Marble & Finch', '## Product Manager\n\nClearance required for the role.')
+
+  it('leads with the postings, above every stage', () => {
+    expect(shape(buildNotesTree([marble, atlas], ''))).toEqual([
+      ['Job postings', ['Marble & Finch']],
+      ['Interview 2', ['Atlas Thread', 'Marble & Finch']],
+    ])
+  })
+
+  it('leaves the group out when nothing has a posting', () => {
+    expect(shape(buildNotesTree([halcyon, atlas], '')).map(([label]) => label))
+      .not.toContain('Job postings')
+  })
+
+  it('shows what a hit inside a posting says', () => {
+    const [group] = buildNotesTree([marble], 'clearance')
+
+    expect(group!.label).toBe('Job postings')
+    expect(group!.notes[0]!.hits).toBe(1)
+    expect(group!.notes[0]!.matches[0]!.snippet.toLowerCase()).toContain('clearance')
+    // Nobody said a posting to you, so a hit in one is never a captured line.
+    expect(group!.notes[0]!.matches.every((match) => match.where === 'written')).toBe(true)
+  })
+
+  it('finds a posting by its company as well as by its words', () => {
+    const labels = buildNotesTree([marble], 'marble').map((group) => group.label)
+
+    expect(labels).toContain('Job postings')
+  })
+
+  it('leaves a posting out when the search matches nothing in it', () => {
+    expect(buildNotesTree([marble], 'zzzznothing')).toEqual([])
+  })
+
+  it('names the row by a ref that opens the posting, not a stage', () => {
+    const [group] = buildNotesTree([marble], '')
+
+    expect(group!.notes[0]!.ref).toEqual({ kind: 'posting', applicationId: 'Marble & Finch' })
+    expect(group!.notes[0]!.captured).toBe(0)
+    expect(group!.notes[0]!.written).toBe(true)
+  })
+})
+
 describe('buildNotesTree', () => {
   it('groups notes by the stage they prepare for, in pipeline order', () => {
     expect(shape(buildNotesTree([halcyon, atlas], ''))).toEqual([

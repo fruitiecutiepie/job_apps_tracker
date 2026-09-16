@@ -23,6 +23,14 @@ import { stateLabel } from './domain'
 import type { Application } from './domain'
 import { StageNotesPanel } from './StageNotesPanel'
 import { openingLayout } from './notesArrangement'
+import {
+  FIRST_PANE_ID,
+  postingRef,
+  singleGroup,
+  splitWith,
+  stageRef,
+  type LayoutNode,
+} from './notesLayout'
 
 /** Two companies with notes between them, which is all any of these tests needs. */
 const COMPANIES = ['Halcyon Maps', 'Echo Robotics']
@@ -52,9 +60,29 @@ function withLongNote(applications: Application[]): Application[] {
   )
 }
 
-function renderPanel(applications = fixtureApplications()) {
+/** The same fixture with a posting on Halcyon, for the tests that open one in a pane. */
+function withPosting(applications: Application[]): Application[] {
+  return applications.map((application) =>
+    application.company === 'Halcyon Maps'
+      ? {
+          ...application,
+          posting: {
+            body: '## Engineering Manager\n\nRuns a team of eight across two products.',
+            captured_at: application.created_at,
+            source_url: 'https://example.com/jobs/halcyon',
+          },
+        }
+      : application,
+  )
+}
+
+function renderPanel(
+  applications = fixtureApplications(),
+  /** The arrangement to mount, for a test that needs one the opening fan cannot express. */
+  layoutFor?: (halcyon: Application) => LayoutNode,
+) {
   const halcyon = applications.find((application) => application.company === 'Halcyon Maps')!
-  const layout = openingLayout(halcyon, halcyon.state)
+  const layout = layoutFor?.(halcyon) ?? openingLayout(halcyon, halcyon.state)
   render(
     /*
      * Mounted inside the page structure it lives in — the shell column, a stand-in for the
@@ -77,6 +105,7 @@ function renderPanel(applications = fixtureApplications()) {
               initial={{ layout, focusedGroupId: layout.id }}
               onArrange={() => {}}
               onCapture={async () => {}}
+              onEditApplication={() => {}}
               onEmpty={() => {}}
               onExternalChange={async () => {}}
               onRevise={async () => {}}
@@ -134,6 +163,30 @@ describe('the panel in a real browser', () => {
     // A pane nobody could read a note in would satisfy every assertion above.
     expect(left.width).toBeGreaterThan(200)
     expect(left.height).toBeGreaterThan(200)
+  })
+
+  it('lays a job posting beside the prep note written against it', async () => {
+    // The whole point of putting a posting in a pane rather than in the editor: reading it
+    // next to the note being written against it, at a width where both are readable.
+    renderPanel(withPosting(fixtureApplications()), (halcyon) =>
+      splitWith(
+        singleGroup(FIRST_PANE_ID, postingRef(halcyon.id)),
+        FIRST_PANE_ID,
+        'right',
+        stageRef(halcyon.id, halcyon.state),
+        () => 'pane-2',
+      )!,
+    )
+
+    const [left, right] = paneBoxes()
+    expect(paneBoxes()).toHaveLength(2)
+    expect(Math.abs(left.top - right.top)).toBeLessThan(2)
+    expect(right.left).toBeGreaterThanOrEqual(left.right - 1)
+    expect(left.width).toBeGreaterThan(200)
+    expect(right.width).toBeGreaterThan(200)
+
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')]
+    expect(panels.some((panel) => panel.textContent?.includes('team of eight'))).toBe(true)
   })
 
   it('ends inside the viewport, under the chrome above it', async () => {

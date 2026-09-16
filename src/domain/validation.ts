@@ -14,6 +14,7 @@ import type {
   CompensationBand,
   CompletedAction,
   HeardEntry,
+  Posting,
   Rating,
   StageNote,
   StateEvent,
@@ -341,6 +342,32 @@ function heardValue(value: unknown, path: string, errors: ValidationError[]): He
   return entries.sort((left, right) => left.at.localeCompare(right.at))
 }
 
+/**
+ * Canonicalizes the captured job posting. Absent canonicalizes to `null` the way a missing
+ * `ratings` canonicalizes to `[]`, so every document written before postings existed stays
+ * valid. A blank body is an error rather than a quiet `null`: the record exists only to hold
+ * that text, so an empty one is malformed, not empty.
+ */
+function postingValue(value: unknown, path: string, errors: ValidationError[]): Posting | null {
+  if (value === undefined || value === null) return null
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object or null')
+    return null
+  }
+  if (!nonBlank(value.body)) addError(errors, `${path}.body`, 'is required')
+  if (!validTimestamp(value.captured_at)) {
+    addError(errors, `${path}.captured_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  const sourceUrl = urlValue(value.source_url, `${path}.source_url`, errors)
+  if (!nonBlank(value.body) || !validTimestamp(value.captured_at)) return null
+
+  return {
+    body: value.body.trim(),
+    captured_at: value.captured_at,
+    source_url: sourceUrl,
+  }
+}
+
 function stageNoteValue(value: unknown, path: string, errors: ValidationError[]): StageNote | null {
   if (!isRecord(value)) {
     addError(errors, path, 'must be an object')
@@ -629,6 +656,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     stage_notes: stageNotesValue(value.stage_notes, `${path}.stage_notes`, errors),
     state_events: stateEventsValue(value.state_events, `${path}.state_events`, errors),
     attachments: attachmentsValue(value.attachments, `${path}.attachments`, errors),
+    posting: postingValue(value.posting, `${path}.posting`, errors),
     ratings: ratingsValue(value.ratings, `${path}.ratings`, errors),
     // This validator runs on load, save, AND export, and it rebuilds the object from
     // scratch. Leaving a field out of this literal type-checks and passes every mutation

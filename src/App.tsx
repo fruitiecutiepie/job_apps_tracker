@@ -52,6 +52,7 @@ import {
   reviseApplicationStageCapture,
   updateApplicationStageCapture,
   updateApplicationStageNotes,
+  updateApplicationPosting,
   updateApplicationRatings,
   updateApplicationStateEvents,
   uploadAttachmentFile,
@@ -60,6 +61,7 @@ import {
   type ApplicationInput,
   type Attachment,
   type CompletedActionDraft,
+  type PostingDraft,
   type StateEventDraft,
   type StateFilter,
   type StateId,
@@ -86,7 +88,10 @@ import {
   type InviteRow,
 } from './invites'
 import type { StageNoteDraftBatch } from './StageNotesPanel'
-import type { NoteRequest } from './notesLayout'
+import { stageRef, type NoteRequest } from './notesLayout'
+import { PostingField } from './PostingField'
+import { formatShortDate } from './views/viewUtils'
+import { firstPostingProblem, postingDraftFrom, postingRowFor, type PostingRow } from './posting'
 import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
@@ -271,6 +276,7 @@ interface ApplicationEditorProps {
     attachmentPlan: AttachmentSavePlan,
     invites: StateEventDraft[],
     completedActions: CompletedActionDraft[],
+    posting: PostingDraft | null,
   ) => Promise<void>
 }
 
@@ -300,6 +306,7 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
       at: entry.at,
     })),
   )
+  const [posting, setPosting] = useState<PostingRow>(() => postingRowFor(application))
   const [keptAttachments] = useState<Attachment[]>(() => application?.attachments ?? [])
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([])
   const [stagedFiles, setStagedFiles] = useState<StagedAttachmentFile[]>([])
@@ -389,6 +396,11 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
               setFormError(compensationProblem)
               return
             }
+            const postingProblem = firstPostingProblem(posting)
+            if (postingProblem) {
+              setFormError(postingProblem)
+              return
+            }
             setSaving(true)
             try {
               await onSave(
@@ -400,6 +412,7 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
                 },
                 inviteDrafts(invites),
                 completedActions.map(({ id, action, at }) => ({ id, action, at })),
+                postingDraftFrom(posting),
               )
             } catch (error) {
               setFormError(errorMessage(error))
@@ -451,6 +464,12 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
                 value={values.url}
               />
             </label>
+            <PostingField
+              applicationUrl={values.url}
+              formatDate={formatShortDate}
+              onChange={setPosting}
+              row={posting}
+            />
             <label className="field field--wide">
               <span>State</span>
               <select onChange={(event) => update('state', event.target.value as StateId)} value={values.state}>
@@ -949,7 +968,7 @@ export default function App() {
     dialogWasOpenRef.current = false
     notesNonce.current += 1
     setNotesRequest({
-      ref: { applicationId: id, state: application.state },
+      ref: stageRef(id, application.state),
       nonce: notesNonce.current,
     })
     setNotesOpen(true)
@@ -980,6 +999,7 @@ export default function App() {
       // Every application, not the filtered set: see `PrepNotesView`.
       applications={tracker.applications}
       onCapture={captureStageLine}
+      onEditApplication={openApplication}
       onExternalChange={(applicationId: string, state: StateId, body: string) =>
         commitStageNote(applicationId, state, body, 'Prep notes saved from your editor.')}
       onRequested={() => setNotesRequest(null)}
@@ -1362,7 +1382,7 @@ export default function App() {
             closeEditor()
             openStageNotes(id)
           } : undefined}
-          onSave={async (values, attachmentPlan, invites, completedActions) => {
+          onSave={async (values, attachmentPlan, invites, completedActions, posting) => {
             const input: ApplicationInput = {
               company: values.company,
               role: values.role || null,
@@ -1389,6 +1409,7 @@ export default function App() {
                 }
                 next = updateApplicationStateEvents(next, id, invites, now)
                 next = updateApplicationCompletedActions(next, id, completedActions, now)
+                next = updateApplicationPosting(next, id, posting, now)
                 return updateApplicationRatings(next, id, ratingDrafts(values.ratings), now)
               }, 'Application added.')
             } else {
@@ -1408,6 +1429,7 @@ export default function App() {
                 }, now)
                 next = updateApplicationStateEvents(next, editor.id, invites, now)
                 next = updateApplicationCompletedActions(next, editor.id, completedActions, now)
+                next = updateApplicationPosting(next, editor.id, posting, now)
                 next = updateApplicationRatings(next, editor.id, ratingDrafts(values.ratings), now)
                 // Drafts cannot express "back to never assessed", so blanked ones clear here.
                 for (const dimension of clearedRatingDimensions(editingApplication, values.ratings)) {

@@ -9,7 +9,10 @@ import {
   noteRefKey,
   orderedRefs,
   singleGroup,
+  stageRef,
+  postingRef,
   type LayoutNode,
+  type TabGroup,
   type NoteRef,
 } from './notesLayout'
 import {
@@ -26,7 +29,7 @@ import {
   serializeArrangement,
 } from './notesArrangement'
 
-const ref = (applicationId: string, state: StateId): NoteRef => ({ applicationId, state })
+const ref = (applicationId: string, state: StateId): NoteRef => stageRef(applicationId, state)
 
 /** An application the refs below can name, with only the fields the module reads. */
 function application(id: string, noted: StateId[] = [], state: StateId = 'applied'): Application {
@@ -129,6 +132,66 @@ describe('restoreArrangement', () => {
     })
 
     expect(keys(restoreArrangement(raw, [acme])!.layout)).toEqual([noteRefKey(ref('acme', 'applied'))])
+  })
+
+  /*
+   * The stored version deliberately did not move when postings became openable. These pin
+   * the two directions that decision has to survive.
+   */
+  it('stays on the version every stored arrangement was written at', () => {
+    expect(ARRANGEMENT_VERSION).toBe(1)
+  })
+
+  it('restores an arrangement written before postings existed, untouched', () => {
+    // No `kind` anywhere: exactly the shape every arrangement in storage already has.
+    const raw = JSON.stringify({
+      version: ARRANGEMENT_VERSION,
+      layout: {
+        kind: 'group',
+        id: 'pane-1',
+        tabs: [{ applicationId: 'acme', state: 'applied' }, { applicationId: 'acme', state: 'interview_1' }],
+        activeKey: 'acme::interview_1',
+      },
+      focusedGroupId: 'pane-1',
+    })
+    const restored = restoreArrangement(raw, [acme])
+
+    expect(keys(restored!.layout)).toEqual(['acme::applied', 'acme::interview_1'])
+    expect((restored!.layout as TabGroup).activeKey).toBe('acme::interview_1')
+    expect(orderedRefs(restored!.layout).every((entry) => entry.kind === 'stage')).toBe(true)
+  })
+
+  it('round-trips a posting tab open beside a stage note', () => {
+    const layout = makeGroup('pane-1', [postingRef('acme'), ref('acme', 'interview_1')])
+    const restored = restoreArrangement(stored(layout, 'pane-1'), [acme])
+
+    expect(keys(restored!.layout)).toEqual(['acme::posting', 'acme::interview_1'])
+    expect(orderedRefs(restored!.layout)[0]).toEqual(postingRef('acme'))
+  })
+
+  it('drops a posting whose application is gone, and the pane left holding nothing', () => {
+    const layout = split(
+      [makeGroup('pane-1', [postingRef('ghost')]), makeGroup('pane-2', [ref('acme', 'applied')])],
+      [0.5, 0.5],
+    )
+    const restored = restoreArrangement(stored(layout, 'pane-1'), [acme])
+
+    expect(keys(restored!.layout)).toEqual(['acme::applied'])
+  })
+
+  it('drops a tab naming a kind it cannot read', () => {
+    const raw = JSON.stringify({
+      version: ARRANGEMENT_VERSION,
+      layout: {
+        kind: 'group',
+        id: 'pane-1',
+        tabs: [ref('acme', 'applied'), { applicationId: 'acme', kind: 'attachment' }],
+        activeKey: 'acme::applied',
+      },
+      focusedGroupId: 'pane-1',
+    })
+
+    expect(keys(restoreArrangement(raw, [acme])!.layout)).toEqual(['acme::applied'])
   })
 
   it('prunes a group emptied by reconciliation and collapses the split holding it', () => {

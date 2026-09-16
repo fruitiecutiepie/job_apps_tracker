@@ -18,6 +18,8 @@ import type {
   CompletedAction,
   CompletedActionDraft,
   HeardEntry,
+  Posting,
+  PostingDraft,
   Rating,
   RatingDimensionId,
   RatingDraft,
@@ -143,6 +145,7 @@ export function createApplication(
     stage_notes: [],
     state_events: [],
     attachments: [],
+    posting: null,
     ratings: [],
     compensation: canonicalCompensation(input.compensation),
     created_at: createdAt,
@@ -768,6 +771,61 @@ export function updateApplicationCompletedActions(
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
   const updated = applyCompletedActions(application, drafts, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+/**
+ * Replaces the captured job posting. A blank body clears it, the way a blank stage-note body
+ * and a blank invite summary already do — there is one way to say "no posting", not two.
+ *
+ * `captured_at` moves only when the text moves. Correcting where a posting came from is not a
+ * recapture, so a `source_url`-only edit leaves the capture time where it was, on the same
+ * reasoning that `reviseStageNoteCapture` leaves a captured line's `at` alone.
+ */
+export function setPosting(
+  application: Application,
+  draft: PostingDraft,
+  at: Date | string = new Date(),
+): Application {
+  const body = draft.body.trim()
+  if (!body) return clearPosting(application, at)
+
+  const sourceUrl = checkedUrl(draft.source_url)
+  const current = application.posting
+  if (current && current.body === body && current.source_url === sourceUrl) return application
+
+  const posting: Posting = {
+    body,
+    captured_at: current && current.body === body ? current.captured_at : timestamp(at),
+    source_url: sourceUrl,
+  }
+  return { ...application, posting, updated_at: timestamp(at) }
+}
+
+/** Forgets the captured job posting, leaving the link on the application alone. */
+export function clearPosting(
+  application: Application,
+  at: Date | string = new Date(),
+): Application {
+  if (!application.posting) return application
+  return { ...application, posting: null, updated_at: timestamp(at) }
+}
+
+/** Replaces one application's captured posting, leaving the rest of the document alone. */
+export function updateApplicationPosting(
+  document: TrackerDocument,
+  id: string,
+  draft: PostingDraft | null,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = draft ? setPosting(application, draft, at) : clearPosting(application, at)
   if (updated === application) return document
 
   return {

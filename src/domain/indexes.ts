@@ -81,6 +81,9 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       ...application.state_events.map((event) =>
         [STATE_LABELS[event.state], event.summary, event.location].filter(Boolean).join(' '),
       ),
+      // The posting's text, but not its URL: a link is not prose, and indexing it would make
+      // every captured posting answer to "https".
+      application.posting?.body ?? null,
       ...application.attachments.map((attachment) => attachment.filename),
     ]
       .filter(Boolean)

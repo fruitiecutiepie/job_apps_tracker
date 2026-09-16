@@ -24,6 +24,10 @@ refusing an amount with no currency are covered by the app integration tests.
 Importing a calendar invite through the editor, replacing a rescheduled one, and refusing an invite
 with no start time are covered by the app integration tests.
 
+Pasting a job posting into the editor and reading it back, refusing one that is only a link,
+clearing one, opening a posting in a pane beside the prep note written against it, and counting a
+hit inside it in the panel-wide find are covered by the app integration tests.
+
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
 
@@ -60,8 +64,8 @@ test cannot judge reliably.
 Some of the panel's layout is no longer only here. `pnpm test:browser` measures, in
 Chromium, Firefox and WebKit, that split panes sit side by side and stay wide enough to
 read a note in, that dragging the divider resizes both and holds a pane at its minimum,
-that a narrow window stacks a row, and that a long note scrolls inside its card rather
-than the page. Dragging a **tab** is covered there too, by mouse and by
+that a narrow window stacks a row, that a job posting lays out beside the prep note written
+against it, and that a long note scrolls inside its card rather than the page. Dragging a **tab** is covered there too, by mouse and by
 finger, now that it is built on pointer events rather than HTML5 drag-and-drop. Dragging a
 Kanban **card** is still a manual check: that one is HTML5 drag-and-drop, which works with
 neither a finger nor any browser automation.

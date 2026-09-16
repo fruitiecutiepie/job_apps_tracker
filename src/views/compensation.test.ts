@@ -60,6 +60,7 @@ function application(compensation: Compensation, company = 'Fixture'): Applicati
     stage_notes: [],
     state_events: [],
     attachments: [],
+    posting: null,
     ratings: [],
     compensation,
     created_at: at,

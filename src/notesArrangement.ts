@@ -22,8 +22,11 @@ import {
   MIN_PANE_FRACTION,
   groupsOf,
   makeGroup,
+  POSTING_SEGMENT,
   noteRefKey,
+  postingRef,
   prune,
+  stageRef,
   type LayoutNode,
   type NoteRef,
   type SplitNode,
@@ -170,11 +173,8 @@ export function openingLayout(application: Application, state: StateId): TabGrou
   const rest = [...new Set(application.stage_notes.map((note) => note.state))]
     .filter((noted) => noted !== state)
     .sort((left, right) => stateRank(left) - stateRank(right))
-  const tabs: NoteRef[] = [state, ...rest].map((stage) => ({
-    applicationId: application.id,
-    state: stage,
-  }))
-  return makeGroup(FIRST_PANE_ID, tabs, noteRefKey({ applicationId: application.id, state }))
+  const tabs: NoteRef[] = [state, ...rest].map((stage) => stageRef(application.id, stage))
+  return makeGroup(FIRST_PANE_ID, tabs, noteRefKey(stageRef(application.id, state)))
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -233,13 +233,24 @@ function readNode(value: unknown, known: ReadonlySet<string>): LayoutNode | null
     const seen = new Set<string>()
     for (const tab of value.tabs) {
       if (!isRecord(tab)) continue
-      const { applicationId, state } = tab
+      const { applicationId, kind, state } = tab
       if (typeof applicationId !== 'string' || !known.has(applicationId)) continue
-      if (!isStateId(state)) continue
-      const key = noteRefKey({ applicationId, state })
+      /*
+       * A tab with no `kind` is a stage note: that is every tab written before postings
+       * could be opened in a pane, and reading them as they are is why the stored version
+       * did not have to move. A tab naming a kind this build does not know is skipped, the
+       * way an unreadable one always was.
+       */
+      const ref = kind === POSTING_SEGMENT
+        ? postingRef(applicationId)
+        : kind === undefined || kind === 'stage'
+          ? isStateId(state) ? stageRef(applicationId, state) : null
+          : null
+      if (!ref) continue
+      const key = noteRefKey(ref)
       if (seen.has(key)) continue
       seen.add(key)
-      tabs.push({ applicationId, state })
+      tabs.push(ref)
     }
     const activeKey = typeof value.activeKey === 'string' ? value.activeKey : null
     /*
