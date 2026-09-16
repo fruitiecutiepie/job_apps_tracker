@@ -9,6 +9,8 @@
  * has to be parsed back out of text that some earlier version of this code wrote.
  */
 
+import { dayGroups } from './dayLog'
+
 /**
  * The heading a stage's captured lines are read under. It names the contrast the dock
  * exists for — the note above it is what you wrote before, this is what you were told
@@ -37,7 +39,8 @@ interface Captured {
  *
  * `day` formats a timestamp as the heading it is grouped under, which is also what
  * decides where one day ends: the caller owns how a date reads, and two lines share a
- * heading exactly when they read as the same date to whoever is looking at them. `time`
+ * heading exactly when they read as the same date to whoever is looking at them. That
+ * grouping is `dayGroups`, shared with the correspondence log so the two cannot drift. `time`
  * formats the stamp on the line itself, which carries no date of its own — the heading
  * above it already says which day this was, and an interview is read a line at a time.
  *
@@ -66,18 +69,14 @@ export function capturedMarkdown(
 ): string {
   if (entries.length === 0) return ''
 
-  const ordered = [...entries].sort((left, right) => left.at.localeCompare(right.at))
   const lines: string[] = []
-  let heading: string | null = null
 
-  for (const entry of ordered) {
-    const label = day(entry.at)
-    if (label !== heading) {
-      if (heading !== null) lines.push('')
-      lines.push(`### ${label}`, '')
-      heading = label
+  for (const [index, group] of dayGroups(entries, day).entries()) {
+    if (index > 0) lines.push('')
+    lines.push(`### ${group.label}`, '')
+    for (const entry of group.entries) {
+      lines.push(`- \`${time(entry.at)}\` ${indented(entry.body)}`)
     }
-    lines.push(`- \`${time(entry.at)}\` ${indented(entry.body)}`)
   }
 
   return lines.join('\n')
