@@ -1,4 +1,11 @@
 export { capturedMarkdown, CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE } from './capture'
+export {
+  correspondenceMarkdown,
+  CORRESPONDENCE_SECTION,
+  CORRESPONDENCE_SECTION_IN_SENTENCE,
+} from './correspondence'
+export { dayGroups } from './dayLog'
+export type { DayGroup } from './dayLog'
 export { MarkdownNotes } from './MarkdownNotes'
 export { inlineText, LIST_ITEM, parseInline, parseMarkdown } from './parseMarkdown'
 export type { BlockNode, InlineNode, ListBlock, ListItem } from './parseMarkdown'

@@ -4,6 +4,7 @@ import {
   emptyCompensation,
   isCompensationAmount,
 } from './compensation'
+import { isCorrespondenceDirection } from './correspondence'
 import { createUuidV7 } from './id'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
 import { isStateId, stateRank } from './states'
@@ -17,6 +18,8 @@ import type {
   CompensationBand,
   CompletedAction,
   CompletedActionDraft,
+  CorrespondenceDraft,
+  CorrespondenceEntry,
   HeardEntry,
   Rating,
   RatingDimensionId,
@@ -142,6 +145,7 @@ export function createApplication(
     completed_actions: [],
     stage_notes: [],
     state_events: [],
+    correspondence: [],
     attachments: [],
     ratings: [],
     compensation: canonicalCompensation(input.compensation),
@@ -646,6 +650,120 @@ export function removeStateEvent(
   }
 }
 
+/**
+ * Correspondence is stored in send order rather than in configured state order the way
+ * invites are. Invites are read one stage at a time and their times and their stages agree
+ * by construction; a log is read as a timeline, and the stage a message is filed under does
+ * not predict when it was sent — a coordinator apologising for the delay on Interview 1
+ * arrives after the Interview 2 invite, and filing-first order would read backwards at
+ * exactly the moment that matters.
+ *
+ * Compare parsed instants rather than strings, unlike `heard` and `completed_actions`: those
+ * are only chronological because their `at` is always written by `timestamp()`, while this is
+ * the first `at` a person supplies and one written with an offset does not sort lexically.
+ * The id tiebreak is not optional — the import validator rebuilds the array in file order, so
+ * without it two messages sharing an instant can come back in an order they were not written
+ * in, and every no-op-by-identity check downstream reports a change that did not happen. This
+ * rule and `correspondenceValue`'s must stay the same rule.
+ */
+function sortedCorrespondence(entries: CorrespondenceEntry[]): CorrespondenceEntry[] {
+  return [...entries].sort(
+    (left, right) => Date.parse(left.at) - Date.parse(right.at) || left.id.localeCompare(right.id),
+  )
+}
+
+function sameCorrespondence(entry: CorrespondenceEntry, other: CorrespondenceEntry): boolean {
+  return (
+    entry.state === other.state
+    && entry.direction === other.direction
+    && entry.channel === other.channel
+    && entry.who === other.who
+    && entry.body === other.body
+    && entry.at === other.at
+  )
+}
+
+/** Canonicalizes one message draft. Throws on anything a stored message may not hold. */
+function canonicalCorrespondence(
+  draft: CorrespondenceDraft,
+  id: string,
+  createdAt: string,
+  updatedAt: string,
+): CorrespondenceEntry {
+  if (!isStateId(draft.state)) throw new TypeError('State is invalid')
+  if (!isCorrespondenceDirection(draft.direction)) {
+    throw new TypeError('Message direction is invalid')
+  }
+  // Refused rather than stamped now. A draft with no send time that fell back to the clock
+  // would record when you did the filing, which is the dishonest timestamp this field exists
+  // to end — and it would do it silently.
+  if (!optionalText(draft.at)) throw new TypeError('A message needs the time it was sent')
+
+  return {
+    id,
+    state: draft.state,
+    direction: draft.direction,
+    channel: optionalText(draft.channel),
+    who: optionalText(draft.who),
+    body: draft.body.trim(),
+    at: timestamp(draft.at),
+    created_at: createdAt,
+    updated_at: updatedAt,
+  }
+}
+
+/**
+ * Replaces the whole log with the supplied drafts. A draft carrying an existing id keeps that
+ * record's `created_at`; everything else about it, `at` included, is rewritten from the draft,
+ * because when a message was sent is a fact you can have got wrong rather than a record of a
+ * keystroke. A blank body drops the message the way a blank summary drops an invite, and an
+ * unchanged list returns the same object.
+ *
+ * There is deliberately no append-one mutation beside this. Unlike a capture, a message is
+ * composed after the fact with a date and a direction to choose, so it is a form with a Save;
+ * and unlike an invite it carries no calendar UID forcing a replace-or-append decision. Add
+ * one only alongside a control that logs a message from outside the editor, since that caller
+ * would have no draft list to extend.
+ */
+export function applyCorrespondence(
+  application: Application,
+  drafts: CorrespondenceDraft[],
+  at: Date | string = new Date(),
+): Application {
+  const updatedAt = timestamp(at)
+  const existingById = new Map(application.correspondence.map((entry) => [entry.id, entry]))
+  const entries: CorrespondenceEntry[] = []
+  const seenIds = new Set<string>()
+
+  for (const draft of drafts) {
+    if (!draft.body.trim()) continue
+
+    const existing = draft.id ? existingById.get(draft.id) : undefined
+    // Minted from the write moment, not from `draft.at`: an id is generated when a record is
+    // created, and a UUIDv7 whose time bits were a claim about the message would disagree
+    // with the write order it is the sort's tiebreak for.
+    const id = existing?.id ?? draft.id ?? createUuidV7(new Date(updatedAt))
+    if (seenIds.has(id)) throw new TypeError('Message id already exists on this application')
+    seenIds.add(id)
+
+    const candidate = canonicalCorrespondence(
+      draft,
+      id,
+      existing?.created_at ?? updatedAt,
+      updatedAt,
+    )
+    entries.push(existing && sameCorrespondence(existing, candidate) ? existing : candidate)
+  }
+
+  const next = sortedCorrespondence(entries)
+  const unchanged =
+    next.length === application.correspondence.length
+    && next.every((entry, index) => entry === application.correspondence[index])
+  if (unchanged) return application
+
+  return { ...application, correspondence: next, updated_at: updatedAt }
+}
+
 export function addAttachment(
   application: Application,
   attachment: Attachment,
@@ -860,6 +978,24 @@ export function updateApplicationStateEvents(
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
   const updated = applyStateEvents(application, drafts, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+/** Replaces one application's correspondence, leaving the rest of the document alone. */
+export function updateApplicationCorrespondence(
+  document: TrackerDocument,
+  id: string,
+  drafts: CorrespondenceDraft[],
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = applyCorrespondence(application, drafts, at)
   if (updated === application) return document
 
   return {

@@ -9,6 +9,7 @@ import {
   applyStageNotes,
   applyStateEvents,
   applyCompletedActions,
+  applyCorrespondence,
   clearRating,
   completeApplicationNextAction,
   completeNextAction,
@@ -58,6 +59,8 @@ import {
   updateApplicationRatings,
   updateApplicationStageNotes,
   updateApplicationStateEvents,
+  updateApplicationCorrespondence,
+  prepareTrackerDatabase,
   validateTrackerDocument,
   COMPENSATION_STAGE_IDS,
 } from './index'
@@ -191,6 +194,32 @@ describe('state configuration and demo content', () => {
     expect(document.applications.some(({ state_history, updated_at }) =>
       Date.parse(updated_at) > Date.parse(state_history.at(-1)!.at),
     )).toBe(true)
+
+    const messages = document.applications.flatMap(({ correspondence }) => correspondence)
+    expect(messages.some(({ direction }) => direction === 'received')).toBe(true)
+    expect(messages.some(({ direction }) => direction === 'sent')).toBe(true)
+    expect(messages.some(({ who }) => who === null)).toBe(true)
+    // A message filed against a stage the application was rejected at, and one written down
+    // well after it arrived — the shape the record exists for.
+    expect(messages.some(({ state }) => isRejectedState(state))).toBe(true)
+    expect(messages.some(({ at, created_at }) => Date.parse(at) < Date.parse(created_at))).toBe(true)
+  })
+
+  it('mints every demo id in UUIDv7 shape', () => {
+    // Each record family varies a fixed pattern, and `createUuidV7` allows only 8, 9, a or b
+    // as the variant nibble — so a fifth family has to vary the version group instead. Nothing
+    // else would catch a non-UUID here: validation only checks that an id is non-blank.
+    const uuidV7 = /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/
+    const ids = createDemoDocument(REFERENCE).applications.flatMap((application) => [
+      application.id,
+      ...application.stage_notes.flatMap((note) => note.heard.map((entry) => entry.id)),
+      ...application.completed_actions.map((entry) => entry.id),
+      ...application.state_events.map((event) => event.id),
+      ...application.correspondence.map((entry) => entry.id),
+    ])
+
+    expect(ids.length).toBeGreaterThan(19)
+    expect(ids.filter((id) => !uuidV7.test(id))).toEqual([])
   })
 
   it('keeps the default demo document deterministic across wall-clock dates', () => {
@@ -1645,6 +1674,301 @@ describe('calendar invites', () => {
     )
     expect(
       document.applications.some((application) => application.state_events.length > 0),
+    ).toBe(true)
+  })
+})
+
+describe('hiring correspondence', () => {
+  const LATER = new Date('2026-08-16T02:00:00.000Z')
+  /** Sent five days before the reference — so `at` precedes the moment it is logged. */
+  const SENT_AT = '2026-08-09T23:30:00.000Z'
+
+  function message(overrides: Record<string, unknown> = {}) {
+    return {
+      state: 'recruiter_messaged' as const,
+      direction: 'received' as const,
+      body: 'Could you send me two or three windows that suit you?',
+      at: SENT_AT,
+      ...overrides,
+    }
+  }
+
+  const log = (application: Application) => application.correspondence
+
+  it('records a message against a stage with its own timestamps and no state history', () => {
+    const application = createApplication({ company: 'Northwind' }, REFERENCE)
+    const logged = applyCorrespondence(
+      application,
+      [message({ channel: 'Email', who: 'Dana Okafor' })],
+      REFERENCE,
+    )
+
+    expect(log(logged)[0]).toMatchObject({
+      state: 'recruiter_messaged',
+      direction: 'received',
+      channel: 'Email',
+      who: 'Dana Okafor',
+      body: 'Could you send me two or three windows that suit you?',
+      at: SENT_AT,
+      created_at: REFERENCE.toISOString(),
+      updated_at: REFERENCE.toISOString(),
+    })
+    expect(logged.updated_at).toBe(REFERENCE.toISOString())
+    expect(logged.state_history).toEqual(application.state_history)
+  })
+
+  it('keeps the time a message was sent, which is supplied rather than minted', () => {
+    const logged = applyCorrespondence(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [message()],
+      REFERENCE,
+    )
+    const [entry] = log(logged)
+
+    // The whole point of the record: when it was sent and when you wrote it down are two
+    // different facts, and both are kept.
+    expect(entry!.at).toBe(SENT_AT)
+    expect(entry!.created_at).toBe(REFERENCE.toISOString())
+    expect(Date.parse(entry!.at)).toBeLessThan(Date.parse(entry!.created_at))
+  })
+
+  it('rewrites the time a message was sent, unlike a captured line', () => {
+    const application = applyCorrespondence(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [message()],
+      REFERENCE,
+    )
+    const [entry] = log(application)
+    const corrected = applyCorrespondence(
+      application,
+      [message({ id: entry!.id, at: '2026-08-11T23:30:00.000Z' })],
+      LATER,
+    )
+
+    // A send time is a fact about the world you can have got wrong, so unlike
+    // `reviseStageNoteCapture` this moves it. The id and `created_at` do not move.
+    expect(log(corrected)[0]!.at).toBe('2026-08-11T23:30:00.000Z')
+    expect(log(corrected)[0]!.id).toBe(entry!.id)
+    expect(log(corrected)[0]!.created_at).toBe(REFERENCE.toISOString())
+    expect(log(corrected)[0]!.updated_at).toBe(LATER.toISOString())
+    expect(corrected.updated_at).toBe(LATER.toISOString())
+  })
+
+  it('refuses a message with no time', () => {
+    const application = createApplication({ company: 'Northwind' }, REFERENCE)
+
+    expect(() => applyCorrespondence(application, [message({ at: '' })], REFERENCE)).toThrow(
+      /time it was sent/i,
+    )
+  })
+
+  it('refuses a message whose direction is not one of the two', () => {
+    const application = createApplication({ company: 'Northwind' }, REFERENCE)
+
+    expect(() =>
+      applyCorrespondence(application, [message({ direction: 'forwarded' })], REFERENCE),
+    ).toThrow(/direction/i)
+  })
+
+  it('files a message against a state the application has not reached', () => {
+    const application = createApplication({ company: 'Northwind', state: 'applied' }, REFERENCE)
+    const logged = applyCorrespondence(application, [message({ state: 'offer' })], REFERENCE)
+
+    expect(log(logged)[0]!.state).toBe('offer')
+    expect(logged.state).toBe('applied')
+  })
+
+  it('treats an unchanged list as a no-op', () => {
+    const application = applyCorrespondence(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [message({ channel: 'Email' })],
+      REFERENCE,
+    )
+    const [entry] = log(application)
+    const resaved = applyCorrespondence(
+      application,
+      [message({ id: entry!.id, channel: '  Email  ' })],
+      LATER,
+    )
+
+    expect(resaved).toBe(application)
+  })
+
+  it('drops a message whose text was cleared', () => {
+    const application = applyCorrespondence(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [message(), message({ body: 'Thanks, Thursday works.', direction: 'sent' })],
+      REFERENCE,
+    )
+    const [first] = log(application)
+    const removed = applyCorrespondence(application, [message({ id: first!.id, body: '  ' })], LATER)
+
+    expect(log(removed)).toEqual([])
+    expect(removed.updated_at).toBe(LATER.toISOString())
+  })
+
+  it('keeps messages in the order they were sent and rejects duplicate ids', () => {
+    const application = applyCorrespondence(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [
+        // Filed against a later stage but sent first: send order wins, because a log is read
+        // as a timeline rather than one stage at a time.
+        message({ state: 'interview_2', body: 'Second', at: '2026-08-10T23:30:00.000Z' }),
+        message({ state: 'applied', body: 'First', at: '2026-08-09T23:30:00.000Z' }),
+      ],
+      REFERENCE,
+    )
+
+    expect(log(application).map((entry) => entry.body)).toEqual(['First', 'Second'])
+    expect(() =>
+      applyCorrespondence(
+        application,
+        [message({ id: 'shared' }), message({ id: 'shared', body: 'Other' })],
+        LATER,
+      ),
+    ).toThrow(/already exists/i)
+  })
+
+  it('orders a message logged with an offset against one logged in UTC', () => {
+    // These two sort one way as strings and the other way as instants: 09:00 at +10:00 is
+    // 23:00Z the day before, so it falls first in fact while reading as a later date. The
+    // mutation and the import validator must agree, so assert against both.
+    const earlier = '2026-08-21T09:00:00+10:00'
+    const later = '2026-08-20T23:30:00.000Z'
+    const application = applyCorrespondence(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [message({ body: 'Later', at: later }), message({ body: 'Earlier', at: earlier })],
+      REFERENCE,
+    )
+
+    expect(log(application).map((entry) => entry.body)).toEqual(['Earlier', 'Later'])
+
+    const roundTrip = parseTrackerDocument(
+      serializeTrackerDocument(prepareTrackerDatabase([application])),
+    )
+    expect(roundTrip.applications[0]!.correspondence.map((entry) => entry.body)).toEqual([
+      'Earlier',
+      'Later',
+    ])
+  })
+
+  it('updates correspondence through the document without touching other applications', () => {
+    const document = createDemoDocument(REFERENCE)
+    const target = document.applications[0]!
+    const next = updateApplicationCorrespondence(document, target.id, [message()], LATER)
+
+    expect(next.applications[0]!.correspondence).toHaveLength(1)
+    expect(next.applications[1]).toBe(document.applications[1])
+    expect(updateApplicationCorrespondence(document, 'missing', [message()], LATER)).toBe(document)
+  })
+
+  it('leaves correspondence alone through an ordinary edit', () => {
+    const application = applyCorrespondence(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [message()],
+      REFERENCE,
+    )
+    const edited = editApplication(application, { role: 'Product Manager' }, LATER)
+
+    expect(edited.correspondence).toBe(application.correspondence)
+  })
+
+  it('canonicalizes missing correspondence on import and rejects invalid ones', () => {
+    const withMessages = (correspondence: unknown) => ({
+      schema_version: 1,
+      applications: [{
+        id: '018f24c0-0000-7000-8000-000000000001',
+        company: 'Northwind',
+        state: 'applied',
+        correspondence,
+        created_at: REFERENCE.toISOString(),
+        updated_at: REFERENCE.toISOString(),
+      }],
+    })
+
+    const missing = validateTrackerDocument(withMessages(undefined))
+    expect(missing.ok).toBe(true)
+    if (missing.ok) expect(missing.value.applications[0]!.correspondence).toEqual([])
+
+    const stored = {
+      id: '018f24c0-0000-7000-8000-0000000000aa',
+      state: 'recruiter_messaged',
+      direction: 'received',
+      body: 'Could you send me some windows?',
+      at: SENT_AT,
+      created_at: REFERENCE.toISOString(),
+      updated_at: REFERENCE.toISOString(),
+    }
+
+    const valid = validateTrackerDocument(withMessages([stored]))
+    expect(valid.ok).toBe(true)
+    // A blank channel and a blank correspondent are dropped rather than rejected.
+    if (valid.ok) {
+      expect(valid.value.applications[0]!.correspondence[0]).toMatchObject({
+        channel: null,
+        who: null,
+      })
+    }
+
+    expect(validateTrackerDocument(withMessages([{ ...stored, body: '  ' }])).ok).toBe(false)
+    expect(validateTrackerDocument(withMessages([{ ...stored, state: 'nope' }])).ok).toBe(false)
+    expect(
+      validateTrackerDocument(withMessages([{ ...stored, direction: 'forwarded' }])).ok,
+    ).toBe(false)
+    expect(validateTrackerDocument(withMessages([{ ...stored, at: 'tuesday' }])).ok).toBe(false)
+    expect(
+      validateTrackerDocument(withMessages([{ ...stored, at: '2026-08-09T23:30:00' }])).ok,
+    ).toBe(false)
+    expect(validateTrackerDocument(withMessages([{ ...stored, created_at: 'soon' }])).ok).toBe(false)
+    expect(validateTrackerDocument(withMessages([stored, stored])).ok).toBe(false)
+    expect(validateTrackerDocument(withMessages('nope')).ok).toBe(false)
+
+    const badState = validateTrackerDocument(withMessages([{ ...stored, state: 'nope' }]))
+    expect(badState.ok).toBe(false)
+    if (!badState.ok) {
+      expect(
+        badState.errors.some((error) =>
+          error.path.includes('correspondence[0].state'),
+        ),
+      ).toBe(true)
+    }
+  })
+
+  it('includes message text and the correspondent in the search index', () => {
+    const application = applyCorrespondence(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [message({ who: 'Dana Okafor', body: 'The panel is three people' })],
+      REFERENCE,
+    )
+    const indexes = rebuildIndexes([application])
+
+    expect(indexes.search_text[application.id]).toContain('the panel is three people')
+    expect(indexes.search_text[application.id]).toContain('dana okafor')
+    expect(indexes.search_text[application.id]).toContain('recruiter messaged')
+  })
+
+  it('keeps the channel out of the search index', () => {
+    // One value per message rather than per application, so indexing it would make "email"
+    // match every application you have ever emailed.
+    const application = applyCorrespondence(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      [message({ channel: 'Carrier pigeon' })],
+      REFERENCE,
+    )
+    const indexes = rebuildIndexes([application])
+
+    expect(indexes.search_text[application.id]).not.toContain('carrier pigeon')
+  })
+
+  it('round-trips correspondence through export and import', () => {
+    const document = createDemoDocument(REFERENCE)
+    const roundTrip = parseTrackerDocument(serializeTrackerDocument(document))
+
+    expect(roundTrip.applications.map((application) => application.correspondence)).toEqual(
+      document.applications.map((application) => application.correspondence),
+    )
+    expect(
+      document.applications.some((application) => application.correspondence.length > 0),
     ).toBe(true)
   })
 })

@@ -325,3 +325,32 @@ describe('prep notes view', () => {
     expect(block).not.toMatch(/\.view-nav\s*\{[^}]*order:/)
   })
 })
+
+describe('correspondence rows', () => {
+  it('borrows the invite frame rather than inventing one', () => {
+    // Grouped rules are looked up by their last selector, so the correspondence one goes
+    // last. Sharing the frame is deliberate; reusing `.invite-item` itself would mean a
+    // later change to invites silently restyled messages instead.
+    const body = ruleBody('.correspondence-item')
+
+    expect(body).toMatch(/border:\s*1px solid var\(--line\)/)
+    expect(body).toMatch(/border-radius:\s*var\(--r1\)/)
+    expect(body).toMatch(/padding:\s*var\(--s3\)/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    // The 1px hairline is the interface's own border convention; every other value is a token.
+    expect(body.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
+  })
+
+  it('caps the messages against the dock without a second handle', () => {
+    expect(ruleBody('.stage-note__log--messages')).toMatch(/max-height:\s*var\(--message-log\)/)
+    // Two logs in one capped dock: the dock's cap squeezes them because both can reach zero.
+    expect(ruleBody('.stage-note__log')).toMatch(/min-height:\s*0/)
+  })
+
+  it('collapses its two-column rows with the sections beside it', () => {
+    const narrow = css.slice(css.indexOf('@media (max-width: 760px)'))
+    const block = narrow.slice(0, narrow.indexOf('@media', 1))
+
+    expect(block).toMatch(/\.correspondence-item__grid/)
+  })
+})

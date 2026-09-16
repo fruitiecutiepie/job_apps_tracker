@@ -53,6 +53,7 @@ import {
   updateApplicationStageCapture,
   updateApplicationStageNotes,
   updateApplicationRatings,
+  updateApplicationCorrespondence,
   updateApplicationStateEvents,
   uploadAttachmentFile,
   deleteAttachmentFile,
@@ -60,6 +61,7 @@ import {
   type ApplicationInput,
   type Attachment,
   type CompletedActionDraft,
+  type CorrespondenceDraft,
   type StateEventDraft,
   type StateFilter,
   type StateId,
@@ -78,7 +80,14 @@ import {
 } from './compensation'
 import { clearedRatingDimensions, ratingDrafts, ratingValuesFor, type RatingValues } from './ratings'
 import { fromDateTimeInput, toDateTimeInput } from './dateInput'
+import { CorrespondenceFields } from './CorrespondenceFields'
 import { InviteFields } from './InviteFields'
+import {
+  correspondenceDrafts,
+  correspondenceRowsFor,
+  firstCorrespondenceProblem,
+  type CorrespondenceRow,
+} from './correspondence'
 import {
   firstInviteProblem,
   inviteDrafts,
@@ -271,6 +280,7 @@ interface ApplicationEditorProps {
     attachmentPlan: AttachmentSavePlan,
     invites: StateEventDraft[],
     completedActions: CompletedActionDraft[],
+    correspondence: CorrespondenceDraft[],
   ) => Promise<void>
 }
 
@@ -292,6 +302,9 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
     compensation: compensationValuesFor(application),
   }))
   const [invites, setInvites] = useState<InviteRow[]>(() => inviteRowsFor(application))
+  const [correspondence, setCorrespondence] = useState<CorrespondenceRow[]>(() =>
+    correspondenceRowsFor(application),
+  )
   const [completedActions, setCompletedActions] = useState<CompletedActionRow[]>(() =>
     (application?.completed_actions ?? []).map((entry) => ({
       key: entry.id,
@@ -384,6 +397,11 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
               setFormError(inviteProblem)
               return
             }
+            const correspondenceProblem = firstCorrespondenceProblem(correspondence)
+            if (correspondenceProblem) {
+              setFormError(correspondenceProblem)
+              return
+            }
             const compensationProblem = firstCompensationProblem(values.compensation)
             if (compensationProblem) {
               setFormError(compensationProblem)
@@ -400,6 +418,7 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
                 },
                 inviteDrafts(invites),
                 completedActions.map(({ id, action, at }) => ({ id, action, at })),
+                correspondenceDrafts(correspondence),
               )
             } catch (error) {
               setFormError(errorMessage(error))
@@ -530,6 +549,11 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
               defaultState={values.state}
               onChange={setInvites}
               rows={invites}
+            />
+            <CorrespondenceFields
+              defaultState={values.state}
+              onChange={setCorrespondence}
+              rows={correspondence}
             />
             <RatingFields
               onChange={(dimension, value) =>
@@ -1362,7 +1386,7 @@ export default function App() {
             closeEditor()
             openStageNotes(id)
           } : undefined}
-          onSave={async (values, attachmentPlan, invites, completedActions) => {
+          onSave={async (values, attachmentPlan, invites, completedActions, correspondence) => {
             const input: ApplicationInput = {
               company: values.company,
               role: values.role || null,
@@ -1388,6 +1412,7 @@ export default function App() {
                   next = updateApplication(next, id, { attachments }, now)
                 }
                 next = updateApplicationStateEvents(next, id, invites, now)
+                next = updateApplicationCorrespondence(next, id, correspondence, now)
                 next = updateApplicationCompletedActions(next, id, completedActions, now)
                 return updateApplicationRatings(next, id, ratingDrafts(values.ratings), now)
               }, 'Application added.')
@@ -1407,6 +1432,7 @@ export default function App() {
                   compensation: input.compensation,
                 }, now)
                 next = updateApplicationStateEvents(next, editor.id, invites, now)
+                next = updateApplicationCorrespondence(next, editor.id, correspondence, now)
                 next = updateApplicationCompletedActions(next, editor.id, completedActions, now)
                 next = updateApplicationRatings(next, editor.id, ratingDrafts(values.ratings), now)
                 // Drafts cannot express "back to never assessed", so blanked ones clear here.

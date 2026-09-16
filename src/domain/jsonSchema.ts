@@ -1,4 +1,5 @@
 import { COMPENSATION_STAGE_IDS } from './compensation'
+import { CORRESPONDENCE_DIRECTION_IDS } from './correspondence'
 import { MAX_RATING_SCORE, MIN_RATING_SCORE, RATING_IDS } from './ratings'
 import { STATE_IDS } from './states'
 
@@ -38,6 +39,7 @@ export const TRACKER_JSON_SCHEMA = {
         'completed_actions',
         'stage_notes',
         'state_events',
+        'correspondence',
         'attachments',
         'ratings',
         'compensation',
@@ -80,6 +82,10 @@ export const TRACKER_JSON_SCHEMA = {
         state_events: {
           type: 'array',
           items: { $ref: '#/$defs/state_event' },
+        },
+        correspondence: {
+          type: 'array',
+          items: { $ref: '#/$defs/correspondence_entry' },
         },
         attachments: {
           type: 'array',
@@ -167,6 +173,42 @@ export const TRACKER_JSON_SCHEMA = {
         },
         sequence: { type: 'integer', minimum: 0 },
         cancelled: { type: 'boolean' },
+        created_at: { type: 'string' },
+        updated_at: { type: 'string' },
+      },
+    },
+    correspondence_entry: {
+      type: 'object',
+      description:
+        'One message exchanged with the employer, filed against one state. `at` is when the '
+        + 'message was sent — supplied rather than taken from the clock, because a message is '
+        + 'logged after it arrives — while `created_at` is when the record was written.',
+      required: [
+        'id',
+        'state',
+        'direction',
+        'channel',
+        'who',
+        'body',
+        'at',
+        'created_at',
+        'updated_at',
+      ],
+      additionalProperties: false,
+      properties: {
+        id: { type: 'string', minLength: 1 },
+        state: { type: 'string', enum: [...STATE_IDS] },
+        direction: { type: 'string', enum: [...CORRESPONDENCE_DIRECTION_IDS] },
+        channel: {
+          type: ['string', 'null'],
+          description: 'How it arrived. Free text; the editor offers a list of suggestions.',
+        },
+        who: {
+          type: ['string', 'null'],
+          description: 'The other person: the sender when received, the recipient when sent.',
+        },
+        body: { type: 'string', minLength: 1 },
+        at: { type: 'string' },
         created_at: { type: 'string' },
         updated_at: { type: 'string' },
       },

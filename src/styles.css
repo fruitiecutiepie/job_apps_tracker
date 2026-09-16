@@ -99,6 +99,7 @@
      panel sets this from the height the reader dragged the dock to; this is the fallback
      for a render that has not been given one, and matches `DEFAULT_CAPTURE_LOG`. */
   --capture-log: 11rem;
+  --message-log: 11rem;
   /* And how much of a note the whole dock may take however far it is dragged. A share
      rather than a length, because what has to be left over is a readable note and that is
      a fraction of whatever the pane happens to be. */
@@ -1866,7 +1867,8 @@ tbody tr:hover {
   font-weight: 600;
 }
 
-.invite-field {
+.invite-field,
+.correspondence-field {
   gap: var(--s3);
 }
 
@@ -1922,12 +1924,14 @@ tbody tr:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.invite-list {
+.invite-list,
+.correspondence-list {
   display: grid;
   gap: var(--s3);
 }
 
-.invite-item {
+.invite-item,
+.correspondence-item {
   display: grid;
   gap: var(--s3);
   margin: 0;
@@ -1937,13 +1941,16 @@ tbody tr:hover {
 }
 
 .invite-item__head,
-.invite-item__grid {
+.invite-item__grid,
+.correspondence-item__head,
+.correspondence-item__grid {
   display: grid;
   gap: var(--s3);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.invite-item__foot {
+.invite-item__foot,
+.correspondence-item__foot {
   display: flex;
   align-items: center;
   gap: var(--s3);
@@ -1965,14 +1972,16 @@ tbody tr:hover {
   accent-color: var(--accent);
 }
 
-.invite-field__actions {
+.invite-field__actions,
+.correspondence-field__actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2);
 }
 
 .invite-field__hint,
-.invite-field__notice {
+.invite-field__notice,
+.correspondence-field__hint {
   margin: 0;
   color: var(--ink-2);
   font-size: var(--t2);
@@ -2477,6 +2486,17 @@ tbody tr:hover {
  * is never something to retype. Rows stay as dense as the log they replace, so correcting
  * a typo does not resize the dock under the note.
  */
+/*
+  A static cap rather than a second draggable height. The capture log earns its handle by
+  being appended to while you read; nothing is added to the messages while the panel is
+  open, so a second measurement to clamp and reconcile would buy nothing. Both logs sit in
+  the one dock the panel already caps, and both can shrink to nothing, so that cap squeezes
+  them and each scrolls on its own.
+*/
+.stage-note__log--messages {
+  max-height: var(--message-log);
+}
+
 .stage-note__lines {
   display: grid;
   gap: var(--s2);
@@ -4408,6 +4428,8 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .invite-item__head,
   .invite-item__grid,
+  .correspondence-item__head,
+  .correspondence-item__grid,
   .rating-grid,
   .compensation-row,
   .next-action-field {
