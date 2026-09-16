@@ -15,26 +15,12 @@
  */
 
 import { beforeEach, describe, expect, it } from 'vitest'
-import { render, screen, within } from '@testing-library/react'
+import { screen, within } from '@testing-library/react'
 import { page, userEvent } from '@vitest/browser/context'
 
-import { createDemoDocument } from './domain/demo'
 import { stateLabel } from './domain'
 import type { Application } from './domain'
-import { StageNotesPanel } from './StageNotesPanel'
-import { openingLayout } from './notesArrangement'
-
-/** Two companies with notes between them, which is all any of these tests needs. */
-const COMPANIES = ['Halcyon Maps', 'Echo Robotics']
-
-/** Wider than the 760px breakpoint where panes stop being laid out in a row. */
-const WIDE = { width: 1280, height: 800 }
-
-function fixtureApplications(): Application[] {
-  return createDemoDocument().applications.filter((application) =>
-    COMPANIES.includes(application.company),
-  )
-}
+import { WIDE, fixtureApplications, renderPanel } from './test/panelHarness'
 
 /** The same fixture with one note long enough to overflow a pane, for the scrolling test. */
 function withLongNote(applications: Application[]): Application[] {
@@ -50,45 +36,6 @@ function withLongNote(applications: Application[]): Application[] {
         }
       : application,
   )
-}
-
-function renderPanel(applications = fixtureApplications()) {
-  const halcyon = applications.find((application) => application.company === 'Halcyon Maps')!
-  const layout = openingLayout(halcyon, halcyon.state)
-  render(
-    /*
-     * Mounted inside the page structure it lives in — the shell column, a stand-in for the
-     * chrome above it, and the view surface — because the panel's height now comes from
-     * that column rather than from a viewport measurement. A bare mount would size itself
-     * correctly whatever the chain above it did.
-     */
-    <div className="app-shell">
-      <header className="topbar">
-        <span>Chrome above the panel</span>
-      </header>
-      <main>
-        <div className="context-bar">
-          <h1>Prep notes</h1>
-        </div>
-        <section className="view-surface view-surface--panel">
-          <section aria-label="Stage prep notes" className="panel-view">
-            <StageNotesPanel
-              applications={applications}
-              initial={{ layout, focusedGroupId: layout.id }}
-              onArrange={() => {}}
-              onCapture={async () => {}}
-              onEmpty={() => {}}
-              onExternalChange={async () => {}}
-              onRevise={async () => {}}
-              onSaveDrafts={async () => true}
-              request={null}
-            />
-          </section>
-        </section>
-      </main>
-    </div>,
-  )
-  return { halcyon }
 }
 
 /**

@@ -38,6 +38,12 @@ into — is covered by the app integration tests. Rendering the records as a not
 the paragraph breaks and quoted lines of a pasted message inside its own bullet, is covered by
 `src/markdown/correspondence.test.ts` and `src/markdown/dayLog.test.ts`.
 
+Whether any of that survives as layout — a pasted email's paragraphs separated and indented under
+their own bullet, a long message folding away behind its header line, and both dock sections
+scrolling inside their caps instead of pushing the prep note off the pane — is covered in a real
+browser by `src/correspondenceDock.browser.test.tsx`, across all three engines. jsdom cannot answer
+any of it: it has no layout, and it drops a shorthand carrying a `var()`.
+
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
 
@@ -275,11 +281,13 @@ neither a finger nor any browser automation.
     multi-paragraph email into **Message**, set **Sent** to a date several days in the past, name
     who it was from, and pick a channel from the suggestions — confirming the box still accepts a
     word that is not on the list. Save, reopen, and confirm the date you typed came back rather
-    than the moment you saved. Confirm the hint makes that distinction clear before you have to
-    find it out. Then open Prep notes for that stage, expand **Correspondence**, and confirm the
-    message reads under the day it was sent with its paragraph breaks intact, that a long one folds
-    behind its own header line, and that a message filed against another stage does not appear.
-    Search the application list for a word only that message holds and confirm it is found.
+    than the moment you saved. The structure of the rendered message is covered by the browser
+    suite; what is left here is judgement. Open Prep notes for that stage, expand
+    **Correspondence**, and ask whether the hint makes the two dates distinct before you have to
+    find the difference out, whether the day heading and the `6:00 pm · Received · who · how`
+    header line tell you what you need at a glance, and whether a real thread of six or seven
+    messages is still readable at the height the log is capped to — or whether you find yourself
+    wanting the handle the capture log has.
 13. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
     Set one to **Don't know** and another back to **Not rated**, save, and confirm the Table
     Preference cell distinguishes the two. Confirm the demo's Lumen Pantry row reads

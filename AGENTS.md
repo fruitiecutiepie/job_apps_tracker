@@ -25,6 +25,9 @@ This file applies to the entire repository. Keep changes within the app's curren
   depends on: touch target sizes are the device's business and stay in `@media`, while how the prep
   notes panel lays itself out is its own width and belongs in `@container panel`.
 - `SMOKE_TEST.md` records the automated smoke coverage and optional browser-only checks.
+- `src/test/panelHarness.tsx` mounts the prep notes panel for the browser suite. Shared because the
+  mount is not incidental: the panel's height comes from the shell column above it, so a bare mount
+  would size itself correctly whatever the chain above it did, and prove nothing.
 
 Use pnpm for dependency and script commands. Do not introduce a second package manager or regenerate the lockfile with another tool.
 
