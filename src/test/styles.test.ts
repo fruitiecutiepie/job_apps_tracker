@@ -325,3 +325,26 @@ describe('prep notes view', () => {
     expect(block).not.toMatch(/\.view-nav\s*\{[^}]*order:/)
   })
 })
+
+describe('correspondence rows', () => {
+  it('borrows the invite frame rather than inventing one', () => {
+    // Grouped rules are looked up by their last selector, so the correspondence one goes
+    // last. Sharing the frame is deliberate; reusing `.invite-item` itself would mean a
+    // later change to invites silently restyled messages instead.
+    const body = ruleBody('.correspondence-item')
+
+    expect(body).toMatch(/border:\s*1px solid var\(--line\)/)
+    expect(body).toMatch(/border-radius:\s*var\(--r1\)/)
+    expect(body).toMatch(/padding:\s*var\(--s3\)/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    // The 1px hairline is the interface's own border convention; every other value is a token.
+    expect(body.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
+  })
+
+  it('collapses its two-column rows with the sections beside it', () => {
+    const narrow = css.slice(css.indexOf('@media (max-width: 760px)'))
+    const block = narrow.slice(0, narrow.indexOf('@media', 1))
+
+    expect(block).toMatch(/\.correspondence-item__grid/)
+  })
+})

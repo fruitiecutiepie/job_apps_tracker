@@ -1862,7 +1862,8 @@ tbody tr:hover {
   font-weight: 600;
 }
 
-.invite-field {
+.invite-field,
+.correspondence-field {
   gap: var(--s3);
 }
 
@@ -1918,12 +1919,14 @@ tbody tr:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.invite-list {
+.invite-list,
+.correspondence-list {
   display: grid;
   gap: var(--s3);
 }
 
-.invite-item {
+.invite-item,
+.correspondence-item {
   display: grid;
   gap: var(--s3);
   margin: 0;
@@ -1933,13 +1936,16 @@ tbody tr:hover {
 }
 
 .invite-item__head,
-.invite-item__grid {
+.invite-item__grid,
+.correspondence-item__head,
+.correspondence-item__grid {
   display: grid;
   gap: var(--s3);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.invite-item__foot {
+.invite-item__foot,
+.correspondence-item__foot {
   display: flex;
   align-items: center;
   gap: var(--s3);
@@ -1961,14 +1967,16 @@ tbody tr:hover {
   accent-color: var(--accent);
 }
 
-.invite-field__actions {
+.invite-field__actions,
+.correspondence-field__actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2);
 }
 
 .invite-field__hint,
-.invite-field__notice {
+.invite-field__notice,
+.correspondence-field__hint {
   margin: 0;
   color: var(--ink-2);
   font-size: var(--t2);
@@ -4363,6 +4371,8 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .invite-item__head,
   .invite-item__grid,
+  .correspondence-item__head,
+  .correspondence-item__grid,
   .rating-grid,
   .compensation-row,
   .next-action-field {

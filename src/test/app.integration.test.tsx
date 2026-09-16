@@ -3069,6 +3069,153 @@ describe('job applications tracker', () => {
     ).toEqual([])
   })
 
+  it('logs a message against a stage and keeps the time it was sent', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    let dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+
+    const message = within(dialog).getByRole('group', { name: 'Message 1' })
+    await user.selectOptions(within(message).getByLabelText('Direction'), 'received')
+    await user.type(within(message).getByLabelText('Who'), 'Dana Okafor')
+    await user.type(within(message).getByLabelText('Channel'), 'Email')
+    await user.type(within(message).getByLabelText('Sent'), '2026-08-10T09:30')
+    await user.type(within(message).getByLabelText('Message'), 'Could you send me some windows?')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const logged = () =>
+      readSavedDocument().applications.find(({ company }) => company === 'Paper Kite')
+        ?.correspondence ?? []
+
+    expect(logged()).toHaveLength(1)
+    expect(logged()[0]).toMatchObject({
+      state: 'recruiter_messaged',
+      direction: 'received',
+      who: 'Dana Okafor',
+      channel: 'Email',
+      body: 'Could you send me some windows?',
+    })
+    // Sent on the 10th and logged on the 14th: the record keeps both, and `at` is the one
+    // the reader typed rather than the clock the save ran against.
+    expect(logged()[0]!.at).toBe(new Date('2026-08-10T09:30').toISOString())
+    expect(Date.parse(logged()[0]!.at)).toBeLessThan(Date.parse(logged()[0]!.created_at))
+
+    // And it reads back into its boxes.
+    await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
+    dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    expect(
+      within(within(dialog).getByRole('group', { name: 'Message 1' })).getByLabelText('Sent'),
+    ).toHaveValue('2026-08-10T09:30')
+  })
+
+  it('corrects the time a message was sent and removes one logged by mistake', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    let dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    let message = within(dialog).getByRole('group', { name: 'Message 1' })
+    await user.type(within(message).getByLabelText('Sent'), '2026-08-10T09:30')
+    await user.type(within(message).getByLabelText('Message'), 'Windows please')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const logged = () =>
+      readSavedDocument().applications.find(({ company }) => company === 'Paper Kite')
+        ?.correspondence ?? []
+    const [first] = logged()
+
+    await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
+    dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    message = within(dialog).getByRole('group', { name: 'Message 1' })
+    const sent = within(message).getByLabelText('Sent')
+    await user.clear(sent)
+    await user.type(sent, '2026-08-11T14:00')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    // Unlike a captured line, a send time moves: it is a fact about the world, not a record
+    // of a keystroke. The id and the moment it was written down do not move with it.
+    expect(logged()[0]!.at).toBe(new Date('2026-08-11T14:00').toISOString())
+    expect(logged()[0]!.id).toBe(first!.id)
+    expect(logged()[0]!.created_at).toBe(first!.created_at)
+
+    await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
+    dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Remove message 1' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(logged()).toEqual([])
+  })
+
+  it('refuses to save a message with no text or no time', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    const message = within(dialog).getByRole('group', { name: 'Message 1' })
+
+    await user.type(within(message).getByLabelText('Sent'), '2026-08-10T09:30')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Message 1 needs its text.')
+
+    await user.clear(within(message).getByLabelText('Sent'))
+    await user.type(within(message).getByLabelText('Message'), 'Windows please')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Message 1 needs the date and time it was sent.',
+    )
+
+    expect(
+      readSavedDocument().applications.find(({ company }) => company === 'Paper Kite')
+        ?.correspondence,
+    ).toEqual([])
+  })
+
+  it('writes nothing for a message drafted in a dialog that was cancelled', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    const message = within(dialog).getByRole('group', { name: 'Message 1' })
+    await user.type(within(message).getByLabelText('Sent'), '2026-08-10T09:30')
+    await user.type(within(message).getByLabelText('Message'), 'Never saved')
+    // Draft only, like every other control in this form: nothing is written until Save.
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(
+      readSavedDocument().applications.find(({ company }) => company === 'Paper Kite')
+        ?.correspondence,
+    ).toEqual([])
+  })
+
+  it('finds an application by a word only a message holds', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Halcyon Maps carries a seeded message, and nothing else in the fixture mentions this.
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search applications' }),
+      'short notice',
+    )
+
+    expect(await screen.findByRole('button', { name: /^Open Halcyon Maps/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Open Paper Kite/ })).not.toBeInTheDocument()
+  })
+
   it('saves ratings set while adding an application', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
