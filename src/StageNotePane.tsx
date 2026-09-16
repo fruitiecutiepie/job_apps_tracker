@@ -3,7 +3,13 @@ import { ChevronRight, CornerDownLeft, ExternalLink, PencilLine, X } from 'lucid
 import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangement'
-import { CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE, MarkdownNotes } from './markdown'
+import {
+  CAPTURE_SECTION,
+  CAPTURE_SECTION_IN_SENTENCE,
+  CORRESPONDENCE_SECTION,
+  CORRESPONDENCE_SECTION_IN_SENTENCE,
+  MarkdownNotes,
+} from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
 import { FORMATS, type Format } from './noteFormats'
 import { STATE_CONFIG, type StageNote, type StageNoteEditSession, type StateId } from './domain'
@@ -41,7 +47,9 @@ interface StageNotePaneProps {
   onClose: (() => void) | null
   query: string
   matchBase: number
-  /** Where the captured lines' matches start, after this stage's written note. */
+  /** Where the correspondence's matches start, after this stage's written note. */
+  correspondenceMatchBase: number
+  /** Where the captured lines' matches start, after the written note and the messages. */
   heardMatchBase: number
   currentMatch: number | null
   /**
@@ -50,6 +58,18 @@ interface StageNotePaneProps {
    * version of it here that Save could still change.
    */
   captured: string
+  /**
+   * The messages filed against this stage, as Markdown to read. Derived from what is stored,
+   * like the captures — but unlike them it cannot be written from here at all: a message
+   * carries a send time you supply, and that belongs in a form with a Save rather than in a
+   * box you type one line into mid-conversation.
+   */
+  corresponded: string
+  /** How many messages this stage holds, for the toggle's count. */
+  correspondenceCount: number
+  /** Whether the correspondence section of the dock is open. Collapsed by default. */
+  isCorrespondenceOpen: boolean
+  onToggleCorrespondence: () => void
   /** The same lines as records, for correcting them one at a time. */
   lines: readonly CapturedLine[]
   /** Whether the captured lines are open for correcting rather than being read. */
@@ -113,9 +133,14 @@ export function StageNotePane({
   onClose,
   query,
   matchBase,
+  correspondenceMatchBase,
   heardMatchBase,
   currentMatch,
   captured,
+  corresponded,
+  correspondenceCount,
+  isCorrespondenceOpen,
+  onToggleCorrespondence,
   lines,
   isEditingLines,
   onToggleEditLines,
@@ -418,7 +443,7 @@ export function StageNotePane({
           />
         ) : (
           <p className="stage-note__empty">
-            {captured
+            {captured || corresponded
               ? 'Nothing was written for this stage before the conversation.'
               : 'No notes for this stage yet.'}
           </p>
@@ -462,6 +487,46 @@ export function StageNotePane({
               tabIndex={0}
             />
           ) : null}
+          {/*
+            What was exchanged sits above what was said, which is the order the pane reads in
+            and so the order the find numbers them in. It shares the dock rather than taking
+            one of its own: nothing is appended to it while the panel is open, so there is
+            nothing here for a second resizable strip to be sized for.
+          */}
+          <button
+            aria-expanded={isCorrespondenceOpen}
+            aria-label={`${isCorrespondenceOpen ? 'Hide' : 'Show'} ${CORRESPONDENCE_SECTION_IN_SENTENCE} in ${label}`}
+            className={[
+              'stage-note__dock-toggle',
+              isCorrespondenceOpen ? '' : 'stage-note__dock-toggle--collapsed',
+            ]
+              .filter(Boolean)
+              .join(' ')}
+            onClick={onToggleCorrespondence}
+            type="button"
+          >
+            <ChevronRight aria-hidden="true" size={14} />
+            {CORRESPONDENCE_SECTION}
+            {correspondenceCount > 0 ? (
+              <span className="stage-note__dock-count">{correspondenceCount}</span>
+            ) : null}
+          </button>
+
+          {isCorrespondenceOpen && corresponded ? (
+            // No `role="log"`, unlike the captures: nothing is added to this while it is on
+            // screen, so there is no live region for a reader to be told about.
+            <div className="stage-note__log stage-note__log--messages">
+              <MarkdownNotes
+                currentMatch={currentMatch}
+                foldAll={false}
+                label={`${label} correspondence`}
+                matchBase={correspondenceMatchBase}
+                query={query}
+                source={corresponded}
+              />
+            </div>
+          ) : null}
+
           <button
             aria-expanded={isCaptureOpen}
             aria-label={`${isCaptureOpen ? 'Hide' : 'Show'} ${CAPTURE_SECTION_IN_SENTENCE} in ${label}`}

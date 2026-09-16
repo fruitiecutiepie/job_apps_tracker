@@ -95,6 +95,7 @@
      panel sets this from the height the reader dragged the dock to; this is the fallback
      for a render that has not been given one, and matches `DEFAULT_CAPTURE_LOG`. */
   --capture-log: 11rem;
+  --message-log: 11rem;
   /* And how much of a note the whole dock may take however far it is dragged. A share
      rather than a length, because what has to be left over is a readable note and that is
      a fraction of whatever the pane happens to be. */
@@ -2440,6 +2441,17 @@ tbody tr:hover {
  * is never something to retype. Rows stay as dense as the log they replace, so correcting
  * a typo does not resize the dock under the note.
  */
+/*
+  A static cap rather than a second draggable height. The capture log earns its handle by
+  being appended to while you read; nothing is added to the messages while the panel is
+  open, so a second measurement to clamp and reconcile would buy nothing. Both logs sit in
+  the one dock the panel already caps, and both can shrink to nothing, so that cap squeezes
+  them and each scrolls on its own.
+*/
+.stage-note__log--messages {
+  max-height: var(--message-log);
+}
+
 .stage-note__lines {
   display: grid;
   gap: var(--s2);

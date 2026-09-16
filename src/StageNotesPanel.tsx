@@ -8,6 +8,7 @@ import {
   stateLabel,
   stateRank,
   type Application,
+  type CorrespondenceEntry,
   type StageNote,
   type StageNoteDraft,
   type StageNoteEditSession,
@@ -19,6 +20,7 @@ import { PANEL_SHORTCUTS, shortcutKeys, shortcutLabel } from './shortcuts'
 import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
 import {
   capturedMarkdown,
+  correspondenceMarkdown,
   buildSections,
   matchOffsets,
   outlineTree,
@@ -614,6 +616,12 @@ export function StageNotesPanel({
    */
   const [captureOpen, setCaptureOpen] = useState<string[]>([])
   /**
+   * Notes whose correspondence section is open, held here for the same reason `captureOpen`
+   * is. Collapsed by default: what was exchanged is not what you are looking at most of the
+   * time you have a note open.
+   */
+  const [correspondenceOpen, setCorrespondenceOpen] = useState<string[]>([])
+  /**
    * Set by the "K" shortcut when it has to open a collapsed dock before it can focus the
    * box inside it: the box does not exist yet in the render that opens it, so focusing it
    * has to wait for the one after.
@@ -1028,6 +1036,35 @@ export function StageNotesPanel({
     return new Map(entries)
   }, [noteByKey])
 
+  /**
+   * Each stage's messages, read as one note. Built from `applications` rather than from
+   * `noteByKey`, which is the difference that matters: `heard` hangs off a stage note, but
+   * correspondence hangs off the application and exists whether or not that stage was ever
+   * prepared for. Keyed off the notes would silently hide every message filed against a stage
+   * with nothing written for it.
+   */
+  const correspondenceByKey = useMemo(() => {
+    const byKey = new Map<string, CorrespondenceEntry[]>()
+    for (const application of applications) {
+      for (const entry of application.correspondence) {
+        const key = noteRefKey({ applicationId: application.id, state: entry.state })
+        const filed = byKey.get(key)
+        if (filed) filed.push(entry)
+        else byKey.set(key, [entry])
+      }
+    }
+    return byKey
+  }, [applications])
+
+  /** The same messages rendered, which is what the dock reads and the find counts. */
+  const correspondedByKey = useMemo(() => {
+    const entries: [string, string][] = []
+    for (const [key, filed] of correspondenceByKey) {
+      entries.push([key, correspondenceMarkdown(filed, formatShortDate, formatTimeOfDay)])
+    }
+    return new Map(entries)
+  }, [correspondenceByKey])
+
   /** The same lines as records, with their stamps read, for correcting one at a time. */
   const linesByKey = useMemo(() => {
     const entries: [string, { id: string; body: string; stamp: string }[]][] = []
@@ -1097,7 +1134,15 @@ export function StageNotesPanel({
     (value: string, tabs: { groupId: string; ref: NoteRef }[] = openTabs) => {
       const perTab = new Map<
         string,
-        { base: number; count: number; written: number; inEditor: boolean; key: string }
+        {
+          base: number
+          count: number
+          written: number
+          /** How many of this tab's matches are in its messages, after the written note. */
+          wrote: number
+          inEditor: boolean
+          key: string
+        }
       >()
       const order: string[] = []
       let total = 0
@@ -1118,18 +1163,23 @@ export function StageNotesPanel({
         // so those matches are stepped onto by selecting them in the box instead — but
         // they are counted here with the rest, so one list runs through the whole panel.
         const written = inEditor ? matchOffsets(source, value).length : countIn(source)
+        // Messages come between the note and the captures, which is the order they read in
+        // down the pane. There is no carve-out for them: correspondence cannot be written
+        // from here at all, so no mode of this panel leaves one of its matches with nowhere
+        // to send a caret.
+        const wrote = countIn(correspondedByKey.get(key) ?? '')
         // Lines open for correcting still sit out: each is in a box of its own, and there
         // is no one place to send a caret that stands for all of them.
         const said = editingLines.includes(key) ? 0 : countIn(capturedByKey.get(key) ?? '')
-        const count = written + said
+        const count = written + wrote + said
         if (count === 0) continue
-        perTab.set(id, { base: total, count, written, inEditor, key })
+        perTab.set(id, { base: total, count, written, wrote, inEditor, key })
         order.push(id)
         total += count
       }
       return { perTab, order, total }
     },
-    [capturedByKey, drafts, editing, editingLines, openTabs, sessions],
+    [capturedByKey, correspondedByKey, drafts, editing, editingLines, openTabs, sessions],
   )
 
   const matches = useMemo(() => findMatches(query), [findMatches, query])
@@ -1326,7 +1376,8 @@ export function StageNotesPanel({
     if (!id || !found?.inEditor) return
     const key = found.key
     const index = position - found.base
-    // Past the written note is the captured log, which renders marks like any note.
+    // Past the written note are the messages and the captured log, both of which render
+    // marks like any note.
     if (index >= found.written) return
     const at = matchOffsets(drafts[key] ?? '', query)[index]
     if (at === undefined) return
@@ -1350,6 +1401,28 @@ export function StageNotesPanel({
     })
   }
 
+  /**
+   * Opens whichever collapsed dock section a match has landed in. The dock's two sections
+   * are counted whether or not they are open, so without this a step past the written note
+   * moves the count and scrolls to nothing.
+   *
+   * Done from the step rather than from an effect on the cursor, which is the same line the
+   * scroll already holds: the cursor moves on every keystroke in the find box, and a dock
+   * unfolding under someone still deciding what to search for is the mistake that rule
+   * exists to prevent. Stepping is a deliberate act, so it may move the furniture.
+   */
+  const revealMatchSection = (id: string | undefined, position: number) => {
+    const found = id ? matches.perTab.get(id) : undefined
+    if (!found) return
+    const index = position - found.base
+    if (index < found.written) return
+
+    const open = (current: string[]) =>
+      current.includes(found.key) ? current : [...current, found.key]
+    if (index < found.written + found.wrote) setCorrespondenceOpen(open)
+    else setCaptureOpen(open)
+  }
+
   /** Steps the find, following it into whichever note the next match lives in. */
   const stepMatch = (delta: number) => {
     if (matches.total === 0) return
@@ -1358,6 +1431,7 @@ export function StageNotesPanel({
     const landing = ((next % matches.total) + matches.total) % matches.total
     const id = noteOfMatch(landing)
     if (id) showTab(id)
+    revealMatchSection(id, landing)
     revealInSource(id, landing)
   }
 
@@ -2201,10 +2275,14 @@ export function StageNotesPanel({
           body={drafts[shownKey] ?? ''}
           captured={capturedByKey.get(shownKey) ?? ''}
           company={shownApplication?.company ?? ''}
+          corresponded={correspondedByKey.get(shownKey) ?? ''}
+          correspondenceCount={correspondenceByKey.get(shownKey)?.length ?? 0}
+          correspondenceMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
           currentMatch={currentMatch}
           formatDate={formatShortDate}
           groupId={group.id}
-          heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
+          heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0) + (found?.wrote ?? 0)}
+          isCorrespondenceOpen={correspondenceOpen.includes(shownKey)}
           isCurrentState={shownApplication?.state === shown.state}
           captureHeight={captureHeight}
           isCaptureOpen={captureOpen.includes(shownKey)}
@@ -2231,6 +2309,12 @@ export function StageNotesPanel({
             switchStage(group.id, shownKey, { applicationId: shown.applicationId, state })}
           onToggleCapture={() =>
             setCaptureOpen((current) =>
+              current.includes(shownKey)
+                ? current.filter((entry) => entry !== shownKey)
+                : [...current, shownKey],
+            )}
+          onToggleCorrespondence={() =>
+            setCorrespondenceOpen((current) =>
               current.includes(shownKey)
                 ? current.filter((entry) => entry !== shownKey)
                 : [...current, shownKey],

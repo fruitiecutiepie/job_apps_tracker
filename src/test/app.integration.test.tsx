@@ -1654,6 +1654,95 @@ describe('job applications tracker', () => {
     expect(document.activeElement).toBe(find)
   })
 
+  it('reads a stage\'s messages in the dock, under the day they were sent', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    const toggle = within(dialog).getByRole('button', {
+      name: 'Show the correspondence in Halcyon Maps · Interview 2',
+    })
+    // Collapsed by default, but the count says there is something behind it.
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveTextContent('1')
+    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+
+    await user.click(toggle)
+
+    expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
+    // Which way it went and how it arrived head the message; the day heads the group.
+    expect(within(dialog).getByText('Received')).toBeInTheDocument()
+    expect(within(dialog).getByText(/LinkedIn/)).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('heading', { name: formatShortDate('2026-08-12T08:00') }),
+    ).toBeInTheDocument()
+  })
+
+  it('shows a stage only the messages filed against it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    await user.click(within(dialog).getByRole('tab', { name: /Interview 1/ }))
+    const toggle = within(dialog).getByRole('button', {
+      name: 'Show the correspondence in Halcyon Maps · Interview 1',
+    })
+
+    // Filing is the reader's decision, so the panel honours it rather than showing the lot.
+    expect(toggle).not.toHaveTextContent('1')
+    await user.click(toggle)
+    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+  })
+
+  it('numbers a note, its messages and its captures as one list down the pane', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // A capture holding the word the note and the seeded message already share.
+    await openCapture(user, dialog, 'Halcyon Maps · Interview 2')
+    await user.type(
+      within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 2'),
+      'Leadership rounds run long',
+    )
+    await user.keyboard('{Enter}')
+
+    await user.keyboard('{Control>}f{/Control}')
+    await user.type(within(dialog).getByLabelText('Find in notes'), 'leadership')
+
+    // Written note, then messages, then captures — the order they read in down the pane.
+    expect(within(dialog).getByText('1 of 3')).toBeInTheDocument()
+
+    // The second is in the correspondence section, which is still collapsed: stepping onto
+    // a match opens the section holding it, or the count would move and nothing would.
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Show the correspondence in Halcyon Maps · Interview 2',
+      }),
+    ).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    expect(within(dialog).getByText('2 of 3')).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Hide the correspondence in Halcyon Maps · Interview 2',
+      }),
+    ).toHaveAttribute('aria-expanded', 'true')
+    expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    expect(within(dialog).getByText('3 of 3')).toBeInTheDocument()
+    expect(
+      within(dialog).getAllByText('Leadership').some((node) => node.tagName === 'MARK'),
+    ).toBe(true)
+  })
+
   it('numbers a written note and its captured lines as one list while it is being edited', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
