@@ -2,6 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { FORMATS, type Format } from './noteFormats'
 import { ChevronRight } from 'lucide-react'
 import { buildSections, foldRegions, parseMarkdown, splitMatches } from './markdown'
+import { continueList } from './listContinuation'
 import { lineStartOffset, offsetTopsWithin } from './noteEditorJump'
 import {
   applyProjectedEdit,
@@ -11,6 +12,7 @@ import {
   projectText,
   toProjectedLine,
   toProjectedOffset,
+  toSourceLine,
   toSourceOffset,
 } from './noteFolds'
 
@@ -106,6 +108,7 @@ export function StageNoteEditor({
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const marksRef = useRef<HTMLDivElement>(null)
   const gutterRef = useRef<HTMLDivElement>(null)
+  const lineNumberGutterRef = useRef<HTMLDivElement>(null)
 
   /**
    * Which folds are closed, named by the source line their own heading, point, quote, or
@@ -179,21 +182,26 @@ export function StageNoteEditor({
     [ranges, regions],
   )
 
-  const [tops, setTops] = useState<readonly number[]>([])
+  const projectedLineCount = useMemo(() => projected.split('\n').length, [projected])
 
   /**
-   * Where each fold's control sits, measured off the box rather than counted as lines: the
-   * box soft-wraps, so a written line can stand several lines tall and every control below
-   * a wrapped paragraph would sit short of the line it names.
+   * One measured pixel top per line of the box, read off it rather than counted as lines
+   * times a line height: the box soft-wraps, so a written line can stand several lines
+   * tall, and anything below a wrapped paragraph would sit short of the line it names.
+   * Fold controls and line numbers both draw from this one array, keyed by projected
+   * line, rather than each measuring their own — a control's line is always a valid
+   * index into it, since `controls` only ever names lines the box is showing.
    */
+  const [tops, setTops] = useState<readonly number[]>([])
+
   const measure = useCallback(() => {
     const textarea = textareaRef.current
     if (!textarea || typeof getComputedStyle !== 'function') return
     // Nothing to measure against until the box has a width — which is every render under
     // a test runner, where there is no layout at all and every answer would be zero.
     if (!textarea.clientWidth) return
-    const offsets = controls.map((region) =>
-      lineStartOffset(projected, toProjectedLine(region.line, ranges)),
+    const offsets = Array.from({ length: projectedLineCount }, (_, line) =>
+      lineStartOffset(projected, line),
     )
     const next = offsetTopsWithin(textarea, projected, offsets)
     setTops((current) =>
@@ -201,7 +209,7 @@ export function StageNoteEditor({
         ? current
         : next,
     )
-  }, [controls, projected, ranges])
+  }, [projected, projectedLineCount])
 
   /*
    * Measuring means laying the note out a second time, off-screen, so it is done once per
@@ -368,7 +376,7 @@ export function StageNoteEditor({
         */}
         <div aria-label={`Folds in ${label}`} className="stage-note__gutter" role="group">
           <div className="stage-note__gutter-lines" ref={gutterRef}>
-            {controls.map((region, index) => {
+            {controls.map((region) => {
               const isFolded = folded.has(region.line)
               return (
                 <button
@@ -377,13 +385,31 @@ export function StageNoteEditor({
                   className={`stage-note__fold${isFolded ? ' stage-note__fold--folded' : ''}`}
                   key={region.line}
                   onClick={() => toggle(region.line)}
-                  style={{ top: `${tops[index] ?? 0}px` }}
+                  style={{ top: `${tops[toProjectedLine(region.line, ranges)] ?? 0}px` }}
                   type="button"
                 >
                   <ChevronRight aria-hidden="true" size={14} />
                 </button>
               )
             })}
+          </div>
+        </div>
+        {/*
+          A visual aid, not content: the box is what carries the note, and reading these
+          numbers out as well would just repeat it. Scrolls with the box for the same
+          reason the fold controls do.
+        */}
+        <div aria-hidden="true" className="stage-note__line-numbers">
+          <div className="stage-note__line-numbers-lines" ref={lineNumberGutterRef}>
+            {Array.from({ length: projectedLineCount }, (_, line) => (
+              <span
+                className="stage-note__line-number"
+                key={line}
+                style={{ top: `${tops[line] ?? 0}px` }}
+              >
+                {toSourceLine(line, ranges) + 1}
+              </span>
+            ))}
           </div>
         </div>
         <div className="stage-note__box">
@@ -398,12 +424,29 @@ export function StageNoteEditor({
               data-note-source={sourceId}
               {...{ [FOLD_DATA]: JSON.stringify(ranges) }}
               onChange={(event) => edit(event.target.value, event.target.selectionStart)}
-              // The mirror behind the box and the folds beside it only line up while they
-              // are scrolled with it.
+              onKeyDown={(event) => {
+                if (event.key !== 'Enter') return
+                if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return
+                const textarea = event.currentTarget
+                // A selection is replaced rather than split, and what a list continuation
+                // would even mean for text reaching across several lines is not obvious —
+                // left to the box's own native behaviour instead of guessed at here.
+                if (textarea.selectionStart !== textarea.selectionEnd) return
+                const result = continueList(projected, textarea.selectionStart)
+                if (!result) return
+                event.preventDefault()
+                edit(result.text, result.caret)
+              }}
+              // The mirror behind the box, the folds beside it, and the line numbers
+              // beside those only line up while they are scrolled with it.
               onScroll={(event) => {
                 const layer = marksRef.current
                 const gutter = gutterRef.current
+                const lineNumberGutter = lineNumberGutterRef.current
                 if (gutter) gutter.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`
+                if (lineNumberGutter) {
+                  lineNumberGutter.style.transform = `translateY(${-event.currentTarget.scrollTop}px)`
+                }
                 if (!layer) return
                 layer.scrollTop = event.currentTarget.scrollTop
                 layer.scrollLeft = event.currentTarget.scrollLeft

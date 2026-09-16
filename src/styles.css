@@ -78,6 +78,10 @@
   --fold-gutter: 1rem;
   --fold-indent: calc(var(--fold-gutter) + var(--s2));
 
+  /* The note-editor line-number column: wide enough for three digits, since its numbers
+     are absolutely positioned and so cannot size the column themselves */
+  --line-number-gutter: 1.75rem;
+
   /* The capture box: a few lines to write in, fixed so the dock cannot grow into the
      note it is pinned over */
   --capture-box: 4.5rem;
@@ -2188,15 +2192,16 @@ tbody tr:hover {
  * is transparent — it exists to be measured and painted behind, never read.
  */
 /*
- * The box, the layer of marks behind it, and the column of fold controls beside it. The
- * controls stand outside the box because a textarea has no room in its text for anything
- * that is not text, and the column is a real one rather than padding stolen from the box:
- * a chevron over the text would sit on the words it folds.
+ * The box, the layer of marks behind it, and the columns of fold controls and line
+ * numbers beside it. Both columns stand outside the box because a textarea has no room
+ * in its text for anything that is not text, and each is a real column rather than
+ * padding stolen from the box: a chevron or a number over the text would sit on the
+ * words it names.
  */
 .stage-note__source {
   position: relative;
   display: grid;
-  grid-template-columns: var(--fold-gutter) minmax(0, 1fr);
+  grid-template-columns: var(--fold-gutter) var(--line-number-gutter) minmax(0, 1fr);
   gap: var(--s2);
   min-height: 0;
 }
@@ -2254,6 +2259,28 @@ tbody tr:hover {
   padding: 0 var(--s2);
   color: var(--ink-2);
   font-size: var(--t2);
+}
+
+/* Clips the numbers to the box, matching .stage-note__gutter, so one belonging to a
+   scrolled-out line is not left drawn against the pane's edge. */
+.stage-note__line-numbers {
+  position: relative;
+  overflow: hidden;
+}
+
+.stage-note__line-numbers-lines {
+  position: absolute;
+  inset: var(--s3) 0 auto 0;
+}
+
+.stage-note__line-number {
+  position: absolute;
+  right: 0;
+  left: 0;
+  color: var(--ink-3);
+  font-size: var(--t2);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .stage-note__marks {
