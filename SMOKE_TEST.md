@@ -24,6 +24,20 @@ refusing an amount with no currency are covered by the app integration tests.
 Importing a calendar invite through the editor, replacing a rescheduled one, and refusing an invite
 with no start time are covered by the app integration tests.
 
+Logging hiring correspondence through the editor — keeping the time a message was sent rather than
+the moment it was filed, correcting that time, removing a message, refusing one with no text or no
+time, a drafted message surviving nothing when the dialog is cancelled, and finding an application
+by a word only a message holds — is covered by the app integration tests. The record's own rules —
+`at` supplied and correctable, send order against a timestamp written with an offset, and import
+canonicalization — are covered by `src/domain/domain.test.ts`.
+
+Reading a stage's messages in the prep notes dock — the collapsed toggle and its count, the day
+heading, showing only what is filed against that stage, and the find numbering the written note,
+then the messages, then the captures as one list while opening the collapsed section it steps
+into — is covered by the app integration tests. Rendering the records as a note, including keeping
+the paragraph breaks and quoted lines of a pasted message inside its own bullet, is covered by
+`src/markdown/correspondence.test.ts` and `src/markdown/dayLog.test.ts`.
+
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
 
@@ -257,7 +271,16 @@ neither a finger nor any browser automation.
     and that searching its description finds the application. On Table, sort by **Invites** and
     confirm rows with nothing coming sink to the bottom. Tick **Cancelled**, save, and confirm the
     calendar entry and the table cell read as cancelled and the card no longer shows it.
-12. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
+12. In the application editor, open **Correspondence** and choose **Add message**. Paste a real
+    multi-paragraph email into **Message**, set **Sent** to a date several days in the past, name
+    who it was from, and pick a channel from the suggestions — confirming the box still accepts a
+    word that is not on the list. Save, reopen, and confirm the date you typed came back rather
+    than the moment you saved. Confirm the hint makes that distinction clear before you have to
+    find it out. Then open Prep notes for that stage, expand **Correspondence**, and confirm the
+    message reads under the day it was sent with its paragraph breaks intact, that a long one folds
+    behind its own header line, and that a message filed against another stage does not appear.
+    Search the application list for a word only that message holds and confirm it is found.
+13. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
     Set one to **Don't know** and another back to **Not rated**, save, and confirm the Table
     Preference cell distinguishes the two. Confirm the demo's Lumen Pantry row reads
     `4.00 · People 1` while a fully even row reads a plain `4.00`, so an average cannot hide a
@@ -268,7 +291,7 @@ neither a finger nor any browser automation.
     and that the **Ratings** table lists all four dimensions with the demo's counts — People
     judged twice with a mean of 2.50, and one **Don't know**. Filter by a company you have not
     rated and confirm the table is replaced by a plain sentence rather than a grid of zeros.
-13. In the application editor, pick a currency, set an **Advertised** band and an **Expected**
+14. In the application editor, pick a currency, set an **Advertised** band and an **Expected**
     single figure, save, reopen, and confirm the band reads back in both boxes while the
     single figure leaves its **to** box empty. With the cursor in an amount box, press the up
     and down arrows and confirm the figure moves by 5,000, by 10,000 with Shift, and gains
@@ -286,12 +309,12 @@ neither a finger nor any browser automation.
     confirm a **Min** alone reads as at least that figure rather than requiring an upper end.
     Clear column filters and confirm the picker returns to **Any stage** with both boxes
     empty.
-14. Open the demo's Saffron Systems application and confirm the **History** list reads down from
+15. Open the demo's Saffron Systems application and confirm the **History** list reads down from
     **Applied** to **Accepted**, each move showing its date and how long that state held, with the
     last one still running. Move it to another state, save, reopen, and confirm one entry was
     appended. Reopen and change nothing but the notes, save, and confirm the list is unchanged.
     Open **Add application** and confirm no History list appears.
-15. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+16. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
     and confirm it. Confirm the same 19 examples are restored in `data/demo/`, now including
     the demo invites, and that `data/tracker.json` is unchanged.
 

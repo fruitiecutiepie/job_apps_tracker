@@ -6,7 +6,10 @@ This file applies to the entire repository. Keep changes within the app's curren
 
 - `src/App.tsx` coordinates shared filters, dialogs, imports, exports, persistence, and the eight views.
 - `src/StageNotesPanel.tsx` is the stage prep notes panel and `src/StageNotePane.tsx` one stage's note inside it, with the ids tying a pane to its tab in `src/stageNoteIds.ts`. `src/views/PrepNotesView.tsx` is the view that hosts the panel, restores its arrangement and holds the empty state; `src/notesArrangement.ts` is what it restores from. `src/StageNoteEditor.tsx` is the Markdown editor, `src/FindWidget.tsx` the find bar, and `src/QuickOpen.tsx` the stage picker with its matching in `src/quickOpenMatch.ts`; `src/useDialogKeyboard.ts` holds the Escape and focus-trap behavior of the application dialog, which the prep notes panel no longer shares — it is a view, and a view is not dismissable.
-- `src/markdown/` parses the supported Markdown subset into an AST and renders it as a foldable outline. `sections.ts` holds the section tree, the fold-key scheme, and the heading walks the outline and breadcrumbs read; `searchNote.ts` finds text in it.
+- `src/markdown/` parses the supported Markdown subset into an AST and renders it as a foldable outline. `sections.ts` holds the section tree, the fold-key scheme, and the heading walks the outline and breadcrumbs read; `searchNote.ts` finds text in it. `capture.ts` and `correspondence.ts` derive a Markdown note from stored records so the renderer, the outline and the find work on them unchanged; `dayLog.ts` holds the day grouping they share, which is the only part of the two that must not drift.
+- `src/correspondence.ts` turns stored messages into editor rows and mutation drafts, and
+  `src/CorrespondenceFields.tsx` is the editor's correspondence section; `src/domain/correspondence.ts` is
+  the direction configuration and the channel suggestions.
 - `src/calendar/` reads the iCalendar subset that recruiter invites arrive in; `src/invites.ts` turns those
   events into editor rows and mutation drafts, and `src/InviteFields.tsx` is the editor's invite section.
 - `src/StateHistory.tsx` renders the editor's read-only state history, with the spans it shows derived in `src/stateTimeline.ts`.
@@ -72,6 +75,60 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   that UID instead of appending beside it, keeps the `state` that invite was filed under, and ignores an
   invite whose `sequence` is behind the stored one. Two invites on one application may not share a UID.
 - An invite must have a summary and a start; `ends_at` may be absent but may not precede `starts_at`.
+- Hiring correspondence hangs off an application as `correspondence`, each message filed against one
+  `StateId`, stored oldest first by the time it was sent. It is what was exchanged with the employer — a
+  recruiter's email, a LinkedIn message, a rejection note, and what you sent back — and it is deliberately
+  not a third mode of `stage_notes`. A prep note is what you wrote before a stage and `heard` is a line
+  typed mid-conversation; a message is neither, because someone else wrote it at a moment you are only
+  recording after the fact. A message may be filed against a state the application has not reached, and
+  nothing about the message decides which stage it belongs to. The field is a mass noun and stays
+  singular; there is no such word as `correspondences`.
+- `at` is when the message was sent, and it is **supplied rather than minted** — you log on Friday what
+  arrived on Tuesday, so a timestamp taken off the clock at the moment of filing would be a claim about
+  your typing rather than about the conversation. It is the one required timestamp on a draft: a blank one
+  is refused rather than stamped now, because stamping it now silently is exactly the dishonesty this
+  record exists to end. It may also be **corrected**, which is where correspondence and `heard` part
+  company: `HeardEntry.at` may not move because an edit there is a correction to what was written down,
+  while a send time is a fact about the world you can simply have got wrong. `created_at` is when you wrote
+  the record and never moves. Both are stored because they answer different questions, which is also why
+  `HeardEntry` and `CompletedAction` need only one timestamp each.
+- `direction` is `received` or `sent` and has no third value. Half of hiring correspondence is what you
+  sent, and a log holding one side reads as a mystery; anything that is neither — a thought about the
+  process, a reminder — is `notes` or a prep note, and a third direction would reopen the misuse this
+  record was added to end. `CORRESPONDENCE_CONFIG` in `src/domain/correspondence.ts` is the only source of
+  the two ids, their labels and their order, the way `RATING_CONFIG` is for dimensions.
+- `who` is the other person — the sender of a message received, the recipient of one sent — and may be
+  absent. `HeardEntry` deliberately has no author and that is not a contradiction: a captured line comes
+  from the room its stage note already names, and asking who was speaking is a question to answer
+  mid-interview. A message has exactly one correspondent, it is in the header you are copying from, and a
+  log mixing a recruiter, a coordinator and a hiring manager cannot be read without it.
+- `channel` is free text with `CHANNEL_SUGGESTIONS` behind the editor's picker, the arrangement `source`
+  already keeps: the picker curates the vocabulary and widening it must never narrow what import accepts. A
+  closed union would be wrong the first time a message arrives by SMS, and there are no migrations here
+  that could widen one later. Unlike a currency it is not case-folded — `LinkedIn` is a name, not a code —
+  so `email` and `Email` are two values, exactly as they already are for `source`.
+- Route correspondence changes through `applyCorrespondence` or `updateApplicationCorrespondence`. A draft
+  carrying an existing id keeps that record's `created_at` while its `at`, direction, channel,
+  correspondent and text are all rewritten from the draft; a blank body drops the message, which is how the
+  editor removes a row; an unchanged list returns the same object. Correspondence never appends state
+  history, and like `ratings`, `stage_notes` and `state_events` it is absent from `ApplicationEdits`. There
+  is deliberately no append-one mutation: unlike a capture it is composed after the fact with a date and a
+  direction to choose, so it is a form with a Save, and unlike an invite it has no calendar UID forcing a
+  replace-or-append decision. Add one only alongside a control that logs a message from outside the editor,
+  since that caller has no draft list to extend.
+- Correspondence is stored in send order — `at`, then id — rather than in configured state order the way
+  invites are. Invites are read one stage at a time and their times and stages agree by construction; a log
+  is read as a timeline, and the stage a message is filed under does not predict when it was sent, since a
+  coordinator apologising for the delay on Interview 1 arrives after the Interview 2 invite.
+  `sortedCorrespondence` in `mutations.ts` and `correspondenceValue` in `validation.ts` must sort by the
+  same rule and both must fall back to the id: the validator rebuilds the array in file order, so without
+  the tiebreak a document comes back in an order it was not written in and every no-op-by-identity check
+  downstream reports a change that did not happen. Compare by parsed instant rather than by string, because
+  this is the first `at` a person supplies and one written with an offset does not sort lexically.
+- Logging a message refreshes the application's `updated_at`, which is the honest answer — you did touch
+  it — and the Stale view will say so. It appends no `state_history`, so the silence Focus and Idle measure
+  is untouched, and it never enters urgency, Focus placement, or the calendar. A message is something that
+  already happened; the calendar and the ranking carry commitments.
 - A next action may have no date. A date may not survive without a non-blank action.
 - A next action is resolved through `completeNextAction`, not by hand-clearing the field: it nulls `next_action` and `next_action_at` and appends the task to `completed_actions`. A blank action returns the same object, `deadline_at` is untouched because an external closing date is not the task, and completing an action never appends state history.
 - `completed_actions` holds carried-out next actions as records, oldest first, and is deliberately **not** appended to `notes`. The two are written differently — `notes` is prose you compose and revise, a completed action is one line the app writes the instant Done is pressed — so mixing them means neither can be edited without disturbing the other, the date has to be parsed back out of prose, and a Done pressed by mistake cannot be removed cleanly. This is the same argument `HeardEntry` already makes for captured lines.
@@ -108,6 +165,12 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Missing `state_events` on import canonicalizes to `[]`. Reject blank summaries, invalid states, malformed
   timestamps, an end before the start, a non-http(s) link, a negative sequence, duplicate ids, and duplicate
   calendar UIDs within one application.
+- Missing `correspondence` on import canonicalizes to `[]` — a document written before the log existed is
+  valid, not broken. Reject a blank body, an invalid state, an unknown direction, a malformed `at`,
+  `created_at` or `updated_at`, and duplicate ids within one application. A blank channel or correspondent
+  is dropped to `null` rather than rejected. There is deliberately no rule ordering `at` against
+  `created_at`, and none rejecting a future `at`: a message logged days after it arrived is the ordinary
+  case, and a rule enforced against the clock would be wrong in another timezone.
 - Application attachments store metadata on each application and file bytes under `{dataDir}/attachments/{applicationId}/{attachmentId}` (`data/attachments/` live, `data/demo/attachments/` demo). Missing `attachments` on import canonicalizes to `[]`. Add and remove attachments through mutations; cap each file at 25 MiB.
 - Keep view-only values derived. Never persist Kanban columns, stale status, idle status, date groups, stage durations, statistics, or filters. Do not persist overdue/upcoming buckets, calendar day maps, or stale membership because they depend on browser-local "today". Idle is named here explicitly because it reads like a status worth storing and is not: it is a function of today, so a stored flag would be wrong on the next day, in another timezone, or on a machine whose clock differs.
 - On first launch after upgrading from browser storage, migrate a valid legacy `localStorage` document into `data/tracker.json` once (live profile only), then stop using `localStorage` for the document. `localStorage` still holds per-machine interface state and only that: the theme, and the prep notes arrangement in `src/notesArrangement.ts`. Neither is the reader's data, neither belongs in an export, and the arrangement in particular would rewrite the shared file on every tab click if it were stored there. Its key carries the tracker profile, so a demo session cannot hand its refs to a live one.
@@ -118,6 +181,14 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 - `pnpm dev:demo` and `pnpm start:demo` first launch, plus confirmed demo reset, must produce the same 19 deterministic fictional records, exactly one ending in each configured state. Demo reset is unavailable on the live profile and must not write demo records into `data/tracker.json`.
 - The examples intentionally include prior history, dated and undated actions, overdue work, past and future deadlines, notes, stage prep notes, calendar invites (including one cancelled), ratings in all three states (including one whose 4.00 mean hides a 1), compensation in every comparison shape, and stale timestamps so every view has useful content.
+- The demo seeds correspondence in both directions across several applications, including one message with
+  no correspondent named, one filed against a rejected state, and one whose `at` precedes the record's
+  `created_at`, so the log written after the fact is exercised.
+- Each record family mints its demo ids from a fixed pattern, and the four variant nibbles a UUIDv7 may
+  carry — `8`, `9`, `a` and `b`, forced by `createUuidV7` — are spent between applications, invites,
+  captures and completed actions. A new family varies the version group's spare bits instead of the
+  variant. Validation only checks that an id is non-blank, so nothing else would catch a non-UUID; a test
+  asserts every demo id is UUIDv7-shaped, which pins the older four as well.
 - The demo populates every Focus group, so no heading or empty message goes unexercised. A test in `src/views/focusGroups.test.ts` asserts it; if you retune a seed's dates, check that no group empties out.
 - The compensation seeds cover every gap verdict (above, within, below, none), a target with nothing quoted against it, a quote with no target, bands and point values, and more than one currency. A test in `src/views/compensation.test.ts` asserts it; if you retune a seed's amounts, check that no cell shape stops appearing.
 - One example (`Northstar Labs`) sets `editedDaysAgo`, so its `updated_at` is newer than its last `state_history` entry. That is the only seed where silence and last-touched disagree: Focus files it under no stage change, the Kanban card and Activity column read it as Idle, while the Stale view hides it. Keep a seed with that shape, or the difference between the two measures goes untested in the demo. Its stage move sits past `IDLE_THRESHOLD_DAYS` on purpose — it is also the only seed that is Idle, so shortening that silence leaves the pill, the Activity column and the activity filter with nothing to show.
@@ -158,6 +229,19 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - The application editor shows `state_history` as a read-only **History** list, oldest first, so the order tells the story and the current state sits beside the State select that changes it. It renders only when editing: a new application has no history, and a state picked but not yet saved is deliberately absent because the list is the saved record.
 - Each entry shows how long that state held — the gap to the next move, or to now for the last one. Spans are derived on render in `stateTimeline`, never persisted, and counted in browser-local days like staleness, so two moves on one day read as `Same day` rather than a rounded fraction.
 - Stage prep notes are a top-level view, reached from the tab strip or from the Kanban card and the table row — which navigate to it rather than opening a dialog over it. What is open, how it is split, how wide the panes are and which tab is showing survive the app being closed, because the workspace is the point of a panel holding several applications at once. Arriving from a card opens only the note asked for; the fan of an application's current stage and its other noted stages (`openingLayout`) applies when there is no arrangement to restore, or every visit would pile that application's stages back up. The panel holds notes from **any application, not just the one it was opened from**: a tab is a `NoteRef` — an application and a state — and `Ctrl+P` reaches every application's notes. It opens on the application it was invoked for, that application's current stage first and then its other noted stages, so the stage you are interviewing for is the one you land on. Global search matches stage note text through `search_text`.
+- A pane's dock holds two collapsible sections, both collapsed by default: **Correspondence** above, then
+  **What they said**. They read in that order down the pane, and the find numbers them in that order after
+  the written note — `matchBase`, then `correspondenceMatchBase`, then `heardMatchBase`. Only the captures
+  have a carve-out (lines open for correcting sit out, each being in a box with no highlight to step onto);
+  correspondence cannot be written from the panel at all, so no mode of it leaves one of its matches with
+  nowhere to send a caret. Both sections are counted whether or not they are open, so stepping onto a match
+  opens the section holding it — from the step handler, never from an effect on the cursor, which moves on
+  every keystroke in the find box.
+- The pane shows only the messages filed against **that stage**, because filing is a judgement the reader
+  made and the panel honours it. The application editor is therefore the only place the whole log reads in
+  order, and the only place it can be written. Correspondence is also invisible to `src/notesTree.ts`, which
+  is built from `stage_notes`: a stage holding messages and no prep note is reachable by `Ctrl+P` but is not
+  in the tree. That is a known gap, not an oversight — the tree is a list of notes to go back to.
 - The notes area is a tree of panes, held in `src/notesLayout.ts` — a pure module with no React in it, so the arrangement can be reasoned about and tested without rendering. Splits nest to any depth, and a split inserted along an axis its parent already runs on joins that parent as a sibling rather than nesting, which is what keeps three panes in a row one level deep instead of three. Each pane scrolls on its own so a long note does not drag the note beside it along. A note may be open in several panes but at most once in each, so a tab is identified by the pane **and** the note — `tabId` — while the note's own key still identifies its text. Reading one note beside another part of itself is what a split is for; two tabs in one strip showing the same note would be two ways to the same place. Everything numbering or addressing what is on screen keys off the tab: the element ids in `src/stageNoteIds.ts`, the find's `perTab` and its `data-match-id` ordinals. Everything about a note's content keys off the note: `drafts`, `editing`, `captureOpen`, the captures. That is why typing into one copy shows in the other, and why each copy still has ids of its own.
 - The focused pane is the one the outline, breadcrumbs, status bar, and find act on, and it is the only one whose editor may take the caret. Clicking or focusing anywhere in a pane focuses it.
 - The slot a drag is aimed at tints the tab as well as the slot. An open tab paints its own opaque `--surface`, which sits over the slot behind it, so marking the slot alone showed the drop everywhere except on the tab a pane was showing — and never at all in a pane holding one tab, since that tab is always the open one. The rule answering it carries the same specificity, so it has to stay below `.panel__tab--open` in the file; a `styles.test.ts` assertion pins that order. The active tab keeps its underline through the tint, so which pane is focused is still legible mid-drag.
@@ -278,6 +362,13 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - `describePreference` is the only place preference phrasing is built, the way `describeDue` is the only place date phrasing is built. The table column and the Kanban card both read it, so two views cannot describe the same ratings differently, and the table's column filter still matches its own rendered text.
 - Preference is never multiplied or added into the urgency score and never affects Focus placement. Urgency already carries a stage factor, so a second factor compounds and a deadline today on a poorly rated application loses to one ten days out that happens to be rated well. Regression tests assert `urgencyFor`, `rankByUrgency` and `focusGroups` are unchanged by ratings, and `focusGroups.test.ts` passes untouched as the empirical proof that placement is date-driven only. Order within a group and display are the only things preference is allowed to touch.
 - Completed actions **are** in `search_text`: they are prose you wrote, and before Done had a field of its own they lived in `notes` and were already matched. Every save rebuilds the indexes unconditionally through `refreshTrackerDatabase`, so the addition takes effect on first save; only a document that is loaded and never saved keeps the older text.
+- Correspondence **is** in `search_text`, like completed actions and for the same reason: it is prose, and
+  until it had a field of its own it was being typed into prep notes, which are already indexed — leaving
+  it out would make filing a recruiter's email properly a search regression. The correspondent's name goes
+  in with the text, because a name is what a reader searches by. The channel does not: it holds one of a
+  handful of words on most records, so indexing it would make `email` match every application you have ever
+  emailed. That is the test `source` passes — one value per application, so it partitions the collection —
+  and the one ratings and compensation fail.
 - Ratings are deliberately absent from `search_text`. They are numbers, not prose: indexing them would make a search for `work` match every rated application and `4` match anything holding a 4. `indexesAreStale` cannot detect `search_text` content drift either, so existing documents would under-match forever. The Preference column filters its own rendered text instead.
 - Only live applications are ranked. `classifyLifecycle` treats every `rejectedStateFor` counterpart as rejected and `accepted`/`no_openings` as closed; both are omitted from the ranking rather than scored low. This is view grouping only and must not restrict moves.
 - Stage weight comes from position among the live states, not the raw `STATE_CONFIG` index, because the configured order interleaves live and rejected states.
