@@ -2213,11 +2213,17 @@ tbody tr:hover {
   min-height: 0;
 }
 
-/* Clips the controls to the box, so one belonging to a line scrolled out of view is not
-   left drawn against the pane's edge. */
+/*
+ * Clips the controls to the box, so one belonging to a line scrolled out of view is not
+ * left drawn against the pane's edge. Bordered like the box itself, transparently: the
+ * box's own border sits above its padding, so without a border here of the same width
+ * every control would measure one line high before where the text it names actually
+ * starts — the same reasoning .stage-note__marks below is bordered for.
+ */
 .stage-note__gutter {
   position: relative;
   overflow: hidden;
+  border: 1px solid transparent;
 }
 
 /*
@@ -2262,10 +2268,12 @@ tbody tr:hover {
 }
 
 /* Clips the numbers to the box, matching .stage-note__gutter, so one belonging to a
-   scrolled-out line is not left drawn against the pane's edge. */
+   scrolled-out line is not left drawn against the pane's edge — bordered the same way
+   and for the same reason. */
 .stage-note__line-numbers {
   position: relative;
   overflow: hidden;
+  border: 1px solid transparent;
 }
 
 .stage-note__line-numbers-lines {
@@ -2273,12 +2281,22 @@ tbody tr:hover {
   inset: var(--s3) 0 auto 0;
 }
 
+/*
+ * Its own top is measured off the box's text, so it has to sit the same distance into
+ * its own line as that text does into the box's — which needs the same font-size and
+ * line-height, not only the same top. A smaller size or a shorter line here would still
+ * land at the right pixel, but centre its glyph higher within it, drifting above the
+ * line it names. Weight matters too: .stage-note__marks is stated for the same reason,
+ * being outside .field and so not heir to the 500 it sets there.
+ */
 .stage-note__line-number {
   position: absolute;
   right: 0;
   left: 0;
   color: var(--ink-3);
-  font-size: var(--t2);
+  font-size: var(--t3);
+  font-weight: 500;
+  line-height: 1.5;
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
