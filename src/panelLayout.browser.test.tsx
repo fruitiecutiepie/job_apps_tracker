@@ -553,6 +553,18 @@ describe('the panel in a real browser', () => {
     expect(box.height).toBeGreaterThanOrEqual(3)
   })
 
+  it('stands the sidebar\u2019s switch over the sidebar', async () => {
+    renderPanel()
+
+    const toggle = screen.getByRole('button', { name: 'Sidebar' }).getBoundingClientRect()
+    const sidebar = document.querySelector('.panel__sidebar')!.getBoundingClientRect()
+
+    // Not filed with the controls on the right, where it acts at a distance on the far
+    // side of the panel. A switch belongs by the thing it switches.
+    expect(toggle.left).toBeGreaterThanOrEqual(sidebar.left - 1)
+    expect(toggle.right).toBeLessThanOrEqual(sidebar.right + 1)
+  })
+
   it('meets the window on every side it can', async () => {
     renderPanel()
 

@@ -2246,6 +2246,23 @@ export function StageNotesPanel({
       tabIndex={-1}
     >
         <div className="panel__titlebar">
+          {/*
+            * At the left end, over the column it opens and closes. It had been filed with
+            * the controls on the right, where it acts at a distance on the far side of the
+            * panel: a switch belongs by the thing it switches, and this one is pointing at
+            * the edge it lives on.
+            */}
+          <button
+            aria-keyshortcuts={shortcutKeys('B')}
+            aria-label="Sidebar"
+            aria-pressed={sidebarOpen}
+            className="icon-button panel__chrome-button panel__chrome-button--sidebar"
+            onClick={toggleSidebar}
+            title={`${sidebarOpen ? 'Hide' : 'Show'} the sidebar (${shortcutLabel('B')})`}
+            type="button"
+          >
+            <PanelLeft aria-hidden="true" size={16} />
+          </button>
           {/* The view is already named by the tab that reached it and by the heading over
               it, so the title bar carries only what the panel itself is showing. */}
           <p className="panel__subject">{title}</p>
@@ -2290,17 +2307,6 @@ export function StageNotesPanel({
             type="button"
           >
             <Search aria-hidden="true" size={16} />
-          </button>
-          <button
-            aria-keyshortcuts={shortcutKeys('B')}
-            aria-label="Sidebar"
-            aria-pressed={sidebarOpen}
-            className="icon-button panel__chrome-button"
-            onClick={toggleSidebar}
-            title={`${sidebarOpen ? 'Hide' : 'Show'} the sidebar (${shortcutLabel('B')})`}
-            type="button"
-          >
-            <PanelLeft aria-hidden="true" size={16} />
           </button>
           <ShortcutsHelp />
         </div>

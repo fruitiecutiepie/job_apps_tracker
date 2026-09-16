@@ -2724,6 +2724,13 @@ tbody tr:hover {
   color: var(--ink-2);
 }
 
+/* Lined up over the sidebar's own column rather than floating at the start of the title,
+   so the switch sits above the thing it switches. */
+.panel__chrome-button--sidebar {
+  flex: none;
+  margin-right: var(--s2);
+}
+
 .panel__chrome-button--labelled {
   gap: var(--s2);
   min-width: 0;

@@ -827,8 +827,9 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
 
-    // In the title bar with Split and Find rather than in a rail of its own: a column kept
-    // permanently to hold one button costs more than the button is worth.
+    // In the title bar rather than in a rail of its own — a column kept permanently to hold
+    // one button costs more than the button is worth — and at its left end, over the column
+    // it opens and closes.
     const toggle = within(panel).getByRole('button', { name: 'Sidebar' })
     expect(toggle.closest('.panel__titlebar')).not.toBeNull()
     expect(panel.querySelector('.panel__rail')).toBeNull()
