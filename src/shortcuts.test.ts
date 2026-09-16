@@ -26,7 +26,7 @@ describe('shortcut labels', () => {
   it('writes the extra modifiers the way each platform writes them', () => {
     // Read through the real `navigator.platform`, so this asserts the shape rather than
     // the machine: whichever branch runs, the modifier and the key are both in the label.
-    const moveTab = PANEL_SHORTCUTS.find((shortcut) => shortcut.shift)!
+    const moveTab = PANEL_SHORTCUTS.find((shortcut) => shortcut.key === '←/→')!
     const label = shortcutLabel(moveTab)
     expect(label).toContain('←/→')
     expect(label === `⌘⇧←/→` || label === 'Ctrl+Shift+←/→').toBe(true)
@@ -39,8 +39,9 @@ describe('shortcut labels', () => {
       'P',
       'B',
       'K',
+      'X',
       '←/→',
-      '←/→',
+      ',/.',
     ])
     for (const shortcut of PANEL_SHORTCUTS) expect(shortcut.description).not.toBe('')
   })

@@ -1,4 +1,4 @@
-export { capturedMarkdown, CAPTURE_SECTION } from './capture'
+export { capturedMarkdown, CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE } from './capture'
 export { MarkdownNotes } from './MarkdownNotes'
 export { inlineText, parseInline, parseMarkdown } from './parseMarkdown'
 export type { BlockNode, InlineNode, ListBlock, ListItem } from './parseMarkdown'

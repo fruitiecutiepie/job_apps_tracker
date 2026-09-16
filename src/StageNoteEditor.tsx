@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { Bold, ChevronRight, Heading2, Italic, List } from 'lucide-react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { FORMATS, type Format } from './noteFormats'
+import { ChevronRight } from 'lucide-react'
 import { buildSections, foldRegions, parseMarkdown, splitMatches } from './markdown'
 import { lineStartOffset, offsetTopsWithin } from './noteEditorJump'
 import {
@@ -35,22 +36,16 @@ interface StageNoteEditorProps {
    * whichever mode the note is in.
    */
   revealKeys?: Set<string>
+  /**
+   * Where to leave the formatter, for whoever is drawing the buttons. Formatting reaches
+   * into this box's own selection and its own fold projection, so it cannot be lifted out
+   * of here — but the buttons can, and in the panel they sit in the note's header row
+   * rather than in a strip of their own over the text. Given one, this draws no toolbar.
+   */
+  formatRef?: MutableRefObject<((entry: Format) => void) | null>
+  /** Hands the fold-all control upward, the way the reading view does. */
+  onFoldControls?: (controls: { allFolded: boolean; toggle: () => void } | null) => void
 }
-
-interface Format {
-  id: string
-  title: string
-  icon: typeof Bold
-  wrap?: string
-  prefix?: string
-}
-
-const FORMATS: readonly Format[] = [
-  { id: 'bold', title: 'Bold', icon: Bold, wrap: '**' },
-  { id: 'italic', title: 'Italic', icon: Italic, wrap: '_' },
-  { id: 'heading', title: 'Heading', icon: Heading2, prefix: '## ' },
-  { id: 'bullet', title: 'Bullet point', icon: List, prefix: '- ' },
-]
 
 /** Toggles a line prefix on every line the selection touches. */
 function applyPrefix(value: string, start: number, end: number, prefix: string) {
@@ -105,6 +100,8 @@ export function StageNoteEditor({
   matchBase = 0,
   currentMatch = null,
   revealKeys,
+  formatRef,
+  onFoldControls,
 }: StageNoteEditorProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null)
   const marksRef = useRef<HTMLDivElement>(null)
@@ -293,8 +290,44 @@ export function StageNoteEditor({
     })
   }
 
+  /*
+   * Reassigned after every render rather than passed as a value: formatting closes over
+   * the note, the fold projection and the caret, all of which move as the note is typed
+   * into. A ref keeps the buttons drawing the same either way, since they only read it
+   * when one is pressed.
+   */
+  useEffect(() => {
+    if (!formatRef) return
+    formatRef.current = format
+    return () => {
+      formatRef.current = null
+    }
+  })
+
+  const regionsRef = useRef(regions)
+  // Written after the render rather than during it: the callback below is read when a
+  // button is pressed, never while drawing, and keeping it stable is what stops the
+  // report upward from being a new value on every render — and so a loop.
+  useEffect(() => {
+    regionsRef.current = regions
+  }, [regions])
+  const toggleFoldAll = useCallback(() => {
+    setFolded((current) => {
+      const every = regionsRef.current.length > 0
+        && regionsRef.current.every((region) => current.has(region.line))
+      return every ? new Set() : new Set(regionsRef.current.map((region) => region.line))
+    })
+  }, [])
+
+  useEffect(() => {
+    if (!onFoldControls) return
+    onFoldControls(controls.length > 0 ? { allFolded, toggle: toggleFoldAll } : null)
+    return () => onFoldControls(null)
+  }, [allFolded, controls.length, onFoldControls, toggleFoldAll])
+
   return (
     <div className="stage-note__editor">
+      {formatRef ? null : (
       <div className="stage-note__toolbar" role="group" aria-label={`${label} formatting`}>
         {FORMATS.map((entry) => (
           <button
@@ -319,6 +352,7 @@ export function StageNoteEditor({
           </button>
         ) : null}
       </div>
+      )}
       {/*
         The mirror sits outside the label, not inside it. A label names its control by its
         content, so a mirror within it would read the whole note out as the box's name.
@@ -382,17 +416,6 @@ export function StageNoteEditor({
           </label>
         </div>
       </div>
-      <p className="stage-note__hint">
-        Markdown: <code>##</code> heading, <code>-</code> bullet (indent to nest),
-        {' '}<code>&gt;</code> quote (<code>&gt;&gt;</code> to nest one inside another),
-        {' '}<code>```</code> fenced code, <code>**bold**</code>, <code>_italic_</code>,
-        {' '}<code>`code`</code>, <code>[link](https://…)</code>. A pasted
-        {' '}<code>https://…</code> URL or email address links itself, and
-        {' '}<code>[to a heading](#heading)</code> jumps within the note.
-        Headings, bullets with sub-points, quotes, and code blocks fold here as they do in
-        the reading view — from the chevrons beside them, or all at once. A line straight
-        after a <code>&gt;</code> joins that quote — leave a blank line to end it.
-      </p>
     </div>
   )
 }

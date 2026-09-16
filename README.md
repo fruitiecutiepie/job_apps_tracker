@@ -7,7 +7,7 @@ On first launch, `pnpm dev` creates an empty `data/tracker.json`. Use `pnpm dev:
 ## Features
 
 - Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, the next upcoming invite and attachment filenames on cards, a state-selector fallback, and muted styling with an `Idle 30 days` label for live applications that have not changed stage in 30 days
-- Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first — and the panel holds notes from several applications at once, in panes you can split
+- Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first — and **Prep notes** is a view of its own, holding notes from several applications at once in panes you can split, arranged the way you left it the last time you had it open
 - Captured lines per stage, recording what an interviewer tells you as you are told it, stored the moment they are entered and pinned on screen under the prep note however far it scrolls
 - Optional deadline per application, recording an external closing or decision date separately from your own next action
 - Preference ranking from four subjective ratings, discounted for what you have not judged yet, with the weakest dimension named so a healthy average cannot hide a dealbreaker, shown on the table row and the Kanban card, summarised across the collection on Statistics, and used to break ties within a Focus group
@@ -42,7 +42,7 @@ To work with the 19 example applications instead:
 pnpm dev:demo
 ```
 
-That command uses `data/demo/tracker.json` and `data/demo/attachments/`, separate from live data.
+That command uses `data/demo/tracker.json` and `data/demo/attachments/`, separate from live data, and serves on port 5273 so it can run alongside `pnpm dev` on its own 5173.
 
 For a production build with the same file-backed database:
 
@@ -51,7 +51,7 @@ pnpm build
 pnpm start
 ```
 
-Use `pnpm start:demo` after a build to preview against the demo database.
+Use `pnpm start:demo` after a build to preview against the demo database. It serves on port 4273, leaving `pnpm start` on its own 4173.
 
 ## Using the app
 
@@ -101,9 +101,13 @@ Google Calendar or Outlook when you edit an invite here.
 
 ### Prepare for a stage
 
-Select **Prep notes** on a Kanban card or table row to record what you need for a stage: questions to ask, stories to tell, names to remember. Each stage of the pipeline holds its own notes, and the panel opens with the application's current stage first so it is the first thing on screen during the interview.
+Select **Prep notes** on a Kanban card or table row to record what you need for a stage: questions to ask, stories to tell, names to remember. Each stage of the pipeline holds its own notes, and the view opens with the application's current stage first so it is the first thing on screen during the interview.
 
-The panel is not limited to the application you opened it from. `Ctrl`/`Cmd+P` reaches every application's notes, so you can put one company's Interview 1 beside another's and prepare them together. Every tab is named for the company it belongs to, and each pane carries its own strip of tabs.
+Prep notes is reached from the header, next to **Add application**, rather than from the view strip — the seven views there are ways of looking at your applications, and this is a workspace. It is a toggle: press it and the notes come up over whatever you were reading, press it again and they go, leaving that view exactly where it was. Picking a view from the strip puts them away too. What you have open stays open: the notes, the panes you split them into, how wide those panes are and which tab you were reading are all there when you come back — including after you close the app. Leaving for the board and returning does not rearrange anything, and closing the last tab leaves you on an empty workspace rather than dropping you somewhere else. An application you delete takes its tabs with it.
+
+The sidebar holds both ways of getting around, one above the other: **Outline** is the headings of the note you are reading, and **All prep notes** is every note you have written, grouped by the stage it prepares for — Interview 2 across every company, then Offer, and so on down the pipeline. Stages you have written nothing for are not listed, and a stage holding only what you were told says so. The search at the top of that panel filters the tree as you type, over what you wrote and what you were told, and matches company and role too. A matching note lists the words around each hit underneath it, with the words you searched for marked, so you can see why it matched without opening it. Pick one and the note opens with the find bar already running on those words — the match highlighted, and the fold holding it opened, exactly as `Ctrl`/`Cmd+F` would. Each half folds away from its own heading, and the handle between them decides how they share the column. Drag the sidebar's outer edge to widen it, or past its narrowest to put it away — and drag that same edge back out to bring it back at the width you left. Pick a row and the note opens in the pane you are reading, or drag it onto the pane you want it in — or onto a pane's edge to split a new one open there, the same drag the tabs answer. A note always opens in the pane you are reading, so asking for one another pane is showing gives you a copy of your own — one long note can be read in two panes at once, scrolled to different places, and typing into either shows in both, because it is one note. Asking the pane you are reading for a note it already has just shows it. Without a pointer, pick the row and then use the tab-move shortcuts below. That is a different question from the search on the board, which finds applications, and from `Ctrl`/`Cmd+F`, which searches only what is already open. **Open** in the panel's title bar (`Ctrl`/`Cmd+P`) reaches any stage of any application, including ones you have written nothing for yet — the one thing the tree cannot do — and **Sidebar** beside it shows and hides the whole column. The other controls up there are icons; hover one to see what it is and the shortcut it shares. **Prep notes** in the header is filled in while the workspace is up, so you can see at a glance whether you are in it.
+
+The view is not limited to the application you opened it from. `Ctrl`/`Cmd+P` reaches every application's notes, so you can put one company's Interview 1 beside another's and prepare them together. Every tab is named for the company it belongs to, and each pane carries its own strip of tabs. The search and filter controls in the header narrow the board, not this: a filter is not a reason to take a note you are writing away.
 
 Add notes for a stage you have not reached yet with **Add notes for another stage**—useful for drafting offer questions while you are still interviewing. Clearing a stage's notes removes them when you save. Prep notes are searchable from the global search box.
 
@@ -111,7 +115,7 @@ Notes are written in Markdown. A stage that already has notes opens as a rendere
 
 ### Capture what you are told
 
-Every stage has a **Heard** log docked beneath its prep note, holding what you were told during that stage. Type a line in the capture box and press Enter: it is stored immediately—there is no Save to remember mid-conversation, and nothing to lose by closing the panel. `Ctrl`/`Cmd+K` puts the caret in the box from anywhere in the panel, and in a split panel it lands in the pane you are reading.
+Every stage has a **What they said** log docked beneath its prep note, holding what you were told during that stage — the note above it is what you wrote before, this is what you heard. Type a line in the capture box and press Enter: it is stored immediately—there is no Save to remember mid-conversation, and nothing to lose by closing the panel. `Ctrl`/`Cmd+K` puts the caret in the box from anywhere in the panel, and in a split panel it lands in the pane you are reading.
 
 The dock stays on screen however far the prep note above it scrolls, so what you have been told and the box you add to are both always in view. The log takes what it needs and then scrolls on its own, holding the newest line in sight. Lines are grouped under the day they were captured on, and each carries the time it was captured. The date is said once, at the head of the day, rather than on every line. Each line is Markdown, so `**bold**` and links work in it.
 
@@ -191,19 +195,20 @@ When nothing is configured and the server looks like it is on a remote host, the
 
 ### Keyboard shortcuts
 
-The stage notes panel binds five shortcuts while it is open. They are bound to the document rather than to a particular field, so they work wherever the caret is in the panel. You do not have to come back here for them: the keyboard button in the panel's title bar lists all five, and the **Split**, **Go to stage**, **Find**, and outline controls each name the shortcut they share, in a tooltip and to a screen reader. The panel answers `Ctrl` and `Cmd` alike whatever you are on; the labels show the one your own platform writes.
+The stage notes panel binds seven shortcuts while it is open. Most are bound to the document rather than to a particular field, so they work wherever the caret is in the panel; the two that a text box has its own meaning for stand aside while you are typing. You do not have to come back here for them: the keyboard button in the panel's title bar lists them all, and each control up there names itself and the shortcut it shares when you hover it. The panel answers `Ctrl` and `Cmd` alike whatever you are on; the labels show the one your own platform writes.
 
-- `Ctrl`/`Cmd+\` opens a second pane beside the one you are reading, on the first other note that is open, and folds the panes back into one when pressed again. Unsplitting gathers the tabs rather than closing them: a pane is where a note is shown, not what keeps it open. With only one note open there is nothing to split to, so nothing happens.
-- `Ctrl`/`Cmd+F` opens the find bar. It deliberately takes over the browser's own find, which cannot see text inside a folded note. `Enter` steps to the next match and `Shift+Enter` to the previous; `Escape` closes the bar rather than the panel.
+- `Ctrl`/`Cmd+\` opens another pane, and lands in a small menu where `←`, `→`, `↑` or `↓` says which side it goes. The pane opens empty, waiting for a note: open one into it with the picker, pick one from the tree beside it, or drag a tab across. The same menu is on the Split button in the title bar, and its last item folds every pane back into one.
+- `Ctrl`/`Cmd+F` opens the find bar. It deliberately takes over the browser's own find, which cannot see text inside a folded note. `Enter` steps to the next match and `Shift+Enter` to the previous; `Escape` closes the bar. It does not close the view — there is nothing to dismiss, and the header is how you leave.
 - `Ctrl`/`Cmd+P` opens the note picker. It reaches every stage of the application you are working on, plus every note already written and every application's current stage, so a second company's notes are a few keystrokes away. Type to narrow it, `ArrowUp` and `ArrowDown` move through the results, `Enter` opens the highlighted note—reopening one you had closed, or adding a stage you have not reached—and `Escape` dismisses it.
-- `Ctrl`/`Cmd+B` shows and hides the outline sidebar.
+- `Ctrl`/`Cmd+B` shows and hides the sidebar, with the outline and every note in it.
 - `Ctrl`/`Cmd+K` puts the caret in the capture box, and in a split panel it lands in the pane you are reading.
-- `Ctrl`/`Cmd+Shift+←`, `→`, `↑` and `↓` send the tab you are reading towards that edge: into the pane already there, or into a new one split open when there is none. Moving the last tab out of a pane closes that pane and folds the split back.
-- `Ctrl`/`Cmd+Alt+←` and `→` reorder the tab you are reading within its own pane, wrapping at either end.
+- `Ctrl`/`Cmd+Shift+X` closes the note you are reading, leaving its notes where they are. Not `Ctrl`/`Cmd+W`: that closes the browser's own tab, and a page in a tab cannot take the key from it, so answering it would cost you the tab and the note at once. If you do press it by habit, the workspace comes back as you left it when you reopen the page.
+- `Ctrl`/`Cmd+Shift+←`, `→`, `↑` and `↓` send the tab you are reading towards that edge: into the pane already there, or into a new one split open when there is none. Moving the last tab out of a pane closes that pane and folds the split back. These stand aside while you are typing into a note, where the same keys select to the start and end of a line.
+- `Ctrl`/`Cmd+Shift+,` and `.` move that tab along its own strip, wrapping at either end.
 
 Tabs can also be dragged: within a strip to reorder them, onto another pane's strip to move them across, or onto the edge of any pane to split a new one open there. This works with a finger as well as a mouse — hold a tab for a moment to pick it up, the way any list you can reorder on a phone works, then carry it where you want it. A swipe that starts moving straight away scrolls the strip instead. Every arrangement a drag can reach has a keyboard equivalent above, so the panel does not need a pointer.
 
-Panes are resizable. Drag the handle between two of them, or focus it and use the arrow keys — `←` and `→` between side-by-side panes, `↑` and `↓` between stacked ones. A pane is held at a readable minimum rather than being allowed to collapse out of sight. Widths last as long as the panel is open and are never saved: how you arranged the panes is not part of a note.
+Panes are resizable. Drag the handle between two of them, or focus it and use the arrow keys — `←` and `→` between side-by-side panes, `↑` and `↓` between stacked ones. A pane is held at a readable minimum rather than being allowed to collapse out of sight. Widths are remembered along with the rest of the arrangement, on this browser and this machine only: how you arranged the panes is your workspace, not part of a note, so it never travels with an export.
 
 Elsewhere, `Escape` closes any dialog, `Tab` cycles within it rather than escaping to the page behind, and the compensation amount fields take arrow keys to nudge a figure by 5,000—10,000 with `Shift`.
 
