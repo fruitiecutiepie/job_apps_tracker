@@ -2,6 +2,12 @@
  * The prep notes panel's keyboard shortcuts, described once so the listener that binds
  * them, the header buttons that duplicate them, and the list that teaches them cannot
  * drift apart. A shortcut nobody can find is a shortcut nobody has.
+ *
+ * What a binding may be is decided by two other keyboards before this one. The browser
+ * takes some combinations before the page sees them at all — `Ctrl/Cmd+W` closes the tab,
+ * and on macOS `⌘⌥←/→` walks between browser tabs, which is why neither is here. And a
+ * text box takes others while it has the caret: `⌘⇧←` selects to the start of a line, so
+ * the arrows below are answered only when nothing is being typed into.
  */
 
 /** One binding: the key pressed with the platform modifier, and what it does. */
@@ -36,8 +42,8 @@ export const PANEL_SHORTCUTS: readonly Shortcut[] = [
   { key: 'B', description: 'Show and hide the sidebar' },
   { key: 'K', description: 'Put the caret in the capture box' },
   {
-    key: 'W',
-    alt: true,
+    key: 'X',
+    shift: true,
     description: 'Close the note you are reading',
   },
   {
@@ -47,9 +53,9 @@ export const PANEL_SHORTCUTS: readonly Shortcut[] = [
     description: 'Move the tab you are reading to the pane beside it',
   },
   {
-    key: '←/→',
-    domKeys: ['ArrowLeft', 'ArrowRight'],
-    alt: true,
+    key: ',/.',
+    domKeys: [',', '.'],
+    shift: true,
     description: 'Reorder the tab you are reading within its pane',
   },
 ]

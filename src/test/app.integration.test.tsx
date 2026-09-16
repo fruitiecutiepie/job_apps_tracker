@@ -605,13 +605,13 @@ describe('job applications tracker', () => {
     expect(within(panel).getAllByRole('tab')).toHaveLength(3)
     expect(within(panel).getByRole('tab', { selected: true })).toHaveTextContent('Interview 2')
 
-    await user.keyboard('{Control>}{Alt>}w{/Alt}{/Control}')
+    await user.keyboard('{Control>}{Shift>}X{/Shift}{/Control}')
 
     expect(within(panel).getAllByRole('tab')).toHaveLength(2)
     expect(within(panel).queryByRole('tab', { name: /Interview 2/ })).not.toBeInTheDocument()
   })
 
-  it('closes the note when Option rewrites the key, as macOS does', async () => {
+  it('closes the note whichever case the key arrives in', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -620,31 +620,15 @@ describe('job applications tracker', () => {
     expect(within(panel).getAllByRole('tab')).toHaveLength(3)
 
     /*
-     * What a Mac actually sends for ⌘⌥W. Option is a layout modifier there, so `key` is
-     * the character it produces — `∑` on a US layout — and only `code` still says which
-     * physical key was pressed. Dispatched rather than typed because neither user-event
-     * nor a browser driver reproduces that translation: both set `key` to the letter, so
-     * a test driving them passes while the binding does nothing on the machine it is for.
+     * Shift is not a layout modifier, so the key is the key — it just arrives capitalised.
+     * This binding carried Alt to dodge the browser's own `Ctrl/Cmd+W`, and Alt on macOS
+     * rewrote it into `∑`, which took a match on `code` to read back and then took the
+     * binding away from anyone whose W is not where QWERTY keeps it.
      */
-    fireEvent.keyDown(document, { key: '∑', code: 'KeyW', metaKey: true, altKey: true })
+    fireEvent.keyDown(document, { key: 'X', code: 'KeyX', metaKey: true, shiftKey: true })
 
     expect(within(panel).getAllByRole('tab')).toHaveLength(2)
     expect(within(panel).queryByRole('tab', { name: /Interview 2/ })).not.toBeInTheDocument()
-  })
-
-  it('closes the note on a layout where W is not where QWERTY keeps it', async () => {
-    const user = userEvent.setup()
-    await renderLoadedApp()
-
-    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
-    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
-
-    // AZERTY puts W where QWERTY puts Z, so the key someone presses to type a `w` reports
-    // `code: 'KeyZ'`. Matching only the physical position would leave them without the
-    // binding, the mirror of the bug matching only the character left macOS with.
-    fireEvent.keyDown(document, { key: 'w', code: 'KeyZ', ctrlKey: true, altKey: true })
-
-    expect(within(panel).getAllByRole('tab')).toHaveLength(2)
   })
 
   it('leaves a bare close binding to the browser, whose own it is', async () => {
@@ -1547,11 +1531,11 @@ describe('job applications tracker', () => {
       'Ctrl+B',
       'Ctrl+K',
       // Closing carries Alt because a bare Ctrl/Cmd+W belongs to the browser.
-      'Ctrl+Alt+W',
+      'Ctrl+Shift+X',
       // The two that arrange the panes carry a second modifier, and each covers the pair
       // of arrows as one row rather than two that would have to be worded twice.
       'Ctrl+Shift+←/→',
-      'Ctrl+Alt+←/→',
+      'Ctrl+Shift+,/.',
     ])
     expect(within(list).getByText('Put the caret in the capture box')).toBeInTheDocument()
     expect(
@@ -2316,6 +2300,33 @@ describe('job applications tracker', () => {
     await user.click(within(panel).getByRole('button', { name: 'Split' }))
     await user.click(within(panel).getByRole('button', { name: 'Collapse to one pane' }))
     expect(panes()).toHaveLength(1)
+  })
+
+  it('leaves the arrows to the note being written in', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    await splitPane(user, panel)
+    const tabsIn = (pane: number) =>
+      within(within(panel).getAllByRole('tablist')[pane]).queryAllByRole('tab').length
+    const before = [tabsIn(0), tabsIn(1)]
+
+    // In a box being typed into, ⌘⇧← selects to the start of the line. That is what the
+    // reader means there, and taking it cost them the selection and moved a tab they were
+    // not thinking about.
+    await user.click(within(panel).getAllByRole('button', { name: /^Edit / })[0])
+    const box = within(panel).getAllByRole('textbox')[0]
+    await user.click(box)
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+
+    expect([tabsIn(0), tabsIn(1)]).toEqual(before)
+
+    // Out of the box, the same keys move the tab: the panel has the keyboard back.
+    await user.click(within(panel).getAllByRole('tab')[0])
+    await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
+    expect([tabsIn(0), tabsIn(1)]).not.toEqual(before)
   })
 
   it('opens a pane with the shortcut and an arrow, without reaching for the menu', async () => {
@@ -3580,7 +3591,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
 
-    await user.keyboard('{Control>}{Alt>}{ArrowRight}{/Alt}{/Control}')
+    await user.keyboard('{Control>}{Shift>}>{/Shift}{/Control}')
     expect(tabNames(dialog)).toEqual([
       'Interview 1',
       'Interview 2',
@@ -3588,7 +3599,7 @@ describe('job applications tracker', () => {
     ])
 
     // Wraps rather than stopping, so the tab can reach either end from either end.
-    await user.keyboard('{Control>}{Alt>}{ArrowLeft}{/Alt}{/Control}')
+    await user.keyboard('{Control>}{Shift>}<{/Shift}{/Control}')
     expect(tabNames(dialog)).toEqual([
       'Interview 2',
       'Interview 1',
@@ -3637,7 +3648,7 @@ describe('job applications tracker', () => {
     // And the tab itself carries both bindings, so they are not only in the hint.
     const tab = within(strip).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' })
     expect(tab.getAttribute('aria-keyshortcuts')).toContain('Shift+ArrowRight')
-    expect(tab.getAttribute('aria-keyshortcuts')).toContain('Alt+Meta+ArrowRight')
+    expect(tab.getAttribute('aria-keyshortcuts')).toContain('Meta+Shift+.')
   })
 
   it('resizes a split from the keyboard, since jsdom has no layout to drag against', async () => {

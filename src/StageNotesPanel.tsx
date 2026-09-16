@@ -109,13 +109,31 @@ const TABS_HINT_ID = 'stage-notes-tabs-hint'
  * two of these carry Alt, so a lookup by modifier alone would hand one of them the other's
  * label the moment a third Alt binding arrived — which is exactly what it did.
  */
+/** Whether the keyboard belongs to a box being typed into rather than to the panel. */
+function isTyping(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return target.isContentEditable
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLInputElement
+}
+
 const byKey = (key: string, modifier: 'shift' | 'alt' | null) =>
   PANEL_SHORTCUTS.find((shortcut) => shortcut.key === key && (!modifier || shortcut[modifier]))!
 
 const MOVE_TAB_SHORTCUT = byKey('←/→', 'shift')
-const REORDER_TAB_SHORTCUT = byKey('←/→', 'alt')
-/** Closing carries Alt: a bare Ctrl/Cmd+W is the browser's own and cannot be taken. */
-const CLOSE_TAB_SHORTCUT = byKey('W', 'alt')
+/**
+ * Not the arrows. `⌘⌥←/→` walks between browser tabs on macOS, so the page never saw it —
+ * a binding the browser answers first is a binding this does not have. A comma and a full
+ * stop carry the angle brackets on a US layout, which is as close to "back one, forward
+ * one" as a key gets, and no browser or text box wants them with this modifier.
+ */
+const REORDER_TAB_SHORTCUT = byKey(',/.', 'shift')
+/**
+ * Not W. A bare Ctrl/Cmd+W is the browser's own close and cannot be taken from a page, and
+ * the Alt that had to be added to dodge it made a three-finger chord for the commonest
+ * thing in the panel — which macOS then rewrote into `∑` on the way.
+ */
+const CLOSE_TAB_SHORTCUT = byKey('X', 'shift')
 
 /**
  * Drafts to store, grouped by the application they belong to. `applyStageNotes` allows one
@@ -1584,22 +1602,31 @@ export function StageNotesPanel({
         return
       }
       /*
-       * Either reading will do, because neither is right on its own. Option is a layout
-       * modifier on macOS, so ⌘⌥W arrives with `key` set to the character it produces —
-       * `∑` on a US layout — and only `code` still names the key pressed; matching `key`
-       * alone bound a shortcut that did nothing on the platform whose modifier it carries.
-       * But `code` names a position rather than a letter, and AZERTY puts W where QWERTY
-       * puts Z, so matching that alone takes the binding away from anyone not on QWERTY.
-       * The letters above are pressed without Option and are fine on `key`.
-       *
-       * Alt is not decoration either. A bare Ctrl/Cmd+W is the browser's own close, a page
-       * in a tab cannot take it, and answering it anyway would close a note on the way out
-       * of the document — costing the tab and the note rather than either.
+       * X rather than W, and Shift rather than Alt. `Ctrl/Cmd+W` is the browser's own close
+       * and a page in a tab cannot take it, so this had carried Alt to dodge it — and Alt
+       * is a layout modifier on macOS, which rewrote the key into `∑` on the way and took
+       * two more lines of matching to read back. Shift changes no character, so the key is
+       * the key, and closing the note you are reading is a two-finger chord again.
        */
-      if (event.code === 'KeyW' || key === 'w') {
-        if (!event.altKey) return
+      if (key === 'x') {
+        if (!event.shiftKey || event.altKey) return
         event.preventDefault()
         closeFocusedTab()
+        return
+      }
+      /*
+       * Both readings again, for the reason the old W binding needed them: Shift is a
+       * layout modifier over punctuation, so these arrive as `<` and `>` on a US layout
+       * and as something else again elsewhere, while `code` keeps naming the key cap. The
+       * characters are matched as well, since a layout that puts a comma somewhere else
+       * reports that key's own code.
+       */
+      const earlier = event.code === 'Comma' || key === ',' || key === '<'
+      const later = event.code === 'Period' || key === '.' || key === '>'
+      if (earlier || later) {
+        if (!event.shiftKey || event.altKey) return
+        event.preventDefault()
+        reorderActiveTab(later ? 1 : -1)
         return
       }
       if (key === 'k') {
@@ -1612,7 +1639,7 @@ export function StageNotesPanel({
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [activeKey, closeFocusedTab, openFind, toggleSidebar])
+  }, [activeKey, closeFocusedTab, openFind, reorderActiveTab, toggleSidebar])
 
   /**
    * Focuses the capture box once the dock the "K" shortcut just opened has actually
@@ -1648,16 +1675,16 @@ export function StageNotesPanel({
       }
       const edge = edges[event.key]
       if (!edge) return
-      if (event.shiftKey && !event.altKey) {
-        event.preventDefault()
-        moveTabToEdge(edge)
-        return
-      }
-      // Reordering runs along the strip, so only the two arrows that run along it.
-      if (event.altKey && !event.shiftKey && (edge === 'left' || edge === 'right')) {
-        event.preventDefault()
-        reorderActiveTab(edge === 'right' ? 1 : -1)
-      }
+      if (!event.shiftKey || event.altKey) return
+      /*
+       * Not while something is being typed into. In a text box `⌘⇧←` selects to the start
+       * of the line, and a note being written is the one place in this panel where that is
+       * what the reader means — taking it there cost them the selection and moved a tab
+       * they were not thinking about.
+       */
+      if (isTyping(event.target)) return
+      event.preventDefault()
+      moveTabToEdge(edge)
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
