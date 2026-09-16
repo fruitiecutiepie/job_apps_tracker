@@ -2986,6 +2986,65 @@ describe('job applications tracker', () => {
     expect(halcyonAfter.stage_notes).toEqual(halcyonBefore.stage_notes)
   })
 
+  it('does not lose a compare-card edit when the full editor is opened over it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    const originalBody = before.stage_notes.find((note) => note.state === 'interview_2')!.body
+
+    await user.click(screen.getByRole('button', { name: 'Compare' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Stage' }), 'Interview 2')
+
+    const group = screen.getByRole('region', { name: 'Interview 2' })
+    const card = within(group)
+      .getByRole('heading', { level: 4, name: /Halcyon Maps/ })
+      .closest('article')!
+
+    // Type into the card, then leave for the full editor before the autosave runs.
+    await user.click(within(card).getByRole('button', { name: /^Edit / }))
+    const editor = within(card).getByLabelText('Halcyon Maps · Interview 2 prep notes')
+    await user.type(editor, '\n\nAsk who owns the platform roadmap.')
+    await user.click(within(card).getByRole('button', { name: /in the full editor$/ }))
+
+    const panel = await screen.findByRole('dialog', { name: /prep notes/i })
+    // Let the card's own autosave land while the panel is holding the same note.
+    await waitFor(
+      () => {
+        const saved = readSavedDocument().applications.find((item) => item.id === before.id)!
+        expect(saved.stage_notes.find((note) => note.state === 'interview_2')!.body).toContain(
+          'Ask who owns the platform roadmap.',
+        )
+      },
+      { timeout: 4000 },
+    )
+
+    // Now edit in the panel, which seeded its draft before that write landed.
+    await user.click(within(panel).getByRole('button', { name: /^Edit .*Interview 2/ }))
+    const panelEditor = within(panel).getByLabelText(/Interview 2 prep notes/)
+    await user.type(panelEditor, '\n\nConfirm the start date.')
+
+    await waitFor(
+      () => {
+        const saved = readSavedDocument().applications.find((item) => item.id === before.id)!
+        expect(saved.stage_notes.find((note) => note.state === 'interview_2')!.body).toContain(
+          'Confirm the start date.',
+        )
+      },
+      { timeout: 4000 },
+    )
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    const body = after.stage_notes.find((note) => note.state === 'interview_2')!.body
+    expect(body).toContain(originalBody)
+    // The card's sentence must survive the panel's write rather than being overwritten by
+    // a draft the panel seeded before it landed.
+    expect(body).toContain('Ask who owns the platform roadmap.')
+    expect(body).toContain('Confirm the start date.')
+  }, 30_000)
+
   it('drops an application from the board when its chip is unchecked, and shows the empty state when none remain', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

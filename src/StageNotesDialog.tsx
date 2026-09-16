@@ -468,27 +468,54 @@ export function StageNotesDialog({
 
   /**
    * Seeds a draft for every note as it joins the panel, so what is typed is measured
-   * against what was stored rather than against nothing. A note already seeded is left
-   * alone: re-seeding it from the document would throw away the keystrokes that have not
-   * been written yet.
+   * against what was stored rather than against nothing — and afterwards keeps a seeded
+   * note in step with the document when something else writes it.
+   *
+   * The panel is not the only thing that writes a note. The external editor has its own
+   * channel and is handled by the poll below, but a note can also be written from anywhere
+   * else holding the same document. Left alone, the panel would go on showing the body it
+   * seeded and write that back over the newer one on the next keystroke, which is how an
+   * edit made elsewhere disappears without anything reporting a failure.
+   *
+   * Adopting is gated on the panel having nothing unsaved for that note — `draft` still
+   * equal to what was last written from here. Where it has, the keystrokes that have not
+   * been written yet win, since dropping them is the one thing worse than showing a stale
+   * body. That is the same choice a compare card makes while it holds focus.
    */
   useEffect(() => {
-    const missing = openRefs.filter((ref) => draftsRef.current[noteRefKey(ref)] === undefined)
-    if (missing.length === 0) return
     const nextDrafts = { ...draftsRef.current }
     const nextStored = { ...storedRef.current }
-    for (const ref of missing) {
+    const seeded: NoteRef[] = []
+    let changed = false
+
+    for (const ref of openRefs) {
       const key = noteRefKey(ref)
       const body = noteByKey.get(key)?.body ?? ''
-      nextDrafts[key] = body
-      nextStored[key] = body
+      const draft = draftsRef.current[key]
+
+      if (draft === undefined) {
+        nextDrafts[key] = body
+        nextStored[key] = body
+        seeded.push(ref)
+        changed = true
+        continue
+      }
+
+      if (storedRef.current[key] !== body && draft === storedRef.current[key]) {
+        nextDrafts[key] = body
+        nextStored[key] = body
+        changed = true
+      }
     }
+
+    if (!changed) return
     draftsRef.current = nextDrafts
     storedRef.current = nextStored
     setDrafts(nextDrafts)
     setStored(nextStored)
-    // A note opened with nothing in it opens ready to type, the way an empty stage always has.
-    const blank = missing.filter((ref) => !(noteByKey.get(noteRefKey(ref))?.body ?? '').trim())
+    // A note opened with nothing in it opens ready to type, the way an empty stage always
+    // has. Only a note joining the panel, never one that merely went empty elsewhere.
+    const blank = seeded.filter((ref) => !(noteByKey.get(noteRefKey(ref))?.body ?? '').trim())
     if (blank.length > 0) {
       setEditing((current) => [...current, ...blank.map(noteRefKey).filter((key) => !current.includes(key))])
     }
