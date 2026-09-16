@@ -4,19 +4,22 @@
  * own heading rather than by its tab: a tab also carries the current-stage badge and a
  * live match count, and neither belongs in the name of the note beside it.
  *
- * Keyed by the application as well as the state. Two applications open at the same stage
- * is the ordinary case now, and an id built from the state alone would give both notes
- * one tab, one panel and one set of find ordinals.
+ * Keyed by the pane as well as the note. Two applications open at the same stage was
+ * already the ordinary case, and one note open in two panes is now one too — an id built
+ * from the note alone would give both copies one tab, one panel and one set of find
+ * ordinals, which is the whole of what an id here is for.
  */
 
-import { noteRefKey, type NoteRef } from './notesLayout'
+import { tabId, type NoteRef } from './notesLayout'
 
 /**
- * A note's key as an id fragment. The key's own separator is dropped for one that cannot
- * be read as a pseudo-element, so these ids stay usable in a selector.
+ * A copy's id as an id fragment. The separators are dropped for ones that cannot be read
+ * as a pseudo-element or a type selector, so these ids stay usable in a selector.
  */
-const idPart = (ref: NoteRef) => noteRefKey(ref).replace('::', '--')
+const idPart = (groupId: string, ref: NoteRef) => tabId(groupId, ref).replace('::', '--').replace('@', '__')
 
-export const stageTabId = (ref: NoteRef) => `stage-tab-${idPart(ref)}`
-export const stageNotePanelId = (ref: NoteRef) => `stage-note-panel-${idPart(ref)}`
-export const stageNoteHeadingId = (ref: NoteRef) => `stage-note-heading-${idPart(ref)}`
+export const stageTabId = (groupId: string, ref: NoteRef) => `stage-tab-${idPart(groupId, ref)}`
+export const stageNotePanelId = (groupId: string, ref: NoteRef) =>
+  `stage-note-panel-${idPart(groupId, ref)}`
+export const stageNoteHeadingId = (groupId: string, ref: NoteRef) =>
+  `stage-note-heading-${idPart(groupId, ref)}`

@@ -12,7 +12,7 @@
  * one set of find ordinals.
  */
 
-import type { StateId } from './domain'
+import { isStateId, type StateId } from './domain'
 
 export interface NoteRef {
   applicationId: string
@@ -25,6 +25,38 @@ export interface NoteRef {
  * state is an identifier from STATE_CONFIG.
  */
 export const noteRefKey = (ref: NoteRef): string => `${ref.applicationId}::${ref.state}`
+
+/**
+ * A note asked for from somewhere outside the panel — a card, a table row, the editor.
+ * The nonce is what tells a second request for the same note from the request already
+ * handled: without it, asking twice for the note you are already on is no change at all,
+ * and the second ask does nothing.
+ */
+export interface NoteRequest {
+  ref: NoteRef
+  nonce: number
+}
+
+/**
+ * One open copy of a note: the pane it is in and the note it shows.
+ *
+ * A note may be open in several panes — reading one beside another part of itself, or
+ * beside a different company's, is what a split is for — so the note's own key no longer
+ * names a tab on its own. It names a note; this names a copy. Within one pane a note is
+ * still open at most once, because two tabs in one strip showing the same thing would be
+ * two ways to the same place, and that is what makes the pair unique without minting ids.
+ *
+ * The separator cannot appear in either half: a pane id is `pane-N` and a note key is two
+ * identifiers joined by `::`.
+ */
+export const tabId = (groupId: string, ref: NoteRef): string => `${groupId}@${noteRefKey(ref)}`
+
+export function parseTabId(id: string): { groupId: string; ref: NoteRef } | null {
+  const at = id.indexOf('@')
+  if (at <= 0) return null
+  const ref = parseNoteRefKey(id.slice(at + 1))
+  return ref ? { groupId: id.slice(0, at), ref } : null
+}
 
 export function sameRef(left: NoteRef, right: NoteRef): boolean {
   return left.applicationId === right.applicationId && left.state === right.state
@@ -84,11 +116,41 @@ export function groupsOf(node: LayoutNode): TabGroup[] {
 }
 
 /**
- * Every open note, in layout order. The find numbers its matches along this sequence, so
- * the order here is the order the find bar steps through the panel.
+ * Every open note, in layout order. A note open in two panes appears twice, because that
+ * is two notes on screen.
  */
 export function orderedRefs(node: LayoutNode): NoteRef[] {
   return groupsOf(node).flatMap((group) => group.tabs)
+}
+
+/**
+ * The same, as the copies they are: each with the pane it is in. The find numbers its
+ * matches along this sequence, so the order here is the order it steps through the panel —
+ * and a note open twice contributes its matches twice, once per copy, since each is a
+ * place on screen a reader can be sent to.
+ */
+export function orderedTabs(node: LayoutNode): { groupId: string; ref: NoteRef }[] {
+  return groupsOf(node).flatMap((group) => group.tabs.map((ref) => ({ groupId: group.id, ref })))
+}
+
+/**
+ * The pane a panel opens with. Named here rather than in the panel because restoring an
+ * arrangement has to mint pane ids past the ones it read back, and both halves of that
+ * have to agree on where the numbering starts.
+ */
+export const FIRST_PANE_ID = 'pane-1'
+
+/**
+ * The largest `pane-N` in the tree, or 0 when none of the ids are numbered panes. A panel
+ * handed a restored arrangement counts from here: minting `pane-2` again beside a
+ * restored one would give two panes one id, and every operation that names a pane would
+ * then act on both.
+ */
+export function highestPaneNumber(node: LayoutNode): number {
+  return groupsOf(node).reduce((highest, group) => {
+    const match = /^pane-(\d+)$/.exec(group.id)
+    return match ? Math.max(highest, Number(match[1])) : highest
+  }, 0)
 }
 
 export function findGroup(node: LayoutNode, groupId: string): TabGroup | null {
@@ -142,12 +204,17 @@ function withoutTab(group: TabGroup, key: string): TabGroup {
 }
 
 /**
- * Removes emptied groups and collapses a split left holding one child, so no arrangement
- * ever shows an empty pane or a split that splits nothing. Returns null when the whole
- * tree emptied, which is the panel's cue to close.
+ * Collapses a split left holding one child, so no arrangement shows a split that splits
+ * nothing, and renormalises what is left. Returns null when there is nothing left at all.
+ *
+ * An empty pane is **not** swept up here. A pane opened empty is a place the reader made
+ * for the next note, and it has to survive every operation somewhere else in the tree —
+ * closing a tab two panes over must not take it away. A pane that loses its last note is a
+ * different thing, and the operations that empty one say so themselves, through
+ * `withoutGroup` below.
  */
 export function prune(node: LayoutNode): LayoutNode | null {
-  if (isGroup(node)) return node.tabs.length > 0 ? node : null
+  if (isGroup(node)) return node
 
   const kept: LayoutNode[] = []
   const sizes: number[] = []
@@ -163,6 +230,42 @@ export function prune(node: LayoutNode): LayoutNode | null {
   return { ...node, children: kept, sizes: normalise(sizes) }
 }
 
+/** Takes a pane out of the tree, collapsing whatever split it leaves behind. */
+export function withoutGroup(node: LayoutNode, groupId: string): LayoutNode | null {
+  if (isGroup(node)) return node.id === groupId ? null : node
+
+  const kept: LayoutNode[] = []
+  const sizes: number[] = []
+  node.children.forEach((child, index) => {
+    const left = withoutGroup(child, groupId)
+    if (!left) return
+    kept.push(left)
+    sizes.push(node.sizes[index] ?? 1 / node.children.length)
+  })
+
+  if (kept.length === 0) return null
+  if (kept.length === 1) return kept[0]
+  return { ...node, children: kept, sizes: normalise(sizes) }
+}
+
+/** Every note open anywhere in the tree, which is what says whether a panel is empty. */
+const holdsNothing = (node: LayoutNode): boolean =>
+  groupsOf(node).every((group) => group.tabs.length === 0)
+
+/**
+ * Opens an empty pane beside one, for a reader making room for the next note rather than
+ * moving one they already have. Nothing is taken from the pane it opens beside.
+ */
+export function splitEmpty(
+  tree: LayoutNode,
+  targetGroupId: string,
+  edge: Edge,
+  makeId: () => string,
+): LayoutNode {
+  if (!findGroup(tree, targetGroupId)) return tree
+  return insertBeside(tree, targetGroupId, axisFor(edge), isBefore(edge), makeGroup(makeId(), [], null), makeId)
+}
+
 /**
  * Opens a note in a group, or moves focus to it when it is already open somewhere. A note
  * lives in at most one group: two copies would give one match two find ordinals and two
@@ -170,8 +273,10 @@ export function prune(node: LayoutNode): LayoutNode | null {
  */
 export function openInGroup(tree: LayoutNode, groupId: string, ref: NoteRef): LayoutNode {
   const key = noteRefKey(ref)
-  const existing = groupHolding(tree, key)
-  if (existing) return activateTab(tree, existing.id, key)
+  // Only this pane's own tabs are consulted: a copy somewhere else is a copy somewhere
+  // else, and opening one here is not a request to go there.
+  const here = findGroup(tree, groupId)
+  if (here?.tabs.some((tab) => noteRefKey(tab) === key)) return activateTab(tree, groupId, key)
 
   const opened = mapGroup(tree, groupId, (group) => ({
     ...group,
@@ -188,6 +293,36 @@ export function activateTab(tree: LayoutNode, groupId: string, key: string): Lay
 }
 
 /**
+ * Swaps one tab for a different stage of the same application, in the tab's own place:
+ * the position it held and its focus both carry over, rather than the new stage arriving
+ * as a fresh tab at the end of the strip. Used for the stage picked from a note's own
+ * header, where the reader means "show me this stage instead", not "also open this one".
+ *
+ * If that stage is already open somewhere else, a note cannot end up open twice: that
+ * tab is focused instead, and the one being swapped out closes.
+ */
+export function replaceTab(tree: LayoutNode, groupId: string, fromKey: string, ref: NoteRef): LayoutNode {
+  const toKey = noteRefKey(ref)
+  if (fromKey === toKey) return tree
+
+  // Only this pane's own tabs stand in the way. A copy in another pane is somewhere else,
+  // and swapping onto a stage here is not a request to go there; but swapping onto one
+  // this pane already shows would leave two tabs for it, so that one closes the old tab
+  // and moves to the tab already holding it.
+  const here = findGroup(tree, groupId)
+  if (here?.tabs.some((tab) => noteRefKey(tab) === toKey)) {
+    const focused = activateTab(tree, groupId, toKey)
+    return closeTab(focused, groupId, fromKey) ?? focused
+  }
+
+  return mapGroup(tree, groupId, (group) => ({
+    ...group,
+    tabs: group.tabs.map((tab) => (noteRefKey(tab) === fromKey ? ref : tab)),
+    activeKey: toKey,
+  }))
+}
+
+/**
  * Closes one tab. Null means the last note in the panel just closed.
  *
  * Unlike the single-application panel, no tab is exempt: with several applications open
@@ -195,12 +330,19 @@ export function activateTab(tree: LayoutNode, groupId: string, key: string): Lay
  * undismissable tab per application would only accumulate.
  */
 export function closeTab(tree: LayoutNode, groupId: string, key: string): LayoutNode | null {
-  return prune(mapGroup(tree, groupId, (group) => withoutTab(group, key)))
+  const closed = mapGroup(tree, groupId, (group) => withoutTab(group, key))
+  const emptied = findGroup(closed, groupId)
+  // The pane that lost its last note goes with it; panes opened empty elsewhere stay.
+  const left = emptied && emptied.tabs.length === 0 ? withoutGroup(closed, groupId) : prune(closed)
+  if (!left || holdsNothing(left)) return null
+  return left
 }
 
-/** Closes every tab in a group, taking the pane with it. */
+/** Closes a pane, whatever it was holding. */
 export function closeGroup(tree: LayoutNode, groupId: string): LayoutNode | null {
-  return prune(mapGroup(tree, groupId, (group) => ({ ...group, tabs: [], activeKey: null })))
+  const left = withoutGroup(tree, groupId)
+  if (!left || holdsNothing(left)) return null
+  return left
 }
 
 /**
@@ -208,16 +350,53 @@ export function closeGroup(tree: LayoutNode, groupId: string): LayoutNode | null
  * and the insertion happen in one pass and the tree is pruned only afterwards, so moving
  * the last tab out of a group cannot invalidate the destination mid-move.
  */
+/**
+ * Puts a note in a pane at a given position, leaving any copy in another pane where it is.
+ *
+ * This is what a note arriving from the tree of unopened notes does, and what a note being
+ * reordered inside its own strip does — one function, because from the reader's side they
+ * are one thing: the note lands here. Taking it away from another pane is a different
+ * intent with its own function, `moveTab`, which is what dragging a tab means.
+ */
+export function placeTab(
+  tree: LayoutNode,
+  ref: NoteRef,
+  toGroupId: string,
+  index: number,
+): LayoutNode {
+  const target = findGroup(tree, toGroupId)
+  if (!target) return tree
+  const key = noteRefKey(ref)
+
+  if (!target.tabs.some((tab) => noteRefKey(tab) === key)) {
+    return mapGroup(tree, toGroupId, (group) => {
+      const at = Math.max(0, Math.min(index, group.tabs.length))
+      return { ...group, tabs: [...group.tabs.slice(0, at), ref, ...group.tabs.slice(at)], activeKey: key }
+    })
+  }
+
+  // Already here, so this is a reorder within the strip rather than a second copy of it.
+  return mapGroup(tree, toGroupId, (group) => {
+    const without = group.tabs.filter((tab) => noteRefKey(tab) !== key)
+    const at = Math.max(0, Math.min(index, without.length))
+    return { ...group, tabs: [...without.slice(0, at), ref, ...without.slice(at)], activeKey: key }
+  })
+}
+
+/**
+ * Moves one open copy from the pane holding it to another, which is what dragging a tab
+ * means: the note was there and is now here, rather than being in both.
+ */
 export function moveTab(
   tree: LayoutNode,
+  fromGroupId: string,
   key: string,
   toGroupId: string,
   index: number,
 ): LayoutNode {
-  const source = groupHolding(tree, key)
-  if (!source) return tree
-  const ref = source.tabs.find((tab) => noteRefKey(tab) === key)
-  if (!ref) return tree
+  const source = findGroup(tree, fromGroupId)
+  const ref = source?.tabs.find((tab) => noteRefKey(tab) === key)
+  if (!source || !ref || !findGroup(tree, toGroupId)) return tree
 
   const sameGroup = source.id === toGroupId
   const moved = mapGroups(tree, (group) => {
@@ -234,8 +413,24 @@ export function moveTab(
     return group
   })
 
-  // A move within one group can never empty it, so pruning is only needed across groups.
-  return sameGroup ? moved : (prune(moved) ?? moved)
+  // A move within one group can never empty it; across them, the pane left with nothing
+  // is the one that just gave up its last note, so it goes.
+  if (sameGroup) return moved
+  const drained = findGroup(moved, source.id)
+  const left = drained && drained.tabs.length === 0 ? withoutGroup(moved, source.id) : prune(moved)
+  return left ?? moved
+}
+
+/**
+ * A key read back as the note it names, for a drag that carries one out of the tree of
+ * notes the panel does not have open — there is no tab to look the ref up on. Neither half
+ * can hold the separator: an application id is a uuid and a state is an identifier from
+ * `STATE_CONFIG`, which is also what makes the state worth checking rather than trusting.
+ */
+export function parseNoteRefKey(key: string): NoteRef | null {
+  const [applicationId, state, ...rest] = key.split('::')
+  if (!applicationId || rest.length > 0 || !isStateId(state)) return null
+  return { applicationId, state }
 }
 
 /**
@@ -252,24 +447,45 @@ export function splitWith(
   edge: Edge,
   ref: NoteRef,
   makeId: () => string,
+  /**
+   * The pane to take this copy out of, for a tab being dragged out of one. Left out by a
+   * caller opening a note that is not being moved — one from the tree of unopened notes, or
+   * a second copy of one open elsewhere — which leaves every existing copy where it is.
+   */
+  detachFrom?: string | null,
 ): LayoutNode {
   const key = noteRefKey(ref)
   const target = findGroup(tree, targetGroupId)
   if (!target) return tree
 
   // Splitting a pane off with the only note it holds would close it and reopen it beside
-  // itself, which is a no-op with extra steps.
-  const source = groupHolding(tree, key)
-  if (source && source.id === targetGroupId && source.tabs.length === 1) return tree
+  // itself, which is a no-op with extra steps. Only when that note is the one being taken:
+  // a pane holding one other note is a pane this can still be split off.
+  const source = detachFrom ? findGroup(tree, detachFrom) : null
+  if (
+    source
+    && source.id === targetGroupId
+    && source.tabs.length === 1
+    && noteRefKey(source.tabs[0]) === key
+  ) {
+    return tree
+  }
 
   const axis = axisFor(edge)
   const before = isBefore(edge)
   const fresh = makeGroup(makeId(), [ref], key)
 
-  const detached = source ? mapGroups(tree, (group) => withoutTab(group, key)) : tree
+  const detached = source
+    ? mapGroup(tree, source.id, (group) => withoutTab(group, key))
+    : tree
 
   const inserted = insertBeside(detached, targetGroupId, axis, before, fresh, makeId)
-  return prune(inserted) ?? inserted
+  // The pane the note came out of goes if that was its last; one opened empty stays.
+  const drained = source ? findGroup(inserted, source.id) : null
+  const left = source && drained && drained.tabs.length === 0
+    ? withoutGroup(inserted, source.id)
+    : prune(inserted)
+  return left ?? inserted
 }
 
 /**

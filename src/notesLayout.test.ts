@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest'
 
 import {
   MIN_PANE_FRACTION,
+  splitEmpty,
+  withoutGroup,
+  activateTab,
   closeGroup,
   closeTab,
   findGroup,
@@ -14,13 +17,19 @@ import {
   noteRefKey,
   openInGroup,
   orderedRefs,
+  parseNoteRefKey,
+  parseTabId,
+  placeTab,
+  tabId,
   prune,
+  replaceTab,
   resizeSplit,
   singleGroup,
   splitWith,
   type LayoutNode,
   type NoteRef,
   type SplitNode,
+  type TabGroup,
 } from './notesLayout'
 
 const acme = (state: NoteRef['state']): NoteRef => ({ applicationId: 'acme', state })
@@ -76,7 +85,7 @@ describe('openInGroup', () => {
     expect(findGroup(tree, 'g1')!.activeKey).toBe(noteRefKey(globex('offer')))
   })
 
-  it('activates a note already open rather than opening a second copy of it', () => {
+  it('opens a second copy in the pane asked for, leaving the one elsewhere', () => {
     const split = splitWith(
       singleGroup('g1', acme('applied')),
       'g1',
@@ -86,8 +95,76 @@ describe('openInGroup', () => {
     )
     const reopened = openInGroup(split, 'g1', globex('offer'))
 
-    expect(refKeys(reopened)).toEqual([noteRefKey(acme('applied')), noteRefKey(globex('offer'))])
-    expect(findGroup(reopened, 'g2')!.activeKey).toBe(noteRefKey(globex('offer')))
+    // Reading one note in two panes is what a split is for. A copy in another pane is a
+    // copy in another pane, and opening one here is not a request to go there.
+    expect(findGroup(reopened, 'g1')!.tabs.map(noteRefKey)).toEqual([
+      noteRefKey(acme('applied')),
+      noteRefKey(globex('offer')),
+    ])
+    expect(findGroup(reopened, 'g2')!.tabs.map(noteRefKey)).toEqual([noteRefKey(globex('offer'))])
+  })
+
+  it('activates rather than doubling when that pane already holds it', () => {
+    let tree: LayoutNode = singleGroup('g1', acme('applied'))
+    tree = openInGroup(tree, 'g1', globex('offer'))
+    tree = activateTab(tree, 'g1', noteRefKey(acme('applied')))
+
+    const again = openInGroup(tree, 'g1', globex('offer'))
+
+    // Two tabs in one strip showing the same note would be two ways to the same place.
+    expect(findGroup(again, 'g1')!.tabs.map(noteRefKey)).toEqual([
+      noteRefKey(acme('applied')),
+      noteRefKey(globex('offer')),
+    ])
+    expect(findGroup(again, 'g1')!.activeKey).toBe(noteRefKey(globex('offer')))
+  })
+})
+
+describe('replaceTab', () => {
+  it('swaps the tab for a different stage in the same place, and focuses it', () => {
+    const group = makeGroup('g1', [acme('applied'), acme('interview_1'), acme('offer')])
+    const swapped = replaceTab(group, 'g1', noteRefKey(acme('interview_1')), acme('interview_2'))
+
+    expect(refKeys(swapped)).toEqual([
+      noteRefKey(acme('applied')),
+      noteRefKey(acme('interview_2')),
+      noteRefKey(acme('offer')),
+    ])
+    expect(findGroup(swapped, 'g1')!.activeKey).toBe(noteRefKey(acme('interview_2')))
+  })
+
+  it('does nothing when the stage picked is the tab already showing', () => {
+    const group = makeGroup('g1', [acme('applied')])
+    expect(replaceTab(group, 'g1', noteRefKey(acme('applied')), acme('applied'))).toBe(group)
+  })
+
+  it('swaps onto a stage another pane is showing, leaving that pane alone', () => {
+    const split = splitWith(
+      singleGroup('g1', acme('applied')),
+      'g1',
+      'right',
+      acme('offer'),
+      ids('g2', 's1'),
+      'g1',
+    )
+    const swapped = replaceTab(split, 'g1', noteRefKey(acme('applied')), acme('offer'))
+
+    // A copy elsewhere is somewhere else. Swapping this tab onto that stage is a request
+    // to read it here, and both panes end up showing it.
+    expect(findGroup(swapped, 'g1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('offer'))])
+    expect(findGroup(swapped, 'g2')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('offer'))])
+  })
+
+  it('moves to the tab this pane already has rather than showing it twice', () => {
+    let tree: LayoutNode = singleGroup('g1', acme('applied'))
+    tree = openInGroup(tree, 'g1', acme('offer'))
+
+    const swapped = replaceTab(tree, 'g1', noteRefKey(acme('applied')), acme('offer'))
+
+    // One strip, one tab per note: the tab swapped from goes rather than standing beside
+    // the one it now matches.
+    expect(findGroup(swapped, 'g1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('offer'))])
+    expect(findGroup(swapped, 'g1')!.activeKey).toBe(noteRefKey(acme('offer')))
   })
 })
 
@@ -249,10 +326,10 @@ describe('splitWith', () => {
     expect(sizes.reduce((sum, size) => sum + size, 0)).toBeCloseTo(1)
   })
 
-  it('moves a note out of the pane it was in rather than copying it', () => {
+  it('moves a note out of the pane named, rather than copying it', () => {
     let tree: LayoutNode = singleGroup('g1', acme('applied'))
     tree = openInGroup(tree, 'g1', globex('offer'))
-    tree = splitWith(tree, 'g1', 'right', globex('offer'), ids('g2', 's1'))
+    tree = splitWith(tree, 'g1', 'right', globex('offer'), ids('g2', 's1'), 'g1')
 
     expect(refKeys(tree)).toEqual([noteRefKey(acme('applied')), noteRefKey(globex('offer'))])
     expect(findGroup(tree, 'g1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('applied'))])
@@ -261,7 +338,17 @@ describe('splitWith', () => {
 
   it('refuses to split a pane off with the only note it holds', () => {
     const tree = singleGroup('g1', acme('applied'))
-    expect(splitWith(tree, 'g1', 'right', acme('applied'), ids('g2', 's1'))).toBe(tree)
+    expect(splitWith(tree, 'g1', 'right', acme('applied'), ids('g2', 's1'), 'g1')).toBe(tree)
+  })
+
+  it('splits a second copy off the pane already reading it', () => {
+    const tree = singleGroup('g1', acme('applied'))
+    const split = splitWith(tree, 'g1', 'right', acme('applied'), ids('g2', 's1'))
+
+    // Without a pane to take it from, the note stays where it was and is opened beside
+    // itself — one note, read in two places.
+    expect(findGroup(split, 'g1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('applied'))])
+    expect(findGroup(split, 'g2')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('applied'))])
   })
 
   it('leaves the tree alone when the target pane is gone', () => {
@@ -276,7 +363,7 @@ describe('moveTab', () => {
     tree = openInGroup(tree, 'g1', acme('interview_1'))
     tree = openInGroup(tree, 'g1', acme('offer'))
 
-    const moved = moveTab(tree, noteRefKey(acme('offer')), 'g1', 0)
+    const moved = moveTab(tree, 'g1', noteRefKey(acme('offer')), 'g1', 0)
     expect(findGroup(moved, 'g1')!.tabs.map(noteRefKey)).toEqual([
       noteRefKey(acme('offer')),
       noteRefKey(acme('applied')),
@@ -294,7 +381,7 @@ describe('moveTab', () => {
     )
     tree = openInGroup(tree, 'g1', acme('interview_1'))
 
-    const moved = moveTab(tree, noteRefKey(acme('interview_1')), 'g2', 0)
+    const moved = moveTab(tree, 'g1', noteRefKey(acme('interview_1')), 'g2', 0)
     expect(findGroup(moved, 'g1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('applied'))])
     expect(findGroup(moved, 'g2')!.tabs.map(noteRefKey)).toEqual([
       noteRefKey(acme('interview_1')),
@@ -312,7 +399,7 @@ describe('moveTab', () => {
     )
     tree = openInGroup(tree, 'g1', acme('interview_1'))
 
-    const moved = moveTab(tree, noteRefKey(acme('interview_1')), 'g2', 0)
+    const moved = moveTab(tree, 'g1', noteRefKey(acme('interview_1')), 'g2', 0)
     expect(findGroup(moved, 'g2')!.activeKey).toBe(noteRefKey(acme('interview_1')))
   })
 
@@ -324,7 +411,7 @@ describe('moveTab', () => {
       globex('offer'),
       ids('g2', 's1'),
     )
-    const moved = moveTab(tree, noteRefKey(globex('offer')), 'g1', 1)
+    const moved = moveTab(tree, 'g2', noteRefKey(globex('offer')), 'g1', 1)
 
     expect(isSplit(moved)).toBe(false)
     expect(refKeys(moved)).toEqual([noteRefKey(acme('applied')), noteRefKey(globex('offer'))])
@@ -340,7 +427,7 @@ describe('moveTab', () => {
     )
     tree = openInGroup(tree, 'g1', acme('interview_1'))
 
-    const moved = moveTab(tree, noteRefKey(acme('interview_1')), 'g2', 99)
+    const moved = moveTab(tree, 'g1', noteRefKey(acme('interview_1')), 'g2', 99)
     expect(findGroup(moved, 'g2')!.tabs.map(noteRefKey)).toEqual([
       noteRefKey(globex('offer')),
       noteRefKey(acme('interview_1')),
@@ -349,7 +436,7 @@ describe('moveTab', () => {
 
   it('leaves the tree alone when the tab is not open', () => {
     const tree = singleGroup('g1', acme('applied'))
-    expect(moveTab(tree, noteRefKey(globex('offer')), 'g1', 0)).toBe(tree)
+    expect(moveTab(tree, 'g1', noteRefKey(globex('offer')), 'g1', 0)).toBe(tree)
   })
 })
 
@@ -463,18 +550,18 @@ describe('resizeSplit', () => {
   })
 })
 
-describe('prune', () => {
+describe('taking a pane out', () => {
   it('collapses a split down to its one remaining child', () => {
     const split: SplitNode = {
       kind: 'split',
       id: 's1',
       direction: 'row',
-      children: [makeGroup('g1', [acme('applied')]), makeGroup('g2', [])],
+      children: [makeGroup('g1', [acme('applied')]), makeGroup('g2', [globex('offer')])],
       sizes: [0.5, 0.5],
     }
-    const pruned = prune(split)!
-    expect(pruned.kind).toBe('group')
-    expect((pruned as { id: string }).id).toBe('g1')
+    const left = withoutGroup(split, 'g2')!
+    expect(left.kind).toBe('group')
+    expect((left as { id: string }).id).toBe('g1')
   })
 
   it('spreads a removed pane’s share over the panes that remain', () => {
@@ -484,17 +571,32 @@ describe('prune', () => {
       direction: 'row',
       children: [
         makeGroup('g1', [acme('applied')]),
-        makeGroup('g2', []),
+        makeGroup('g2', [acme('interview_1')]),
         makeGroup('g3', [globex('offer')]),
       ],
       sizes: [0.2, 0.6, 0.2],
     }
-    const pruned = prune(split) as SplitNode
-    expect(pruned.sizes).toEqual([0.5, 0.5])
+    const left = withoutGroup(split, 'g2') as SplitNode
+    expect(left.sizes).toEqual([0.5, 0.5])
   })
 
-  it('returns nothing for a tree with no notes left in it', () => {
-    expect(prune(makeGroup('g1', []))).toBeNull()
+  it('returns nothing when the pane taken was the only one', () => {
+    expect(withoutGroup(makeGroup('g1', [acme('applied')]), 'g1')).toBeNull()
+  })
+
+  it('leaves an empty pane alone, that being a place made for the next note', () => {
+    // What `prune` used to do, and must not: a pane opened empty has to survive every
+    // operation happening somewhere else in the tree.
+    const split: SplitNode = {
+      kind: 'split',
+      id: 's1',
+      direction: 'row',
+      children: [makeGroup('g1', [acme('applied')]), makeGroup('g2', [])],
+      sizes: [0.5, 0.5],
+    }
+    const kept = prune(split) as SplitNode
+    expect(kept.kind).toBe('split')
+    expect(kept.children).toHaveLength(2)
   })
 })
 
@@ -513,15 +615,17 @@ describe('orderedRefs', () => {
     ])
   })
 
-  it('never lists one note twice, however it was arranged', () => {
+  it('never lists one note twice within a pane, however it was arranged', () => {
     let tree: LayoutNode = singleGroup('g1', acme('applied'))
     tree = openInGroup(tree, 'g1', globex('offer'))
     tree = splitWith(tree, 'g1', 'right', globex('offer'), ids('g2', 's1'))
     tree = openInGroup(tree, 'g2', acme('applied'))
-    tree = moveTab(tree, noteRefKey(acme('applied')), 'g2', 0)
+    tree = moveTab(tree, 'g2', noteRefKey(acme('applied')), 'g2', 0)
 
-    const keys = refKeys(tree)
-    expect(new Set(keys).size).toBe(keys.length)
+    for (const group of groupsOf(tree)) {
+      const keys = group.tabs.map(noteRefKey)
+      expect(new Set(keys).size).toBe(keys.length)
+    }
   })
 })
 
@@ -540,5 +644,106 @@ describe('groupHolding', () => {
   it('finds nothing for a note that is not open', () => {
     const tree = singleGroup('g1', acme('applied'))
     expect(groupHolding(tree, noteRefKey(globex('offer')))).toBeNull()
+  })
+})
+
+describe('placeTab', () => {
+  const tree = makeGroup('pane-1', [acme('applied')], noteRefKey(acme('applied')))
+
+  it('opens a note that was not in that pane at the index asked for', () => {
+    const placed = placeTab(tree, globex('offer'), 'pane-1', 0)
+
+    expect(refKeys(placed)).toEqual([noteRefKey(globex('offer')), noteRefKey(acme('applied'))])
+    expect((placed as TabGroup).activeKey).toBe(noteRefKey(globex('offer')))
+  })
+
+  it('leaves a copy in another pane where it was', () => {
+    const split = splitWith(tree, 'pane-1', 'right', globex('offer'), ids('pane-2'))
+    const placed = placeTab(split, globex('offer'), 'pane-1', 0)
+
+    // Reading one note in two panes is the point: placing it here is not taking it away
+    // from there. Only the pane it lands in changes.
+    expect(groupsOf(placed)).toHaveLength(2)
+    expect(groupsOf(placed).map((group) => group.tabs.map(noteRefKey))).toEqual([
+      [noteRefKey(globex('offer')), noteRefKey(acme('applied'))],
+      [noteRefKey(globex('offer'))],
+    ])
+  })
+
+  it('reorders rather than doubling when the pane already holds it', () => {
+    const two = makeGroup('pane-1', [acme('applied'), globex('offer')], noteRefKey(acme('applied')))
+    const placed = placeTab(two, globex('offer'), 'pane-1', 0)
+
+    // Two tabs in one strip showing the same note would be two ways to the same place.
+    expect(refKeys(placed)).toEqual([noteRefKey(globex('offer')), noteRefKey(acme('applied'))])
+  })
+
+  it('leaves the tree alone when the pane is not there', () => {
+    expect(placeTab(tree, globex('offer'), 'pane-9', 0)).toBe(tree)
+  })
+})
+
+describe('tabId', () => {
+  it('names the copy rather than the note, so two panes never collide', () => {
+    expect(tabId('pane-1', acme('applied'))).not.toBe(tabId('pane-2', acme('applied')))
+  })
+
+  it('reads back the pane and the note it names', () => {
+    expect(parseTabId(tabId('pane-2', acme('offer')))).toEqual({
+      groupId: 'pane-2',
+      ref: acme('offer'),
+    })
+  })
+
+  it('refuses a note key, which names no copy in particular', () => {
+    expect(parseTabId(noteRefKey(acme('offer')))).toBeNull()
+    expect(parseTabId('pane-1@nonsense')).toBeNull()
+  })
+})
+
+describe('parseNoteRefKey', () => {
+  it('reads back what noteRefKey wrote', () => {
+    expect(parseNoteRefKey(noteRefKey(acme('interview_1')))).toEqual(acme('interview_1'))
+  })
+
+  it('refuses anything that is not one', () => {
+    expect(parseNoteRefKey('acme')).toBeNull()
+    expect(parseNoteRefKey('acme::not_a_state')).toBeNull()
+    expect(parseNoteRefKey('::applied')).toBeNull()
+  })
+})
+
+describe('a pane opened empty', () => {
+  it('stands beside the pane it was opened from, holding nothing', () => {
+    const tree = singleGroup('pane-1', acme('applied'))
+    const split = splitEmpty(tree, 'pane-1', 'right', () => 'pane-2')
+
+    const panes = groupsOf(split)
+    expect(panes.map((group) => group.id)).toEqual(['pane-1', 'pane-2'])
+    expect(panes[1].tabs).toEqual([])
+    expect(panes[1].activeKey).toBeNull()
+  })
+
+  it('is not swept up by what closes a pane that empties', () => {
+    // The two are different things: a pane opened empty is waiting for a note, a pane that
+    // has lost its last one is finished. Only the second goes.
+    const tree = splitEmpty(singleGroup('pane-1', acme('applied')), 'pane-1', 'right', () => 'pane-2')
+    const opened = openInGroup(tree, 'pane-1', acme('offer'))
+
+    const closed = closeTab(opened, 'pane-1', noteRefKey(acme('offer')))!
+    expect(groupsOf(closed).map((group) => group.id)).toEqual(['pane-1', 'pane-2'])
+
+    const emptied = closeTab(closed, 'pane-1', noteRefKey(acme('applied')))
+    // Nothing is open anywhere, so there is no panel to keep a pane in.
+    expect(emptied).toBeNull()
+  })
+
+  it('takes a note like any other pane, and gives its pane up when that note moves out', () => {
+    const tree = splitEmpty(singleGroup('pane-1', acme('applied')), 'pane-1', 'bottom', () => 'pane-2')
+    const filled = openInGroup(tree, 'pane-2', acme('offer'))
+    expect(groupsOf(filled)[1].tabs).toHaveLength(1)
+
+    const moved = moveTab(filled, 'pane-2', noteRefKey(acme('offer')), 'pane-1', 0)
+    expect(groupsOf(moved).map((group) => group.id)).toEqual(['pane-1'])
   })
 })

@@ -8,8 +8,8 @@ Run:
 pnpm test:smoke
 ```
 
-This checks the demo-profile journey: 19 first-load examples, navigation through all five views
-(Kanban, Table, Statistics), creating and searching for an application,
+This checks the demo-profile journey: 19 first-load examples, navigation through all four views
+(Kanban, Table, Statistics, Compare), creating and searching for an application,
 changing its state and recording history, marking a next action done and logging it in the
 notes, recording stage prep notes against it, persistence across an app reload, and confirmed
 demo-data reset.
@@ -131,10 +131,25 @@ neither a finger nor any browser automation.
    import and confirm the saved data is unchanged; try a valid zip or JSON import and
    confirm the replacement prompt appears.
 8. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
+   app goes to the **Prep notes** destination in the header rather than opening a dialog over the
+   board, that the view strip no longer marks any view as current, that the bar above the panel offers none of the
+   collection's filters, that the sidebar stacks **Outline** over **All prep notes** with
+   that each half folds from its own heading and the handle
+   between them sizes the two, that the title bar's icons name themselves on hover, that **Open**
+   there reaches a stage with no note and **Sidebar** puts the whole column away and brings it back, that the tree groups notes by
+   stage down the pipeline and lists no stage you have written nothing for — type a word you know is
+   in another application's note and confirm the tree filters to it and picking it opens it, then
+   drag a row onto the other pane's tabs and onto a pane edge and confirm it lands where it was
+   dropped rather than in the pane you were reading, then drag a note the other pane already holds
+   onto this one and confirm both panes show it, that typing into one shows in the other, and that
+   closing one copy leaves the other, and that opening enough notes to overfill a tab strip scrolls
+   it to the tab just opened rather than leaving it past the edge — that the
    application's current stage appears first and is badged, and that saved notes render as an outline
-   rather than raw text. Fold a heading, a bullet with sub-points, a bullet with a detail paragraph,
+   rather than raw text. Open a second company's notes from the picker, split the panes, then leave
+   for another view and come back — and reload the page — and confirm the same arrangement is there.
+   Close every tab and confirm the view stays, showing its empty state. Fold a heading, a bullet with sub-points, a bullet with a detail paragraph,
    a quote, and a code block by clicking their text rather than their chevron, use **Collapse all**
-   and **Expand all**, then reopen the dialog and confirm nothing about the folding was saved.
+   and **Expand all**, then reopen the view and confirm nothing about the folding was saved.
    Select a sentence inside a foldable point with the mouse and confirm it does not fold, and that
    the text can be copied.
    Select **Edit** on a stage, use the bold and bullet toolbar buttons, switch back with **Read**, and
@@ -195,7 +210,7 @@ neither a finger nor any browser automation.
    the note opening twice. Close one pane, then **Unsplit**, and confirm the other note is untouched.
    Press `Ctrl`/`Cmd+B` and confirm the outline collapses away, the notes take the width, and it
    comes back. On a narrow window, confirm a split panel stacks its panes instead of squeezing them.
-   Scroll a long note and confirm the **Heard** dock stays pinned to the bottom of its own pane
+   Scroll a long note and confirm the **What they said** dock stays pinned to the bottom of its own pane
    with the note scrolling under it, opaque against both a plain stage and the tinted current one.
    Type a line, press Enter, and confirm it appears at the end of the log under today's date and
    stamped with the time it was captured, that the notice reports it, and that closing the panel with Escape and reopening it shows the line
@@ -224,7 +239,7 @@ neither a finger nor any browser automation.
    Reopen the panel and select the keyboard button in the title bar. Confirm the list names all
    five shortcuts, that on macOS they read `⌘F` and elsewhere `Ctrl+F`, that Tab reaches the button
    and Enter opens it, that Escape closes the list and returns focus to it without closing the
-   panel, and that hovering **Split**, **Go to stage**, **Find**, and the outline toggle shows the
+   panel, and that hovering **Split**, **Find**, and the sidebar toggle shows the
    same shortcut each one answers.
 9. With `VISUAL` or `EDITOR` set to a GUI editor, select **Editor** on a stage note. Confirm the file
    opens, that `data/editing/` holds it, and that the banner names the editor and path. Save a change

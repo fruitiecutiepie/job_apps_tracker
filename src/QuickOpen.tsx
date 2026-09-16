@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { ChevronDown, X } from 'lucide-react'
 import { fuzzyScore } from './quickOpenMatch'
 
 export interface QuickOpenStageOption {
@@ -39,10 +39,33 @@ export function QuickOpen({ entries, onPick, onClose }: QuickOpenProps) {
   const [query, setQuery] = useState('')
   const [highlighted, setHighlighted] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
+  const rootRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     inputRef.current?.focus()
   }, [])
+
+  /**
+   * A press anywhere else puts the picker away. It floats over the panel rather than
+   * sitting in it, so everything underneath is still the thing being worked on, and
+   * reaching for one of those is as clear a "not this" as pressing Escape.
+   *
+   * On `pointerdown` rather than on click, so the press that lands on a tab or in a note
+   * closes the picker before that press does its own work, rather than a frame later.
+   * That is also what makes listening from this tick safe: the picker opens on a click,
+   * and a click's own `pointerdown` is over long before this mounts, so the next one is
+   * always a new press. Waiting a frame to subscribe would be the fragile version — a
+   * frame is not guaranteed to arrive, and the listener would be missing until it did.
+   */
+  useEffect(() => {
+    const away = (event: PointerEvent) => {
+      const target = event.target
+      if (target instanceof Node && rootRef.current?.contains(target)) return
+      onClose()
+    }
+    document.addEventListener('pointerdown', away)
+    return () => document.removeEventListener('pointerdown', away)
+  }, [onClose])
 
   const matches = useMemo(() => {
     const scored = entries
@@ -93,20 +116,34 @@ export function QuickOpen({ entries, onPick, onClose }: QuickOpenProps) {
   }
 
   return (
-    <div className="quick-open">
-      <input
-        aria-label="Go to stage"
-        className="quick-open__input"
-        onChange={(event) => {
-          setQuery(event.target.value)
-          setHighlighted(0)
-        }}
-        onKeyDown={onKeyDown}
-        placeholder="Search company or role…"
-        ref={inputRef}
-        type="text"
-        value={query}
-      />
+    <div className="quick-open" ref={rootRef}>
+      {/* The input and the way out share a row: a palette that can only be dismissed by a
+          key nobody was told about is one a reader gets stuck in, and this is the only
+          place to say it — nothing outside the picker describes the picker. */}
+      <div className="quick-open__search">
+        <input
+          aria-label="Go to stage"
+          className="quick-open__input"
+          onChange={(event) => {
+            setQuery(event.target.value)
+            setHighlighted(0)
+          }}
+          onKeyDown={onKeyDown}
+          placeholder="Search company or role…"
+          ref={inputRef}
+          type="text"
+          value={query}
+        />
+        <button
+          aria-label="Close the picker"
+          className="icon-button quick-open__close"
+          onClick={onClose}
+          title="Close the picker (Esc)"
+          type="button"
+        >
+          <X aria-hidden="true" size={16} />
+        </button>
+      </div>
       {matches.length === 0 ? (
         <p className="quick-open__empty">No application matches that.</p>
       ) : (

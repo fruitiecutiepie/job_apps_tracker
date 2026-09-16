@@ -9,8 +9,19 @@
  * has to be parsed back out of text that some earlier version of this code wrote.
  */
 
-/** The heading a stage's captured lines are read under. */
-export const CAPTURE_SECTION = 'Heard'
+/**
+ * The heading a stage's captured lines are read under. It names the contrast the dock
+ * exists for — the note above it is what you wrote before, this is what you were told
+ * during — rather than the act of writing it down, which the Capture button already has.
+ */
+export const CAPTURE_SECTION = 'What they said'
+
+/**
+ * The same words inside a sentence, for the labels that put them in one: "Show what they
+ * said in …" rather than a capital landing mid-phrase. Written out rather than lowercased
+ * on the fly so a label that needs different words can have them.
+ */
+export const CAPTURE_SECTION_IN_SENTENCE = 'what they said'
 
 /** What `capturedMarkdown` needs of a captured line, which is less than the stored record. */
 interface Captured {
