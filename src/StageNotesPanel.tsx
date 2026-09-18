@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { ChevronRight, Columns2, Keyboard, PanelLeft, Plus, Search, X } from 'lucide-react'
 import {
   closeStageNoteEditor,
@@ -15,6 +15,7 @@ import {
   type StateId,
 } from './domain'
 import { QuickOpen, type QuickOpenEntry } from './QuickOpen'
+import { tabLabels } from './notesTabLabel'
 import { PANEL_SHORTCUTS, shortcutKeys, shortcutLabel } from './shortcuts'
 import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
 import {
@@ -40,19 +41,44 @@ import {
   closeTab,
   groupHolding,
   groupsOf,
+  highestPaneNumber,
   makeGroup,
   moveTab,
   neighbourGroup,
   noteRefKey,
   openInGroup,
   orderedRefs,
+  orderedTabs,
+  parseNoteRefKey,
+  parseTabId,
+  placeTab,
+  tabId,
+  replaceTab,
   resizeSplit,
+  splitEmpty,
   splitWith,
   type Edge,
   type LayoutNode,
   type NoteRef,
+  type NoteRequest,
   type TabGroup,
 } from './notesLayout'
+import {
+  captureHeightWithin,
+  DEFAULT_CAPTURE_LOG,
+  DEFAULT_SIDEBAR,
+  SIDEBAR_STEP,
+  MAX_SIDEBAR,
+  MIN_SIDEBAR,
+  MAX_OUTLINE_SHARE,
+  MIN_OUTLINE_SHARE,
+  OUTLINE_SHARE_STEP,
+  DEFAULT_OUTLINE_SHARE,
+  outlineShareWithin,
+  sidebarWidthWithin,
+  type Arrangement,
+} from './notesArrangement'
+import { NotesTreeView } from './NotesTreeView'
 import { StageNotePane } from './StageNotePane'
 import {
   DROP_EDGE,
@@ -62,7 +88,6 @@ import {
   useTabDrag,
 } from './useTabDrag'
 import { stageNotePanelId, stageTabId } from './stageNoteIds'
-import { useDialogKeyboard } from './useDialogKeyboard'
 
 /**
  * How often the scratch file is re-read while a note is open in an external editor. The
@@ -77,15 +102,39 @@ const EDITOR_POLL_MS = 1000
  */
 export const AUTOSAVE_MS = 800
 
-/** The pane the panel opens with. Named up front so no ref is read while rendering. */
-const FIRST_PANE_ID = 'pane-1'
-
 /** Names the sentence that tells a reader the tabs can be dragged or arrowed. */
 const TABS_HINT_ID = 'stage-notes-tabs-hint'
 
-/** The two bindings that arrange the panes, looked up rather than restated. */
-const MOVE_TAB_SHORTCUT = PANEL_SHORTCUTS.find((shortcut) => shortcut.shift)!
-const REORDER_TAB_SHORTCUT = PANEL_SHORTCUTS.find((shortcut) => shortcut.alt)!
+/**
+ * The bindings the tabs name, looked up rather than restated. By key as well as modifier:
+ * two of these carry Alt, so a lookup by modifier alone would hand one of them the other's
+ * label the moment a third Alt binding arrived — which is exactly what it did.
+ */
+/** Whether the keyboard belongs to a box being typed into rather than to the panel. */
+function isTyping(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  return target.isContentEditable
+    || target instanceof HTMLTextAreaElement
+    || target instanceof HTMLInputElement
+}
+
+const byKey = (key: string, modifier: 'shift' | 'alt' | null) =>
+  PANEL_SHORTCUTS.find((shortcut) => shortcut.key === key && (!modifier || shortcut[modifier]))!
+
+const MOVE_TAB_SHORTCUT = byKey('←/→', 'shift')
+/**
+ * Not the arrows. `⌘⌥←/→` walks between browser tabs on macOS, so the page never saw it —
+ * a binding the browser answers first is a binding this does not have. A comma and a full
+ * stop carry the angle brackets on a US layout, which is as close to "back one, forward
+ * one" as a key gets, and no browser or text box wants them with this modifier.
+ */
+const REORDER_TAB_SHORTCUT = byKey(',/.', 'shift')
+/**
+ * Not W. A bare Ctrl/Cmd+W is the browser's own close and cannot be taken from a page, and
+ * the Alt that had to be added to dodge it made a three-finger chord for the commonest
+ * thing in the panel — which macOS then rewrote into `∑` on the way.
+ */
+const CLOSE_TAB_SHORTCUT = byKey('X', 'shift')
 
 /**
  * Drafts to store, grouped by the application they belong to. `applyStageNotes` allows one
@@ -97,12 +146,24 @@ export interface StageNoteDraftBatch {
   drafts: StageNoteDraft[]
 }
 
-interface StageNotesDialogProps {
+interface StageNotesPanelProps {
   /** Every application, so notes from any of them can be opened as a tab. */
   applications: Application[]
-  /** The note the panel opens on, whose application's other noted stages open beside it. */
-  initialRef: NoteRef
-  onClose: () => void
+  /**
+   * The arrangement to open with: what was restored from a previous sitting, or what the
+   * view built for the note it was asked for. The panel takes it as given — where the
+   * arrangement comes from is the view's business, not the panel's.
+   */
+  initial: Arrangement
+  /**
+   * A note to show, from a card or a table row. The nonce is what makes a second request
+   * for the same note arrive as a second request rather than as no change at all.
+   */
+  request: NoteRequest | null
+  /** Reports the arrangement after every change, so the view can remember it. */
+  onArrange: (arrangement: Arrangement) => void
+  /** The last tab just closed: there is nothing left for the panel to show. */
+  onEmpty: () => void
   /**
    * Stores the notes whose drafts have changed since the last write. The panel writes as
    * it is typed into, so this commits without closing it and without a notice. Resolves
@@ -128,17 +189,6 @@ interface StageNotesDialogProps {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
-}
-
-/**
- * Orders the stages the panel opens with, the application's current stage first, so the
- * notes you need during an interview are the first thing on screen.
- */
-function visibleStages(current: StateId, noted: StateId[]): StateId[] {
-  const rest = [...new Set(noted)]
-    .filter((state) => state !== current)
-    .sort((left, right) => stateRank(left) - stateRank(right))
-  return [current, ...rest]
 }
 
 interface OutlineListProps {
@@ -202,14 +252,26 @@ function OutlineList({ nodes, depth, path, current, onPick }: OutlineListProps) 
 
 /*
  * The shortcuts the panel binds, listed where they are used. They are bound to the
- * document because the panel is modal, so there is no one control to hang them off and
- * nothing else on screen that would otherwise name them.
+ * document because the panel fills its view, so there is no one control to hang them off
+ * and nothing else on screen that would otherwise name them.
  *
  * A disclosure holding a plain list, the same shape as the topbar's More actions: Escape
- * closes it before the panel, an outside pointer dismisses it, and focus returns to the
- * trigger. Escape is stopped here rather than left to bubble, which is the debt every
- * overlay inside this panel owes `useDialogKeyboard`, as the find bar already pays.
+ * closes it, an outside pointer dismisses it, and focus returns to the trigger. Escape is
+ * stopped here rather than left to bubble, as the find bar already does, so one key press
+ * closes one thing.
  */
+/*
+ * In the order they are read and tabbed through, which the grid then places where they
+ * point: above, left, right, below. Source order is what the keyboard follows, so it walks
+ * the cross top to bottom rather than jumping around it.
+ */
+const SPLIT_CHOICES: readonly { edge: Edge; label: string; arrow: string; key: string }[] = [
+  { edge: 'top', label: 'Above', arrow: '↑', key: 'ArrowUp' },
+  { edge: 'left', label: 'Left', arrow: '←', key: 'ArrowLeft' },
+  { edge: 'right', label: 'Right', arrow: '→', key: 'ArrowRight' },
+  { edge: 'bottom', label: 'Below', arrow: '↓', key: 'ArrowDown' },
+]
+
 function ShortcutsHelp() {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -229,9 +291,8 @@ function ShortcutsHelp() {
       className="panel__shortcuts"
       onKeyDown={(event) => {
         if (!open || event.key !== 'Escape') return
-        // Handled on the way up from the trigger, not from a second document listener:
-        // `useDialogKeyboard` is already bound to the document and was bound first, so
-        // nothing added there could stop it. React's own handler runs before it does.
+        // Handled on the way up from the trigger rather than from a document listener,
+        // so it closes this disclosure and nothing else that happens to be listening.
         event.preventDefault()
         event.stopPropagation()
         setOpen(false)
@@ -242,8 +303,8 @@ function ShortcutsHelp() {
       <button
         aria-expanded={open}
         aria-label="Keyboard shortcuts"
-        className="icon-button"
-        onClick={() => setOpen((current) => !current)}
+        className="icon-button panel__chrome-button"
+        onClick={() => setOpen(!open)}
         ref={triggerRef}
         type="button"
       >
@@ -278,9 +339,179 @@ function ShortcutsHelp() {
   )
 }
 
+/**
+ * Where the next pane goes.
+ *
+ * Split adds one, every time. It used to toggle — a second press gathered every pane back
+ * into one — which put "take me back to a single pane" on the control a reader presses when
+ * they want a third, at exactly the point they have two. Adding is what the control is for;
+ * coming back is a thing to ask for by name, at the foot of this list.
+ *
+ * The directions are offered rather than assumed because there is no right default at three
+ * panes: side by side is for reading two notes against each other, stacked is for following
+ * one into another, and only the reader knows which they are doing.
+ */
+function SplitMenu({
+  isSplit,
+  open,
+  setOpen,
+  onSplit,
+  onCollapse,
+}: {
+  isSplit: boolean
+  /** Held by the panel, so `Ctrl/Cmd+\` opens the same menu this button does. */
+  open: boolean
+  setOpen: (open: boolean) => void
+  onSplit: (edge: Edge) => void
+  onCollapse: () => void
+}) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const triggerRef = useRef<HTMLButtonElement>(null)
+  const firstChoiceRef = useRef<HTMLButtonElement>(null)
+
+  /*
+   * Focus goes into the menu when it opens, which is what makes the arrows reachable from
+   * the shortcut: opened from the keyboard, focus is still out in the panel, and a key
+   * pressed there would never reach this.
+   */
+  useEffect(() => {
+    if (open) firstChoiceRef.current?.focus()
+  }, [open])
+
+  useEffect(() => {
+    if (!open) return
+    const onPointerDown = (event: PointerEvent) => {
+      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
+    }
+    document.addEventListener('pointerdown', onPointerDown)
+    return () => document.removeEventListener('pointerdown', onPointerDown)
+  }, [open, setOpen])
+
+  const choose = (run: () => void) => {
+    run()
+    setOpen(false)
+    triggerRef.current?.focus()
+  }
+
+  return (
+    <div
+      className="panel__shortcuts"
+      onKeyDown={(event) => {
+        if (!open) return
+        if (event.key === 'Escape') {
+          event.preventDefault()
+          event.stopPropagation()
+          setOpen(false)
+          triggerRef.current?.focus()
+          return
+        }
+        /*
+         * The arrows are the menu's own, and they are the whole point of it being a menu:
+         * the direction a pane opens in is a direction, and an arrow is how a direction is
+         * typed. Reached as a pair — the shortcut that opens this, then the arrow — rather
+         * than as four global chords, because every arrow with a modifier already means
+         * something here: Shift sends the tab being read to an edge, Alt walks it along
+         * the strip.
+         */
+        const choice = SPLIT_CHOICES.find((entry) => entry.key === event.key)
+        if (!choice || event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
+        event.preventDefault()
+        event.stopPropagation()
+        choose(() => onSplit(choice.edge))
+      }}
+      ref={containerRef}
+    >
+      <button
+        aria-expanded={open}
+        aria-keyshortcuts={shortcutKeys('\\')}
+        aria-label="Split"
+        className="icon-button panel__chrome-button"
+        onClick={() => setOpen(!open)}
+        ref={triggerRef}
+        title={`Open another pane (${shortcutLabel('\\')}, then an arrow)`}
+        type="button"
+      >
+        <Columns2 aria-hidden="true" size={16} />
+      </button>
+      {open ? (
+        <div aria-labelledby="stage-notes-split-title" className="panel__shortcuts-panel" role="group">
+          <p className="panel__shortcuts-title" id="stage-notes-split-title">
+            Open another pane
+          </p>
+          <div className="panel__split-choices">
+            {/* The pane being split, standing in the middle of the four so the choices
+                around it read as sides of it rather than as a list of words. Decoration:
+                each button already says where it opens, and a screen reader hearing
+                "this pane" between them would be told the layout twice. */}
+            <span aria-hidden="true" className="panel__split-here">This pane</span>
+            {SPLIT_CHOICES.map(({ edge, label, arrow, key }) => (
+              <button
+                aria-keyshortcuts={key}
+                className={`button button--quiet panel__split-choice panel__split-choice--${edge}`}
+                key={edge}
+                onClick={() => choose(() => onSplit(edge))}
+                ref={edge === SPLIT_CHOICES[0].edge ? firstChoiceRef : undefined}
+                type="button"
+              >
+                {label}
+                {/* The key that does this, on the control that does it — the rule the title
+                    bar keeps for every other shortcut in the panel. */}
+                <span aria-hidden="true" className="panel__chrome-key">{arrow}</span>
+              </button>
+            ))}
+          </div>
+          {isSplit ? (
+            <div className="panel__split-collapse">
+              <button
+                className="button button--quiet panel__split-choice panel__split-choice--collapse"
+                onClick={() => choose(onCollapse)}
+                type="button"
+              >
+                Collapse to one pane
+              </button>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
 function wordCount(text: string): number {
   const trimmed = text.trim()
   return trimmed ? trimmed.split(/\s+/).length : 0
+}
+
+/**
+ * A sidebar section's heading, which is also what folds it away. The control is inside the
+ * thing it hides for once, and that works here because the heading stays: what goes is the
+ * list under it, not the row that names it.
+ */
+function SidebarHeading({
+  label,
+  names,
+  shown,
+  onToggle,
+}: {
+  label: string
+  /** What the button says it acts on, which is not always the heading with "the" in front
+   *  of it: "Hide the all prep notes" is what that rule produces. */
+  names: string
+  shown: boolean
+  onToggle: () => void
+}) {
+  return (
+    <button
+      aria-expanded={shown}
+      aria-label={`${shown ? 'Hide' : 'Show'} ${names}`}
+      className={`panel__sidebar-title${shown ? '' : ' panel__sidebar-title--folded'}`}
+      onClick={onToggle}
+      type="button"
+    >
+      <ChevronRight aria-hidden="true" size={12} />
+      {label}
+    </button>
+  )
 }
 
 /** One external editing session, with the note it belongs to. */
@@ -289,16 +520,18 @@ interface OpenSession {
   session: StageNoteEditSession
 }
 
-export function StageNotesDialog({
+export function StageNotesPanel({
   applications,
-  initialRef,
-  onClose,
+  initial,
+  request,
+  onArrange,
+  onEmpty,
   onSaveDrafts,
   onExternalChange,
   onCapture,
   onRevise,
-}: StageNotesDialogProps) {
-  const dialogRef = useRef<HTMLElement>(null)
+}: StageNotesPanelProps) {
+  const panelRef = useRef<HTMLDivElement>(null)
 
   const applicationsById = useMemo(
     () => new Map(applications.map((application) => [application.id, application])),
@@ -338,7 +571,7 @@ export function StageNotesDialog({
    * Ids for the panes this sitting creates. A counter rather than a uuid: it is only ever
    * compared with its own siblings, and a readable id makes a layout easy to follow.
    */
-  const paneCount = useRef(1)
+  const paneCount = useRef(highestPaneNumber(initial.layout))
   const newId = useCallback(() => {
     paneCount.current += 1
     return `pane-${paneCount.current}`
@@ -350,17 +583,9 @@ export function StageNotesDialog({
    * single-application panel — a tab is a note in a group, so there is one thing to keep
    * right rather than two that had to agree.
    */
-  const [layout, setLayout] = useState<LayoutNode>(() => {
-    const application = applicationsById.get(initialRef.applicationId)
-    const noted = application?.stage_notes.map((note) => note.state) ?? []
-    const tabs = visibleStages(initialRef.state, noted).map((state) => ({
-      applicationId: initialRef.applicationId,
-      state,
-    }))
-    return makeGroup(FIRST_PANE_ID, tabs, noteRefKey(initialRef))
-  })
+  const [layout, setLayout] = useState<LayoutNode>(initial.layout)
   const layoutRef = useRef(layout)
-  const [focusedGroupId, setFocusedGroupId] = useState<string>(FIRST_PANE_ID)
+  const [focusedGroupId, setFocusedGroupId] = useState<string>(initial.focusedGroupId)
   const focusedGroupRef = useRef(focusedGroupId)
 
   const [drafts, setDrafts] = useState<Record<string, string>>({})
@@ -383,6 +608,18 @@ export function StageNotesDialog({
    * highlight to step onto.
    */
   const [editingLines, setEditingLines] = useState<string[]>([])
+  /**
+   * Notes whose capture dock is open. Collapsed by default and held here rather than in
+   * the pane, so opening it for one note stays sticky across switching tabs away and back
+   * — the pane for the tab left behind unmounts, but this does not.
+   */
+  const [captureOpen, setCaptureOpen] = useState<string[]>([])
+  /**
+   * Set by the "K" shortcut when it has to open a collapsed dock before it can focus the
+   * box inside it: the box does not exist yet in the render that opens it, so focusing it
+   * has to wait for the one after.
+   */
+  const [pendingCaptureFocusKey, setPendingCaptureFocusKey] = useState<string | null>(null)
   const [sessions, setSessions] = useState<Record<string, OpenSession>>({})
   const sessionsRef = useRef(sessions)
   const [formError, setFormError] = useState<string | null>(null)
@@ -390,14 +627,92 @@ export function StageNotesDialog({
   const [savedAt, setSavedAt] = useState<Date | null>(null)
   const savingRef = useRef(false)
   const mountedRef = useRef(true)
+  /**
+   * Whether the sidebar is showing. One panel holding both things a reader navigates with
+   * — the outline of the note in front of them, and every note behind it — stacked in one
+   * column rather than switched between: having to choose which of the two you want is a
+   * question the panel can answer for you by showing both. Closed leaves the rail, because
+   * a control inside the thing it hides has nowhere to be once hidden.
+   */
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  /**
+   * Whether each half of the sidebar is showing. Held here rather than persisted, the way
+   * the capture dock's own fold is: what a reader wants beside them changes with what they
+   * are doing, and the heading that folds one away is always there to bring it back.
+   */
+  const [outlineShown, setOutlineShown] = useState(true)
+  const [notesShown, setNotesShown] = useState(true)
+  const [outlineShare, setOutlineShare] = useState(initial.outlineShare ?? DEFAULT_OUTLINE_SHARE)
+  /** The column itself, so a drag can say what a pixel of it is worth as a share. */
+  const sidebarRef = useRef<HTMLElement>(null)
+  const sidebarOpenRef = useRef(sidebarOpen)
+  useEffect(() => {
+    sidebarOpenRef.current = sidebarOpen
+  }, [sidebarOpen])
+
+  const toggleSidebar = useCallback(() => setSidebarOpen((open) => !open), [])
+
+  /**
+   * How the two halves of the sidebar share it. A share rather than a height, so what one
+   * half gives up the other takes, and so the handle sits in the same place in a window of
+   * any height. A drag arrives in pixels and is divided by the column it moved across.
+   */
+  const resizeOutline = useCallback((delta: number) => {
+    setOutlineShare((current) => outlineShareWithin(current + delta))
+  }, [])
+
+  const dragOutline = useCallback((pixels: number) => {
+    const column = sidebarRef.current?.getBoundingClientRect().height ?? 0
+    if (column <= 0) return
+    resizeOutline(pixels / column)
+  }, [resizeOutline])
+
+  const endOutlineDrag = useRef<(() => void) | null>(null)
+  useEffect(() => () => endOutlineDrag.current?.(), [])
+
+  const beginOutlineDrag = useCallback(
+    (startY: number) => {
+      let from = startY
+      const move = (event: MouseEvent) => {
+        dragOutline(event.clientY - from)
+        from = event.clientY
+      }
+      const stop = () => {
+        window.removeEventListener('mousemove', move)
+        window.removeEventListener('mouseup', stop)
+        endOutlineDrag.current = null
+      }
+      window.addEventListener('mousemove', move)
+      window.addEventListener('mouseup', stop)
+      endOutlineDrag.current = stop
+    },
+    [dragOutline],
+  )
   // Find state. `findSeq` remounts the widget so a second Ctrl+F refocuses and selects
   // the query already in it, the way reopening find in an editor does.
   const [findOpen, setFindOpen] = useState(false)
   const [findSeq, setFindSeq] = useState(0)
   const [findQuery, setFindQuery] = useState('')
   const [matchCursor, setMatchCursor] = useState(0)
-  const [quickOpen, setQuickOpen] = useState(false)
+  /**
+   * The pane the picker was opened from, or null when it is closed. A pane rather than a
+   * flag because the + that opens it sits in a pane's own tab strip: what it opens belongs
+   * beside the tabs it was pressed among, not in whichever pane happened to be read last.
+   */
+  /**
+   * How tall the captured lines are, in every pane at once. One height rather than one per
+   * note: dragging the dock open for an interview is the reader sizing their workspace,
+   * and a height that reset with every tab switch would have to be dragged again each
+   * time. Undefined until one is dragged, which leaves the stylesheet its own default.
+   */
+  const [captureHeight, setCaptureHeight] = useState(initial.captureHeight ?? DEFAULT_CAPTURE_LOG)
+  const [sidebarWidth, setSidebarWidth] = useState(initial.sidebarWidth ?? DEFAULT_SIDEBAR)
+  const sidebarWidthRef = useRef(sidebarWidth)
+  useEffect(() => {
+    sidebarWidthRef.current = sidebarWidth
+  }, [sidebarWidth])
+  const [splitMenuOpen, setSplitMenuOpen] = useState(false)
+  const [quickOpen, setQuickOpen] = useState<string | null>(null)
   /** The section the breadcrumbs name: the last heading scrolled past. */
   const [trailKey, setTrailKey] = useState<string | null>(null)
   /** Ancestors of an outline pick, force-opened so the jump lands somewhere folded open. */
@@ -425,31 +740,23 @@ export function StageNotesDialog({
     saveDraftsRef.current = onSaveDrafts
   }, [onSaveDrafts])
 
-  const closeRef = useRef(onClose)
+  const emptyRef = useRef(onEmpty)
   useEffect(() => {
-    closeRef.current = onClose
-  }, [onClose])
+    emptyRef.current = onEmpty
+  }, [onEmpty])
 
-  useDialogKeyboard(dialogRef, onClose)
-
-  // The panel covers the viewport and scrolls its own notes column, but the page behind
-  // it can still be taller than the viewport. Without this the body keeps its own
-  // scrollbar, doing nothing since the fixed panel blocks it, right beside the pane's.
+  const arrangeRef = useRef(onArrange)
   useEffect(() => {
-    const previous = document.body.style.overflow
-    document.body.style.overflow = 'hidden'
-    return () => {
-      document.body.style.overflow = previous
-    }
-  }, [])
+    arrangeRef.current = onArrange
+  }, [onArrange])
 
   /**
-   * Replaces the arrangement. Null means the last note just closed, which is the panel's
-   * cue to go: with no note left there is nothing for it to be open for.
+   * Replaces the arrangement. Null means the last note just closed, which leaves the view
+   * holding the panel with nothing to show — its cue to offer the empty state instead.
    */
   const applyLayout = useCallback((next: LayoutNode | null, focusGroupId?: string) => {
     if (!next) {
-      closeRef.current()
+      emptyRef.current()
       return
     }
     layoutRef.current = next
@@ -466,30 +773,111 @@ export function StageNotesDialog({
   }, [focusedGroupId])
 
   const openRefs = useMemo(() => orderedRefs(layout), [layout])
+  /**
+   * The same notes as the copies they are. A note open in two panes is two places on
+   * screen, and anything numbering or addressing what is showing has to say which.
+   */
+  const openTabs = useMemo(() => orderedTabs(layout), [layout])
+
+  /**
+   * What each tab says, worked out over every tab in the panel rather than strip by strip.
+   * A pane is not an island: two panes holding one company each would both find nothing to
+   * tell their tabs from their neighbours and both drop the company, leaving "Interview 2"
+   * beside "Offer" with nothing on screen saying whose. What a tab competes with is
+   * everything else open, wherever it is.
+   */
+  const shortLabels = useMemo(() => {
+    const labels = tabLabels(
+      openTabs.map(({ ref }) => {
+        const application = applicationsById.get(ref.applicationId)
+        return {
+          company: application?.company ?? '',
+          role: application ? applicationRole(application) : '',
+          stage: stateLabel(ref.state),
+        }
+      }),
+    )
+    // Keyed by the copy rather than by the note: one note open in two panes is two tabs,
+    // and each pane looks its own up.
+    return new Map(openTabs.map(({ groupId, ref }, index) => [tabId(groupId, ref), labels[index]]))
+  }, [applicationRole, applicationsById, openTabs])
+
+  /**
+   * Which tab each pane is showing, as one string, so the effect below runs when a strip
+   * changes what it is showing rather than on every arrangement of anything.
+   */
+  const showing = useMemo(
+    () => groupsOf(layout).map((group) => `${group.id}@${group.activeKey ?? ''}`).join('|'),
+    [layout],
+  )
+
+  /*
+   * A strip scrolls, and a tab opened onto the end of one lands past its edge — the note
+   * appears below while the tab that says which note it is does not. So the tab a pane has
+   * just shown is brought into view in its own strip.
+   *
+   * `nearest` on both axes so a tab already showing is left where it is and the panel
+   * around it is not scrolled: this moves a strip, and only as far as it has to.
+   */
+  useEffect(() => {
+    for (const group of groupsOf(layoutRef.current)) {
+      const ref = group.tabs.find((tab) => noteRefKey(tab) === group.activeKey)
+      if (!ref) continue
+      // Optional call: jsdom has no layout and leaves scrollIntoView undefined.
+      tabRefs.current[tabId(group.id, ref)]?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+    }
+  }, [showing])
 
   /**
    * Seeds a draft for every note as it joins the panel, so what is typed is measured
-   * against what was stored rather than against nothing. A note already seeded is left
-   * alone: re-seeding it from the document would throw away the keystrokes that have not
-   * been written yet.
+   * against what was stored rather than against nothing — and afterwards keeps a seeded
+   * note in step with the document when something else writes it.
+   *
+   * The panel is not the only thing that writes a note. The external editor has its own
+   * channel and is handled by the poll below, but a note can also be written from anywhere
+   * else holding the same document. Left alone, the panel would go on showing the body it
+   * seeded and write that back over the newer one on the next keystroke, which is how an
+   * edit made elsewhere disappears without anything reporting a failure.
+   *
+   * Adopting is gated on the panel having nothing unsaved for that note — `draft` still
+   * equal to what was last written from here. Where it has, the keystrokes that have not
+   * been written yet win, since dropping them is the one thing worse than showing a stale
+   * body. That is the same choice a compare card makes while it holds focus.
    */
   useEffect(() => {
-    const missing = openRefs.filter((ref) => draftsRef.current[noteRefKey(ref)] === undefined)
-    if (missing.length === 0) return
     const nextDrafts = { ...draftsRef.current }
     const nextStored = { ...storedRef.current }
-    for (const ref of missing) {
+    const seeded: NoteRef[] = []
+    let changed = false
+
+    for (const ref of openRefs) {
       const key = noteRefKey(ref)
       const body = noteByKey.get(key)?.body ?? ''
-      nextDrafts[key] = body
-      nextStored[key] = body
+      const draft = draftsRef.current[key]
+
+      if (draft === undefined) {
+        nextDrafts[key] = body
+        nextStored[key] = body
+        seeded.push(ref)
+        changed = true
+        continue
+      }
+
+      if (storedRef.current[key] !== body && draft === storedRef.current[key]) {
+        nextDrafts[key] = body
+        nextStored[key] = body
+        changed = true
+      }
     }
+
+    if (!changed) return
     draftsRef.current = nextDrafts
     storedRef.current = nextStored
     setDrafts(nextDrafts)
     setStored(nextStored)
-    // A note opened with nothing in it opens ready to type, the way an empty stage always has.
-    const blank = missing.filter((ref) => !(noteByKey.get(noteRefKey(ref))?.body ?? '').trim())
+    // A note opened with nothing in it opens ready to type, the way an empty stage always
+    // has. Only a note joining the panel, never one that merely went empty elsewhere.
+    const blank = seeded.filter((ref) => !(noteByKey.get(noteRefKey(ref))?.body ?? '').trim())
     if (blank.length > 0) {
       setEditing((current) => [...current, ...blank.map(noteRefKey).filter((key) => !current.includes(key))])
     }
@@ -685,10 +1073,23 @@ export function StageNotesDialog({
   }, [noteByKey])
 
   const groups = useMemo(() => groupsOf(layout), [layout])
-  const activeGroup = groups.find((group) => group.id === focusedGroupId) ?? groups[0]
+  /*
+   * The pane the chrome describes. Normally the focused one, but a pane can be open and
+   * empty — the outline, the breadcrumbs and the status bar are about a note, so they
+   * follow the nearest pane holding one rather than going blank. Focus itself stays where
+   * it is, which is what makes an opened note land in the empty pane.
+   */
+  const activeGroup = groups.find((group) => group.id === focusedGroupId && group.tabs.length > 0)
+    ?? groups.find((group) => group.tabs.length > 0)
+    ?? groups[0]
   const activeRef =
     activeGroup.tabs.find((tab) => noteRefKey(tab) === activeGroup.activeKey) ?? activeGroup.tabs[0]
   const activeKey = noteRefKey(activeRef)
+  /** Every note the panel has open, for the tree beside it to mark as already there. */
+  const openKeys = useMemo(
+    () => new Set(orderedRefs(layout).map(noteRefKey)),
+    [layout],
+  )
   const activeBody = drafts[activeKey] ?? ''
   const activeLabel = labelOf(activeRef)
   const isSplit = groups.length > 1
@@ -716,19 +1117,28 @@ export function StageNotesDialog({
    * with `written` recording where the second starts.
    */
   const findMatches = useCallback(
-    (value: string) => {
-      const perNote = new Map<
+    /**
+     * `tabs` defaults to what is open now, and is passed in by a caller numbering the
+     * matches of an arrangement it is about to apply — a note being opened is not in
+     * `openTabs` until the render after, and its matches have to be found before then.
+     */
+    (value: string, tabs: { groupId: string; ref: NoteRef }[] = openTabs) => {
+      const perTab = new Map<
         string,
-        { base: number; count: number; written: number; inEditor: boolean }
+        { base: number; count: number; written: number; inEditor: boolean; key: string }
       >()
       const order: string[] = []
       let total = 0
-      if (!value.trim()) return { perNote, order, total }
+      if (!value.trim()) return { perTab, order, total }
 
       const countIn = (source: string) =>
         source.trim() ? searchNote(buildSections(parseMarkdown(source)), value).count : 0
 
-      for (const ref of openRefs) {
+      for (const { groupId, ref } of tabs) {
+        // Two ids in play, and the difference is the point: the note's key says what the
+        // text is, and is shared by every copy of it, while the tab's says which copy is
+        // being numbered. Matches belong to a copy; drafts belong to a note.
+        const id = tabId(groupId, ref)
         const key = noteRefKey(ref)
         const inEditor = editing.includes(key) && !sessions[key]
         const source = drafts[key] ?? ''
@@ -741,13 +1151,13 @@ export function StageNotesDialog({
         const said = editingLines.includes(key) ? 0 : countIn(capturedByKey.get(key) ?? '')
         const count = written + said
         if (count === 0) continue
-        perNote.set(key, { base: total, count, written, inEditor })
-        order.push(key)
+        perTab.set(id, { base: total, count, written, inEditor, key })
+        order.push(id)
         total += count
       }
-      return { perNote, order, total }
+      return { perTab, order, total }
     },
-    [capturedByKey, drafts, editing, editingLines, openRefs, sessions],
+    [capturedByKey, drafts, editing, editingLines, openTabs, sessions],
   )
 
   const matches = useMemo(() => findMatches(query), [findMatches, query])
@@ -757,10 +1167,10 @@ export function StageNotesDialog({
     ? null
     : ((matchCursor % matches.total) + matches.total) % matches.total
 
-  /** The note holding a given position in the panel-wide list of matches. */
+  /** The copy holding a given position in the panel-wide list of matches. */
   const noteOfMatch = (position: number): string | undefined =>
-    matches.order.find((key) => {
-      const found = matches.perNote.get(key)
+    matches.order.find((id) => {
+      const found = matches.perTab.get(id)
       return found ? position >= found.base && position < found.base + found.count : false
     })
 
@@ -777,26 +1187,156 @@ export function StageNotesDialog({
    * whichever the DOM happened to return first.
    */
   const showRef = useCallback(
-    (ref: NoteRef) => {
-      const key = noteRefKey(ref)
-      const holding = groupHolding(layoutRef.current, key)
-      if (holding) {
-        applyLayout(activateTab(layoutRef.current, holding.id, key), holding.id)
-        return
-      }
-      const target = groupsOf(layoutRef.current).find((group) => group.id === focusedGroupId)
+    /**
+     * `intoGroupId` names the pane to open into, for a caller that belongs to one — the +
+     * in a pane's tab strip. Without it the note goes to the pane being read, which is
+     * what a request from outside the panel and the keyboard shortcut both want.
+     */
+    (ref: NoteRef, intoGroupId?: string) => {
+      const wanted = intoGroupId ?? focusedGroupId
+      const target = groupsOf(layoutRef.current).find((group) => group.id === wanted)
         ?? groupsOf(layoutRef.current)[0]
+      // Into this pane, whatever any other pane is showing. `openInGroup` settles the rest:
+      // a pane already holding the note just shows it, and one that is not gets a copy.
+      // Reaching for a note is a request to have it here, not a request to be sent to
+      // wherever a copy of it happens to be.
       applyLayout(openInGroup(layoutRef.current, target.id, ref), target.id)
     },
     [applyLayout, focusedGroupId],
   )
 
-  const showKey = useCallback(
-    (key: string) => {
-      const ref = refByKey.get(key)
-      if (ref) showRef(ref)
+  /**
+   * What the stage-switch dropdown on a pane picks: swaps the tab it sits on for the
+   * stage chosen, in that tab's own place — "show me this stage instead" rather than
+   * "also open this one". A stage already open elsewhere is focused there instead of
+   * opening a second copy of it, closing the tab it was swapped out from.
+   */
+  const switchStage = useCallback(
+    (groupId: string, fromKey: string, ref: NoteRef) => {
+      const next = replaceTab(layoutRef.current, groupId, fromKey, ref)
+      // Not necessarily `groupId` any more: swapping onto a stage already open elsewhere
+      // closes this pane's own tab and focuses that one instead, which can take the pane
+      // itself with it if that tab was the only one here.
+      const target = groupHolding(next, noteRefKey(ref))?.id ?? groupId
+      applyLayout(next, target)
     },
-    [refByKey, showRef],
+    [applyLayout],
+  )
+
+  /*
+   * The arrangement reported out after every change, so the view holding the panel can
+   * remember it. Through a ref because the view re-renders on every write the notes make:
+   * depending on the callback itself would restart this on writes that did not move a
+   * tab.
+   */
+  useEffect(() => {
+    arrangeRef.current({ layout, focusedGroupId, captureHeight, sidebarWidth, outlineShare })
+  }, [captureHeight, focusedGroupId, layout, outlineShare, sidebarWidth])
+
+  /*
+   * A note asked for from outside the panel. Only the nonce is watched: the ref alone
+   * cannot tell a second ask for the note already on show from no ask at all, and the
+   * request prop stays put between them.
+   */
+  const handledNonce = useRef(request?.nonce ?? null)
+  useEffect(() => {
+    if (!request || request.nonce === handledNonce.current) return
+    handledNonce.current = request.nonce
+    showRef(request.ref)
+    panelRef.current?.focus()
+  }, [request, showRef])
+
+  /**
+   * Moves the dock's edge. The pane hands over how far to move, not where to land: one
+   * height is shared by every pane, so where it lands is the panel's to decide.
+   *
+   * The floor stops the drag rather than closing the dock — the toggle above it is the way
+   * to put the log away, and one control per outcome is the rule this panel keeps.
+   */
+  const resizeCapture = useCallback((delta: number) => {
+    setCaptureHeight((current) => captureHeightWithin(current + delta))
+  }, [])
+
+  const endSidebarDrag = useRef<(() => void) | null>(null)
+  // A drag outlives a re-render, but must not outlive the panel it belongs to.
+  useEffect(() => () => endSidebarDrag.current?.(), [])
+
+  /**
+   * Puts the sidebar's edge at a width. Below what its own rows can be read at it closes
+   * rather than narrowing further — a column too thin to read is not a narrower sidebar,
+   * it is a sidebar in the way — and at or above it the sidebar opens, whether or not it
+   * was open a moment ago. The edge works both ways because a width is something to drag
+   * *to*, not only away from, and what comes back is the panel that went.
+   */
+  const sidebarTo = useCallback((width: number) => {
+    if (width < MIN_SIDEBAR) {
+      setSidebarOpen(false)
+      return
+    }
+    setSidebarOpen(true)
+    setSidebarWidth(sidebarWidthWithin(width))
+  }, [])
+
+  /**
+   * The arrow keys, which move by a step rather than to a place. Closed, the only step
+   * that means anything is the one that opens it, and it comes back at the width it had:
+   * stepping out from nothing would take a dozen presses to reach a readable column.
+   */
+  const resizeSidebar = useCallback(
+    (delta: number) => {
+      if (!sidebarOpenRef.current) {
+        if (delta > 0) setSidebarOpen(true)
+        return
+      }
+      sidebarTo(sidebarWidthRef.current + delta)
+    },
+    [sidebarTo],
+  )
+
+  /**
+   * The drag that moves it, re-based on every move so the edge tracks the pointer rather
+   * than accelerating away from it — the same reason the other handles re-base theirs.
+   */
+  const beginSidebarDrag = useCallback((railRight: number) => {
+    const move = (event: MouseEvent) => {
+      // Measured from where the sidebar starts rather than accumulated from where the drag
+      // did: a closed sidebar has no width to add to, and a pointer at a place says the
+      // whole of what the reader means by it.
+      sidebarTo(event.clientX - railRight)
+    }
+    const stop = () => {
+      window.removeEventListener('mousemove', move)
+      window.removeEventListener('mouseup', stop)
+      endSidebarDrag.current = null
+    }
+    window.addEventListener('mousemove', move)
+    window.addEventListener('mouseup', stop)
+    endSidebarDrag.current = stop
+  }, [sidebarTo])
+
+  /**
+   * Closes the note on show in the pane being read. Off the refs rather than the rendered
+   * values, so the document listener that calls it is not rebound every time a tab changes.
+   */
+  const closeFocusedTab = useCallback(() => {
+    const groups = groupsOf(layoutRef.current)
+    const group = groups.find((entry) => entry.id === focusedGroupRef.current) ?? groups[0]
+    if (!group?.activeKey) return
+    applyLayout(closeTab(layoutRef.current, group.id, group.activeKey))
+  }, [applyLayout])
+
+  /**
+   * Shows one copy: the tab in the pane the id names. The find steps between copies as
+   * well as between notes, so it has to say which — `showKey` would land on whichever
+   * pane happened to hold the note first.
+   */
+  const showTab = useCallback(
+    (id: string) => {
+      const found = parseTabId(id)
+      if (!found) return
+      applyLayout(activateTab(layoutRef.current, found.groupId, noteRefKey(found.ref)), found.groupId)
+    },
+    [applyLayout],
   )
 
   /**
@@ -809,9 +1349,10 @@ export function StageNotesDialog({
    * The selection is set all the same, unfocused and invisible, so clicking into the box
    * afterwards puts the caret on the hit rather than wherever it last was.
    */
-  const revealInSource = (key: string | undefined, position: number) => {
-    const found = key ? matches.perNote.get(key) : undefined
-    if (!key || !found?.inEditor) return
+  const revealInSource = (id: string | undefined, position: number) => {
+    const found = id ? matches.perTab.get(id) : undefined
+    if (!id || !found?.inEditor) return
+    const key = found.key
     const index = position - found.base
     // Past the written note is the captured log, which renders marks like any note.
     if (index >= found.written) return
@@ -820,7 +1361,7 @@ export function StageNotesDialog({
 
     requestAnimationFrame(() => {
       const pane = notesRef.current
-      const box = pane?.querySelector<HTMLTextAreaElement>(`[data-note-source="${key}"]`)
+      const box = pane?.querySelector<HTMLTextAreaElement>(`[data-note-source="${id}"]`)
       if (!box) return
       // The box holds the note with its folded lines taken out. A fold holding a match is
       // open while the find is running, so the match itself is in there — but the lines
@@ -843,9 +1384,9 @@ export function StageNotesDialog({
     const next = matchCursor + delta
     setMatchCursor(next)
     const landing = ((next % matches.total) + matches.total) % matches.total
-    const key = noteOfMatch(landing)
-    if (key) showKey(key)
-    revealInSource(key, landing)
+    const id = noteOfMatch(landing)
+    if (id) showTab(id)
+    revealInSource(id, landing)
   }
 
   /** A new query starts from its first match, in whichever note that turns out to be. */
@@ -853,13 +1394,44 @@ export function StageNotesDialog({
     setFindQuery(value)
     setMatchCursor(0)
     const [first] = findMatches(value).order
-    if (first) showKey(first)
+    if (first) showTab(first)
   }
+
+  /**
+   * A hit picked in the notes tree: open the note here, then hand the words to the panel's
+   * own find. Everything that makes a match legible — the highlight, the fold opened to
+   * show one, the count in the find bar, the step to the next — already lives there, and a
+   * second way of showing the same thing would be a second thing to keep right.
+   *
+   * The cursor is worked out against the arrangement being applied rather than the one on
+   * screen: the note is being opened now, so it is not among the open tabs until the render
+   * after this, and its matches would be numbered from a panel it is not yet in.
+   */
+  const findInNote = useCallback(
+    (ref: NoteRef, query: string) => {
+      if (!query) return
+      const groups = groupsOf(layoutRef.current)
+      const target = groups.find((group) => group.id === focusedGroupRef.current) ?? groups[0]
+      const next = openInGroup(layoutRef.current, target.id, ref)
+      applyLayout(next, target.id)
+      setFindQuery(query)
+      setFindOpen(true)
+      setFindSeq((current) => current + 1)
+
+      // Its first match rather than the snippet's own position: the tree counts hits in the
+      // note read as prose and the find counts them in the note as written, and the two
+      // need not agree. Landing in the right note with the find running is the promise;
+      // stepping from there is what the find bar is for.
+      const found = findMatches(query, orderedTabs(next)).perTab.get(tabId(target.id, ref))
+      setMatchCursor(found ? found.base : 0)
+    },
+    [applyLayout, findMatches],
+  )
 
   const closeFind = () => {
     setFindOpen(false)
     setFindQuery('')
-    dialogRef.current?.focus()
+    panelRef.current?.focus()
   }
 
   /** Bumping the sequence remounts the widget, which refocuses and selects the query. */
@@ -873,19 +1445,42 @@ export function StageNotesDialog({
    * into one. Unsplitting gathers every tab rather than dropping the panes it closes: a
    * pane is where a note is shown, not what keeps it open.
    */
-  const toggleSplit = useCallback(() => {
+  /**
+   * Opens another pane, always — the pane being read keeps the note it is showing, and one
+   * of its other tabs moves into the new one. Taken out rather than copied: a split shows
+   * two notes at once, and a second copy of the same note is not what was asked for.
+   * Opening one twice is a drag, which says so.
+   */
+  /**
+   * Opens a pane, empty. Nothing is moved into it and nothing is copied: what the reader
+   * asked for is room, and which note goes in it is the next thing they say — from the
+   * picker, from the tree, or by dragging a tab across. A pane that arrived holding a note
+   * chosen for it was a guess, and half the time the guess had to be undone first.
+   *
+   * Focus goes with it, so the note opened next lands where the room was made.
+   */
+  const splitOff = useCallback((edge: Edge) => {
     const current = layoutRef.current
     const list = groupsOf(current)
-    if (list.length > 1) {
-      const first = list[0]
-      applyLayout(makeGroup(first.id, list.flatMap((group) => group.tabs), first.activeKey), first.id)
-      return
-    }
-    const only = list[0]
-    const other = only.tabs.find((tab) => noteRefKey(tab) !== only.activeKey)
-    if (!other) return
-    applyLayout(splitWith(current, only.id, 'right', other, newId), only.id)
+    const from = list.find((group) => group.id === focusedGroupRef.current) ?? list[0]
+    const before = new Set(list.map((group) => group.id))
+    const split = splitEmpty(current, from.id, edge, newId)
+    const fresh = groupsOf(split).find((group) => !before.has(group.id))
+    applyLayout(split, fresh?.id ?? from.id)
   }, [applyLayout, newId])
+
+  /** Every pane back into one, which Split used to do on a second press. */
+  const collapseSplit = useCallback(() => {
+    const list = groupsOf(layoutRef.current)
+    const first = list[0]
+    // One strip cannot hold a note twice, so copies gathered from several panes collapse
+    // back into the one tab they are copies of.
+    const gathered: NoteRef[] = []
+    for (const tab of list.flatMap((group) => group.tabs)) {
+      if (!gathered.some((kept) => noteRefKey(kept) === noteRefKey(tab))) gathered.push(tab)
+    }
+    applyLayout(makeGroup(first.id, gathered, first.activeKey), first.id)
+  }, [applyLayout])
 
   const closeNote = (groupId: string, key: string) => {
     applyLayout(closeTab(layoutRef.current, groupId, key))
@@ -903,27 +1498,49 @@ export function StageNotesDialog({
   )
 
   /**
+   * What a drag is carrying, and where it came from.
+   *
+   * A tab hands over its own id — the pane it is in and the note it shows — because
+   * dragging a tab means moving that copy out of that pane. A row in the tree of unopened
+   * notes hands over a note key, which names no pane, because dragging one means opening a
+   * copy where it lands and leaving every other copy alone. The two intents differ and the
+   * payload is what tells them apart.
+   */
+  const dragged = useCallback(
+    (key: string): { ref: NoteRef; from: string | null } | null => {
+      const asTab = parseTabId(key)
+      if (asTab) return { ref: asTab.ref, from: asTab.groupId }
+      const ref = refByKey.get(key) ?? parseNoteRefKey(key)
+      return ref ? { ref, from: null } : null
+    },
+    [refByKey],
+  )
+
+  /**
    * Lands a dragged or arrowed tab in a pane. The keyboard and the pointer share this so
    * the two cannot drift: whatever a drag can arrange, the arrows can arrange too, which
    * is the whole reason the layout operations are pure.
    */
   const dropTab = useCallback(
     (key: string, groupId: string, index: number) => {
-      applyLayout(moveTab(layoutRef.current, key, groupId, index), groupId)
+      const held = dragged(key)
+      if (!held) return
+      const next = held.from
+        ? moveTab(layoutRef.current, held.from, noteRefKey(held.ref), groupId, index)
+        : placeTab(layoutRef.current, held.ref, groupId, index)
+      applyLayout(next, groupId)
     },
-    [applyLayout],
+    [applyLayout, dragged],
   )
 
-  /** Opens a new pane on one side of an existing one, holding the tab that was moved. */
+  /** Opens a new pane on one side of an existing one, holding the note that was dragged. */
   const splitTabOff = useCallback(
     (key: string, targetGroupId: string, edge: Edge) => {
-      const ref = groupHolding(layoutRef.current, key)?.tabs.find(
-        (tab) => noteRefKey(tab) === key,
-      )
-      if (!ref) return
-      applyLayout(splitWith(layoutRef.current, targetGroupId, edge, ref, newId))
+      const held = dragged(key)
+      if (!held) return
+      applyLayout(splitWith(layoutRef.current, targetGroupId, edge, held.ref, newId, held.from))
     },
-    [applyLayout, newId],
+    [applyLayout, dragged, newId],
   )
 
   /**
@@ -938,16 +1555,17 @@ export function StageNotesDialog({
       const from = groupsOf(tree).find((group) => group.id === focusedGroupRef.current)
         ?? groupsOf(tree)[0]
       const key = from.activeKey
-      if (!key) return
+      const ref = key ? from.tabs.find((tab) => noteRefKey(tab) === key) : undefined
+      if (!key || !ref) return
 
       const neighbour = neighbourGroup(tree, from.id, edge)
       if (neighbour) {
         const target = groupsOf(tree).find((group) => group.id === neighbour)!
         // Landing nearest the edge it came from, so the tab arrives where it was aimed.
-        dropTab(key, neighbour, edge === 'right' || edge === 'bottom' ? 0 : target.tabs.length)
+        dropTab(tabId(from.id, ref), neighbour, edge === 'right' || edge === 'bottom' ? 0 : target.tabs.length)
         return
       }
-      splitTabOff(key, from.id, edge)
+      splitTabOff(tabId(from.id, ref), from.id, edge)
     },
     [dropTab, splitTabOff],
   )
@@ -984,7 +1602,11 @@ export function StageNotesDialog({
       if (!(event.metaKey || event.ctrlKey)) return
       if (event.key === '\\') {
         event.preventDefault()
-        toggleSplit()
+        // Opens the menu and lands in it, where an arrow says which way. A pane opens in a
+        // direction, and the four directions cannot each have a chord of their own: every
+        // arrow with a modifier is already spoken for here — Shift sends the tab being
+        // read to an edge, Alt walks it along the strip.
+        setSplitMenuOpen(true)
         return
       }
       const key = event.key.toLowerCase()
@@ -996,24 +1618,69 @@ export function StageNotesDialog({
       }
       if (key === 'p') {
         event.preventDefault()
-        setQuickOpen(true)
+        // The shortcut has no strip of its own, so it opens into the pane being read. Read
+        // from the ref so this listener is not rebound every time focus moves between
+        // panes, the same reason the capture shortcut finds its box in the DOM.
+        setQuickOpen(focusedGroupRef.current)
         return
       }
       if (key === 'b') {
         event.preventDefault()
-        setSidebarOpen((current) => !current)
+        toggleSidebar()
+        return
+      }
+      /*
+       * X rather than W, and Shift rather than Alt. `Ctrl/Cmd+W` is the browser's own close
+       * and a page in a tab cannot take it, so this had carried Alt to dodge it — and Alt
+       * is a layout modifier on macOS, which rewrote the key into `∑` on the way and took
+       * two more lines of matching to read back. Shift changes no character, so the key is
+       * the key, and closing the note you are reading is a two-finger chord again.
+       */
+      if (key === 'x') {
+        if (!event.shiftKey || event.altKey) return
+        event.preventDefault()
+        closeFocusedTab()
+        return
+      }
+      /*
+       * Both readings again, for the reason the old W binding needed them: Shift is a
+       * layout modifier over punctuation, so these arrive as `<` and `>` on a US layout
+       * and as something else again elsewhere, while `code` keeps naming the key cap. The
+       * characters are matched as well, since a layout that puts a comma somewhere else
+       * reports that key's own code.
+       */
+      const earlier = event.code === 'Comma' || key === ',' || key === '<'
+      const later = event.code === 'Period' || key === '.' || key === '>'
+      if (earlier || later) {
+        if (!event.shiftKey || event.altKey) return
+        event.preventDefault()
+        reorderActiveTab(later ? 1 : -1)
         return
       }
       if (key === 'k') {
         event.preventDefault()
-        // Found in the DOM rather than by index, so this listener does not have to be
-        // rebound every time the focus moves from one pane to the other.
-        notesRef.current?.querySelector<HTMLInputElement>('[data-capture-focus]')?.focus()
+        // Opens the dock first if it is collapsed, the same shortcut either way: reaching
+        // for it should not depend on remembering whether it was left open last time.
+        setCaptureOpen((current) => (current.includes(activeKey) ? current : [...current, activeKey]))
+        setPendingCaptureFocusKey(activeKey)
       }
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
-  }, [openFind, toggleSplit])
+  }, [activeKey, closeFocusedTab, openFind, reorderActiveTab, toggleSidebar])
+
+  /**
+   * Focuses the capture box once the dock the "K" shortcut just opened has actually
+   * rendered it. Found in the DOM rather than by index, so this does not have to be
+   * rebound every time the focus moves from one pane to the other.
+   */
+  useEffect(() => {
+    if (!pendingCaptureFocusKey) return
+    const target = notesRef.current?.querySelector<HTMLTextAreaElement>('[data-capture-focus]')
+    if (!target) return
+    target.focus()
+    setPendingCaptureFocusKey(null)
+  }, [captureOpen, pendingCaptureFocusKey])
 
   /*
    * Arranging the panes from the keyboard. A drag is the obvious way to move a tab and the
@@ -1036,16 +1703,16 @@ export function StageNotesDialog({
       }
       const edge = edges[event.key]
       if (!edge) return
-      if (event.shiftKey && !event.altKey) {
-        event.preventDefault()
-        moveTabToEdge(edge)
-        return
-      }
-      // Reordering runs along the strip, so only the two arrows that run along it.
-      if (event.altKey && !event.shiftKey && (edge === 'left' || edge === 'right')) {
-        event.preventDefault()
-        reorderActiveTab(edge === 'right' ? 1 : -1)
-      }
+      if (!event.shiftKey || event.altKey) return
+      /*
+       * Not while something is being typed into. In a text box `⌘⇧←` selects to the start
+       * of the line, and a note being written is the one place in this panel where that is
+       * what the reader means — taking it there cost them the selection and moved a tab
+       * they were not thinking about.
+       */
+      if (isTyping(event.target)) return
+      event.preventDefault()
+      moveTabToEdge(edge)
     }
     document.addEventListener('keydown', onKeyDown)
     return () => document.removeEventListener('keydown', onKeyDown)
@@ -1080,6 +1747,12 @@ export function StageNotesDialog({
    * that row is for, so the list the fuzzy search runs over stays the length of the
    * applications instead of the length of every stage any of them could reach.
    */
+  /** The pane the picker was opened from, whose tabs decide what reads as already open. */
+  const pickingInto = useMemo(
+    () => (quickOpen ? groupsOf(layout).find((group) => group.id === quickOpen) ?? null : null),
+    [layout, quickOpen],
+  )
+
   const quickOpenEntries: QuickOpenEntry[] = useMemo(() => {
     const byApplication = new Map<string, { application: Application; refs: NoteRef[] }>()
     for (const { ref } of pickable.values()) {
@@ -1098,18 +1771,22 @@ export function StageNotesDialog({
         stages: ordered.map((ref) => ({
           id: noteRefKey(ref),
           label: stateLabel(ref.state),
-          open: refByKey.has(noteRefKey(ref)),
+          // Open **here**, in the pane this picker belongs to, rather than open anywhere:
+          // that is what decides whether picking it shows a tab you have or adds one, and
+          // a badge saying Open over a note this pane has not got would be describing
+          // somewhere else.
+          open: pickingInto?.tabs.some((tab) => noteRefKey(tab) === noteRefKey(ref)) ?? false,
         })),
         defaultStageId: noteRefKey({ applicationId: application.id, state: application.state }),
       }
     })
-  }, [applicationRole, applicationsById, pickable, refByKey])
+  }, [applicationRole, applicationsById, pickable, pickingInto])
 
   const openFromPicker = (key: string) => {
     const ref = pickable.get(key)?.ref
-    if (ref) showRef(ref)
-    setQuickOpen(false)
-    dialogRef.current?.focus()
+    if (ref) showRef(ref, quickOpen ?? undefined)
+    setQuickOpen(null)
+    panelRef.current?.focus()
   }
 
   const editDraft = (key: string, value: string) => {
@@ -1328,19 +2005,6 @@ export function StageNotesDialog({
    * the sidebar collapses to a rail holding just this button, and the button does not
    * move when it is pressed.
    */
-  const outlineToggle = (
-    <button
-      aria-keyshortcuts={shortcutKeys('B')}
-      aria-label={sidebarOpen ? 'Hide the outline' : 'Show the outline'}
-      aria-pressed={sidebarOpen}
-      className="icon-button"
-      onClick={() => setSidebarOpen((current) => !current)}
-      title={`${sidebarOpen ? 'Hide the outline' : 'Show the outline'} (${shortcutLabel('B')})`}
-      type="button"
-    >
-      <PanelLeft aria-hidden="true" size={16} />
-    </button>
-  )
 
   /**
    * One pane: its own strip of tabs over the note on show. The tabs belong to the pane
@@ -1356,9 +2020,54 @@ export function StageNotesDialog({
     const paneNumber = paneNumberOf(group.id)
     const shown =
       group.tabs.find((tab) => noteRefKey(tab) === group.activeKey) ?? group.tabs[0]
+
+    /*
+     * A pane opened empty: room made for the next note rather than a note moved into it.
+     * Its strip is still here, empty, because it is a drop place — a tab dragged onto it
+     * is one of the ways a note gets here — and because a pane with no strip at all would
+     * read as a hole in the panel rather than as a pane.
+     */
+    if (!shown) {
+      return (
+        <div className="panel__group" key={group.id}>
+          <div
+            aria-describedby={TABS_HINT_ID}
+            aria-label={`Prep note tabs, pane ${paneNumber}`}
+            className="panel__tabs"
+            role="tablist"
+            {...{ [DROP_SLOT_GROUP]: group.id, [DROP_SLOT_INDEX]: 0 }}
+          />
+          <div className="panel__empty-pane">
+            <p>This pane is empty.</p>
+            <button
+              className="button button--quiet"
+              onClick={() => {
+                setFocusedGroupId(group.id)
+                setQuickOpen(group.id)
+              }}
+              type="button"
+            >
+              <Plus aria-hidden="true" size={16} />
+              Open a note
+              <span aria-hidden="true" className="panel__chrome-key">{shortcutLabel('P')}</span>
+            </button>
+            <p className="panel__empty-pane-hint">Or drag one here from the sidebar.</p>
+            <button
+              aria-label={`Close pane ${paneNumber}`}
+              className="button button--quiet panel__empty-pane-close"
+              onClick={() => applyLayout(closeGroup(layoutRef.current, group.id))}
+              type="button"
+            >
+              Close this pane
+            </button>
+          </div>
+        </div>
+      )
+    }
+
     const shownKey = noteRefKey(shown)
     const open = sessions[shownKey]
-    const found = matches.perNote.get(shownKey)
+    const found = matches.perTab.get(tabId(group.id, shown))
     const isFocusedGroup = group.id === activeGroup.id
     const shownApplication = applicationsById.get(shown.applicationId)
 
@@ -1377,9 +2086,15 @@ export function StageNotesDialog({
           {group.tabs.map((tab, tabIndex) => {
             const key = noteRefKey(tab)
             const label = labelOf(tab)
-            const tabMatches = matches.perNote.get(key)
+            const shortLabel = shortLabels.get(tabId(group.id, tab)) ?? label
+            const tabMatches = matches.perTab.get(tabId(group.id, tab))
             const isActive = key === shownKey
             const application = applicationsById.get(tab.applicationId)
+            // The whole name, for the tooltip and for anyone reading the strip through its
+            // accessible names rather than looking at it.
+            const fullLabel = application
+              ? `${application.company} · ${applicationRole(application)} · ${stateLabel(tab.state)}`
+              : label
             const isDropTarget =
               drag.target?.kind === 'slot'
               && drag.target.groupId === group.id
@@ -1393,7 +2108,7 @@ export function StageNotesDialog({
               <div
                 className={[
                   'panel__tab-slot',
-                  drag.key === key ? 'panel__tab-slot--dragging' : '',
+                  drag.key === tabId(group.id, tab) ? 'panel__tab-slot--dragging' : '',
                   isDropTarget ? 'panel__tab-slot--drop-target' : '',
                 ]
                   .filter(Boolean)
@@ -1403,7 +2118,7 @@ export function StageNotesDialog({
                 {...{ [DROP_SLOT_GROUP]: group.id, [DROP_SLOT_INDEX]: tabIndex }}
               >
                 <button
-                  aria-controls={isActive ? stageNotePanelId(tab) : undefined}
+                  aria-controls={isActive ? stageNotePanelId(group.id, tab) : undefined}
                   aria-keyshortcuts={`${shortcutKeys(MOVE_TAB_SHORTCUT)} ${shortcutKeys(REORDER_TAB_SHORTCUT)}`}
                   aria-selected={isActive}
                   className={[
@@ -1412,16 +2127,26 @@ export function StageNotesDialog({
                   ]
                     .filter(Boolean)
                     .join(' ')}
-                  id={stageTabId(tab)}
+                  id={stageTabId(group.id, tab)}
                   onClick={() => {
                     // The browser sends a click after any pointer sequence, this one
                     // included. Dropping a tab somewhere is not also a request to read it.
                     if (drag.wasDragged()) return
                     applyLayout(activateTab(layoutRef.current, group.id, key), group.id)
                   }}
-                  onPointerDown={(event) => drag.start(event, key)}
+                  // Its own id, not the note's: dragging a tab moves this copy out of
+                  // this pane, where dragging a row in the tree opens another one.
+                  onPointerDown={(event) => drag.start(event, tabId(group.id, tab))}
                   onKeyDown={(event) => {
                     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+                    /*
+                     * The bare arrows only. The same arrows with a modifier belong to the
+                     * panel — Ctrl/Cmd+Shift sends this tab to an edge, Alt walks it along
+                     * the strip — and stepping the selection here as well meant the chord
+                     * moved whichever tab the step had just landed on rather than the one
+                     * the reader was looking at.
+                     */
+                    if (event.metaKey || event.ctrlKey || event.altKey || event.shiftKey) return
                     event.preventDefault()
                     const step = event.key === 'ArrowRight' ? 1 : -1
                     const index = group.tabs.findIndex((entry) => noteRefKey(entry) === key)
@@ -1430,26 +2155,35 @@ export function StageNotesDialog({
                     applyLayout(activateTab(layoutRef.current, group.id, nextKey), group.id)
                     // Focus follows the selection, or the next arrow key would be read
                     // by the tab left behind and step from the wrong place.
-                    tabRefs.current[nextKey]?.focus()
+                    tabRefs.current[tabId(group.id, next)]?.focus()
                   }}
                   ref={(node) => {
-                    tabRefs.current[key] = node
+                    tabRefs.current[tabId(group.id, tab)] = node
                   }}
                   role="tab"
                   tabIndex={isActive ? 0 : -1}
                   type="button"
+                  title={fullLabel}
                 >
-                  {label}
+                  {/* The whole name to a screen reader, the distinguishing part of it on
+                      screen: a strip is read one tab at a time, where it is looked at all
+                      at once, so what a reader needs is not what a listener does. */}
+                  <span className="sr-only">{fullLabel}</span>
+                  <span aria-hidden="true" className="panel__tab-label">{shortLabel}</span>
                   {application?.state === tab.state ? (
-                    <span className="panel__tab-badge">Current stage</span>
+                    <span className="panel__tab-badge">Current</span>
                   ) : null}
                   {tabMatches ? <span className="panel__tab-count">{tabMatches.count}</span> : null}
                 </button>
                 <button
+                  // The binding is named on the control that does the same thing, the way
+                  // Split and Find name theirs: a shortcut nothing on screen names is one
+                  // only the README has.
+                  aria-keyshortcuts={shortcutKeys(CLOSE_TAB_SHORTCUT)}
                   aria-label={`Close the ${label} tab`}
                   className="icon-button panel__tab-close"
                   onClick={() => closeNote(group.id, key)}
-                  title={`Close the ${label} tab. Its notes are kept.`}
+                  title={`Close the ${label} tab (${shortcutLabel(CLOSE_TAB_SHORTCUT)}). Its notes are kept.`}
                   type="button"
                 >
                   <X aria-hidden="true" size={12} />
@@ -1457,16 +2191,6 @@ export function StageNotesDialog({
               </div>
             )
           })}
-          <button
-            aria-keyshortcuts={shortcutKeys('P')}
-            aria-label="Go to stage"
-            className="icon-button panel__tab-add"
-            onClick={() => setQuickOpen(true)}
-            title={`Open the note picker (${shortcutLabel('P')})`}
-            type="button"
-          >
-            <Plus aria-hidden="true" size={14} />
-          </button>
         </div>
 
         {/*
@@ -1504,10 +2228,15 @@ export function StageNotesDialog({
         <StageNotePane
           body={drafts[shownKey] ?? ''}
           captured={capturedByKey.get(shownKey) ?? ''}
+          company={shownApplication?.company ?? ''}
           currentMatch={currentMatch}
           formatDate={formatShortDate}
+          groupId={group.id}
           heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
           isCurrentState={shownApplication?.state === shown.state}
+          captureHeight={captureHeight}
+          isCaptureOpen={captureOpen.includes(shownKey)}
+          onResizeCapture={resizeCapture}
           isEditing={editing.includes(shownKey) && !open}
           isEditingLines={editingLines.includes(shownKey)}
           isFocused={isFocusedGroup}
@@ -1526,6 +2255,14 @@ export function StageNotesDialog({
           onRevise={(entryId, revised) =>
             onRevise(shown.applicationId, shown.state, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}
+          onSwitchStage={(state) =>
+            switchStage(group.id, shownKey, { applicationId: shown.applicationId, state })}
+          onToggleCapture={() =>
+            setCaptureOpen((current) =>
+              current.includes(shownKey)
+                ? current.filter((entry) => entry !== shownKey)
+                : [...current, shownKey],
+            )}
           onToggleEditLines={() =>
             setEditingLines((current) =>
               current.includes(shownKey)
@@ -1538,6 +2275,7 @@ export function StageNotesDialog({
           }}
           query={query}
           revealKeys={isFocusedGroup ? (revealKeys ?? undefined) : undefined}
+          role={shownApplication ? applicationRole(shownApplication) : 'No role'}
           saved={noteByKey.get(shownKey)}
           session={open?.session}
         />
@@ -1547,53 +2285,85 @@ export function StageNotesDialog({
   }
 
   return (
-    <div className="dialog-backdrop dialog-backdrop--panel">
-      {/* A panel fills the viewport, so there is no backdrop left to click away on. */}
-      <section
-        aria-labelledby="stage-notes-dialog-title"
-        aria-modal="true"
-        className="dialog dialog--panel"
-        ref={dialogRef}
-        role="dialog"
-        tabIndex={-1}
-      >
+    /*
+     * Focusable, but not a tab stop: the panel is where focus lands after the find bar or
+     * the picker closes, and after a note is opened into it from another view.
+     */
+    <div
+      className="panel"
+      ref={panelRef}
+      /* Set on the panel rather than on each dock: the height is shared, and one variable
+         is what makes every pane agree without passing it down twice. */
+      style={{
+        '--capture-log': `${captureHeight}px`,
+        '--sidebar': `${sidebarWidth}px`,
+      } as CSSProperties}
+      tabIndex={-1}
+    >
         <div className="panel__titlebar">
-          <div className="panel__title">
-            <p className="dialog__subject">{title}</p>
-            <h2 id="stage-notes-dialog-title">Stage prep notes</h2>
-          </div>
+          {/*
+            * At the left end, over the column it opens and closes. It had been filed with
+            * the controls on the right, where it acts at a distance on the far side of the
+            * panel: a switch belongs by the thing it switches, and this one is pointing at
+            * the edge it lives on.
+            */}
           <button
-            aria-keyshortcuts={shortcutKeys('\\')}
-            aria-pressed={isSplit}
-            className="button button--quiet panel__chrome-button"
-            disabled={!isSplit && openCount < 2}
-            onClick={toggleSplit}
-            // Why it cannot be pressed outranks how to press it: a shortcut hint on a
-            // dead control only invites the key that does nothing either.
-            title={
-              openCount < 2
-                ? 'Only one note is open'
-                : `${isSplit ? 'Close back to one pane' : 'Open a second pane'} (${shortcutLabel('\\')})`
-            }
+            aria-keyshortcuts={shortcutKeys('B')}
+            aria-label="Sidebar"
+            aria-pressed={sidebarOpen}
+            className="icon-button panel__chrome-button panel__chrome-button--sidebar"
+            onClick={toggleSidebar}
+            title={`${sidebarOpen ? 'Hide' : 'Show'} the sidebar (${shortcutLabel('B')})`}
             type="button"
           >
-            <Columns2 aria-hidden="true" size={14} />
-            {isSplit ? 'Unsplit' : 'Split'}
+            <PanelLeft aria-hidden="true" size={16} />
           </button>
+          {/* The view is already named by the tab that reached it and by the heading over
+              it, so the title bar carries only what the panel itself is showing. */}
+          <p className="panel__subject">{title}</p>
+          {/*
+            * Icons alone, each naming itself on hover and to a screen reader. Labels here
+            * spent more of the title bar on saying what these are than on the note the bar
+            * belongs to, and they are reached rarely enough that carrying their names all
+            * the time was the wrong trade.
+            *
+            * Open keeps its own. It is the way to a note that is not open yet — the thing a
+            * reader reaches for who has not got what they want on screen — and it is the
+            * only visible place `Ctrl`/`Cmd+P` is written down.
+            */}
+          <button
+            aria-keyshortcuts={shortcutKeys('P')}
+            // Named for the word on it, not the word plus the key beside it: the binding is
+            // `aria-keyshortcuts`' to announce, and a name that reads "Open ⌘P" is a name
+            // nobody would say out loud to ask for this button.
+            aria-label="Open"
+            className="button button--quiet panel__chrome-button panel__chrome-button--labelled"
+            onClick={() => setQuickOpen(focusedGroupId)}
+            title={`Open a note or a stage (${shortcutLabel('P')})`}
+            type="button"
+          >
+            <Plus aria-hidden="true" size={16} />
+            Open
+            <span aria-hidden="true" className="panel__chrome-key">{shortcutLabel('P')}</span>
+          </button>
+          <SplitMenu
+            isSplit={isSplit}
+            onCollapse={collapseSplit}
+            onSplit={splitOff}
+            open={splitMenuOpen}
+            setOpen={setSplitMenuOpen}
+          />
           <button
             aria-keyshortcuts={shortcutKeys('F')}
-            className="button button--quiet panel__chrome-button"
+            aria-label="Find"
+            className="icon-button panel__chrome-button"
             onClick={openFind}
             title={`Open the find bar (${shortcutLabel('F')})`}
             type="button"
           >
-            <Search aria-hidden="true" size={14} />
-            Find
+            <Search aria-hidden="true" size={16} />
           </button>
           <ShortcutsHelp />
-          <button aria-label="Close dialog" className="icon-button" onClick={onClose} type="button">
-            <X aria-hidden="true" size={20} />
-          </button>
         </div>
 
         <form
@@ -1604,37 +2374,140 @@ export function StageNotesDialog({
           onSubmit={(event) => event.preventDefault()}
         >
           {sidebarOpen ? (
-            <aside className="panel__sidebar">
-              <div>
-                <div className="panel__sidebar-head">
-                  <p className="panel__sidebar-title">Outline</p>
-                  {outlineToggle}
-                </div>
-                {outline.length > 0 ? (
-                  <OutlineList
-                    current={trailKey}
-                    depth={0}
-                    nodes={outline}
-                    onPick={jumpToSection}
-                    path={trailKeys}
-                  />
-                ) : (
-                  <p className="stage-notes__hint">
-                    {activeBody.trim()
-                      ? 'This note has no headings to outline.'
-                      : 'Nothing written for this stage yet.'}
-                  </p>
-                )}
-              </div>
+            /*
+             * One sidebar holding both things a reader navigates with: where they are in
+             * the note in front of them, and every note behind it. Stacked rather than
+             * switched between, so choosing which of the two you want is not a question you
+             * have to answer before you can look at either.
+             */
+            <aside
+              aria-label="Notes and outline"
+              className="panel__sidebar"
+              ref={sidebarRef}
+              /*
+               * The two halves divide the column between them, so what one gives up the
+               * other takes — a folded half is a heading and nothing more, and the one
+               * still open has the rest. `fr` says exactly that, where a height on the
+               * outline said only how tall the outline was and left the space it was not
+               * using to no one.
+               */
+              style={{
+                gridTemplateRows: outlineShown && notesShown
+                  ? `minmax(0, ${outlineShare}fr) auto minmax(0, ${
+                      Math.round((1 - outlineShare) * 100) / 100
+                    }fr)`
+                  : outlineShown
+                    ? 'minmax(0, 1fr) auto'
+                    : notesShown
+                      ? 'auto minmax(0, 1fr)'
+                      : 'auto auto',
+              }}
+            >
+              <section aria-label="Outline" className="panel__sidebar-section">
+                <SidebarHeading
+                  label="Outline"
+                  names="the outline"
+                  onToggle={() => setOutlineShown((shown) => !shown)}
+                  shown={outlineShown}
+                />
+                {outlineShown ? (
+                  outline.length > 0 ? (
+                    <div className="panel__outline-scroll">
+                      <OutlineList
+                        current={trailKey}
+                        depth={0}
+                        nodes={outline}
+                        onPick={jumpToSection}
+                        path={trailKeys}
+                      />
+                    </div>
+                  ) : (
+                    <p className="stage-notes__hint">
+                      {activeBody.trim()
+                        ? 'This note has no headings to outline.'
+                        : 'Nothing written for this stage yet.'}
+                    </p>
+                  )
+                ) : null}
+              </section>
 
-              <p className="stage-notes__hint">
-                Notes save as you type. Clearing a stage’s removes its note, but not what you
-                were told in it.
-              </p>
+              {/* Only with something on either side of it to divide. */}
+              {outlineShown && notesShown ? (
+                <div
+                  aria-label="Resize the outline"
+                  aria-orientation="horizontal"
+                  aria-valuemax={Math.round(MAX_OUTLINE_SHARE * 100)}
+                  aria-valuemin={Math.round(MIN_OUTLINE_SHARE * 100)}
+                  aria-valuenow={Math.round(outlineShare * 100)}
+                  aria-valuetext={`Outline takes ${Math.round(outlineShare * 100)}% of the sidebar`}
+                  className="panel__sidebar-split"
+                  onKeyDown={(event) => {
+                    if (event.key !== 'ArrowUp' && event.key !== 'ArrowDown') return
+                    event.preventDefault()
+                    resizeOutline(event.key === 'ArrowDown' ? OUTLINE_SHARE_STEP : -OUTLINE_SHARE_STEP)
+                  }}
+                  onMouseDown={(event) => {
+                    event.preventDefault()
+                    beginOutlineDrag(event.clientY)
+                  }}
+                  role="separator"
+                  tabIndex={0}
+                />
+              ) : null}
+
+              <section aria-label="All prep notes" className="panel__sidebar-section">
+                <SidebarHeading
+                  label="All prep notes"
+                  names="all prep notes"
+                  onToggle={() => setNotesShown((shown) => !shown)}
+                  shown={notesShown}
+                />
+                {notesShown ? (
+                <NotesTreeView
+                  applications={applications}
+                  currentKey={activeKey}
+                  draggingKey={drag.key}
+                  onDragStart={drag.start}
+                  onPick={showRef}
+                  onPickMatch={findInNote}
+                  openKeys={openKeys}
+                  wasDragged={drag.wasDragged}
+                />
+                ) : null}
+              </section>
+
             </aside>
-          ) : (
-            <div className="panel__rail">{outlineToggle}</div>
-          )}
+          ) : null}
+
+          {/*
+            * The sidebar's own edge, a real `separator` with arrow keys like the handles
+            * between panes and the one over the dock. Drawn once beside whichever panel is
+            * open rather than once per panel — it moves the column, not what is in it —
+            * after the panel rather than before it, the body being a grid whose columns are
+            * filled in the order its children appear, and whether the sidebar is open or
+            * shut, because it is how the sidebar comes back as well as how it goes.
+            */}
+          <div
+            aria-label="Resize the sidebar"
+            aria-orientation="vertical"
+            aria-valuemax={MAX_SIDEBAR}
+            aria-valuemin={MIN_SIDEBAR}
+            aria-valuenow={sidebarWidth}
+            className="panel__sidebar-resize"
+            onKeyDown={(event) => {
+              if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return
+              event.preventDefault()
+              resizeSidebar(event.key === 'ArrowRight' ? SIDEBAR_STEP : -SIDEBAR_STEP)
+            }}
+            onMouseDown={(event) => {
+              event.preventDefault()
+              // From the body's own left edge, which is where the sidebar begins — with it
+              // shut there is no sidebar box to measure against.
+              beginSidebarDrag(event.currentTarget.parentElement?.getBoundingClientRect().left ?? 0)
+            }}
+            role="separator"
+            tabIndex={0}
+          />
 
           <div className="panel__main">
             <p className="panel__breadcrumbs">
@@ -1660,12 +2533,12 @@ export function StageNotesDialog({
               />
             ) : null}
 
-            {quickOpen ? (
+            {quickOpen !== null ? (
               <QuickOpen
                 entries={quickOpenEntries}
                 onClose={() => {
-                  setQuickOpen(false)
-                  dialogRef.current?.focus()
+                  setQuickOpen(null)
+                  panelRef.current?.focus()
                 }}
                 onPick={openFromPicker}
               />
@@ -1704,7 +2577,6 @@ export function StageNotesDialog({
             </div>
           </div>
         </form>
-      </section>
     </div>
   )
 }

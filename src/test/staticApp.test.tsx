@@ -118,7 +118,9 @@ describe('the static build', () => {
     )
 
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Northwind' }))
-    await waitFor(() => expect(screen.getByRole('dialog')).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument(),
+    )
     expect(screen.queryByRole('button', { name: /Open .* in an editor/ })).not.toBeInTheDocument()
   })
 })

@@ -36,9 +36,15 @@ it('completes the primary tracker journey and persists it across reloads', async
   const user = userEvent.setup()
   const firstRender = await renderLoadedApp()
 
-  const contextBar = within(screen.getByRole('region', { name: 'View context and filters' }))
+  /*
+   * Looked up each time rather than held: the prep notes layer takes the row away while it
+   * is up — nothing in it acts on a workspace — so a scope captured before that visit is a
+   * detached node by the time it is typed into, and types into nothing without failing.
+   */
+  const contextBar = () =>
+    within(screen.getByRole('region', { name: 'View context and filters' }))
 
-  expect(contextBar.getByText('19 of 19 applications shown')).toBeInTheDocument()
+  expect(contextBar().getByText('19 of 19 applications shown')).toBeInTheDocument()
   expect(readSavedDocument().applications).toHaveLength(19)
 
   /*
@@ -46,21 +52,20 @@ it('completes the primary tracker journey and persists it across reloads', async
    * tree computing an accessible name per candidate, and each of those asks jsdom for a
    * computed style — which costs about 30ms there whether or not any CSS is loaded. Over
    * a thousand-node app that is most of what this journey spends its time on, and the
-   * six buttons it wants are all in one small landmark.
+   * three buttons it wants are all in one small landmark.
    */
   const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
 
-  for (const view of [
-    'Table',
-    'Focus',
-    'Calendar',
-    'Stale',
-    'Statistics',
-  ]) {
+  for (const view of ['Table', 'Statistics']) {
     const viewButton = views.getByRole('button', { name: view })
     await user.click(viewButton)
     expect(viewButton).toHaveAttribute('aria-current', 'page')
   }
+  // Prep notes is reached from the header rather than the strip: it is a workspace, not a
+  // view of the collection, and it shares none of the filters the strip's views do.
+  await user.click(screen.getByRole('button', { name: 'Prep notes' }))
+  expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
+
   await user.click(views.getByRole('button', { name: 'Kanban' }))
   expect(screen.getByRole('heading', { name: 'Applied' })).toBeInTheDocument()
   await user.click(screen.getByRole('button', { name: 'Add application' }))
@@ -72,7 +77,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   await user.type(within(addDialog).getByLabelText('Next action'), 'Send portfolio')
   await user.click(within(addDialog).getByRole('button', { name: 'Add application' }))
   expect(screen.getByRole('status')).toHaveTextContent('Application added.')
-  await user.type(contextBar.getByRole('searchbox'), 'Smoke Test Co')
+  await user.type(contextBar().getByRole('searchbox'), 'Smoke Test Co')
   await user.click(
     screen.getByRole('button', { name: 'Open Smoke Test Co, Product Designer' }),
   )
@@ -82,7 +87,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   expect(screen.getByRole('status')).toHaveTextContent('Application updated.')
 
   await user.click(screen.getByRole('button', { name: 'Add prep notes for Smoke Test Co' }))
-  const prepDialog = screen.getByRole('dialog', { name: 'Stage prep notes' })
+  const prepDialog = screen.getByRole('region', { name: 'Stage prep notes' })
   await user.type(
     within(prepDialog).getByLabelText('Smoke Test Co · Offer prep notes'),
     'Confirm the review cycle',
@@ -97,7 +102,7 @@ it('completes the primary tracker journey and persists it across reloads', async
       ).toHaveLength(1),
     { timeout: 4000 },
   )
-  await user.click(within(prepDialog).getByRole('button', { name: 'Close dialog' }))
+  await user.click(views.getByRole('button', { name: 'Kanban' }))
 
   const savedAfterEdit = readSavedDocument()
   const smokeApplication = savedAfterEdit.applications.find(

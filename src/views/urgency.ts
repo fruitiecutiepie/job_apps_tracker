@@ -1,4 +1,4 @@
-import { isRejectedState, STATE_CONFIG } from "../domain";
+import { LIVE_STATE_IDS, classifyLifecycle } from "../domain";
 import type { Application, StateId } from "../domain";
 import {
   applicationAgeInDays,
@@ -11,26 +11,19 @@ import {
  * Urgency is derived view state, never persisted: it depends on browser-local "today"
  * and on weights that live in this module rather than in the tracker document.
  */
-export type Lifecycle = "live" | "rejected" | "closed";
 
-const CLOSED_STATES = new Set<StateId>(["accepted", "no_openings"]);
-
-/** View-only grouping. It never restricts moves; any state can still move to any other. */
-export function classifyLifecycle(state: StateId): Lifecycle {
-  if (isRejectedState(state)) return "rejected";
-  if (CLOSED_STATES.has(state)) return "closed";
-  return "live";
-}
+/**
+ * Re-exported rather than defined here: the state filter needs the same split, and two
+ * definitions of "still running" would let what a view shows drift from what it ranks.
+ */
+export { classifyLifecycle, type Lifecycle } from "../domain";
 
 /**
  * Position within the live stages only. The configured order interleaves live and
  * rejected states, so the raw STATE_CONFIG index is not a progress measure.
  */
 const LIVE_STATE_ORDER = new Map<StateId, number>(
-  STATE_CONFIG.filter(({ id }) => classifyLifecycle(id) === "live").map(({ id }, index) => [
-    id,
-    index,
-  ]),
+  LIVE_STATE_IDS.map((id, index) => [id, index]),
 );
 
 /**

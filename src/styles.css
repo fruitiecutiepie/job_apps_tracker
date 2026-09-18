@@ -78,6 +78,10 @@
   --fold-gutter: 1rem;
   --fold-indent: calc(var(--fold-gutter) + var(--s2));
 
+  /* The note-editor line-number column: wide enough for three digits, since its numbers
+     are absolutely positioned and so cannot size the column themselves */
+  --line-number-gutter: 1.75rem;
+
   /* The capture box: a few lines to write in, fixed so the dock cannot grow into the
      note it is pinned over */
   --capture-box: 4.5rem;
@@ -85,9 +89,20 @@
   /* Prep notes panel: sidebar width, and the height of one stage's sticky header
      (a --control row, --s3 above and below it, and a 1px bottom border) */
   --sidebar: 208px;
-  /* How much of a pane the captured lines may take before they scroll on their own.
-     In rem so it holds the same number of lines as the text scales. */
+  /* How much of the sidebar the outline may take before it scrolls on its own. In rem for
+     the same reason as the capture log: it holds the same number of rows as the text
+     scales, and the outline's length is not the reader's to control — a note with thirty
+     headings would otherwise push every note in the collection off the bottom. */
+  --outline-max: 13rem;
+
+  /* How much of a pane the captured lines may take before they scroll on their own. The
+     panel sets this from the height the reader dragged the dock to; this is the fallback
+     for a render that has not been given one, and matches `DEFAULT_CAPTURE_LOG`. */
   --capture-log: 11rem;
+  /* And how much of a note the whole dock may take however far it is dragged. A share
+     rather than a length, because what has to be left over is a readable note and that is
+     a fraction of whatever the pane happens to be. */
+  --capture-max: 70%;
 
   /* Page gutter */
   --gutter: clamp(var(--s4), 2vw, var(--s6));
@@ -239,8 +254,35 @@ p {
 
 /* ---------------------------------------------------------------- shell --- */
 
+/* A column, so the prep notes view can take the height the header and the context bar
+   leave rather than a measurement of them that would have to be kept in step. */
 .app-shell {
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
+}
+
+/*
+ * The prep notes view is a workspace rather than a document: the panel pins its own chrome
+ * and scrolls only the notes column, so a page that scrolls behind it would move the
+ * pinned parts off screen and leave the status bar somewhere below the fold.
+ *
+ * Pinning the shell to the viewport is what keeps that from happening at every width. The
+ * `min-height` above is dropped rather than left to fight this: a minimum outranks a
+ * maximum, so `100vh` would win over `100dvh` on a phone with its browser chrome showing —
+ * which is exactly the case the cap is for.
+ */
+.app-shell:has(.view-surface--panel) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.app-shell > main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
 }
 
 .topbar {
@@ -290,12 +332,35 @@ p {
   font-weight: 600;
 }
 
+/* Where you are: the strip of views, and the prep notes toggle that lays a workspace over
+   whichever of them you were reading. One cell, because both answer the same question —
+   the actions on the other side answer what you can do to the collection. */
+.topbar__places {
+  display: flex;
+  min-width: 0;
+  gap: var(--s3);
+  align-items: center;
+}
+
+/* The strip is what gives way when the bar is tight; the toggle beside it keeps its width,
+   being one control rather than a list that can scroll. */
 .view-nav {
   display: flex;
   min-width: 0;
   gap: var(--s1);
   overflow-x: auto;
   scrollbar-width: thin;
+}
+
+.topbar__divider {
+  align-self: stretch;
+  flex: none;
+  margin: var(--s2) 0;
+  border-left: 1px solid var(--line);
+}
+
+.topbar__notes {
+  flex: none;
 }
 
 .view-nav__item {
@@ -332,8 +397,7 @@ p {
 /* -------------------------------------------------------------- buttons --- */
 
 .button,
-.icon-button,
-.stale-row__reject {
+.icon-button {
   min-height: var(--control);
   border: 1px solid var(--line-strong);
   border-radius: var(--r1);
@@ -346,8 +410,7 @@ p {
     background 120ms ease;
 }
 
-.button,
-.stale-row__reject {
+.button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -367,8 +430,7 @@ p {
 }
 
 .button:hover,
-.icon-button:hover,
-.stale-row__reject:hover {
+.icon-button:hover {
   border-color: var(--ink-3);
   background: var(--surface-2);
 }
@@ -406,15 +468,13 @@ p {
   cursor: not-allowed;
 }
 
-.button--danger,
-.stale-row__reject {
+.button--danger {
   border-color: transparent;
   color: var(--danger);
   background: var(--danger-weak);
 }
 
-.button--danger:hover,
-.stale-row__reject:hover {
+.button--danger:hover {
   border-color: var(--danger);
   background: var(--danger-weak);
 }
@@ -786,16 +846,14 @@ p {
   background: var(--surface);
 }
 
-.view-toolbar,
-.calendar__toolbar {
+.view-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s3);
 }
 
-.view-toolbar,
-.calendar__toolbar {
+.view-toolbar {
   flex-wrap: wrap;
   margin-bottom: var(--s3);
 }
@@ -809,8 +867,7 @@ p {
 }
 
 .view-heading h2,
-.view-toolbar h2,
-.calendar__toolbar h2 {
+.view-toolbar h2 {
   margin: 0;
   color: var(--ink);
   font-size: var(--t4);
@@ -850,8 +907,7 @@ p {
 }
 
 .kanban__scroller,
-.table-scroll,
-.calendar__scroll {
+.table-scroll {
   width: 100%;
   overflow: auto;
   scrollbar-color: var(--line-strong) transparent;
@@ -1168,6 +1224,27 @@ tbody tr:hover {
   background: var(--surface-2);
 }
 
+/* A band heading spans the table, so it gets no hover and no row treatment. */
+.table-view__band:hover {
+  background: transparent;
+}
+
+.table-view__band th {
+  padding: var(--s5) var(--s3) var(--s2);
+  background: transparent;
+  text-align: left;
+}
+
+/* Matches the notes panel's section title: the quietest heading in the interface. */
+.table-view__band-heading {
+  margin-right: var(--s3);
+  color: var(--ink-3);
+  font-size: var(--t1);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .table-sort,
 .table-link {
   padding: 0;
@@ -1262,292 +1339,6 @@ tbody tr:hover {
   font-size: var(--t2);
 }
 
-/* --------------------------------------------- next actions and stale --- */
-
-.action-groups,
-.action-list,
-.stale-list {
-  display: grid;
-  gap: var(--s3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.action-groups {
-  gap: var(--s5);
-}
-
-.focus-group__summary {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  cursor: pointer;
-  list-style: none;
-}
-
-.focus-group__summary::-webkit-details-marker {
-  display: none;
-}
-
-.focus-group__summary::before {
-  content: "\25b8";
-  color: var(--ink-3);
-  font-size: var(--t2);
-}
-
-.action-group[open] > .focus-group__summary::before {
-  content: "\25be";
-}
-
-.action-group[open] > .focus-group__summary {
-  margin-bottom: var(--s3);
-}
-
-.focus-group__heading {
-  flex: 1;
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--t4);
-  font-weight: 600;
-}
-
-.action-list > li {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-}
-
-.action-list .action-card {
-  flex: 1;
-  min-width: 0;
-}
-
-.action-card,
-.stale-row {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: var(--r2);
-  background: var(--surface);
-}
-
-.action-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--s4);
-  row-gap: var(--s1);
-  align-items: start;
-  padding: var(--s3);
-  text-align: left;
-}
-
-.action-card:hover,
-.stale-row:hover {
-  border-color: var(--line-strong);
-}
-
-.action-card__date {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  justify-self: end;
-  align-self: center;
-  color: var(--ink-2);
-  font-size: var(--t2);
-  white-space: nowrap;
-}
-
-.action-card strong,
-.stale-row__open strong {
-  color: var(--ink);
-  font-size: var(--t3);
-  font-weight: 600;
-}
-
-.action-card > span:not(.action-card__date),
-.stale-row__open small {
-  color: var(--ink-2);
-  font-size: var(--t2);
-}
-
-.stale-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s3);
-}
-
-.stale-row__open {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--s4);
-  row-gap: var(--s1);
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  text-align: left;
-}
-
-.stale-row__open > span {
-  display: grid;
-  gap: var(--s1);
-}
-
-.stale-row__open > span:last-child {
-  justify-items: end;
-  text-align: right;
-}
-
-.stale-row__open small {
-  display: block;
-}
-
-.stale-row__reject {
-  flex: none;
-  min-height: 28px;
-  padding: 0 var(--s3);
-  font-size: var(--t2);
-  white-space: nowrap;
-}
-
-.segmented-control {
-  display: inline-flex;
-  min-width: 0;
-  margin: 0;
-  padding: var(--s1);
-  border: 1px solid var(--line);
-  border-radius: var(--r1);
-  background: var(--surface-2);
-}
-
-.segmented-control label {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 26px;
-  padding: 0 var(--s3);
-  border-radius: var(--r1);
-  color: var(--ink-2);
-  font-size: var(--t2);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.segmented-control label:hover {
-  color: var(--ink);
-}
-
-.segmented-control label:has(:checked) {
-  color: var(--ink);
-  background: var(--surface);
-  font-weight: 600;
-}
-
-/* ------------------------------------------------------------ calendar --- */
-
-.calendar__month-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  min-width: 0;
-}
-
-.calendar__grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(7rem, 1fr));
-  min-width: 52rem;
-  border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
-}
-
-.calendar__row {
-  display: contents;
-}
-
-.calendar__weekday {
-  padding: var(--s2) var(--s3);
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  color: var(--ink-2);
-  background: var(--surface-2);
-  font-size: var(--t1);
-  font-weight: 600;
-}
-
-.calendar__day {
-  min-height: 4.5rem;
-  padding: var(--s2);
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.calendar__day--muted {
-  color: var(--ink-3);
-  background: var(--surface-2);
-}
-
-.calendar__day--today {
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-
-.calendar__date {
-  display: block;
-  margin-bottom: var(--s2);
-  font-size: var(--t2);
-  font-weight: 600;
-}
-
-.calendar__events {
-  display: grid;
-  gap: var(--s1);
-}
-
-.calendar__event {
-  display: grid;
-  gap: 0;
-  width: 100%;
-  padding: var(--s1) var(--s2);
-  overflow: hidden;
-  border: 0;
-  border-left: 2px solid var(--accent);
-  border-radius: var(--r1);
-  color: var(--ink);
-  background: var(--accent-weak);
-  font-size: var(--t1);
-  font-weight: 500;
-  text-align: left;
-}
-
-.calendar__event strong,
-.calendar__event span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.calendar__event span {
-  color: var(--ink-2);
-  font-weight: 400;
-}
-
-.calendar__event--invite {
-  border-left-color: var(--line-strong);
-  background: var(--surface-2);
-}
-
-.calendar__event--cancelled {
-  border-left-color: var(--line);
-}
-
-.calendar__event--cancelled strong,
-.calendar__event--cancelled span {
-  color: var(--ink-3);
-  text-decoration: line-through;
-}
-
 /* ---------------------------------------------------------- statistics --- */
 
 /* Headline figures sit on one baseline and wrap rather than shrink. */
@@ -1572,6 +1363,24 @@ tbody tr:hover {
   font-size: var(--t6);
   font-weight: 600;
   line-height: 1.1;
+}
+
+/* The share a figure is out of its total, quieter than the label it follows. */
+.statistics__total small,
+.statistics td small {
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+/*
+ * The preference means sit under their table as a sentence rather than as more headline
+ * figures: they describe that table, and promoting them would put two kinds of number on
+ * one baseline at the top.
+ */
+.statistics__note {
+  margin: var(--s3) 0 0;
+  color: var(--ink-2);
+  font-size: var(--t2);
 }
 
 .statistics__table {
@@ -1756,12 +1565,6 @@ tbody tr:hover {
 }
 
 /* The stage notes dialog puts the company and role here — it is content. */
-.dialog__subject {
-  margin: 0 0 var(--s1);
-  color: var(--ink-2);
-  font-size: var(--t3);
-}
-
 .dialog .button {
   min-height: var(--control-form);
 }
@@ -2151,6 +1954,21 @@ tbody tr:hover {
   margin-top: var(--s2);
 }
 
+/*
+ * Sits under the state select in the same cell, the way Done sits under the action text.
+ * Quieter than the select above it: the select is how a row's state is read, this is only
+ * a shortcut to one of its options.
+ */
+.reject-button {
+  gap: var(--s2);
+  min-height: 28px;
+  margin-top: var(--s2);
+  padding: 0 var(--s3);
+  color: var(--ink-2);
+  font-size: var(--t2);
+  white-space: nowrap;
+}
+
 .stage-note {
   display: grid;
   gap: var(--s3);
@@ -2171,18 +1989,19 @@ tbody tr:hover {
   background: var(--accent-weak);
 }
 
+/*
+ * One row where there is room for one, two where there is not, and never the four a plain
+ * wrap gave a narrow pane: the parts want some seven hundred pixels between them, so in a
+ * split pane every one of them took a line of its own and the header cost more height than
+ * the note under it. The name is the part that gives — it is the one thing here that is
+ * also written in full on the tab directly above, so an ellipsis loses nothing that is not
+ * already on screen, while the stage, the date and the controls keep their own width.
+ */
 .stage-note__header {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--s3);
-}
-
-.stage-note__header h3 {
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--t4);
-  font-weight: 600;
+  align-items: center;
+  gap: var(--s2) var(--s3);
 }
 
 .stage-note__badge {
@@ -2194,8 +2013,39 @@ tbody tr:hover {
   font-weight: 600;
 }
 
+/* Which of the application's stages is open here, changeable without leaving the note:
+   reading as a pill until it is touched, the pipeline's own vocabulary rather than a form
+   field's. Capped rather than left to size itself to its longest option — "Recruiter
+   messaged — Rejected" would otherwise widen every header to fit a value most stages
+   never hold. */
+.stage-note__state-select {
+  max-width: 9rem;
+  min-height: 22px;
+  padding: 0 var(--s5) 0 var(--s2);
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--pill);
+  color: var(--ink-2);
+  background: var(--surface-3);
+  font-size: var(--t1);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-note__state-select:hover {
+  border-color: var(--line-strong);
+}
+
+.stage-note__state-select--current {
+  color: var(--surface);
+  background: var(--accent);
+}
+
 .stage-note__meta {
-  margin-left: auto;
+  /* Takes the row's slack, so what follows it ends the row rather than floating in the
+     middle of it — and the fold and format controls sit with the stage they act on. */
+  margin-right: auto;
   color: var(--ink-3);
   font-size: var(--t2);
 }
@@ -2214,6 +2064,7 @@ tbody tr:hover {
 
 .stage-note__actions {
   display: flex;
+  flex: none;
   align-items: center;
   gap: var(--s2);
   margin-left: auto;
@@ -2236,15 +2087,16 @@ tbody tr:hover {
  * is transparent — it exists to be measured and painted behind, never read.
  */
 /*
- * The box, the layer of marks behind it, and the column of fold controls beside it. The
- * controls stand outside the box because a textarea has no room in its text for anything
- * that is not text, and the column is a real one rather than padding stolen from the box:
- * a chevron over the text would sit on the words it folds.
+ * The box, the layer of marks behind it, and the columns of fold controls and line
+ * numbers beside it. Both columns stand outside the box because a textarea has no room
+ * in its text for anything that is not text, and each is a real column rather than
+ * padding stolen from the box: a chevron or a number over the text would sit on the
+ * words it names.
  */
 .stage-note__source {
   position: relative;
   display: grid;
-  grid-template-columns: var(--fold-gutter) minmax(0, 1fr);
+  grid-template-columns: var(--fold-gutter) var(--line-number-gutter) minmax(0, 1fr);
   gap: var(--s2);
   min-height: 0;
 }
@@ -2256,11 +2108,17 @@ tbody tr:hover {
   min-height: 0;
 }
 
-/* Clips the controls to the box, so one belonging to a line scrolled out of view is not
-   left drawn against the pane's edge. */
+/*
+ * Clips the controls to the box, so one belonging to a line scrolled out of view is not
+ * left drawn against the pane's edge. Bordered like the box itself, transparently: the
+ * box's own border sits above its padding, so without a border here of the same width
+ * every control would measure one line high before where the text it names actually
+ * starts — the same reasoning .stage-note__marks below is bordered for.
+ */
 .stage-note__gutter {
   position: relative;
   overflow: hidden;
+  border: 1px solid transparent;
 }
 
 /*
@@ -2300,9 +2158,42 @@ tbody tr:hover {
 .stage-note__fold-all {
   min-height: 26px;
   padding: 0 var(--s2);
-  margin-left: auto;
   color: var(--ink-2);
   font-size: var(--t2);
+}
+
+/* Clips the numbers to the box, matching .stage-note__gutter, so one belonging to a
+   scrolled-out line is not left drawn against the pane's edge — bordered the same way
+   and for the same reason. */
+.stage-note__line-numbers {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid transparent;
+}
+
+.stage-note__line-numbers-lines {
+  position: absolute;
+  inset: var(--s3) 0 auto 0;
+}
+
+/*
+ * Its own top is measured off the box's text, so it has to sit the same distance into
+ * its own line as that text does into the box's — which needs the same font-size and
+ * line-height, not only the same top. A smaller size or a shorter line here would still
+ * land at the right pixel, but centre its glyph higher within it, drifting above the
+ * line it names. Weight matters too: .stage-note__marks is stated for the same reason,
+ * being outside .field and so not heir to the 500 it sets there.
+ */
+.stage-note__line-number {
+  position: absolute;
+  right: 0;
+  left: 0;
+  color: var(--ink-3);
+  font-size: var(--t3);
+  font-weight: 500;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .stage-note__marks {
@@ -2384,13 +2275,6 @@ tbody tr:hover {
   padding: 0;
 }
 
-.stage-note__hint {
-  margin: 0;
-  color: var(--ink-3);
-  font-size: var(--t2);
-  line-height: 1.6;
-}
-
 .stage-note__external {
   display: flex;
   flex-wrap: wrap;
@@ -2413,11 +2297,72 @@ tbody tr:hover {
  */
 .stage-note__dock {
   display: grid;
-  gap: var(--s3);
+  gap: var(--s2);
+}
+
+/*
+ * The dock's edge. Full width and one handle tall, like the handles between panes, and it
+ * owns the pointer for the length of a drag — without that a touch drag scrolls the note
+ * behind it instead of moving the edge.
+ */
+.stage-note__dock-resize {
+  justify-self: stretch;
+  height: var(--pane-handle);
+  margin: calc(var(--s2) * -1) calc(var(--s3) * -1) 0;
+  background: transparent;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.stage-note__dock-resize:hover,
+.stage-note__dock-resize:focus-visible {
+  background: var(--line-strong);
+}
+
+/* Collapsed by default, so what you were told stays out of the way of what you prepared
+   until there is a reason to look at it. */
+.stage-note__dock-toggle {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  justify-self: start;
+  min-height: 26px;
+  padding: 0 var(--s2);
+  border: 0;
+  border-radius: var(--r1);
+  color: var(--ink-2);
+  background: transparent;
+  font-size: var(--t2);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.stage-note__dock-toggle:hover {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+
+.stage-note__dock-toggle svg {
+  transition: transform 120ms ease;
+  transform: rotate(90deg);
+}
+
+.stage-note__dock-toggle--collapsed svg {
+  transform: rotate(0deg);
+}
+
+.stage-note__dock-count {
+  padding: 0 var(--s2);
+  border-radius: var(--pill);
+  color: var(--ink-3);
+  background: var(--surface-3);
+  font-size: var(--t1);
+  font-variant-numeric: tabular-nums;
 }
 
 .stage-note__log {
   max-height: var(--capture-log);
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -2479,7 +2424,7 @@ tbody tr:hover {
 .stage-note__capture {
   display: flex;
   align-items: start;
-  gap: var(--s3);
+  gap: var(--s2);
 }
 
 .stage-note__capture .field {
@@ -2501,7 +2446,6 @@ tbody tr:hover {
   resize: none;
 }
 
-.stage-note__hint code,
 .stage-note__external code,
 .markdown code {
   padding: 0 var(--s2);
@@ -2513,95 +2457,292 @@ tbody tr:hover {
 /* ------------------------------------------------------ notes panel --- */
 
 /*
- * Stage prep notes open as a full-viewport panel rather than a centred dialog: a note
- * is read while an interview is happening, so it gets the whole screen. The chrome is
- * pinned and only the notes column scrolls, which keeps the stage list, the find bar,
- * and Save in place however long the notes run.
+ * Stage prep notes are a view of their own rather than a dialog over the board: a note is
+ * read while an interview is happening, and something you keep coming back to is not
+ * something to dismiss. The panel takes what the viewport has left under the header, pins
+ * its chrome, and scrolls only the notes column, so the stage list, the find bar and the
+ * write state stay in place however long the notes run.
  */
 
-.dialog-backdrop--panel {
-  padding: 0;
-  overflow: hidden;
-  place-items: stretch;
+/*
+ * The panel is measured against itself, not the window. It had the whole viewport while it
+ * was a modal, so the two were one measurement; in a view they are not — the surface takes
+ * a gutter each side, and a window width says nothing about what the panel was left. Every
+ * rule that stacks or narrows the panel hangs off this container instead.
+ */
+.panel-view {
+  container-type: inline-size;
+  container-name: panel;
+  display: grid;
+  min-height: 0;
+  height: 100%;
+  /* The cap stated on the panel itself as well as on the shell around it. The shell rule
+     is what stops the page scrolling; this is what bounds the panel, and it holds even
+     where the shell's own height does not reach it. */
+  max-height: 100dvh;
 }
 
-.dialog--panel {
+.panel {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  width: 100%;
-  max-width: none;
-  height: 100dvh;
-  max-height: none;
-  padding: 0;
+  min-width: 0;
+  min-height: 0;
   overflow: hidden;
+}
+
+.panel-view__empty {
+  margin: auto;
+  max-width: 42ch;
+  padding: var(--s6);
+  color: var(--ink-2);
+  font-size: var(--t4);
+  text-align: center;
+}
+
+/* The panel meets the surface's own border: its chrome is already a frame, and a second
+   one inside the first only narrows the notes. It takes the height the rest of the page
+   leaves, which is what keeps the pinned chrome pinned and the notes column the only
+   thing that scrolls. */
+/*
+ * Flush to the window, where the other seven views are cards laid on the page. That shape
+ * came with a heading over it saying which view it was; without one the margin, the border
+ * and the rounded corners draw a card around a workspace that fills the screen — and the
+ * inset is charged to the notes, which are the point. The topbar's own bottom border is
+ * the line between the two, so this needs none of its own.
+ */
+.view-surface--panel {
+  flex: 1;
+  min-height: 0;
+  /* Flush at the sides and the top, a step of space at the foot: the status bar and the
+     dock above it end up against the window's own edge otherwise, which is where a line of
+     text is hardest to read. One step, not the gutter — enough to lift them off the edge
+     without drawing the card back. */
+  margin: 0 0 var(--s3);
+  padding: 0;
   border: 0;
   border-radius: 0;
+  overflow: hidden;
 }
 
 .panel__titlebar {
   display: flex;
+  /* The panel clips its own overflow, so a row that cannot wrap loses its last control
+     rather than scrolling to it — and what the panel is left is not the window's width to
+     assume. The stage header and the status bar wrap for the same reason. */
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s3);
-  padding: var(--s3) var(--s5);
+  padding: var(--s2) var(--s5);
   border-bottom: 1px solid var(--line);
   background: var(--surface-2);
 }
 
-.panel__title {
+.panel__subject {
   flex: 1;
   min-width: 0;
-}
-
-.panel__title h2 {
   margin: 0;
   color: var(--ink);
   font-size: var(--t5);
   font-weight: 600;
 }
 
-.panel__title .dialog__subject {
-  margin: 0;
+/* The panel's buttons are sized here rather than inherited from `.dialog .button`, which
+   the panel sat under while it was a dialog. */
+.panel .button {
+  min-height: var(--control-form);
 }
 
-/* Dense controls in the chrome: .dialog .button sizes buttons for forms, which is
-   taller than a title bar or a stage header wants. */
+/* Dense controls in the chrome: the rule above sizes buttons for forms, which is taller
+   than a title bar or a stage header wants. Same specificity, so source order decides —
+   this must stay below it. */
 .panel__titlebar .button,
 .panel__notes .stage-note__mode {
   min-height: var(--control);
 }
 
+/*
+ * Icons alone in the title bar, so the row is as wide as the controls are rather than as
+ * wide as their names — each says what it is on hover and to a screen reader. Unboxed for
+ * the same reason the labels went: five outlined buttons in a row are five frames drawn
+ * around a bar whose own frame is already there, and the icons read as a group without
+ * them. The box comes back under the pointer, which is when it means something.
+ */
 .panel__chrome-button {
+  min-width: var(--control);
+  min-height: var(--control);
+  border-color: transparent;
+  color: var(--ink-2);
+  background: none;
+}
+
+/* Open says what it is: it is the way to a note not on screen yet, which is when a reader
+   is least able to guess at an icon, and the only visible place its binding is written. */
+/* Laid out as the directions they are: Above over Left and Right, Below under them. A list
+   reading "Right, Left, Below, Above" makes the reader translate a word into a side of the
+   screen; this is the answer drawn. The middle is the pane being split, drawn so the four
+   around it read as its sides. */
+.panel__split-choices {
+  display: grid;
+  grid-template-areas:
+    '.    above .'
+    'left here  right'
+    '.    below .';
+  /* Three columns of one width. Sized to their contents, "Left" and "Right" came out
+     narrower than the pane between them and the block read as a ragged list rather than as
+     a map of a pane's four sides. */
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: var(--s2);
+  justify-items: stretch;
+}
+
+.panel__split-choice {
+  justify-content: center;
+  gap: var(--s2);
+  min-height: var(--control);
+  padding: 0 var(--s2);
+}
+
+/* A pane with nothing in it yet: what to do about that, said plainly, in the middle of the
+   room it is offering. Quiet — it is an invitation rather than a warning. */
+.panel__empty-pane {
+  display: grid;
+  /* The pane's whole height, so what it says sits in the middle of the room it is
+     offering rather than tucked under the strip above it. */
+  flex: 1;
+  min-height: 0;
+  gap: var(--s2);
+  place-content: center;
+  justify-items: center;
+  padding: var(--s5);
+  color: var(--ink-2);
+  text-align: center;
+}
+
+.panel__empty-pane-hint {
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+.panel__empty-pane-close {
+  margin-top: var(--s3);
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+/* The pane the new one opens beside. Drawn as a pane rather than as a control — no border
+   to press, quiet ink, the panel's own surface — so it reads as the thing being split. */
+.panel__split-here {
+  grid-area: here;
+  display: grid;
+  place-content: center;
+  /* The same height as the choices around it, so the middle row is one row rather than a
+     tall thing beside a short one. */
+  min-height: var(--control);
+  padding: var(--s1) var(--s2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink-3);
+  background: var(--surface-2);
+  font-size: var(--t1);
+  text-align: center;
+}
+
+.panel__split-choice--right { grid-area: right; }
+.panel__split-choice--left { grid-area: left; }
+.panel__split-choice--bottom { grid-area: below; }
+.panel__split-choice--top { grid-area: above; }
+
+/* Not one of the directions, so it sits under the rule rather than among them — and it
+   keeps their height and their padding, which is what makes the block read as one menu. */
+.panel__split-collapse {
+  padding-top: var(--s3);
+  border-top: 1px solid var(--line);
+}
+
+.panel__split-choice--collapse {
+  width: 100%;
+  color: var(--ink-2);
+}
+
+/* Lined up over the sidebar's own column rather than floating at the start of the title,
+   so the switch sits above the thing it switches. */
+.panel__chrome-button--sidebar {
+  flex: none;
+  margin-right: var(--s2);
+}
+
+.panel__chrome-button--labelled {
+  gap: var(--s2);
+  min-width: 0;
+  padding: 0 var(--s3);
+}
+
+.panel__chrome-key {
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
+.panel__chrome-button:hover:not(:disabled) {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+
+.panel__chrome-button:disabled {
+  color: var(--ink-3);
+  cursor: default;
+}
+
+/* Pressed is a state of the thing it controls, not of the button, so it is the accent
+   rather than a heavier frame: the sidebar is open, the panel is split. */
+.panel__chrome-button[aria-pressed='true'] {
+  color: var(--accent);
+  background: var(--accent-weak);
 }
 
 .panel__body {
   display: grid;
-  grid-template-columns: var(--sidebar) minmax(0, 1fr);
+  grid-template-columns: var(--sidebar) auto minmax(0, 1fr);
   min-height: 0;
 }
 
-/* Collapsed, the outline leaves a rail rather than disappearing: the control that brings
-   it back has to be where the one that sent it away was, or it is no more findable than a
-   shortcut. `auto` rather than a width token — the rail is one icon button wide. */
+/*
+ * The sidebar's own edge. Full height and one handle wide, like the handles between panes,
+ * and it owns the pointer for the length of a drag — without that a touch drag scrolls the
+ * panel instead of moving the edge.
+ */
+.panel__sidebar-resize {
+  width: var(--pane-handle);
+  background: transparent;
+  cursor: col-resize;
+  touch-action: none;
+}
+
+.panel__sidebar-resize:hover,
+.panel__sidebar-resize:focus-visible {
+  background: var(--line-strong);
+}
+
+/* Closed, the edge is all that is left of the column — one handle wide, where a rail kept
+   for one button was forty. The control that brings the sidebar back lives in the title
+   bar, so nothing has to be kept here to hold it. */
 .panel__body--rail {
   grid-template-columns: auto minmax(0, 1fr);
 }
 
-.panel__rail {
-  display: grid;
-  align-content: start;
-  justify-items: center;
-  padding: var(--s4) var(--s3);
-  border-right: 1px solid var(--line);
-  background: var(--surface-2);
-}
-
+/* The rows come from the panel, which divides them between the two halves; the column
+   itself does not scroll, because each half scrolls what it was given. A column that
+   scrolled as a whole would make the division meaningless — the handle would set how tall
+   the outline was and the tree would start wherever that ended. */
 .panel__sidebar {
   display: grid;
+  /* Rows sit where they are put. A grid hands leftover height to its auto rows by default,
+     which with both halves folded put one heading at each end of an empty column instead
+     of one under the other. The `fr` rows above consume the leftover themselves, so this
+     only ever speaks for the folded cases. */
   align-content: start;
-  gap: var(--s5);
-  padding: var(--s4);
-  overflow-y: auto;
+  gap: var(--s2);
+  padding: var(--s3) var(--s4);
+  overflow: hidden;
   border-right: 1px solid var(--line);
   background: var(--surface-2);
 }
@@ -2616,13 +2757,55 @@ tbody tr:hover {
   margin: 0 0 var(--s2);
 }
 
+/* The heading is the control that folds its own section away, so it reads as a heading and
+   behaves as a disclosure: quiet until it is reached for. */
 .panel__sidebar-title {
+  display: flex;
+  gap: var(--s1);
+  align-items: center;
+  width: 100%;
   margin: 0;
+  padding: var(--s1) 0;
+  border: 0;
   color: var(--ink-3);
+  background: none;
   font-size: var(--t1);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  text-align: left;
+  cursor: pointer;
+}
+
+.panel__sidebar-title:hover {
+  color: var(--ink);
+}
+
+.panel__sidebar-title svg {
+  transition: transform 120ms ease;
+  transform: rotate(90deg);
+}
+
+.panel__sidebar-title--folded svg {
+  transform: rotate(0deg);
+}
+
+/* The handle the two halves share, the same measure as every other one in the panel. */
+/* Drawn rather than merely present. An invisible handle is one nobody finds: it is the
+   only thing between the two halves, and the line it draws is also what separates them, so
+   it earns its pixels twice. It bleeds through the column's padding to both edges, which
+   is what makes it read as a divider instead of a floating bar. */
+.panel__sidebar-split {
+  height: var(--pane-handle);
+  margin: var(--s1) calc(var(--s4) * -1);
+  background: var(--line-strong);
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.panel__sidebar-split:hover,
+.panel__sidebar-split:focus-visible {
+  background: var(--accent);
 }
 
 /*
@@ -2633,6 +2816,7 @@ tbody tr:hover {
  */
 .panel__outline {
   display: grid;
+  align-content: start;
   gap: var(--s1);
   margin: 0;
   padding: 0;
@@ -2640,7 +2824,7 @@ tbody tr:hover {
 }
 
 .panel__outline--nested {
-  margin-left: var(--s3);
+  margin-left: var(--s2);
   padding-left: var(--s3);
   border-left: 1px solid var(--line);
 }
@@ -2657,7 +2841,10 @@ tbody tr:hover {
  */
 .panel__outline-entry {
   width: 100%;
-  min-height: var(--control);
+  /* No control height: a row is one line of text, and the tree it shares the column with
+     is padding alone. Carrying `--control` here made the outline a third taller than the
+     list under it, which reads as two lists of different kinds rather than one sidebar.
+     The touch floor is put back where the pointer is coarse, at the foot of this file. */
   padding: var(--s1) var(--s2);
   border: 0;
   border-radius: var(--r1);
@@ -2722,6 +2909,16 @@ tbody tr:hover {
 .panel__notes {
   display: flex;
   min-height: 0;
+  /*
+   * Both axes, and `min-width` is the load-bearing half. This is a grid item in
+   * `.panel__main`, whose single column is `auto`: an auto track is at least its item's
+   * min-content contribution, and the notes' min-content is whatever the widest tab strip,
+   * capture box and note header add up to — around a thousand pixels. Left at `auto` the
+   * column takes that width whatever the panel was given, and the panel clips the
+   * difference: the breadcrumbs, the tab strip's end, the status bar and the right of
+   * every note all disappear off the edge rather than the notes column narrowing.
+   */
+  min-width: 0;
 }
 
 /*
@@ -2876,7 +3073,10 @@ tbody tr:hover {
    */
   min-width: 0;
   min-height: 0;
-  padding: var(--s5);
+  /* Dense on purpose. The pane, the note card and the note's own body each inset what is
+     inside them, and three roomy frames around one column of text cost more of a split
+     pane than any of them is worth. */
+  padding: var(--s3);
   /* Transparent until focused, so marking a pane never shifts what is inside it. */
   border-top: 2px solid transparent;
 }
@@ -2899,7 +3099,7 @@ tbody tr:hover {
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s3);
-  padding: var(--s3) var(--s5);
+  padding: var(--s2) var(--s5);
   border-top: 1px solid var(--line);
   background: var(--surface-2);
 }
@@ -2948,7 +3148,7 @@ tbody tr:hover {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  padding: 0 var(--s4) var(--s4);
+  padding: 0 var(--s3) var(--s3);
 }
 
 /* Focusable so Cmd+Up/Down and Page Up/Down scroll the note rather than the page behind
@@ -2961,7 +3161,7 @@ tbody tr:hover {
   position: sticky;
   z-index: 2;
   top: 0;
-  padding: var(--s3) var(--s4);
+  padding: var(--s2) var(--s3);
   border-bottom: 1px solid var(--line);
   border-radius: var(--r2) var(--r2) 0 0;
   background: var(--surface-2);
@@ -2988,8 +3188,11 @@ tbody tr:hover {
 
 .panel__notes .stage-note__editor {
   flex: 1;
-  /* Toolbar, the field that grows, hint. */
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* The field, and nothing else. The toolbar it used to sit under is drawn in the note's
+     header row now, and the hint under it is gone — but the rows here are declared rather
+     than counted, so both left their tracks behind: the field landed in a row sized to its
+     content and became a small box with its own scrollbar at the top of an empty pane. */
+  grid-template-rows: minmax(0, 1fr);
   min-height: 0;
 }
 
@@ -3033,11 +3236,18 @@ tbody tr:hover {
  * reading left off. Written as a child selector to outrank the padding above it, and
  * opaque because the note scrolls underneath.
  */
+/*
+ * The dock is capped against the note it is docked under, so dragging its edge to the top
+ * of the range cannot leave the note a line high. The cap is on the dock rather than on
+ * the log because it is the whole dock — toggle, log and box — that has to fit; the log
+ * takes `min-height: 0` so it is the part that gives.
+ */
 .panel__notes .stage-note > .stage-note__dock {
   position: sticky;
   z-index: 2;
   bottom: 0;
-  padding: var(--s3) var(--s4);
+  max-height: var(--capture-max);
+  padding: var(--s2) var(--s3);
   border-top: 1px solid var(--line);
   background: var(--surface-2);
 }
@@ -3113,12 +3323,17 @@ tbody tr:hover {
 /* Sits over the tab's own end rather than beside it, the way its background — set to
    match the tab's own hover background — reads as covering the title underneath rather
    than floating past the tab's edge. */
+/* Laid over the tab's own right end, in the band the tab reserves for it below. Hidden, it
+   takes no presses either: `opacity: 0` alone still answers a pointer, so on a screen where
+   nothing hovers first a tap near the end of a tab closed the note instead of opening it —
+   invisibly, and the shorter the tab the more of it was that. */
 .panel__tab-close {
   position: absolute;
   top: 50%;
   right: var(--s2);
   padding: var(--s1);
   opacity: 0;
+  pointer-events: none;
   color: var(--ink-3);
   background: var(--surface-3);
   translate: 0 -50%;
@@ -3127,20 +3342,37 @@ tbody tr:hover {
 .panel__tab-slot:hover .panel__tab-close,
 .panel__tab-slot:focus-within .panel__tab-close {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .panel__tab {
   display: flex;
   align-items: center;
   gap: var(--s2);
-  min-height: var(--control-form);
-  padding: 0 var(--s4);
+  min-height: var(--control);
+  /* No tab may take the strip. A role reading "Senior Software Engineer - Product &
+     Features (Java)" is a legitimate role and an illegitimate tab: without a ceiling one
+     of them pushes every other tab out of sight, and the strip stops being a way to see
+     what is open. The whole name is on the tooltip and in the accessible name. */
+  max-width: 18rem;
+  /* Room at the end for the close control that sits over it, so a label never runs under
+     the control and the middle of a tab is always the tab. Tabs say much less than they
+     used to, which is what made this worth the width: the close was landing on the middle
+     of "Offer". A control wide, because that is what the close is — an `icon-button` keeps
+     `--control` whatever its icon measures. */
+  padding: 0 calc(var(--control) + var(--s3)) 0 var(--s4);
   border: 0;
   border-bottom: 2px solid transparent;
   color: var(--ink-2);
   background: none;
   font-size: var(--t3);
   white-space: nowrap;
+}
+
+.panel__tab-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .panel__tab:hover {
@@ -3161,20 +3393,15 @@ tbody tr:hover {
   border-bottom-color: var(--accent);
 }
 
-/* Sits at the end of the strip like one more tab, not a boxed chrome control. */
-.panel__tab-add {
-  flex: 0 0 auto;
-  min-height: var(--control-form);
-  border: 0;
-  border-radius: 0;
-  color: var(--ink-3);
-  background: none;
-}
-
-.panel__tab-add:hover {
-  color: var(--ink);
-  background: var(--surface-3);
-  border-color: transparent;
+/*
+ * A drop aimed at an open tab has to show on the tab itself, not only on the slot behind
+ * it: the rule above paints an opaque surface over that slot, so the mark appeared on
+ * every tab except the one a pane was showing — and never at all in a pane holding one
+ * tab, that tab always being the open one. Same specificity as the rule it answers, so it
+ * has to stay below it.
+ */
+.panel__tab-slot--drop-target .panel__tab {
+  background: var(--accent-weak);
 }
 
 .panel__tab-badge {
@@ -3299,6 +3526,18 @@ tbody tr:hover {
   background: var(--surface);
   box-shadow: var(--shadow);
   translate: -50% 0;
+}
+
+.quick-open__search {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: var(--s2);
+  align-items: center;
+}
+
+.quick-open__close {
+  flex: none;
+  color: var(--ink-2);
 }
 
 .quick-open__input {
@@ -3731,6 +3970,257 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   margin-left: var(--fold-indent);
 }
 
+/*
+ * Where you are, not merely what you pressed. The prep notes workspace is a layer over a
+ * view rather than one of the views in the strip, so it cannot borrow their underline —
+ * and a quiet button that looks the same open as shut is a button that answers the one
+ * question it is asked, "am I in there", with nothing at all.
+ */
+.topbar__notes[aria-pressed='true'] {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-weak);
+  font-weight: 600;
+}
+
+/* -------------------------------------------------- prep notes tree --- */
+
+/*
+ * Every prep note worth going back to, grouped by the stage it prepares for. It shares the
+ * sidebar column with the outline rather than taking one of its own, and its search filters
+ * it in place: the grouping is most of what tells two notes apart, and losing it on the
+ * first keystroke would trade the one thing the tree is for.
+ */
+/* A search that stays put over a tree that scrolls under it, so the row the section was
+   given is spent on notes rather than on chrome. The hint between them is `sr-only` and so
+   out of flow, which leaves these two rows the whole of it. */
+.notes-tree {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: var(--s2);
+  min-height: 0;
+}
+
+/*
+ * The shared search field holds a `9rem` floor, which is right in the context bar where it
+ * sits among other controls and wrong here where it is the column: at the sidebar's
+ * narrowest that floor is wider than the sidebar itself, so the box hung past the edge
+ * rather than narrowing with it. This is the one place it gives that width up.
+ */
+.notes-tree__search {
+  min-width: 0;
+}
+
+.notes-tree__search input {
+  /* An input carries an intrinsic width of about twenty characters and keeps it however
+     narrow the box around it gets — the context bar's copy is sized by a rule scoped to
+     that bar, which this one never sees. Without these the field shrank and the input
+     inside it hung out over the notes. */
+  width: 100%;
+  min-width: 0;
+  font-size: var(--t2);
+}
+
+.notes-tree__stages,
+.notes-tree__notes {
+  display: grid;
+  gap: var(--s1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Its own rhythm at any height: a list with room to spare keeps the spacing the stylesheet
+   gives it and leaves the rest of the column empty, rather than dealing the slack out
+   between its groups — spread apart, a short tree reads as fragments rather than a list.
+   The slack lands inside each group, under its last note, so it shows as a stage that has
+   drifted from the one under it. */
+.notes-tree__stages {
+  align-content: start;
+  gap: var(--s3);
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.notes-tree__stages > li {
+  display: grid;
+  align-content: start;
+  gap: var(--s1);
+}
+
+/* The stage a row sits under, not itself a place to go: the same quiet heading the picker
+   gives a company over the roles beneath it. */
+.notes-tree__stage {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  justify-content: space-between;
+  margin: 0 0 var(--s1);
+  min-width: 0;
+  color: var(--ink-3);
+  font-size: var(--t1);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* "Take-home assessment" is wider than a narrow sidebar, and the count beside it is the
+   part that must not be pushed out: the heading gives way, the number does not. */
+.notes-tree__stage-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-tree__count {
+  flex: none;
+}
+
+.notes-tree__count {
+  letter-spacing: 0;
+}
+
+.notes-tree__note {
+  display: grid;
+  gap: var(--s1);
+  /* A row can be dragged onto a pane, and the pointer owns it for the length of that:
+     without this a touch drag scrolls the tree instead of picking a note up. */
+  touch-action: none;
+  width: 100%;
+  padding: var(--s1) var(--s2);
+  border: 0;
+  /* The indent guide the outline uses, so one sidebar reads as one sidebar. */
+  border-left: 2px solid var(--line);
+  border-radius: 0 var(--r1) var(--r1) 0;
+  color: var(--ink-2);
+  background: none;
+  font: inherit;
+  font-size: var(--t3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.notes-tree__note:hover {
+  color: var(--ink);
+  background: var(--surface-3);
+}
+
+/* Already a tab in the panel, so picking it moves to it rather than opening it again. */
+.notes-tree__note--open {
+  color: var(--ink);
+  border-left-color: var(--line-strong);
+}
+
+.notes-tree__note--current {
+  border-left-color: var(--accent);
+  background: var(--accent-weak);
+}
+
+/* Picked up: the row stays where it is and fades, the way a dragged tab does, so the tree
+   does not reflow under a pointer that is aiming at something else. */
+.notes-tree__note--dragging {
+  opacity: 0.4;
+}
+
+.notes-tree__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
+ * Every level of the tree is a grid, and a grid item refuses to shrink below its content
+ * unless told otherwise. A snippet is one long line, so without a floor of zero at each
+ * level the lists size to the longest one and run past the sidebar's edge — clipped rather
+ * than ending in the ellipsis the text itself asks for.
+ */
+.notes-tree,
+.notes-tree__stages,
+.notes-tree__stages > li,
+.notes-tree__notes,
+.notes-tree__notes > li,
+.notes-tree__hits,
+.notes-tree__hits > li {
+  min-width: 0;
+}
+
+/* The words that matched, under the note holding them: indented past the note's own guide
+   so the nesting is in the layout rather than only in the order. */
+.notes-tree__hits {
+  display: grid;
+  gap: var(--s1);
+  margin: var(--s1) 0 0 var(--s3);
+  padding: 0;
+  list-style: none;
+}
+
+.notes-tree__hit {
+  display: flex;
+  gap: var(--s2);
+  align-items: baseline;
+  width: 100%;
+  /* A flex item will not shrink below its content without this, and a snippet is one long
+     line: the ellipsis on the text inside never arrives, and the words run past the
+     sidebar's edge instead of ending in one. */
+  min-width: 0;
+  padding: 0 var(--s2);
+  border: 0;
+  border-left: 2px solid var(--line);
+  color: var(--ink-3);
+  background: none;
+  font: inherit;
+  font-size: var(--t1);
+  text-align: left;
+  cursor: pointer;
+}
+
+.notes-tree__hit:hover {
+  color: var(--ink-2);
+  background: var(--surface-3);
+}
+
+.notes-tree__hit-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.notes-tree__hit-where {
+  flex: none;
+  color: var(--ink-3);
+}
+
+/* One column of two sections and the control under them, each taking what it needs. */
+/* A heading that stays, over a body that scrolls what does not fit the row the section was
+   given. Both halves are shaped the same way, so neither pushes the other off the column. */
+.panel__sidebar-section {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  gap: var(--s2);
+}
+
+/* The row is set by the handle between the two halves; this only has to scroll what does
+   not fit in it. */
+.panel__outline-scroll {
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.notes-tree__more {
+  padding: 0 var(--s2);
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
+/* What is in it, so a row can be read before it is opened. */
+.notes-tree__said {
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
 /* =========================================================================
    Responsive overrides. Keep these last so no later base rule outranks them.
    ========================================================================= */
@@ -3740,7 +4230,10 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     grid-template-columns: 1fr auto;
   }
 
-  .view-nav {
+  /* The cell, not the strip inside it. Targeting the strip put its grid placement on an
+     element that is no longer a grid item — ignored — while the `order` it carried was not,
+     and reordered the strip past the toggle sharing the cell with it. */
+  .topbar__places {
     grid-column: 1 / -1;
     grid-row: 2;
     order: 3;
@@ -3762,11 +4255,16 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     --control: 40px;
   }
 
+  /* The outline gives up its control height for a mouse; a finger still needs one. */
+  .panel__outline-entry {
+    min-height: var(--control);
+  }
+
   .context-bar select,
   .table-col-header input,
   .table-col-header select,
   .table-state-select,
-  .stale-row__reject,
+  .reject-button,
   .stage-notes-button--table,
   .complete-action-button--table,
   .stage-note__mode {
@@ -3782,10 +4280,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .stage-note__format {
     min-width: 40px;
     min-height: 40px;
-  }
-
-  .segmented-control label {
-    min-height: 34px;
   }
 
   /* Under the floors above, one row would leave every control at its minimum. Wrapping
@@ -3815,44 +4309,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     grid-column: auto;
   }
 
-  .action-card {
-    grid-template-columns: 1fr;
-    gap: var(--s2);
-  }
-
-  .action-card__date {
-    grid-column: 1;
-    grid-row: auto;
-    justify-self: start;
-    white-space: normal;
-  }
-
-  .stale-row {
-    flex-wrap: wrap;
-  }
-
-  /*
-   * A Focus row now carries two controls beside the card. Let them drop below it the way the
-   * stale row's do, rather than crushing the card to make space.
-   */
-  .action-list > li {
-    flex-wrap: wrap;
-  }
-
-  .action-list .action-card {
-    flex: 1 1 12rem;
-  }
-
-  .stale-row__open {
-    flex: 1 1 12rem;
-    grid-template-columns: 1fr;
-  }
-
-  .stale-row__open > span:last-child {
-    justify-items: start;
-    text-align: left;
-  }
-
   .dialog-backdrop {
     align-items: end;
     padding: 0;
@@ -3864,13 +4320,59 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     border-radius: var(--r3) var(--r3) 0 0;
   }
 
-  /* The panel already fills the viewport; the sheet treatment above must not
-     reintroduce a height cap or rounded corners on it. */
-  .dialog--panel {
-    max-height: none;
-    border-radius: 0;
+  /* The panel takes what the page leaves at every width, so the sheet treatment above
+     has nothing left to undo on it. */
+
+}
+
+@media (max-width: 520px) {
+  .context-bar {
+    align-items: stretch;
+    flex-direction: column;
   }
 
+  .context-bar__filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .search-field,
+  .context-bar select {
+    flex: none;
+    min-width: 0;
+    max-width: none;
+    width: 100%;
+  }
+
+  /* The source select is stretched by the rule above, so inside its pair it has to give
+     the copy button back the width it needs rather than pushing it out of the row. */
+  .context-bar__source select {
+    flex: 1 1 auto;
+    width: auto;
+  }
+
+  .view-toolbar,
+  .view-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .dialog__actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .dialog__actions-spacer {
+    display: none;
+  }
+}
+
+/*
+ * The panel with no room to lay itself out in two dimensions. Asked of the panel rather
+ * than of the window, so a panel narrowed by anything else — a gutter, a sidebar, a window
+ * that is merely small — gets the same treatment for the same reason.
+ */
+@container panel (max-width: 760px) {
   /* Too narrow for a sidebar column, so the outline becomes a strip above the notes
      rather than disappearing: it is the only place the headings are listed together. */
   .panel__body {
@@ -3878,21 +4380,15 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
     grid-template-rows: auto minmax(0, 1fr);
   }
 
-  .panel__sidebar,
-  .panel__rail {
+  .panel__sidebar {
     gap: var(--s3);
     border-right: 0;
     border-bottom: 1px solid var(--line);
   }
 
-  /* The body is one column here, so the rail is a row across the top of the notes. */
+  /* The body is one column here, so a closed sidebar leaves nothing but the notes. */
   .panel__body--rail {
     grid-template-columns: minmax(0, 1fr);
-  }
-
-  .panel__rail {
-    justify-items: start;
-    padding: var(--s3) var(--s4);
   }
 
   /* A strip rather than a column, so it is capped and scrolls instead of pushing the
@@ -3933,58 +4429,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .find-widget__input {
     flex: 1;
     width: auto;
-  }
-}
-
-@media (max-width: 520px) {
-  .context-bar {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .context-bar__filters {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .search-field,
-  .context-bar select {
-    flex: none;
-    min-width: 0;
-    max-width: none;
-    width: 100%;
-  }
-
-  /* The source select is stretched by the rule above, so inside its pair it has to give
-     the copy button back the width it needs rather than pushing it out of the row. */
-  .context-bar__source select {
-    flex: 1 1 auto;
-    width: auto;
-  }
-
-  .view-toolbar,
-  .calendar__toolbar,
-  .view-heading {
-    align-items: stretch;
-    flex-direction: column;
-  }
-
-  .calendar__month-nav {
-    justify-content: space-between;
-  }
-
-  .segmented-control {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-  }
-
-  .dialog__actions {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-  }
-
-  .dialog__actions-spacer {
-    display: none;
   }
 }
 

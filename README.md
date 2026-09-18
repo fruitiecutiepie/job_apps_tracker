@@ -1,6 +1,6 @@
 # Job Applications Tracker
 
-A polished, local-first job search organizer built with React and TypeScript. It keeps every application in one JSON file that you hold, and provides focused views for tracking progress, upcoming work, stale applications, and pipeline statistics — without an account, a backend, or a synchronization service.
+A polished, local-first job search organizer built with React and TypeScript. It keeps every application in one JSON file that you hold, and provides focused views for tracking progress, upcoming work, and pipeline statistics — without an account, a backend, or a synchronization service.
 
 **[Try the demo](https://fruitiecutiepie.com/job_apps_tracker/demo/)** — nineteen fictional applications, one in every stage, nothing to install. **[Open the tracker](https://fruitiecutiepie.com/job_apps_tracker/)** when you want to enter your own.
 
@@ -17,19 +17,18 @@ The catch worth knowing up front: without a connected folder, your data lives on
 ## Features
 
 - Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, the next upcoming invite and attachment filenames on cards, a state-selector fallback, and muted styling with an `Idle 30 days` label for live applications that have not changed stage in 30 days
-- Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first — and the panel holds notes from several applications at once, in panes you can split
+- Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first — and **Prep notes** is a view of its own, holding notes from several applications at once in panes you can split, arranged the way you left it the last time you had it open
 - Captured lines per stage, recording what an interviewer tells you as you are told it, stored the moment they are entered and pinned on screen under the prep note however far it scrolls
 - Optional deadline per application, recording an external closing or decision date separately from your own next action
-- Preference ranking from four subjective ratings, discounted for what you have not judged yet, with the weakest dimension named so a healthy average cannot hide a dealbreaker, shown on the table row and the Kanban card, summarised across the collection on Statistics, and used to break ties within a Focus group
+- Preference ranking from four subjective ratings, discounted for what you have not judged yet, with the weakest dimension named so a healthy average cannot hide a dealbreaker, shown on the table row and the Kanban card, summarised across the collection on Statistics, and used to break ties within a table band
 - Compensation as a measurement rather than a rating: what was advertised, what you expect, and what was offered, kept side by side and compared against your target
 - Derived urgency ranking that explains itself, combining stage, scheduled invites, deadline, next-action date, and how long an application has sat in the same state, into one sortable column
-- Sortable and filterable table with invites, deadline, urgency, preference, compensation, and attachments columns, where sorting by invite sorts by what is next
-- Focus view grouping live applications by what is most pressing, with collapsible groups and a reason on every row, and a **Done** control that clears a finished task and records it as a dated completed action, kept apart from your notes
+- Sortable and filterable table with invites, deadline, urgency, preference, compensation, and attachments columns, where sorting by invite sorts by what is next, and opening on urgency bands the rows under headings — what is dated, what is live but undated, what is finished with a task still on it, and what is finished
+- A **Done** control on the Kanban card and in the table's next action cell that clears a finished task and records it as a dated completed action, kept apart from your notes
 - Calendar invites imported from the `.ics` a recruiter sends, filed against a stage, with a rescheduled invite replacing the one it supersedes
-- Calendar showing next-action dates and invites together, day by day
-- Stale applications with 7-, 14-, and 30-day thresholds, plus a Move to Rejected shortcut to the current state's counterpart
-- Current-state and ever-reached statistics derived from application history
-- Global company, role, notes, stage prep note, and invite search plus state and activity filtering
+- A one-click **Reject** on every live table row, moving it to the current state's counterpart
+- Outcome statistics derived from application history: how many replied, how long they took, how far applications got before they ended, and how each source worked out
+- Global company, role, notes, stage prep note, and invite search plus state and activity filtering, where the state filter also takes whole outcomes: still live, rejected, or not rejected
 - Add, edit, delete, import, and export controls, plus confirmed demo-data reset in the demo profile
 - Append-only state history whenever an application actually changes state
 - Responsive layouts, keyboard-accessible forms and dialogs, and keyboard shortcuts for splitting, finding, and navigating the stage notes panel
@@ -52,7 +51,7 @@ To work with the 19 fictional examples instead — exactly one in each configure
 pnpm dev:demo
 ```
 
-That command uses `data/demo/tracker.json` and `data/demo/attachments/`, separate from live data, so demo records never overwrite real applications.
+That command uses `data/demo/tracker.json` and `data/demo/attachments/`, separate from live data, so demo records never overwrite real applications. It serves on port 5273 so it can run alongside `pnpm dev` on its own 5173.
 
 For a production build with the same file-backed database:
 
@@ -61,7 +60,7 @@ pnpm build
 pnpm start
 ```
 
-Use `pnpm start:demo` after a build to preview against the demo database.
+Use `pnpm start:demo` after a build to preview against the demo database. It serves on port 4273, leaving `pnpm start` on its own 4173.
 
 To build the static site that GitHub Pages serves — the same app with browser storage in place of the dev server's filesystem routes:
 
@@ -79,13 +78,20 @@ pnpm preview:pages
 
 Select **Add application** and enter a company, optional role and URL, its current state, notes, and an optional next action. A next action can be saved without a date; its date is cleared automatically if the action text is removed. A deadline is separate: it records an external closing or decision date and can be set with no next action at all. URLs must begin with `http://` or `https://`.
 
-Select **Done** beside a next action — on a Focus row, a Kanban card, or in the table's next
-action column — when you have finished it. The task moves to that application's **Completed
+Select **Done** beside a next action — on a Kanban card or in the table's next action
+column — when you have finished it. The task moves to that application's **Completed
 actions**, a dated record kept separately from Notes, and the next action clears. The deadline
 is left alone, since a closing date is not something you complete, and finishing a task is not
-a stage change, so no history entry is added. Applications with nothing left to do fall into
-Focus's **No stage change in more than 7 days** or **Nothing dated or planned** group, which is
-where you decide what is next.
+a stage change, so no history entry is added.
+
+Moving an application into a rejected state clears an outstanding next action for you, and the
+notice for the move says so. A rejection ends the application, so the follow-up you had planned
+is work that will not happen, and left in place it sits on your plan forever because nothing
+asks about it again. It is dropped rather than recorded under Completed actions, since you never
+did it. Accepted and No openings are left alone: nobody turned either down, and a task on an
+offer you accepted is real work. If a rejection does leave you something to do, such as asking
+for feedback, write it as a new next action afterwards. Applications with nothing left to do fall into the
+table's **Live, nothing dated** band, which is where you decide what is next.
 
 Completed actions are records rather than lines appended to your notes. Notes is prose you
 write and rewrite; a completed action is one line the app writes the moment you press Done.
@@ -128,7 +134,7 @@ matched on the calendar UID inside the file. The stage you filed it under surviv
 older than the one you already have is ignored. Cancelled invites stay on the record, marked as cancelled, so
 you can see what was called off.
 
-Invites appear on the Calendar beside dated next actions, and a Kanban card shows the next one still ahead.
+A Kanban card shows the next invite still ahead.
 The table's Invites column lists them all, filters on their text, and sorts by whichever is next. Their text
 is searchable from the global search box.
 
@@ -137,9 +143,13 @@ Google Calendar or Outlook when you edit an invite here.
 
 ### Prepare for a stage
 
-Select **Prep notes** on a Kanban card or table row to record what you need for a stage: questions to ask, stories to tell, names to remember. Each stage of the pipeline holds its own notes, and the panel opens with the application's current stage first so it is the first thing on screen during the interview.
+Select **Prep notes** on a Kanban card or table row to record what you need for a stage: questions to ask, stories to tell, names to remember. Each stage of the pipeline holds its own notes, and the view opens with the application's current stage first so it is the first thing on screen during the interview.
 
-The panel is not limited to the application you opened it from. `Ctrl`/`Cmd+P` reaches every application's notes, so you can put one company's Interview 1 beside another's and prepare them together. Every tab is named for the company it belongs to, and each pane carries its own strip of tabs.
+Prep notes is reached from the header, next to **Add application**, rather than from the view strip — the four views there are ways of looking at your applications, and this is a workspace. It is a toggle: press it and the notes come up over whatever you were reading, press it again and they go, leaving that view exactly where it was. Picking a view from the strip puts them away too. What you have open stays open: the notes, the panes you split them into, how wide those panes are and which tab you were reading are all there when you come back — including after you close the app. Leaving for the board and returning does not rearrange anything, and closing the last tab leaves you on an empty workspace rather than dropping you somewhere else. An application you delete takes its tabs with it.
+
+The sidebar holds both ways of getting around, one above the other: **Outline** is the headings of the note you are reading, and **All prep notes** is every note you have written, grouped by the stage it prepares for — Interview 2 across every company, then Offer, and so on down the pipeline. Stages you have written nothing for are not listed, and a stage holding only what you were told says so. The search at the top of that panel filters the tree as you type, over what you wrote and what you were told, and matches company and role too. A matching note lists the words around each hit underneath it, with the words you searched for marked, so you can see why it matched without opening it. Pick one and the note opens with the find bar already running on those words — the match highlighted, and the fold holding it opened, exactly as `Ctrl`/`Cmd+F` would. Each half folds away from its own heading, and the handle between them decides how they share the column. Drag the sidebar's outer edge to widen it, or past its narrowest to put it away — and drag that same edge back out to bring it back at the width you left. Pick a row and the note opens in the pane you are reading, or drag it onto the pane you want it in — or onto a pane's edge to split a new one open there, the same drag the tabs answer. A note always opens in the pane you are reading, so asking for one another pane is showing gives you a copy of your own — one long note can be read in two panes at once, scrolled to different places, and typing into either shows in both, because it is one note. Asking the pane you are reading for a note it already has just shows it. Without a pointer, pick the row and then use the tab-move shortcuts below. That is a different question from the search on the board, which finds applications, and from `Ctrl`/`Cmd+F`, which searches only what is already open. **Open** in the panel's title bar (`Ctrl`/`Cmd+P`) reaches any stage of any application, including ones you have written nothing for yet — the one thing the tree cannot do — and **Sidebar** beside it shows and hides the whole column. The other controls up there are icons; hover one to see what it is and the shortcut it shares. **Prep notes** in the header is filled in while the workspace is up, so you can see at a glance whether you are in it.
+
+The view is not limited to the application you opened it from. `Ctrl`/`Cmd+P` reaches every application's notes, so you can put one company's Interview 1 beside another's and prepare them together. Every tab is named for the company it belongs to, and each pane carries its own strip of tabs. The search and filter controls in the header narrow the board, not this: a filter is not a reason to take a note you are writing away.
 
 Add notes for a stage you have not reached yet with **Add notes for another stage**—useful for drafting offer questions while you are still interviewing. Clearing a stage's notes removes them when you save. Prep notes are searchable from the global search box.
 
@@ -147,7 +157,7 @@ Notes are written in Markdown. A stage that already has notes opens as a rendere
 
 ### Capture what you are told
 
-Every stage has a **Heard** log docked beneath its prep note, holding what you were told during that stage. Type a line in the capture box and press Enter: it is stored immediately—there is no Save to remember mid-conversation, and nothing to lose by closing the panel. `Ctrl`/`Cmd+K` puts the caret in the box from anywhere in the panel, and in a split panel it lands in the pane you are reading.
+Every stage has a **What they said** log docked beneath its prep note, holding what you were told during that stage — the note above it is what you wrote before, this is what you heard. Type a line in the capture box and press Enter: it is stored immediately—there is no Save to remember mid-conversation, and nothing to lose by closing the panel. `Ctrl`/`Cmd+K` puts the caret in the box from anywhere in the panel, and in a split panel it lands in the pane you are reading.
 
 The dock stays on screen however far the prep note above it scrolls, so what you have been told and the box you add to are both always in view. The log takes what it needs and then scrolls on its own, holding the newest line in sight. Lines are grouped under the day they were captured on, and each carries the time it was captured. The date is said once, at the head of the day, rather than on every line. Each line is Markdown, so `**bold**` and links work in it.
 
@@ -229,19 +239,20 @@ When nothing is configured and the server looks like it is on a remote host, the
 
 ### Keyboard shortcuts
 
-The stage notes panel binds five shortcuts while it is open. They are bound to the document rather than to a particular field, so they work wherever the caret is in the panel. You do not have to come back here for them: the keyboard button in the panel's title bar lists all five, and the **Split**, **Go to stage**, **Find**, and outline controls each name the shortcut they share, in a tooltip and to a screen reader. The panel answers `Ctrl` and `Cmd` alike whatever you are on; the labels show the one your own platform writes.
+The stage notes panel binds seven shortcuts while it is open. Most are bound to the document rather than to a particular field, so they work wherever the caret is in the panel; the two that a text box has its own meaning for stand aside while you are typing. You do not have to come back here for them: the keyboard button in the panel's title bar lists them all, and each control up there names itself and the shortcut it shares when you hover it. The panel answers `Ctrl` and `Cmd` alike whatever you are on; the labels show the one your own platform writes.
 
-- `Ctrl`/`Cmd+\` opens a second pane beside the one you are reading, on the first other note that is open, and folds the panes back into one when pressed again. Unsplitting gathers the tabs rather than closing them: a pane is where a note is shown, not what keeps it open. With only one note open there is nothing to split to, so nothing happens.
-- `Ctrl`/`Cmd+F` opens the find bar. It deliberately takes over the browser's own find, which cannot see text inside a folded note. `Enter` steps to the next match and `Shift+Enter` to the previous; `Escape` closes the bar rather than the panel.
+- `Ctrl`/`Cmd+\` opens another pane, and lands in a small menu where `←`, `→`, `↑` or `↓` says which side it goes. The pane opens empty, waiting for a note: open one into it with the picker, pick one from the tree beside it, or drag a tab across. The same menu is on the Split button in the title bar, and its last item folds every pane back into one.
+- `Ctrl`/`Cmd+F` opens the find bar. It deliberately takes over the browser's own find, which cannot see text inside a folded note. `Enter` steps to the next match and `Shift+Enter` to the previous; `Escape` closes the bar. It does not close the view — there is nothing to dismiss, and the header is how you leave.
 - `Ctrl`/`Cmd+P` opens the note picker. It reaches every stage of the application you are working on, plus every note already written and every application's current stage, so a second company's notes are a few keystrokes away. Type to narrow it, `ArrowUp` and `ArrowDown` move through the results, `Enter` opens the highlighted note—reopening one you had closed, or adding a stage you have not reached—and `Escape` dismisses it.
-- `Ctrl`/`Cmd+B` shows and hides the outline sidebar.
+- `Ctrl`/`Cmd+B` shows and hides the sidebar, with the outline and every note in it.
 - `Ctrl`/`Cmd+K` puts the caret in the capture box, and in a split panel it lands in the pane you are reading.
-- `Ctrl`/`Cmd+Shift+←`, `→`, `↑` and `↓` send the tab you are reading towards that edge: into the pane already there, or into a new one split open when there is none. Moving the last tab out of a pane closes that pane and folds the split back.
-- `Ctrl`/`Cmd+Alt+←` and `→` reorder the tab you are reading within its own pane, wrapping at either end.
+- `Ctrl`/`Cmd+Shift+X` closes the note you are reading, leaving its notes where they are. Not `Ctrl`/`Cmd+W`: that closes the browser's own tab, and a page in a tab cannot take the key from it, so answering it would cost you the tab and the note at once. If you do press it by habit, the workspace comes back as you left it when you reopen the page.
+- `Ctrl`/`Cmd+Shift+←`, `→`, `↑` and `↓` send the tab you are reading towards that edge: into the pane already there, or into a new one split open when there is none. Moving the last tab out of a pane closes that pane and folds the split back. These stand aside while you are typing into a note, where the same keys select to the start and end of a line.
+- `Ctrl`/`Cmd+Shift+,` and `.` move that tab along its own strip, wrapping at either end.
 
 Tabs can also be dragged: within a strip to reorder them, onto another pane's strip to move them across, or onto the edge of any pane to split a new one open there. This works with a finger as well as a mouse — hold a tab for a moment to pick it up, the way any list you can reorder on a phone works, then carry it where you want it. A swipe that starts moving straight away scrolls the strip instead. Every arrangement a drag can reach has a keyboard equivalent above, so the panel does not need a pointer.
 
-Panes are resizable. Drag the handle between two of them, or focus it and use the arrow keys — `←` and `→` between side-by-side panes, `↑` and `↓` between stacked ones. A pane is held at a readable minimum rather than being allowed to collapse out of sight. Widths last as long as the panel is open and are never saved: how you arranged the panes is not part of a note.
+Panes are resizable. Drag the handle between two of them, or focus it and use the arrow keys — `←` and `→` between side-by-side panes, `↑` and `↓` between stacked ones. A pane is held at a readable minimum rather than being allowed to collapse out of sight. Widths are remembered along with the rest of the arrangement, on this browser and this machine only: how you arranged the panes is your workspace, not part of a note, so it never travels with an export.
 
 Elsewhere, `Escape` closes any dialog, `Tab` cycles within it rather than escaping to the page behind, and the compensation amount fields take arrow keys to nudge a figure by 5,000—10,000 with `Shift`.
 
@@ -265,17 +276,17 @@ put whichever way you sort.
 
 The same text appears on the Kanban card, so the board tells you what you think of a role
 while you are moving it along. Statistics turns the whole collection into a picture of how
-you judge roles at all, which no single row can: how many you have rated, the mean across
-them, and per dimension how many are judged, how many you could not tell, how many you have
-never looked at, and the mean of the judgements you did make. That last table is where you
+you judge roles at all, which no single row can: per dimension how many are judged, how many
+you could not tell, how many you have never looked at, and the mean of the judgements you did
+make, with the rated count and overall mean in a line beneath. That last table is where you
 find out whether **People** reads low because you keep rating it low or because you have
 never assessed it.
 
-Preference deliberately does **not** feed the urgency score or decide which Focus group an
+Preference deliberately does **not** feed the urgency score or decide which band an
 application lands in. A rating is what you want; a deadline is when it is due, and letting
 one bend the other would sink a deadline due today under a nicer role due next week. Inside
-a Focus group it is the last thing consulted: where the date and the score have already
-tied, the role you think more of goes first, and rows you have not rated stay put.
+a band it is the last thing consulted: where the date and the score have already tied, the
+role you think more of goes first, and rows you have not rated stay put.
 
 Compensation is deliberately **not** a rating. Given a number everyone agrees more is
 better, so scoring it 1–5 would throw the number away; it belongs in a field of its own.
@@ -327,13 +338,10 @@ Offered by name.
 ### Find the right view
 
 - **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames, a preference score for rated applications, and a prep notes button appear on cards, and you can move applications by drag-and-drop or the state selector. A live application that has not changed stage for 30 days or more is greyed out and labelled `Idle 30 days`; it stays in its own lane with its history, and still moves wherever any other application can. Silence is measured from the last stage change rather than the last edit, so annotating a card or importing an invite does not reset it. Rejected, accepted, and no-openings applications are finished rather than idle and are never labelled.
-- **Table** sorts and column-filters by company, role, source, state, activity, next action, deadline, urgency, preference, compensation, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—activity, deadline, invites, preference, compensation—keep the rows without one last in either sort direction. The Activity column carries the same `Idle N days` text the board shows and filters on it, and reads `—` for an application that is not idle. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, activity, company, and source filters still apply across views.
-- **Focus** answers "what should I do next". Each group heading states its own membership rule, so nothing is hidden behind a mood word: **Overdue or due today**, **Due in 1 to 7 days**, **Due in more than 7 days**, **Action with no date**, **No stage change in more than 7 days**, **Nothing dated or planned**, and a trailing **Finished, action outstanding** for tasks left on rejected, accepted, or no-openings applications. Placement uses the nearest of the soonest upcoming invite, the deadline, and the next-action date, so a date always decides the group; the urgency score only orders rows within it, and preference breaks ties the date and the score have both left level. An application with just an invite, or just a deadline, and no action of its own appears here too. Silence is measured from the last actual state change, not from the last edit, so fixing a typo does not make an application look like it moved. Groups collapse and expand—only the leading non-empty group starts open, and that choice is never saved.
-- **Calendar** places applications only by their next-action date; select an item to edit it. There is no Done control here — the Calendar is a picture of when things fall, not a task list.
-- **Stale** shows applications that have not changed recently, oldest first. Its 7-, 14-, and 30-day threshold is temporary and is not saved. This is a view you tune, unlike the Idle label on the board and in the table, which is fixed at 30 days—here you choose the window you want to look through. When the current state has a rejected counterpart, **Move to Rejected** records that outcome and keeps the history.
-- **Statistics** compares current state counts with counts for every state applications have previously reached, then summarises your ratings: how many applications you have rated, the mean preference across them, and one row per dimension showing what you judged, what you could not tell, what you never assessed, and the mean of the judgements.
+- **Table** answers "what should I do next". It opens sorted by urgency, descending, which bands the rows under four headings: **Dated, soonest first** for anything with an invite, deadline, or dated action ahead or behind; **Live, nothing dated** for what is still running with no invite, deadline or dated action; **Finished, action outstanding** for a task left on an application that ended; and **Finished** for the rest. A band holding nothing prints no heading, and sorting any other column takes the bands away, because they would then separate rows on a rule the visible order does not follow. Inside a band the urgency score orders the rows, except in the dated band, which reads by date as its heading says, with preference breaking ties the date and the score have both left level. Every live row carries a **Reject** button beside its state select, moving it straight to that state's rejected counterpart — the shortcut the Stale view used to hold, for the most common move there is. It also sorts and column-filters by company, role, source, state, activity, next action, deadline, urgency, preference, compensation, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—activity, deadline, invites, preference, compensation—keep the rows without one last in either sort direction. The Activity column carries the same `Idle N days` text the board shows and filters on it, and reads `—` for an application that is not idle. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, activity, company, and source filters still apply across views.
+- **Statistics** answers "how is the search going", which no row and no board can. It opens on five figures: applications, how many are still live, how many ever heard back, how many got past the stage they started in, and the median days to a first reply. **Stages** then gives one row per live stage anything has reached, separating three counts that the old single column confused — how many **Reached** it, how many are **Here now**, and how many **Ended here**, meaning they finished and got no further. Stages nothing has reached are left out rather than printed as zeros, and rejected states never get rows of their own: a rejection is an outcome of the live stage it followed. **Sources** reports each source against what came of it, so a source that brings replies but no progress is distinguishable from one that brings neither. Finally the **Ratings** table summarises how you judge roles at all: one row per dimension showing what you judged, what you could not tell, what you never assessed, and the mean of the judgements.
 
-The global search, state, activity, company, and source filters apply across views. Activity takes **Idle** or **Active**, which are complements rather than a pair of thresholds—a finished application counts as Active because it is not idle. It is a separate control from the state filter because idleness qualifies a stage without changing it, so "Interview 1 and idle" is a question worth asking. The state filter also takes an outcome—**Rejected** or **Not rejected**—which stands for every rejection at once, or everything that is not one. Neither `Accepted` nor `No openings` counts as a rejection: they are outcomes of their own rather than somebody turning the application down. **Copy roles** puts the roles of whatever is showing on the clipboard, one per line and without repeats—so filtering to Applied at one company from LinkedIn and pressing it copies exactly those roles. Dates, calendar days, overdue status, and stale thresholds use your browser's timezone.
+The global search, state, activity, company, and source filters apply across views. Activity takes **Idle** or **Active**, which are complements rather than a pair of thresholds—a finished application counts as Active because it is not idle. It is a separate control from the state filter because idleness qualifies a stage without changing it, so "Interview 1 and idle" is a question worth asking. The state filter also takes an outcome—**Rejected** or **Not rejected**—which stands for every rejection at once, or everything that is not one. Neither `Accepted` nor `No openings` counts as a rejection: they are outcomes of their own rather than somebody turning the application down. **Copy roles** puts the roles of whatever is showing on the clipboard, one per line and without repeats—so filtering to Applied at one company from LinkedIn and pressing it copies exactly those roles. Dates, calendar days, and overdue status use your browser's timezone.
 
 ### Back up or replace data
 
