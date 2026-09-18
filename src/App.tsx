@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  CalendarDays,
   CircleCheck,
   ChartNoAxesColumnIncreasing,
   ClipboardCopy,
@@ -15,7 +14,6 @@ import {
   Search,
   Sun,
   Table2,
-  Target,
   Upload,
   X,
 } from 'lucide-react'
@@ -27,6 +25,7 @@ import {
   STATE_LABELS,
   addApplication,
   clearLegacyLocalStorage,
+  isRejectedState,
   completeApplicationNextAction,
   updateApplicationCompletedActions,
   createAttachmentMetadata,
@@ -91,24 +90,18 @@ import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
 import {
-  CalendarView,
   CompareNotesView,
-  FocusView,
   KanbanView,
   PrepNotesView,
-  StaleView,
   StatisticsView,
   TableView,
 } from './views'
 
-type ViewId = 'kanban' | 'table' | 'focus' | 'calendar' | 'stale' | 'statistics' | 'compare'
+type ViewId = 'kanban' | 'table' | 'statistics' | 'compare'
 
 const VIEW_OPTIONS = [
   { id: 'kanban', label: 'Kanban', icon: KanbanSquare },
   { id: 'table', label: 'Table', icon: Table2 },
-  { id: 'focus', label: 'Focus', icon: Target },
-  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
-  { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
   { id: 'compare', label: 'Compare', icon: Columns3 },
 ] as const
@@ -959,11 +952,16 @@ export default function App() {
 
   const move = (id: string, state: StateId) => {
     const moving = tracker.applications.find((application) => application.id === id)
+    // A rejection drops an outstanding next action, so the notice says so rather than
+    // leaving the task to vanish quietly off the plan.
+    const clearing = Boolean(moving?.next_action?.trim()) && isRejectedState(state)
     // A move to the state it already holds returns the same document, and `commit` reads
     // that as nothing to write, so no notice is shown for it either.
     commit(
       (current) => moveApplication(current, id, state),
-      `${moving?.company ?? 'Application'} moved to ${STATE_LABELS[state]}.`,
+      `${moving?.company ?? 'Application'} moved to ${STATE_LABELS[state]}.${
+        clearing ? ' Next action cleared.' : ''
+      }`,
     )
   }
 
@@ -999,12 +997,6 @@ export default function App() {
     switch (activeView) {
       case 'table':
         return <TableView {...shared} onMove={move} />
-      case 'focus':
-        return <FocusView {...shared} />
-      case 'calendar':
-        return <CalendarView {...shared} />
-      case 'stale':
-        return <StaleView {...shared} onMove={move} />
       case 'statistics':
         return <StatisticsView applications={filteredApplications} />
       case 'compare':
@@ -1250,12 +1242,17 @@ export default function App() {
               >
                 <option value="all">All states</option>
                 {/*
-                  * The two outcome groups share this control rather than adding one beside
+                  * The outcome groups share this control rather than adding one beside
                   * it: they answer the same question a single state does, so a bar holding
                   * both would offer combinations — Offer and rejected — that select nothing.
-                  * Grouped so "Rejected" is not read as a nineteenth state.
+                  * Grouped so "Rejected" is not read as a twentieth state.
+                  *
+                  * Still live sits beside Not rejected rather than replacing it: the two
+                  * differ over Accepted and No openings, which nobody turned down and
+                  * nobody is still working, so each answers a question the other cannot.
                   */}
                 <optgroup label="By outcome">
+                  <option value="live">Still live</option>
                   <option value="rejected">Rejected</option>
                   <option value="not_rejected">Not rejected</option>
                 </optgroup>

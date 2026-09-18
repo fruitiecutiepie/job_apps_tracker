@@ -397,8 +397,7 @@ p {
 /* -------------------------------------------------------------- buttons --- */
 
 .button,
-.icon-button,
-.stale-row__reject {
+.icon-button {
   min-height: var(--control);
   border: 1px solid var(--line-strong);
   border-radius: var(--r1);
@@ -411,8 +410,7 @@ p {
     background 120ms ease;
 }
 
-.button,
-.stale-row__reject {
+.button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -432,8 +430,7 @@ p {
 }
 
 .button:hover,
-.icon-button:hover,
-.stale-row__reject:hover {
+.icon-button:hover {
   border-color: var(--ink-3);
   background: var(--surface-2);
 }
@@ -471,15 +468,13 @@ p {
   cursor: not-allowed;
 }
 
-.button--danger,
-.stale-row__reject {
+.button--danger {
   border-color: transparent;
   color: var(--danger);
   background: var(--danger-weak);
 }
 
-.button--danger:hover,
-.stale-row__reject:hover {
+.button--danger:hover {
   border-color: var(--danger);
   background: var(--danger-weak);
 }
@@ -715,16 +710,14 @@ p {
   background: var(--surface);
 }
 
-.view-toolbar,
-.calendar__toolbar {
+.view-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s3);
 }
 
-.view-toolbar,
-.calendar__toolbar {
+.view-toolbar {
   flex-wrap: wrap;
   margin-bottom: var(--s3);
 }
@@ -738,8 +731,7 @@ p {
 }
 
 .view-heading h2,
-.view-toolbar h2,
-.calendar__toolbar h2 {
+.view-toolbar h2 {
   margin: 0;
   color: var(--ink);
   font-size: var(--t4);
@@ -779,8 +771,7 @@ p {
 }
 
 .kanban__scroller,
-.table-scroll,
-.calendar__scroll {
+.table-scroll {
   width: 100%;
   overflow: auto;
   scrollbar-color: var(--line-strong) transparent;
@@ -1097,6 +1088,27 @@ tbody tr:hover {
   background: var(--surface-2);
 }
 
+/* A band heading spans the table, so it gets no hover and no row treatment. */
+.table-view__band:hover {
+  background: transparent;
+}
+
+.table-view__band th {
+  padding: var(--s5) var(--s3) var(--s2);
+  background: transparent;
+  text-align: left;
+}
+
+/* Matches the notes panel's section title: the quietest heading in the interface. */
+.table-view__band-heading {
+  margin-right: var(--s3);
+  color: var(--ink-3);
+  font-size: var(--t1);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .table-sort,
 .table-link {
   padding: 0;
@@ -1191,292 +1203,6 @@ tbody tr:hover {
   font-size: var(--t2);
 }
 
-/* --------------------------------------------- next actions and stale --- */
-
-.action-groups,
-.action-list,
-.stale-list {
-  display: grid;
-  gap: var(--s3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.action-groups {
-  gap: var(--s5);
-}
-
-.focus-group__summary {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  cursor: pointer;
-  list-style: none;
-}
-
-.focus-group__summary::-webkit-details-marker {
-  display: none;
-}
-
-.focus-group__summary::before {
-  content: "\25b8";
-  color: var(--ink-3);
-  font-size: var(--t2);
-}
-
-.action-group[open] > .focus-group__summary::before {
-  content: "\25be";
-}
-
-.action-group[open] > .focus-group__summary {
-  margin-bottom: var(--s3);
-}
-
-.focus-group__heading {
-  flex: 1;
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--t4);
-  font-weight: 600;
-}
-
-.action-list > li {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-}
-
-.action-list .action-card {
-  flex: 1;
-  min-width: 0;
-}
-
-.action-card,
-.stale-row {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: var(--r2);
-  background: var(--surface);
-}
-
-.action-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--s4);
-  row-gap: var(--s1);
-  align-items: start;
-  padding: var(--s3);
-  text-align: left;
-}
-
-.action-card:hover,
-.stale-row:hover {
-  border-color: var(--line-strong);
-}
-
-.action-card__date {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  justify-self: end;
-  align-self: center;
-  color: var(--ink-2);
-  font-size: var(--t2);
-  white-space: nowrap;
-}
-
-.action-card strong,
-.stale-row__open strong {
-  color: var(--ink);
-  font-size: var(--t3);
-  font-weight: 600;
-}
-
-.action-card > span:not(.action-card__date),
-.stale-row__open small {
-  color: var(--ink-2);
-  font-size: var(--t2);
-}
-
-.stale-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s3);
-}
-
-.stale-row__open {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--s4);
-  row-gap: var(--s1);
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  text-align: left;
-}
-
-.stale-row__open > span {
-  display: grid;
-  gap: var(--s1);
-}
-
-.stale-row__open > span:last-child {
-  justify-items: end;
-  text-align: right;
-}
-
-.stale-row__open small {
-  display: block;
-}
-
-.stale-row__reject {
-  flex: none;
-  min-height: 28px;
-  padding: 0 var(--s3);
-  font-size: var(--t2);
-  white-space: nowrap;
-}
-
-.segmented-control {
-  display: inline-flex;
-  min-width: 0;
-  margin: 0;
-  padding: var(--s1);
-  border: 1px solid var(--line);
-  border-radius: var(--r1);
-  background: var(--surface-2);
-}
-
-.segmented-control label {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 26px;
-  padding: 0 var(--s3);
-  border-radius: var(--r1);
-  color: var(--ink-2);
-  font-size: var(--t2);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.segmented-control label:hover {
-  color: var(--ink);
-}
-
-.segmented-control label:has(:checked) {
-  color: var(--ink);
-  background: var(--surface);
-  font-weight: 600;
-}
-
-/* ------------------------------------------------------------ calendar --- */
-
-.calendar__month-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  min-width: 0;
-}
-
-.calendar__grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(7rem, 1fr));
-  min-width: 52rem;
-  border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
-}
-
-.calendar__row {
-  display: contents;
-}
-
-.calendar__weekday {
-  padding: var(--s2) var(--s3);
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  color: var(--ink-2);
-  background: var(--surface-2);
-  font-size: var(--t1);
-  font-weight: 600;
-}
-
-.calendar__day {
-  min-height: 4.5rem;
-  padding: var(--s2);
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.calendar__day--muted {
-  color: var(--ink-3);
-  background: var(--surface-2);
-}
-
-.calendar__day--today {
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-
-.calendar__date {
-  display: block;
-  margin-bottom: var(--s2);
-  font-size: var(--t2);
-  font-weight: 600;
-}
-
-.calendar__events {
-  display: grid;
-  gap: var(--s1);
-}
-
-.calendar__event {
-  display: grid;
-  gap: 0;
-  width: 100%;
-  padding: var(--s1) var(--s2);
-  overflow: hidden;
-  border: 0;
-  border-left: 2px solid var(--accent);
-  border-radius: var(--r1);
-  color: var(--ink);
-  background: var(--accent-weak);
-  font-size: var(--t1);
-  font-weight: 500;
-  text-align: left;
-}
-
-.calendar__event strong,
-.calendar__event span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.calendar__event span {
-  color: var(--ink-2);
-  font-weight: 400;
-}
-
-.calendar__event--invite {
-  border-left-color: var(--line-strong);
-  background: var(--surface-2);
-}
-
-.calendar__event--cancelled {
-  border-left-color: var(--line);
-}
-
-.calendar__event--cancelled strong,
-.calendar__event--cancelled span {
-  color: var(--ink-3);
-  text-decoration: line-through;
-}
-
 /* ---------------------------------------------------------- statistics --- */
 
 /* Headline figures sit on one baseline and wrap rather than shrink. */
@@ -1501,6 +1227,24 @@ tbody tr:hover {
   font-size: var(--t6);
   font-weight: 600;
   line-height: 1.1;
+}
+
+/* The share a figure is out of its total, quieter than the label it follows. */
+.statistics__total small,
+.statistics td small {
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+/*
+ * The preference means sit under their table as a sentence rather than as more headline
+ * figures: they describe that table, and promoting them would put two kinds of number on
+ * one baseline at the top.
+ */
+.statistics__note {
+  margin: var(--s3) 0 0;
+  color: var(--ink-2);
+  font-size: var(--t2);
 }
 
 .statistics__table {
@@ -2072,6 +1816,21 @@ tbody tr:hover {
  */
 .complete-action-button--table {
   margin-top: var(--s2);
+}
+
+/*
+ * Sits under the state select in the same cell, the way Done sits under the action text.
+ * Quieter than the select above it: the select is how a row's state is read, this is only
+ * a shortcut to one of its options.
+ */
+.reject-button {
+  gap: var(--s2);
+  min-height: 28px;
+  margin-top: var(--s2);
+  padding: 0 var(--s3);
+  color: var(--ink-2);
+  font-size: var(--t2);
+  white-space: nowrap;
 }
 
 .stage-note {
@@ -4369,7 +4128,7 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .table-col-header input,
   .table-col-header select,
   .table-state-select,
-  .stale-row__reject,
+  .reject-button,
   .stage-notes-button--table,
   .complete-action-button--table,
   .stage-note__mode {
@@ -4385,10 +4144,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .stage-note__format {
     min-width: 40px;
     min-height: 40px;
-  }
-
-  .segmented-control label {
-    min-height: 34px;
   }
 
   /* Under the floors above, one row would leave every control at its minimum. Wrapping
@@ -4416,44 +4171,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .field--wide {
     grid-column: auto;
-  }
-
-  .action-card {
-    grid-template-columns: 1fr;
-    gap: var(--s2);
-  }
-
-  .action-card__date {
-    grid-column: 1;
-    grid-row: auto;
-    justify-self: start;
-    white-space: normal;
-  }
-
-  .stale-row {
-    flex-wrap: wrap;
-  }
-
-  /*
-   * A Focus row now carries two controls beside the card. Let them drop below it the way the
-   * stale row's do, rather than crushing the card to make space.
-   */
-  .action-list > li {
-    flex-wrap: wrap;
-  }
-
-  .action-list .action-card {
-    flex: 1 1 12rem;
-  }
-
-  .stale-row__open {
-    flex: 1 1 12rem;
-    grid-template-columns: 1fr;
-  }
-
-  .stale-row__open > span:last-child {
-    justify-items: start;
-    text-align: left;
   }
 
   .dialog-backdrop {
@@ -4499,19 +4216,9 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   }
 
   .view-toolbar,
-  .calendar__toolbar,
   .view-heading {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .calendar__month-nav {
-    justify-content: space-between;
-  }
-
-  .segmented-control {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
   }
 
   .dialog__actions {

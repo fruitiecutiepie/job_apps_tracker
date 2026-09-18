@@ -20,7 +20,7 @@ export interface IdleStatus {
  *
  * Silence is measured from the last stage change, never `updated_at`: any edit refreshes
  * that, so saving an invite or fixing a typo would reset the very quiet this names. The
- * threshold is inclusive, matching the stale thresholds, so exactly 30 days qualifies.
+ * threshold is inclusive, so exactly 30 days qualifies.
  */
 export function idleStatusFor(application: Application, today: Date = new Date()): IdleStatus | null {
   // Rejected and closed applications are finished, not idle. Counting them would mark

@@ -12,7 +12,7 @@ import {
   matchesCompensationRange,
   type CompensationRangeFilter,
 } from './compensation'
-import { focusGroups } from './focusGroups'
+import { urgencyBandFor } from './urgencyBands'
 import { rankByUrgency, urgencyFor } from './urgency'
 
 const at = '2026-08-14T02:00:00.000Z'
@@ -242,11 +242,7 @@ describe('compensation and the other rankings', () => {
     expect(rankByUrgency([paid], today).map(({ score, reason }) => [score, reason])).toEqual(
       rankByUrgency([plain], today).map(({ score, reason }) => [score, reason]),
     )
-    expect(
-      focusGroups([paid], today).map(({ id, rows }) => [id, rows.map(({ reason }) => reason)]),
-    ).toEqual(
-      focusGroups([plain], today).map(({ id, rows }) => [id, rows.map(({ reason }) => reason)]),
-    )
+    expect(urgencyBandFor(paid, today)).toEqual(urgencyBandFor(plain, today))
   })
 })
 

@@ -33,12 +33,6 @@ const timeOfDayFormatter = new Intl.DateTimeFormat(undefined, {
   minute: "2-digit",
 });
 
-const longDateFormatter = new Intl.DateTimeFormat(undefined, {
-  day: "numeric",
-  month: "long",
-  year: "numeric",
-});
-
 export function parseTimestamp(value: string): Date | null {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? null : date;
@@ -60,10 +54,6 @@ export function formatTimeOfDay(value: string): string {
   return date ? timeOfDayFormatter.format(date) : "Invalid date";
 }
 
-export function formatLongDate(date: Date): string {
-  return longDateFormatter.format(date);
-}
-
 export function startOfLocalDay(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate());
 }
@@ -71,8 +61,6 @@ export function startOfLocalDay(date: Date): Date {
 export function localDayNumber(date: Date): number {
   return Math.floor(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()) / 86_400_000);
 }
-
-export const DEFAULT_STALE_THRESHOLD_DAYS = 14
 
 export function applicationAgeInDays(updatedAt: string, today: Date = new Date()): number {
   const updated = parseTimestamp(updatedAt)
@@ -101,9 +89,3 @@ export function upcomingStateEvent(
   );
 }
 
-export function localDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
