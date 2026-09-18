@@ -1,0 +1,67 @@
+# Builds the static viewer/editor and publishes it to GitHub Pages.
+#
+# The static build talks to browser storage instead of the dev server's filesystem routes,
+# which is what `VITE_TRACKER_BACKEND=browser` selects. `VITE_BASE_PATH` has to match the
+# repository name, because a project page is served from a subpath and the asset URLs are
+# baked in at build time.
+#
+# Two builds go out together: the tracker at the repository root, and the demo one level
+# below it at /demo/, each with its own base path and its own browser storage.
+#
+# Pages must be set to deploy from GitHub Actions: Settings -> Pages -> Source.
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time, and a newer commit wins — but never cancel a deploy midway.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm typecheck
+
+      - run: pnpm lint
+
+      - run: pnpm test
+
+      - run: pnpm build:pages
+
+      # Written under dist/ so one artifact serves both the tracker and the demo.
+      - run: pnpm build:pages-demo
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

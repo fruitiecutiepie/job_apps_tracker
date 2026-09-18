@@ -1,3 +1,4 @@
+import { backend } from '../backend'
 import { createEmptyDocument, ensureFreshIndexes, refreshTrackerDatabase } from './database'
 import { createDemoDocument } from './demo'
 import { serializeTrackerDocument } from './export'
@@ -106,35 +107,14 @@ export function clearLegacyLocalStorage(storage: StorageLike = browserStorage())
   storage.removeItem(STORAGE_KEY)
 }
 
-export async function loadTrackerDatabase(): Promise<TrackerDatabase> {
-  const response = await fetch(DB_URL)
-  if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `Failed to load tracker data (${response.status})`)
-  }
-  const parsed = assertTrackerDocument(await response.json())
-  return ensureFreshIndexes(parsed)
+export function loadTrackerDatabase(): Promise<TrackerDatabase> {
+  return backend.loadDocument()
 }
 
-export async function saveTrackerDatabase(document: TrackerDatabase): Promise<TrackerDatabase> {
-  const refreshed = refreshTrackerDatabase(document)
-  const response = await fetch(DB_URL, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(refreshed),
-  })
-  if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `Failed to save tracker data (${response.status})`)
-  }
-  return assertTrackerDocument(await response.json())
+export function saveTrackerDatabase(document: TrackerDatabase): Promise<TrackerDatabase> {
+  return backend.saveDocument(document)
 }
 
-export async function resetTrackerDatabase(): Promise<TrackerDatabase> {
-  const response = await fetch(DB_URL, { method: 'DELETE' })
-  if (!response.ok) {
-    const message = await response.text()
-    throw new Error(message || `Failed to reset tracker data (${response.status})`)
-  }
-  return assertTrackerDocument(await response.json())
+export function resetTrackerDatabase(): Promise<TrackerDatabase> {
+  return backend.resetDocument()
 }

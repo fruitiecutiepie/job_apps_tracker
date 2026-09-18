@@ -490,6 +490,142 @@ p {
   white-space: nowrap;
 }
 
+/* ----------------------------------------------------------- drop target --- */
+
+/*
+ * Shown only while a file is over the window. It covers everything because the drop
+ * target is everything: an outline around one panel would say the opposite.
+ */
+.import-drop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s6);
+  border: 2px dashed var(--accent);
+  color: var(--accent-strong);
+  background: var(--scrim);
+  pointer-events: none;
+}
+
+.import-drop p {
+  margin: 0;
+  padding: var(--s4) var(--s6);
+  border-radius: var(--r3);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: var(--t5);
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------- storage status --- */
+
+/*
+ * Where the data is going, in one line. It sits left of everything else in the topbar
+ * because "is this reaching a folder I can find again" outranks every other control here
+ * on a site that holds the only copy.
+ */
+.storage-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: var(--control);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  color: var(--ink-2);
+  background: var(--surface-2);
+  font-size: var(--t2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.storage-status:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.storage-status--inert {
+  margin: 0;
+  cursor: default;
+}
+
+.storage-status--inert:hover {
+  border-color: var(--line);
+  color: var(--ink-2);
+}
+
+/* Nothing is wrong, but a copy the browser could clear is the only copy. */
+.storage-status--attention {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--accent-weak);
+}
+
+.storage-intro {
+  margin: 0 var(--gutter) var(--s3);
+  padding: var(--s5);
+  border: 1px solid var(--line);
+  border-radius: var(--r3);
+  background: var(--surface);
+}
+
+.storage-intro h2 {
+  margin: 0 0 var(--s2);
+  color: var(--ink);
+  font-size: var(--t5);
+  font-weight: 600;
+}
+
+.storage-intro p {
+  max-width: 62ch;
+  margin: 0 0 var(--s4);
+  color: var(--ink-2);
+  font-size: var(--t3);
+}
+
+.storage-intro__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+
+.storage-intro__aside {
+  margin: var(--s4) 0 0;
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+  font-size: var(--t2);
+}
+
+/*
+ * The demo's standing warning. It borrows the notice's accent treatment rather than the
+ * danger colours: nothing is wrong here, and a red bar over a working app would read as
+ * a fault rather than as a label.
+ */
+.demo-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: 0 var(--gutter) var(--s3);
+  padding: var(--s3) var(--s3) var(--s3) var(--s4);
+  border: 1px solid var(--accent);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--accent-weak);
+  font-size: var(--t3);
+}
+
+.demo-banner p {
+  flex: 1;
+  margin: 0;
+}
+
+.demo-banner .button {
+  flex-shrink: 0;
+}
+
 /* --------------------------------------------------- header actions menu --- */
 
 .actions-menu {

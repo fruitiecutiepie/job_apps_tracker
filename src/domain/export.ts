@@ -5,7 +5,7 @@ import {
 import { refreshTrackerDatabase } from './database'
 import type { TrackerDatabase } from './types'
 import { assertTrackerDocument } from './validation'
-import { attachmentFileUrl } from './attachments'
+import { backend } from '../backend'
 
 export function serializeTrackerDocument(document: TrackerDatabase): string {
   return `${JSON.stringify(assertTrackerDocument(refreshTrackerDatabase(document)), null, 2)}\n`
@@ -20,15 +20,10 @@ export async function collectArchiveFiles(document: TrackerDatabase): Promise<Ar
 
   for (const application of document.applications) {
     for (const attachment of application.attachments) {
-      const response = await fetch(attachmentFileUrl(application.id, attachment.id, attachment.filename))
-      if (!response.ok) continue
-      const buffer = await response.arrayBuffer()
-      if (buffer.byteLength === 0) continue
-      files.push({
-        applicationId: application.id,
-        attachmentId: attachment.id,
-        data: new Uint8Array(buffer),
-      })
+      const data = await backend.readAttachment(application.id, attachment.id)
+      // A metadata row whose bytes are gone should not fail the whole export.
+      if (!data || data.byteLength === 0) continue
+      files.push({ applicationId: application.id, attachmentId: attachment.id, data })
     }
   }
 
