@@ -1761,6 +1761,40 @@ describe('job applications tracker', () => {
     expect(log.getByText(/short notice/)).toBeInTheDocument()
   })
 
+  it('hands the pane back to the note when the find steps into it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const read = () =>
+      within(dialog).getByRole('button', {
+        name: /(Read the correspondence|Show the prep note) in Halcyon Maps · Interview 2/,
+      })
+
+    // What the reading mode does to the layout is the browser suite's business — this
+    // stylesheet is not loaded here. What is checkable here is the state it is in.
+    expect(read()).toHaveAttribute('aria-pressed', 'false')
+
+    // Reading them means seeing them, so this opens the section as well as filling the pane.
+    await user.click(read())
+    expect(read()).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Hide the correspondence in Halcyon Maps · Interview 2',
+      }),
+    ).toBeInTheDocument()
+
+    // A match in the written note has nowhere to land while the messages hold the pane, so
+    // stepping onto one hands it back — the same rule a collapsed section follows.
+    await user.keyboard('{Control>}f{/Control}')
+    await user.type(within(dialog).getByLabelText('Find in notes'), 'leadership')
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+
+    expect(read()).toHaveAttribute('aria-pressed', 'false')
+  })
+
   it('shows a stage only the messages filed against it', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

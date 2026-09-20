@@ -623,6 +623,13 @@ export function StageNotesPanel({
    */
   const [correspondenceOpen, setCorrespondenceOpen] = useState<string[]>([])
   /**
+   * Notes whose messages have the pane rather than the strip at the bottom of it. Held here
+   * with the rest of the dock's state so it survives a pane unmounting, and separate from
+   * `correspondenceOpen` because they answer different questions: whether the log is on
+   * screen at all, and whether it is what the pane is for right now.
+   */
+  const [correspondenceReading, setCorrespondenceReading] = useState<string[]>([])
+  /**
    * Set by the "K" shortcut when it has to open a collapsed dock before it can focus the
    * box inside it: the box does not exist yet in the render that opens it, so focusing it
    * has to wait for the one after.
@@ -1451,6 +1458,17 @@ export function StageNotesPanel({
     else setCaptureOpen(open)
   }
 
+  /**
+   * The written note is hidden while the messages have the pane, so a match stepped onto in
+   * it has nowhere to land. Same bug as a match inside a collapsed section, same fix, and
+   * from the step rather than an effect for the same reason.
+   */
+  const leaveReadingFor = (id: string | undefined, position: number) => {
+    const found = id ? matches.perTab.get(id) : undefined
+    if (!found || position - found.base >= found.written) return
+    setCorrespondenceReading((current) => current.filter((entry) => entry !== found.key))
+  }
+
   /** Steps the find, following it into whichever note the next match lives in. */
   const stepMatch = (delta: number) => {
     if (matches.total === 0) return
@@ -1460,6 +1478,7 @@ export function StageNotesPanel({
     const id = noteOfMatch(landing)
     if (id) showTab(id)
     revealMatchSection(id, landing)
+    leaveReadingFor(id, landing)
     revealInSource(id, landing)
   }
 
@@ -2311,6 +2330,7 @@ export function StageNotesPanel({
           groupId={group.id}
           heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0) + (found?.wrote ?? 0)}
           isCorrespondenceOpen={correspondenceOpen.includes(shownKey)}
+          isCorrespondenceReading={correspondenceReading.includes(shownKey)}
           isCurrentState={shownApplication?.state === shown.state}
           captureHeight={captureHeight}
           isCaptureOpen={captureOpen.includes(shownKey)}
@@ -2347,6 +2367,18 @@ export function StageNotesPanel({
                 ? current.filter((entry) => entry !== shownKey)
                 : [...current, shownKey],
             )}
+          onToggleCorrespondenceReading={() => {
+            // Reading it means seeing it, so this opens the section as well as filling the
+            // pane — a reader who asked for the messages should not have to ask twice.
+            setCorrespondenceOpen((current) =>
+              current.includes(shownKey) ? current : [...current, shownKey],
+            )
+            setCorrespondenceReading((current) =>
+              current.includes(shownKey)
+                ? current.filter((entry) => entry !== shownKey)
+                : [...current, shownKey],
+            )
+          }}
           onToggleEditLines={() =>
             setEditingLines((current) =>
               current.includes(shownKey)

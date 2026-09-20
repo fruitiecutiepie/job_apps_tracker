@@ -2309,6 +2309,27 @@ tbody tr:hover {
   gap: var(--s2);
 }
 
+/* The section's own name and the control that swaps the pane over to it, on one line. */
+.stage-note__dock-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.stage-note__dock-row .stage-note__dock-toggle {
+  flex: 1;
+  min-width: 0;
+}
+
+.stage-note__dock-read {
+  flex: none;
+  gap: var(--s2);
+  min-height: 26px;
+  padding: 0 var(--s2);
+  color: var(--ink-2);
+  font-size: var(--t2);
+}
+
 /*
  * The dock's edge. Full width and one handle tall, like the handles between panes, and it
  * owns the pointer for the length of a drag — without that a touch drag scrolls the note
@@ -3284,6 +3305,29 @@ tbody tr:hover {
 
 .panel__notes .stage-note--current > .stage-note__dock {
   background: var(--accent-weak);
+}
+
+/*
+  Reading the messages gives them the column instead of the strip. The note is hidden rather
+  than squeezed: a pane split between a prep note and a long email serves neither, and the
+  note is one press away. The dock stops being a sticky strip and becomes the pane's content,
+  so the log grows with it rather than against its own cap.
+*/
+.panel__notes .stage-note--reading > .stage-note__body {
+  display: none;
+}
+
+.panel__notes .stage-note--reading > .stage-note__dock {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  max-height: none;
+  min-height: 0;
+}
+
+.panel__notes .stage-note--reading .stage-note__log--messages {
+  flex: 1;
+  max-height: none;
 }
 
 /*

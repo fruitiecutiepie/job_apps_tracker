@@ -39,10 +39,11 @@ the paragraph breaks and quoted lines of a pasted message inside its own bullet,
 `src/markdown/correspondence.test.ts` and `src/markdown/dayLog.test.ts`.
 
 Whether any of that survives as layout — a pasted email's paragraphs separated and indented under
-their own bullet, a long message folding away behind its header line, and both dock sections
-scrolling inside their caps instead of pushing the prep note off the pane — is covered in a real
-browser by `src/correspondenceDock.browser.test.tsx`, across all three engines. jsdom cannot answer
-any of it: it has no layout, and it drops a shorthand carrying a `var()`.
+their own bullet, a message folding to one row that says what it holds, both dock sections
+scrolling inside their caps instead of pushing the prep note off the pane, and **Read** giving the
+messages the whole card rather than the 70% the strip is capped at — is covered in a real browser
+by `src/correspondenceDock.browser.test.tsx`, across all three engines. jsdom cannot answer any of
+it: it has no layout, and it drops a shorthand carrying a `var()`.
 
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
@@ -288,10 +289,11 @@ neither a finger nor any browser automation.
     than the moment you saved. The structure of the rendered message is covered by the browser
     suite; what is left here is judgement. Open Prep notes for that stage, expand
     **Correspondence**, and ask whether the hint makes the two dates distinct before you have to
-    find the difference out, whether the day heading and the `6:00 pm · Received · who · how`
-    header line tell you what you need at a glance, and whether a real thread of six or seven
-    messages is still readable at the height the log is capped to — or whether you find yourself
-    wanting the handle the capture log has.
+    find the difference out, whether a folded row — the time, who it was from, and a line of
+    what it says — tells you enough to decide whether to open it, and whether the line it shows
+    is cut at a useful length. Press **Read** and confirm a long email is comfortable to read
+    down the column, that the quoted chain stays out of the way until asked for, and that
+    **Prep note** brings the note back where you left it.
 13. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
     Set one to **Don't know** and another back to **Not rated**, save, and confirm the Table
     Preference cell distinguishes the two. Confirm the demo's Lumen Pantry row reads

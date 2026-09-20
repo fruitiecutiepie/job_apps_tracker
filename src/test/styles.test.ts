@@ -406,6 +406,21 @@ describe('correspondence rows', () => {
     expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
   })
 
+  it('gives the messages the column when they are being read, and hides the note', () => {
+    // Hidden rather than squeezed: a pane split between a prep note and a long email serves
+    // neither, and the note is one press away.
+    expect(ruleBody('.panel__notes .stage-note--reading > .stage-note__body'))
+      .toMatch(/display:\s*none/)
+    const dock = ruleBody('.panel__notes .stage-note--reading > .stage-note__dock')
+    expect(dock).toMatch(/max-height:\s*none/)
+    expect(dock).toMatch(/flex:\s*1/)
+    // Three classes each, so specificity ties and source order is what decides: the
+    // override has to come after the strip's cap or the dock stays at 70% of the pane.
+    expect(css.indexOf('.stage-note--reading > .stage-note__dock')).toBeGreaterThan(
+      css.indexOf('.panel__notes .stage-note > .stage-note__dock'),
+    )
+  })
+
   it('caps the messages against the dock without a second handle', () => {
     expect(ruleBody('.stage-note__log--messages')).toMatch(/max-height:\s*var\(--message-log\)/)
     // Two logs in one capped dock: the dock's cap squeezes them because both can reach zero.

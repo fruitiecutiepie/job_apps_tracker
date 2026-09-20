@@ -127,6 +127,51 @@ describe('a message in the dock, in a real browser', () => {
     expect(box(paragraphs[0]!).left).toBeGreaterThan(box(heading).left)
   })
 
+  it('gives the messages the whole pane to be read in, and hands it back', async () => {
+    renderPanel(withMessages([message()]))
+    await openCorrespondence()
+
+    const note = document.querySelector<HTMLElement>('.stage-note__body')!
+    const strip = box(messagesLog()).height
+    expect(box(note).height).toBeGreaterThan(100)
+
+    await userEvent.click(
+      screen.getByRole('button', { name: `Read the correspondence in ${DOCK_LABEL}` }),
+    )
+
+    // The note is out of the way rather than squeezed, and the log has what it was using.
+    expect(note).not.toBeVisible()
+    expect(box(messagesLog()).height).toBeGreaterThan(strip * 2)
+    // The dock takes the card rather than the 70% the strip is capped at. Measured on the
+    // dock against its card, because that is what the cap is expressed against — and the two
+    // dock selectors carry the same specificity, so this is really asserting their order.
+    const card = box(document.querySelector('.stage-note')!)
+    const dock = box(document.querySelector('.stage-note__dock')!)
+    expect(dock.height).toBeGreaterThan(card.height * 0.8)
+    expect(dock.bottom).toBeLessThanOrEqual(card.bottom + 1)
+
+    // A whole email now reads down the column rather than through a window.
+    const item = messagesLog().querySelector('li')!
+    await userEvent.click(within(item).getAllByRole('button')[0]!)
+    expect(box(item).height).toBeLessThanOrEqual(box(messagesLog()).height + 1)
+    expect(within(item).getByText(/stay in touch/)).toBeInTheDocument()
+
+    await userEvent.click(
+      screen.getByRole('button', { name: `Show the prep note in ${DOCK_LABEL}` }),
+    )
+    expect(note).toBeVisible()
+    expect(box(note).height).toBeGreaterThan(100)
+  })
+
+  it('offers nothing to read when a stage holds no messages', async () => {
+    renderPanel(withMessages([]))
+    await openCorrespondence()
+
+    expect(
+      screen.queryByRole('button', { name: `Read the correspondence in ${DOCK_LABEL}` }),
+    ).not.toBeInTheDocument()
+  })
+
   it('leaves the quoted chain shut when a message is opened', async () => {
     renderPanel(withMessages([message()]))
     await openCorrespondence()

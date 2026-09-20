@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, CornerDownLeft, ExternalLink, PencilLine, X } from 'lucide-react'
+import { ChevronRight, CornerDownLeft, ExternalLink, Maximize2, Minimize2, PencilLine, X } from 'lucide-react'
 import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangement'
@@ -70,6 +70,14 @@ interface StageNotePaneProps {
   /** Whether the correspondence section of the dock is open. Collapsed by default. */
   isCorrespondenceOpen: boolean
   onToggleCorrespondence: () => void
+  /**
+   * Whether the messages have the pane to themselves rather than a strip at the bottom of
+   * it. Folding made the log scannable, which is what the strip is for; it did nothing for
+   * the message you then open, which is a whole email read through an 11rem window. This is
+   * what that message gets read in.
+   */
+  isCorrespondenceReading: boolean
+  onToggleCorrespondenceReading: () => void
   /** The same lines as records, for correcting them one at a time. */
   lines: readonly CapturedLine[]
   /** Whether the captured lines are open for correcting rather than being read. */
@@ -142,6 +150,8 @@ export function StageNotePane({
   correspondenceCount,
   isCorrespondenceOpen,
   onToggleCorrespondence,
+  isCorrespondenceReading,
+  onToggleCorrespondenceReading,
   lines,
   isEditingLines,
   onToggleEditLines,
@@ -263,7 +273,13 @@ export function StageNotePane({
         // for the same application's different stages would otherwise share a heading —
         // "Halcyon Maps · Engineering Manager" — and read as the same region twice.
         aria-label={label}
-        className={`stage-note${isCurrentState ? ' stage-note--current' : ''}`}
+        className={[
+          'stage-note',
+          isCurrentState ? 'stage-note--current' : '',
+          isCorrespondenceReading ? 'stage-note--reading' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         id={stageNotePanelId(groupId, noteRef)}
         role="tabpanel"
       >
@@ -496,24 +512,48 @@ export function StageNotePane({
             one of its own: nothing is appended to it while the panel is open, so there is
             nothing here for a second resizable strip to be sized for.
           */}
-          <button
-            aria-expanded={isCorrespondenceOpen}
-            aria-label={`${isCorrespondenceOpen ? 'Hide' : 'Show'} ${CORRESPONDENCE_SECTION_IN_SENTENCE} in ${label}`}
-            className={[
-              'stage-note__dock-toggle',
-              isCorrespondenceOpen ? '' : 'stage-note__dock-toggle--collapsed',
-            ]
-              .filter(Boolean)
-              .join(' ')}
-            onClick={onToggleCorrespondence}
-            type="button"
-          >
-            <ChevronRight aria-hidden="true" size={14} />
-            {CORRESPONDENCE_SECTION}
+          <div className="stage-note__dock-row">
+            <button
+              aria-expanded={isCorrespondenceOpen}
+              aria-label={`${isCorrespondenceOpen ? 'Hide' : 'Show'} ${CORRESPONDENCE_SECTION_IN_SENTENCE} in ${label}`}
+              className={[
+                'stage-note__dock-toggle',
+                isCorrespondenceOpen ? '' : 'stage-note__dock-toggle--collapsed',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              onClick={onToggleCorrespondence}
+              type="button"
+            >
+              <ChevronRight aria-hidden="true" size={14} />
+              {CORRESPONDENCE_SECTION}
+              {correspondenceCount > 0 ? (
+                <span className="stage-note__dock-count">{correspondenceCount}</span>
+              ) : null}
+            </button>
+            {/*
+              Swaps what the pane is showing rather than resizing the strip. A handle would
+              let you trade the note against the log by degrees; the thing a long email
+              actually wants is the whole column, and the thing you want back afterwards is
+              the note, whole. Two states say that; a drag says it vaguely.
+            */}
             {correspondenceCount > 0 ? (
-              <span className="stage-note__dock-count">{correspondenceCount}</span>
+              <button
+                aria-label={
+                  isCorrespondenceReading
+                    ? `Show the prep note in ${label}`
+                    : `Read ${CORRESPONDENCE_SECTION_IN_SENTENCE} in ${label}`
+                }
+                aria-pressed={isCorrespondenceReading}
+                className="button button--quiet stage-note__dock-read"
+                onClick={onToggleCorrespondenceReading}
+                type="button"
+              >
+                {isCorrespondenceReading ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                {isCorrespondenceReading ? 'Prep note' : 'Read'}
+              </button>
             ) : null}
-          </button>
+          </div>
 
           {isCorrespondenceOpen && corresponded ? (
             // No `role="log"`, unlike the captures: nothing is added to this while it is on

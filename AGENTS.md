@@ -269,6 +269,22 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   Folding a point in a note **you wrote** is a deliberate act of putting it away, and previewing
   it would undo the thing you just asked for; you know what is under there. A log you did not
   write is the other case. Do not extend the preview to notes.
+- **Read** gives the messages the pane instead of the strip at the bottom of it, and swaps
+  back to the prep note. Folding made the log scannable, which is what a strip is for; it did
+  nothing for the message you then open, which is a whole email read through an 11rem window.
+  The note is hidden rather than squeezed — a pane split between a prep note and a long email
+  serves neither, and the note is one press away with its scroll intact. This is deliberately
+  two states rather than a drag handle: a handle trades the two by degrees, and what a long
+  email wants is the column, while what you want back afterwards is the note, whole.
+- The two dock selectors — `.panel__notes .stage-note > .stage-note__dock` and its
+  `--reading` counterpart — carry **the same specificity**, three classes each, so source
+  order is the only thing deciding between them. The override must stay after the cap it
+  undoes or the dock silently keeps its 70%, which looks close enough to working to survive a
+  screenshot. A test in `src/test/styles.test.ts` pins the order and one in
+  `src/correspondenceDock.browser.test.tsx` measures the result.
+- The written note is hidden while the messages hold the pane, so the find hands the pane back
+  when it steps onto a match in the note — the same rule, and the same reason, as a match
+  inside a collapsed section, and from the step handler rather than an effect.
 - A quoted reply stays shut when its message is opened. In a log that keeps both sides, the
   quoted chain is the message above quoted back — duplicate by construction — so unrolling the
   whole thread under every message is the one thing that makes a mail log unreadable.
