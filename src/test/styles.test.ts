@@ -382,6 +382,19 @@ describe('prep notes view', () => {
 })
 
 describe('correspondence rows', () => {
+  it('shows both directions as one control rather than a menu', () => {
+    const option = ruleBody('.correspondence-direction__option')
+
+    // As tall as the controls beside it, so the pair reads as a field and not as two loose
+    // checkboxes dropped into the row.
+    expect(option).toMatch(/min-height:\s*var\(--control-form\)/)
+    expect(ruleBody('.correspondence-direction__options')).toMatch(/display:\s*flex/)
+    expect(option).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(option.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
+    // The chosen one is marked by the accent rather than by weight alone.
+    expect(css).toMatch(/\.correspondence-direction__option:has\(input:checked\)\s*\{[^}]*--accent/)
+  })
+
   it('borrows the invite frame rather than inventing one', () => {
     // Grouped rules are looked up by their last selector, so the correspondence one goes
     // last. Sharing the frame is deliberate; reusing `.invite-item` itself would mean a

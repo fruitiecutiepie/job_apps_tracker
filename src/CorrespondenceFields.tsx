@@ -1,7 +1,7 @@
 import { Plus } from 'lucide-react'
 import { CHANNEL_SUGGESTIONS, CORRESPONDENCE_CONFIG, STATE_CONFIG, createUuidV7 } from './domain'
-import type { CorrespondenceDirection, StateId } from './domain'
-import type { CorrespondenceRow } from './correspondence'
+import type { StateId } from './domain'
+import { newCorrespondenceRow, type CorrespondenceRow } from './correspondence'
 
 const CHANNEL_LIST_ID = 'correspondence-channels'
 
@@ -43,21 +43,31 @@ export function CorrespondenceFields({
                     ))}
                   </select>
                 </label>
-                <label className="field">
-                  <span>Direction</span>
-                  <select
-                    onChange={(event) =>
-                      update(row.id, {
-                        direction: event.target.value as CorrespondenceDirection,
-                      })
-                    }
-                    value={row.direction}
-                  >
+                {/*
+                  Two radios rather than a select: a menu costs two interactions to choose
+                  between two things, and both of them are worth seeing without opening
+                  anything. Radios rather than buttons carrying `aria-pressed`, because this
+                  is a choice between options and the platform already has a control that
+                  says so — and gets the arrow keys right for free. Named per row, or two
+                  messages on screen would share one group.
+                */}
+                <fieldset className="field correspondence-direction">
+                  <legend>Direction</legend>
+                  <div className="correspondence-direction__options">
                     {CORRESPONDENCE_CONFIG.map((direction) => (
-                      <option key={direction.id} value={direction.id}>{direction.label}</option>
+                      <label className="correspondence-direction__option" key={direction.id}>
+                        <input
+                          checked={row.direction === direction.id}
+                          name={`correspondence-direction-${row.id}`}
+                          onChange={() => update(row.id, { direction: direction.id })}
+                          type="radio"
+                          value={direction.id}
+                        />
+                        <span>{direction.label}</span>
+                      </label>
                     ))}
-                  </select>
-                </label>
+                  </div>
+                </fieldset>
               </div>
               <div className="correspondence-item__grid">
                 <label className="field">
@@ -78,7 +88,8 @@ export function CorrespondenceFields({
                   />
                 </label>
                 <label className="field">
-                  <span>Sent</span>
+                  {/* Not "Sent", which is one of the two directions a line above. */}
+                  <span>Date sent</span>
                   <input
                     onChange={(event) => update(row.id, { at: event.target.value })}
                     type="datetime-local"
@@ -112,20 +123,7 @@ export function CorrespondenceFields({
       <div className="correspondence-field__actions">
         <button
           className="button button--quiet"
-          onClick={() =>
-            onChange([
-              {
-                id: createUuidV7(),
-                state: defaultState,
-                direction: 'received',
-                channel: '',
-                who: '',
-                body: '',
-                at: '',
-              },
-              ...rows,
-            ])
-          }
+          onClick={() => onChange([newCorrespondenceRow(rows, defaultState, createUuidV7()), ...rows])}
           type="button"
         >
           <Plus aria-hidden="true" size={14} />
@@ -138,7 +136,7 @@ export function CorrespondenceFields({
         ))}
       </datalist>
       <p className="correspondence-field__hint">
-        What was exchanged with the employer, and what you sent back. <strong>Sent</strong> is when
+        What was exchanged with the employer, and what you sent back. <strong>Date sent</strong> is when
         the message was sent, not when you wrote it down here — so a reply you log days later still
         reads under the day it arrived.
       </p>

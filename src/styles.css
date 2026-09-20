@@ -1852,6 +1852,68 @@ tbody tr:hover {
   accent-color: var(--accent);
 }
 
+/*
+  A fieldset standing in for a labelled field, so it keeps the shape of the selects beside it
+  rather than drawing a box of its own.
+*/
+.correspondence-direction {
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.correspondence-direction legend {
+  padding: 0;
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+/*
+  Both options on one row, each as tall as the controls beside them, so the pair reads as one
+  control rather than as two loose checkboxes.
+*/
+.correspondence-direction__options {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.correspondence-direction__option {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: var(--control-form);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--t3);
+  font-weight: 400;
+}
+
+.correspondence-direction__option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  font-weight: 500;
+}
+
+/* The token is a shadow rather than an outline, which is how the one other wrapper that
+   takes a ring for the control inside it spends it. */
+.correspondence-direction__option:has(input:focus-visible) {
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+
+.correspondence-direction__option input {
+  width: auto;
+  min-height: auto;
+  accent-color: var(--accent);
+}
+
 .invite-field__actions,
 .correspondence-field__actions {
   display: flex;

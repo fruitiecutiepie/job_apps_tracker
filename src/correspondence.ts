@@ -38,6 +38,35 @@ export function correspondenceRowsFor(application: Application | null): Correspo
     .reverse()
 }
 
+/**
+ * A row to start filing the next message into, carrying forward who it is with and how it
+ * arrived. A hiring conversation is one recruiter on one channel far more often than not, so
+ * re-typing both for every message is asking the reader to restate what the row above already
+ * says. Both remain editable and neither is required, so a thread that does change hands
+ * costs one correction rather than being fought.
+ *
+ * Read off the rows rather than off the stored log, because a message just typed and not yet
+ * saved is the likeliest thing the next one follows.
+ */
+export function newCorrespondenceRow(
+  rows: CorrespondenceRow[],
+  defaultState: StateId,
+  id: string,
+): CorrespondenceRow {
+  const recent = rows.find((row) => row.who.trim() || row.channel.trim())
+  return {
+    id,
+    state: defaultState,
+    // Received far more often than sent, and the row above is no guide: a reply follows a
+    // message rather than another reply.
+    direction: 'received',
+    channel: recent?.channel ?? '',
+    who: recent?.who ?? '',
+    body: '',
+    at: '',
+  }
+}
+
 export function correspondenceDrafts(rows: CorrespondenceRow[]): CorrespondenceDraft[] {
   return rows
     .filter((row) => row.body.trim() || row.at)

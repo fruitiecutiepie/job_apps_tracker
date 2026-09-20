@@ -3284,10 +3284,10 @@ describe('job applications tracker', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
 
     const message = within(dialog).getByRole('group', { name: 'Message 1' })
-    await user.selectOptions(within(message).getByLabelText('Direction'), 'received')
+    await user.click(within(message).getByRole('radio', { name: 'Received' }))
     await user.type(within(message).getByLabelText('Who'), 'Dana Okafor')
     await user.type(within(message).getByLabelText('Channel'), 'Email')
-    await user.type(within(message).getByLabelText('Sent'), '2026-08-10T09:30')
+    await user.type(within(message).getByLabelText('Date sent'), '2026-08-10T09:30')
     await user.type(within(message).getByLabelText('Message'), 'Could you send me some windows?')
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
 
@@ -3312,8 +3312,40 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
     dialog = screen.getByRole('dialog', { name: 'Edit application' })
     expect(
-      within(within(dialog).getByRole('group', { name: 'Message 1' })).getByLabelText('Sent'),
+      within(within(dialog).getByRole('group', { name: 'Message 1' })).getByLabelText('Date sent'),
     ).toHaveValue('2026-08-10T09:30')
+  })
+
+  it('starts the next message from who the last one was with, and picks a direction in one press', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    const first = within(dialog).getByRole('group', { name: 'Message 1' })
+    await user.type(within(first).getByLabelText('Who'), 'Dana Okafor')
+    await user.type(within(first).getByLabelText('Channel'), 'Email')
+
+    // Received is where a row starts, and one press is the whole cost of saying otherwise.
+    expect(within(first).getByRole('radio', { name: 'Received' })).toBeChecked()
+    await user.click(within(first).getByRole('radio', { name: 'Sent' }))
+    expect(within(first).getByRole('radio', { name: 'Sent' })).toBeChecked()
+    expect(within(first).getByRole('radio', { name: 'Received' })).not.toBeChecked()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    const added = within(dialog).getByRole('group', { name: 'Message 1' })
+
+    // The new row is the newest, so it takes the number, and it arrives already knowing who
+    // the conversation is with — but not what was said, when, or which way it went.
+    expect(within(added).getByLabelText('Who')).toHaveValue('Dana Okafor')
+    expect(within(added).getByLabelText('Channel')).toHaveValue('Email')
+    expect(within(added).getByLabelText('Message')).toHaveValue('')
+    expect(within(added).getByLabelText('Date sent')).toHaveValue('')
+    expect(within(added).getByRole('radio', { name: 'Received' })).toBeChecked()
   })
 
   it('corrects the time a message was sent and removes one logged by mistake', async () => {
@@ -3326,7 +3358,7 @@ describe('job applications tracker', () => {
     let dialog = screen.getByRole('dialog', { name: 'Edit application' })
     await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
     let message = within(dialog).getByRole('group', { name: 'Message 1' })
-    await user.type(within(message).getByLabelText('Sent'), '2026-08-10T09:30')
+    await user.type(within(message).getByLabelText('Date sent'), '2026-08-10T09:30')
     await user.type(within(message).getByLabelText('Message'), 'Windows please')
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
 
@@ -3338,7 +3370,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
     dialog = screen.getByRole('dialog', { name: 'Edit application' })
     message = within(dialog).getByRole('group', { name: 'Message 1' })
-    const sent = within(message).getByLabelText('Sent')
+    const sent = within(message).getByLabelText('Date sent')
     await user.clear(sent)
     await user.type(sent, '2026-08-11T14:00')
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
@@ -3368,11 +3400,11 @@ describe('job applications tracker', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
     const message = within(dialog).getByRole('group', { name: 'Message 1' })
 
-    await user.type(within(message).getByLabelText('Sent'), '2026-08-10T09:30')
+    await user.type(within(message).getByLabelText('Date sent'), '2026-08-10T09:30')
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
     expect(within(dialog).getByRole('alert')).toHaveTextContent('Message 1 needs its text.')
 
-    await user.clear(within(message).getByLabelText('Sent'))
+    await user.clear(within(message).getByLabelText('Date sent'))
     await user.type(within(message).getByLabelText('Message'), 'Windows please')
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
     expect(within(dialog).getByRole('alert')).toHaveTextContent(
@@ -3395,7 +3427,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Edit application' })
     await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
     const message = within(dialog).getByRole('group', { name: 'Message 1' })
-    await user.type(within(message).getByLabelText('Sent'), '2026-08-10T09:30')
+    await user.type(within(message).getByLabelText('Date sent'), '2026-08-10T09:30')
     await user.type(within(message).getByLabelText('Message'), 'Never saved')
     // Draft only, like every other control in this form: nothing is written until Save.
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))

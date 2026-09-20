@@ -283,7 +283,7 @@ neither a finger nor any browser automation.
     confirm rows with nothing coming sink to the bottom. Tick **Cancelled**, save, and confirm the
     table cell reads as cancelled and the card no longer shows it.
 12. In the application editor, open **Correspondence** and choose **Add message**. Paste a real
-    multi-paragraph email into **Message**, set **Sent** to a date several days in the past, name
+    multi-paragraph email into **Message**, set **Date sent** to a date several days in the past, name
     who it was from, and pick a channel from the suggestions — confirming the box still accepts a
     word that is not on the list. Save, reopen, and confirm the date you typed came back rather
     than the moment you saved. The structure of the rendered message is covered by the browser

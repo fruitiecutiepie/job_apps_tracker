@@ -119,6 +119,20 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   closed union would be wrong the first time a message arrives by SMS, and there are no migrations here
   that could widen one later. Unlike a currency it is not case-folded — `LinkedIn` is a name, not a code —
   so `email` and `Email` are two values, exactly as they already are for `source`.
+- **Add message** seeds the new row's correspondent and channel from the newest row that has
+  either, through `newCorrespondenceRow`. A hiring conversation is one recruiter on one
+  channel far more often than not, so re-typing both for every message asks the reader to
+  restate what the row above already says; both stay editable, so a thread that does change
+  hands costs one correction. Nothing else carries forward — not the text, not the time, and
+  not the direction, because a reply follows a message rather than another reply. Read off
+  the rows rather than the stored log, since a message just typed is the likeliest thing the
+  next one follows.
+- Direction is two radios rather than a select: a menu costs two interactions to choose
+  between two things, and both are worth seeing without opening anything. Radios rather than
+  buttons carrying `aria-pressed`, because this is a choice between options and the platform
+  already has a control that says so, arrow keys included. The group is named per row, or two
+  messages on screen share one group. The date field is **Date sent**, not "Sent", which is
+  one of the two directions a line above it.
 - Route correspondence changes through `applyCorrespondence` or `updateApplicationCorrespondence`. A draft
   carrying an existing id keeps that record's `created_at` while its `at`, direction, channel,
   correspondent and text are all rewritten from the draft; a blank body drops the message, which is how the

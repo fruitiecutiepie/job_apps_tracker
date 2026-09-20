@@ -5,6 +5,7 @@ import {
   correspondenceDrafts,
   correspondenceRowsFor,
   firstCorrespondenceProblem,
+  newCorrespondenceRow,
   type CorrespondenceRow,
 } from './correspondence'
 
@@ -66,5 +67,32 @@ describe('correspondence rows', () => {
   it('says nothing about a blank row, which is dropped rather than refused', () => {
     expect(firstCorrespondenceProblem([row({ body: '', at: '' })])).toBeNull()
     expect(firstCorrespondenceProblem([row()])).toBeNull()
+  })
+
+  it('starts the next message from who the last one was with, and how', () => {
+    const next = newCorrespondenceRow(
+      [row({ who: 'Dana Okafor', channel: 'Email' })],
+      'interview_1',
+      'new-id',
+    )
+
+    // A hiring conversation is one recruiter on one channel far more often than not.
+    expect(next).toMatchObject({ who: 'Dana Okafor', channel: 'Email', state: 'interview_1' })
+    // Not the text, the time, or the direction: a reply follows a message, not another reply.
+    expect(next).toMatchObject({ body: '', at: '', direction: 'received', id: 'new-id' })
+  })
+
+  it('takes them from the newest row that has any, skipping a blank one', () => {
+    const blank = row({ id: 'blank', who: '', channel: '', body: '', at: '' })
+    const earlier = row({ id: 'earlier', who: 'Priya Raman', channel: 'LinkedIn' })
+
+    expect(newCorrespondenceRow([blank, earlier], 'applied', 'new-id')).toMatchObject({
+      who: 'Priya Raman',
+      channel: 'LinkedIn',
+    })
+  })
+
+  it('starts empty when there is nothing to carry forward', () => {
+    expect(newCorrespondenceRow([], 'applied', 'new-id')).toMatchObject({ who: '', channel: '' })
   })
 })
