@@ -1761,6 +1761,44 @@ describe('job applications tracker', () => {
     expect(log.getByText(/short notice/)).toBeInTheDocument()
   })
 
+  it('opens the messages when reading starts, and folds them back on request', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const label = 'Halcyon Maps · Interview 2'
+
+    // Folded in the strip: the row says what it holds and the rest is behind the chevron.
+    await user.click(within(dialog).getByRole('button', { name: `Show the correspondence in ${label}` }))
+    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+
+    // Reading them opens them, so it is not a press per message to start reading.
+    await user.click(within(dialog).getByRole('button', { name: `Read the correspondence in ${label}` }))
+    expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
+
+    // And the same control the prep note has folds them back without leaving the pane.
+    await user.click(within(dialog).getByRole('button', { name: `Collapse all messages in ${label}` }))
+    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+    expect(within(dialog).getByText(/Moving the leadership interview/)).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: `Expand all messages in ${label}` }))
+    expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
+  })
+
+  it('offers no fold control while the messages are out of sight', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // Collapsed by default, so there is nothing to fold and no button claiming otherwise.
+    expect(
+      within(dialog).queryByRole('button', { name: /all messages in Halcyon Maps · Interview 2/ }),
+    ).not.toBeInTheDocument()
+  })
+
   it('hands the pane back to the note when the find steps into it', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

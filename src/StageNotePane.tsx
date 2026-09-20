@@ -213,6 +213,34 @@ export function StageNotePane({
    * formatter is only ever called, so it arrives as a ref and costs no render.
    */
   const [foldControls, setFoldControls] = useState<{ allFolded: boolean; toggle: () => void } | null>(null)
+  /**
+   * The same controls for the messages, kept apart from the note's: two logs on screen, and
+   * a button that folded whichever reported last would be a button nobody could predict.
+   */
+  type FoldControls = { allFolded: boolean; toggle: () => void; openEntries: () => void }
+  const [messageFolds, setMessageFolds] = useState<FoldControls | null>(null)
+
+  /*
+   * Reading them opens them. Pressing Read is saying "I am reading this now", and leaving
+   * every message shut would make that a second job. The quoted chains stay as they were:
+   * in a log holding both sides each one is the message above, quoted back, so unrolling
+   * them is the thing that makes a thread unreadable rather than the thing that opens it.
+   *
+   * Waits for the controls rather than firing on the press. Read opens the section too, so
+   * the log is not mounted in the render that starts this and has nothing to report yet;
+   * the latch is what keeps it to once per reading rather than once per fold afterwards,
+   * since the controls arrive new whenever anything folds.
+   */
+  const openedForReading = useRef(false)
+  useEffect(() => {
+    if (!isCorrespondenceReading) {
+      openedForReading.current = false
+      return
+    }
+    if (openedForReading.current || !messageFolds) return
+    openedForReading.current = true
+    messageFolds.openEntries()
+  }, [isCorrespondenceReading, messageFolds])
   const formatRef = useRef<((entry: Format) => void) | null>(null)
 
   /**
@@ -537,6 +565,16 @@ export function StageNotePane({
               actually wants is the whole column, and the thing you want back afterwards is
               the note, whole. Two states say that; a drag says it vaguely.
             */}
+            {isCorrespondenceOpen && messageFolds ? (
+              <button
+                aria-label={`${messageFolds.allFolded ? 'Expand' : 'Collapse'} all messages in ${label}`}
+                className="button button--quiet stage-note__dock-read"
+                onClick={messageFolds.toggle}
+                type="button"
+              >
+                {messageFolds.allFolded ? 'Expand all' : 'Collapse all'}
+              </button>
+            ) : null}
             {correspondenceCount > 0 ? (
               <button
                 aria-label={
@@ -565,6 +603,7 @@ export function StageNotePane({
                 foldAll={false}
                 label={`${label} correspondence`}
                 matchBase={correspondenceMatchBase}
+                onFoldControls={setMessageFolds}
                 query={query}
                 source={corresponded}
               />

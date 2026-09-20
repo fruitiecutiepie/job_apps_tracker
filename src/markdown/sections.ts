@@ -83,21 +83,40 @@ function collectBlockKeys(blocks: BlockNode[], path: string, keys: string[]): vo
  * answers "what should start closed", and the two are deliberately different questions.
  */
 export function collectEntryKeys(section: Section): string[] {
+  return walkEntryKeys(section, true)
+}
+
+/**
+ * The records alone — a list item with children — without the quoted chains inside them.
+ * What a surface switching itself over to reading opens: the messages, not every quoted
+ * copy of the message above. `collectEntryKeys` is the wider set, for what starts folded and
+ * for what a literal Expand all reaches.
+ */
+export function collectRecordKeys(section: Section): string[] {
+  return walkEntryKeys(section, false)
+}
+
+function walkEntryKeys(section: Section, quotes: boolean): string[] {
   const keys: string[] = []
   const walk = (current: Section) => {
-    collectEntryBlockKeys(current.blocks, current.key, keys)
+    collectEntryBlockKeys(current.blocks, current.key, keys, quotes)
     current.children.forEach(walk)
   }
   walk(section)
   return keys
 }
 
-function collectEntryBlockKeys(blocks: BlockNode[], path: string, keys: string[]): void {
+function collectEntryBlockKeys(
+  blocks: BlockNode[],
+  path: string,
+  keys: string[],
+  quotes: boolean,
+): void {
   blocks.forEach((block, index) => {
     const key = blockKey(path, index)
     if (block.type === 'quote') {
-      keys.push(key)
-      collectEntryBlockKeys(block.children, key, keys)
+      if (quotes) keys.push(key)
+      collectEntryBlockKeys(block.children, key, keys, quotes)
       return
     }
     if (block.type === 'list') {
@@ -105,7 +124,7 @@ function collectEntryBlockKeys(blocks: BlockNode[], path: string, keys: string[]
         if (item.children.length === 0) return
         const nested = itemKey(key, itemIndex)
         keys.push(nested)
-        collectEntryBlockKeys(item.children, nested, keys)
+        collectEntryBlockKeys(item.children, nested, keys, quotes)
       })
     }
   })

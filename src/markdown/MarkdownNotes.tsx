@@ -9,6 +9,7 @@ import {
   cellKey,
   collectEntryKeys,
   collectFoldableKeys,
+  collectRecordKeys,
   itemKey,
   sectionPath,
   sectionSlugs,
@@ -493,7 +494,19 @@ interface MarkdownNotesProps {
    * it scrolls away with what it folds, and the reader reaching for it has to scroll back
    * up to find it. Called with `null` when there is nothing foldable, and on unmount.
    */
-  onFoldControls?: (controls: { allFolded: boolean; toggle: () => void } | null) => void
+  onFoldControls?: (
+    controls: {
+      allFolded: boolean
+      toggle: () => void
+      /**
+       * Opens the records — messages — and leaves the quoted chains inside them as they
+       * are. Distinct from `toggle`, which is the literal Expand all the button offers: a
+       * surface switching itself over to reading wants the messages open, and unrolling
+       * every quoted copy of the thread with them is the one thing that undoes the point.
+       */
+      openEntries: () => void
+    } | null,
+  ) => void
 }
 
 export function MarkdownNotes({
@@ -589,7 +602,14 @@ export function MarkdownNotes({
     })
   }
 
-  const allCollapsed = keys.length > 0 && keys.every((key) => collapsed.has(key))
+  /*
+   * What "all" means to the fold-all control. In a note it is every fold, which leaves a bare
+   * outline to work through. In a log of records it is the records: folding the day headings
+   * away leaves two dates and nothing else — neither readable nor scannable — so the same
+   * prop that says records are the unit here says it to this control too.
+   */
+  const foldAllKeys = collapseInitially === 'entries' ? entryKeys : keys
+  const allCollapsed = foldAllKeys.length > 0 && foldAllKeys.every((key) => collapsed.has(key))
 
   /*
    * Stable across renders, so reporting it upward cannot become a loop: the keys it needs
@@ -600,8 +620,8 @@ export function MarkdownNotes({
   // button is pressed, never while drawing, and keeping it stable is what stops the
   // report upward from being a new value on every render — and so a loop.
   useEffect(() => {
-    keysRef.current = keys
-  }, [keys])
+    keysRef.current = foldAllKeys
+  }, [foldAllKeys])
   const toggleAll = useCallback(() => {
     setCollapsed((current) => {
       const every = keysRef.current.length > 0 && keysRef.current.every((key) => current.has(key))
@@ -609,19 +629,34 @@ export function MarkdownNotes({
     })
   }, [])
 
+  // The records alone, so opening them leaves the quoted chains inside them shut.
+  const recordKeysRef = useRef<string[]>([])
+  useEffect(() => {
+    recordKeysRef.current = collectRecordKeys(section)
+  }, [section])
+  const openEntries = useCallback(() => {
+    setCollapsed((current) => {
+      const next = new Set(current)
+      for (const key of recordKeysRef.current) next.delete(key)
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     if (!onFoldControls) return
-    onFoldControls(keys.length > 0 ? { allFolded: allCollapsed, toggle: toggleAll } : null)
+    onFoldControls(
+      foldAllKeys.length > 0 ? { allFolded: allCollapsed, toggle: toggleAll, openEntries } : null,
+    )
     return () => onFoldControls(null)
-  }, [allCollapsed, keys.length, onFoldControls, toggleAll])
+  }, [allCollapsed, foldAllKeys.length, onFoldControls, openEntries, toggleAll])
 
   return (
     <div className="markdown" ref={root}>
-      {foldAll && keys.length > 0 ? (
+      {foldAll && foldAllKeys.length > 0 ? (
         <button
           aria-label={`${allCollapsed ? 'Expand' : 'Collapse'} all points in ${label}`}
           className="button button--quiet markdown__fold-all"
-          onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(keys))}
+          onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(foldAllKeys))}
           type="button"
         >
           {allCollapsed ? 'Expand all' : 'Collapse all'}

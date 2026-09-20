@@ -107,4 +107,30 @@ describe('a log that starts folded', () => {
     await user.click(within(row).getAllByRole('button')[0]!)
     expect(within(row).getAllByText(/Apologies for the short notice/)).toHaveLength(1)
   })
+
+  it('folds the records when told to fold all, and leaves the days standing', async () => {
+    const user = userEvent.setup()
+    render(<MarkdownNotes collapseInitially="entries" label="Log" source={source()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand all points in Log' }))
+    expect(screen.getByText(/Ravi is still joining/)).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Collapse all points in Log' }))
+    expect(screen.queryByText(/Ravi is still joining/)).not.toBeInTheDocument()
+    // The day is the log's structure, not its content: folding it away would leave a date
+    // and nothing to read or scan under it.
+    expect(screen.getByRole('heading', { name: '2026-08-10' })).toBeInTheDocument()
+    expect(screen.getByText(/Priya Raman/)).toBeInTheDocument()
+  })
+
+  it('counts every fold when the note is one, so the days go with the points', async () => {
+    const user = userEvent.setup()
+    render(<MarkdownNotes label="Note" source={source()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Collapse all points in Note' }))
+
+    // A written note folds to a bare outline, which is the whole use of the control there.
+    expect(screen.getByRole('heading', { name: '2026-08-10' })).toBeInTheDocument()
+    expect(screen.queryByText(/Priya Raman/)).not.toBeInTheDocument()
+  })
 })

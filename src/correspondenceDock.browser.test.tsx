@@ -150,11 +150,17 @@ describe('a message in the dock, in a real browser', () => {
     expect(dock.height).toBeGreaterThan(card.height * 0.8)
     expect(dock.bottom).toBeLessThanOrEqual(card.bottom + 1)
 
-    // A whole email now reads down the column rather than through a window.
+    // Reading them opens them, so a whole email reads down the column straight away rather
+    // than through a window, and without a second press per message.
     const item = messagesLog().querySelector('li')!
-    await userEvent.click(within(item).getAllByRole('button')[0]!)
     expect(box(item).height).toBeLessThanOrEqual(box(messagesLog()).height + 1)
     expect(within(item).getByText(/stay in touch/)).toBeInTheDocument()
+    // The quoted chain is the one thing that stays shut: it is the message above, quoted
+    // back, so unrolling it with the rest is what makes a thread unreadable.
+    expect(within(item).getByRole('button', { name: /^Quote:/ })).toHaveAttribute(
+      'aria-expanded',
+      'false',
+    )
 
     await userEvent.click(
       screen.getByRole('button', { name: `Show the prep note in ${DOCK_LABEL}` }),

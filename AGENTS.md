@@ -307,6 +307,21 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - The written note is hidden while the messages hold the pane, so the find hands the pane back
   when it steps onto a match in the note — the same rule, and the same reason, as a match
   inside a collapsed section, and from the step handler rather than an effect.
+- **Read** opens the messages on the way in, because pressing it is saying "I am reading this
+  now" and a press per message would make that a second job. It waits for the log's fold
+  controls rather than firing on the press — Read opens the section too, so the log is not
+  mounted in the render that starts it — and latches, since the controls arrive new whenever
+  anything folds. The quoted chains are **not** opened with them, which is why
+  `collectRecordKeys` exists beside `collectEntryKeys`: the wider set is what starts folded
+  and what a literal Expand all reaches, the narrower one is what reading opens.
+- The section has its own **Collapse all**, the way the prep note does, handed up through
+  `onFoldControls` and drawn in the row that names the section rather than inside the column
+  it would scroll away with. It is kept apart from the note's controls: two logs on screen and
+  a button that folded whichever reported last is a button nobody can predict.
+- What "all" means to that control follows `collapseInitially`. In a note it is every fold,
+  which leaves the bare outline that is the whole use of it there. In a log it is the records
+  only: folding the day headings away leaves two dates and nothing under them, neither
+  readable nor scannable.
 - A quoted reply stays shut when its message is opened. In a log that keeps both sides, the
   quoted chain is the message above quoted back — duplicate by construction — so unrolling the
   whole thread under every message is the one thing that makes a mail log unreadable.
