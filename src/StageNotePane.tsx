@@ -331,7 +331,13 @@ export function StageNotePane({
             * charged to every pane. Both are handed up by whichever mode is showing, so
             * this row draws them and neither owns a row.
             */}
-          {foldControls ? (
+          {/*
+            Not while the messages have the pane: the note is hidden then, and a control that
+            folds what nobody can see is a control that appears to do nothing. It also puts a
+            second Collapse all on screen reading the same word as the log's own, which only
+            an accessible name tells apart.
+          */}
+          {foldControls && !isCorrespondenceReading ? (
             <button
               aria-label={`${foldControls.allFolded ? 'Expand' : 'Collapse'} all points in ${label}`}
               className="button button--quiet stage-note__fold-all"

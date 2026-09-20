@@ -1834,6 +1834,35 @@ describe('job applications tracker', () => {
     expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
   })
 
+  it('puts away the note\'s own fold control while the messages have the pane', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const label = 'Halcyon Maps · Interview 2'
+
+    expect(
+      within(dialog).getByRole('button', { name: `Collapse all points in ${label}` }),
+    ).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: `Read the correspondence in ${label}` }))
+
+    // The note is hidden, so folding it would appear to do nothing — and two buttons reading
+    // "Collapse all" at once are told apart only by their accessible names.
+    expect(
+      within(dialog).queryByRole('button', { name: `Collapse all points in ${label}` }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('button', { name: `Collapse all messages in ${label}` }),
+    ).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: `Show the prep note in ${label}` }))
+    expect(
+      within(dialog).getByRole('button', { name: `Collapse all points in ${label}` }),
+    ).toBeInTheDocument()
+  })
+
   it('offers no fold control while the messages are out of sight', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

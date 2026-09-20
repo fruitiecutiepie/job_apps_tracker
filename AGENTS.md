@@ -320,7 +320,10 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - The section has its own **Collapse all**, the way the prep note does, handed up through
   `onFoldControls` and drawn in the row that names the section rather than inside the column
   it would scroll away with. It is kept apart from the note's controls: two logs on screen and
-  a button that folded whichever reported last is a button nobody can predict.
+  a button that folded whichever reported last is a button nobody can predict. The note's own
+  fold control is withdrawn while the messages have the pane — the note is hidden then, so
+  folding it would appear to do nothing, and two buttons reading "Collapse all" at once are
+  told apart only by their accessible names.
 - What "all" means to that control follows `collapseInitially`. In a note it is every fold,
   which leaves the bare outline that is the whole use of it there. In a log it is the records
   only: folding the day headings away leaves two dates and nothing under them, neither
