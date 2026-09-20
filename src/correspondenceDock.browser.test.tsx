@@ -155,12 +155,13 @@ describe('a message in the dock, in a real browser', () => {
     const item = messagesLog().querySelector('li')!
     expect(box(item).height).toBeLessThanOrEqual(box(messagesLog()).height + 1)
     expect(within(item).getByText(/stay in touch/)).toBeInTheDocument()
-    // The quoted chain is the one thing that stays shut: it is the message above, quoted
-    // back, so unrolling it with the rest is what makes a thread unreadable.
+    // Quoted chains open with everything else. Read reaches exactly as far as Expand all,
+    // so there is one rule for what a bulk open means rather than two.
     expect(within(item).getByRole('button', { name: /^Quote:/ })).toHaveAttribute(
       'aria-expanded',
-      'false',
+      'true',
     )
+    expect(within(item).getByText(/It would have been two more conversations/)).toBeVisible()
 
     await userEvent.click(
       screen.getByRole('button', { name: `Show the prep note in ${DOCK_LABEL}` }),
@@ -178,7 +179,7 @@ describe('a message in the dock, in a real browser', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('leaves the quoted chain shut when a message is opened', async () => {
+  it('leaves the quoted chain shut when one message is opened by its own chevron', async () => {
     renderPanel(withMessages([message()]))
     await openCorrespondence()
 

@@ -12,7 +12,6 @@ export type { BlockNode, InlineNode, ListBlock, ListItem } from './parseMarkdown
 export {
   buildSections,
   collectEntryKeys,
-  collectRecordKeys,
   collectFoldableKeys,
   foldRegions,
   headingSlug,

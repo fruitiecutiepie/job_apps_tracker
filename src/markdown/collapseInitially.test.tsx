@@ -50,19 +50,30 @@ describe('a log that starts folded', () => {
     expect(screen.getByText(/Priya Raman/)).toBeInTheDocument()
   })
 
-  it('opens a message to its whole text, quoted chain and all', async () => {
+  it('opens one message and only that message, leaving its quoted chain shut', async () => {
     const user = userEvent.setup()
     render(<MarkdownNotes collapseInitially="entries" label="Log" source={source()} />)
 
-    await user.click(screen.getAllByRole('button', { expanded: false })[0]!)
+    await user.click(screen.getAllByRole('button', { name: /sub-points$/ })[0]!)
 
     expect(screen.getByText(/Ravi is still joining/)).toBeInTheDocument()
-    // The quoted reply is a fold of its own and stays shut until asked for: in a log holding
-    // both sides it is the message above, quoted back.
+    // A chevron opens the thing it is on. The quoted reply is a fold of its own, and in a
+    // log holding both sides it is the message above, quoted back.
     const quote = screen.getByRole('button', { name: /^Quote:/ })
     expect(quote).toHaveAttribute('aria-expanded', 'false')
 
     await user.click(quote)
+    expect(screen.getByText(/what the next loop would look like/)).toBeInTheDocument()
+  })
+
+  it('reaches the quoted chains too when everything is opened at once', async () => {
+    const user = userEvent.setup()
+    render(<MarkdownNotes collapseInitially="entries" label="Log" source={source()} />)
+
+    await user.click(screen.getByRole('button', { name: 'Expand all points in Log' }))
+
+    // One rule for a bulk open rather than two: it reaches as far as it says it does.
+    expect(screen.getByRole('button', { name: /^Quote:/ })).toHaveAttribute('aria-expanded', 'true')
     expect(screen.getByText(/what the next loop would look like/)).toBeInTheDocument()
   })
 

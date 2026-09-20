@@ -9,7 +9,6 @@ import {
   cellKey,
   collectEntryKeys,
   collectFoldableKeys,
-  collectRecordKeys,
   itemKey,
   sectionPath,
   sectionSlugs,
@@ -499,10 +498,10 @@ interface MarkdownNotesProps {
       allFolded: boolean
       toggle: () => void
       /**
-       * Opens the records — messages — and leaves the quoted chains inside them as they
-       * are. Distinct from `toggle`, which is the literal Expand all the button offers: a
-       * surface switching itself over to reading wants the messages open, and unrolling
-       * every quoted copy of the thread with them is the one thing that undoes the point.
+       * Opens every record and every quoted chain inside them — the same reach the Expand
+       * all button has. Distinct from `toggle` only in being one-way: a surface switching
+       * itself over to reading opens what is there, and must not close it again if it was
+       * already open.
        */
       openEntries: () => void
     } | null,
@@ -629,15 +628,14 @@ export function MarkdownNotes({
     })
   }, [])
 
-  // The records alone, so opening them leaves the quoted chains inside them shut.
-  const recordKeysRef = useRef<string[]>([])
+  const entryKeysRef = useRef(entryKeys)
   useEffect(() => {
-    recordKeysRef.current = collectRecordKeys(section)
-  }, [section])
+    entryKeysRef.current = entryKeys
+  }, [entryKeys])
   const openEntries = useCallback(() => {
     setCollapsed((current) => {
       const next = new Set(current)
-      for (const key of recordKeysRef.current) next.delete(key)
+      for (const key of entryKeysRef.current) next.delete(key)
       return next
     })
   }, [])

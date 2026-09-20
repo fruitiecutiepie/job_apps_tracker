@@ -311,9 +311,12 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   now" and a press per message would make that a second job. It waits for the log's fold
   controls rather than firing on the press — Read opens the section too, so the log is not
   mounted in the render that starts it — and latches, since the controls arrive new whenever
-  anything folds. The quoted chains are **not** opened with them, which is why
-  `collectRecordKeys` exists beside `collectEntryKeys`: the wider set is what starts folded
-  and what a literal Expand all reaches, the narrower one is what reading opens.
+  anything folds.
+- A **bulk open reaches everything**, quoted chains included: Read opens exactly as far as
+  Expand all, so there is one rule for what opening the lot means rather than two. A chevron
+  opens the thing it is on and nothing inside it, which is what keeps a quoted chain shut
+  when you open the one message you wanted — the distinction is between opening everything
+  and opening one thing, not between kinds of fold.
 - The section has its own **Collapse all**, the way the prep note does, handed up through
   `onFoldControls` and drawn in the row that names the section rather than inside the column
   it would scroll away with. It is kept apart from the note's controls: two logs on screen and
@@ -322,9 +325,10 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   which leaves the bare outline that is the whole use of it there. In a log it is the records
   only: folding the day headings away leaves two dates and nothing under them, neither
   readable nor scannable.
-- A quoted reply stays shut when its message is opened. In a log that keeps both sides, the
-  quoted chain is the message above quoted back — duplicate by construction — so unrolling the
-  whole thread under every message is the one thing that makes a mail log unreadable.
+- A quoted reply starts shut and stays shut when its own message is opened by its chevron. In
+  a log that keeps both sides, the quoted chain is the message above quoted back — duplicate
+  by construction — so a log that arrived with every one of them unrolled would be unreadable.
+  Opening the lot deliberately is another matter, and reaches them.
 - A pane's dock holds two collapsible sections, both collapsed by default: **Correspondence** above, then
   **What they said**. They read in that order down the pane, and the find numbers them in that order after
   the written note — `matchBase`, then `correspondenceMatchBase`, then `heardMatchBase`. Only the captures
