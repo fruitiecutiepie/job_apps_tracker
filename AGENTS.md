@@ -222,8 +222,16 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - `pnpm dev:demo` and `pnpm start:demo` first launch, plus confirmed demo reset, must produce the same 19 deterministic fictional records, exactly one ending in each configured state. Demo reset is unavailable on the live profile and must not write demo records into `data/tracker.json`.
 - The examples intentionally include prior history, dated and undated actions, overdue work, past and future deadlines, notes, stage prep notes, calendar invites (including one cancelled), hiring correspondence, ratings in all three states (including one whose 4.00 mean hides a 1), compensation in every comparison shape, and silent timestamps so every view has useful content.
 - The demo seeds correspondence in both directions across several applications, including one message with
-  no correspondent named, one filed against a rejected state, and one whose `at` precedes the record's
-  `created_at`, so the log written after the fact is exercised.
+  no correspondent named, one with no channel, one filed against a rejected state, and one whose `at`
+  precedes the record's `created_at`, so the log written after the fact is exercised.
+- One seed carries a **real email** — several paragraphs, a list, a signature, and the thread quoted
+  underneath — and one application carries a **thread** of four or more with two of them on the same day.
+  Both are load-bearing rather than decorative: a log of one-liners exercises neither the folded row nor
+  Read, which is most of what the reading side is. First lines sit either side of the preview's 48
+  characters, so the row that truncates and the row that does not are both on screen. A test in
+  `src/domain/domain.test.ts` asserts the lot; if you retune these seeds, check none of it stops appearing.
+  The long bodies are named constants above `DEMO_SEEDS`, because inline they would make an already wide
+  seed line unreadable.
 - Each record family mints its demo ids from a fixed pattern, and the four variant nibbles a UUIDv7 may
   carry — `8`, `9`, `a` and `b`, forced by `createUuidV7` — are spent between applications, invites,
   captures and completed actions. A new family varies the version group's spare bits instead of the

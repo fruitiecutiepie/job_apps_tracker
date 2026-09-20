@@ -214,10 +214,30 @@ describe('state configuration and demo content', () => {
     expect(messages.some(({ direction }) => direction === 'received')).toBe(true)
     expect(messages.some(({ direction }) => direction === 'sent')).toBe(true)
     expect(messages.some(({ who }) => who === null)).toBe(true)
+    expect(messages.some(({ channel }) => channel === null)).toBe(true)
     // A message filed against a stage the application was rejected at, and one written down
     // well after it arrived — the shape the record exists for.
     expect(messages.some(({ state }) => isRejectedState(state))).toBe(true)
     expect(messages.some(({ at, created_at }) => Date.parse(at) < Date.parse(created_at))).toBe(true)
+
+    // A real email, which is what the folded row and Read exist for: a log of one-liners
+    // would exercise neither. Several paragraphs, and the thread quoted underneath.
+    const long = messages.find(({ body }) => body.split('\n').length >= 10)
+    expect(long).toBeDefined()
+    expect(long!.body).toMatch(/\n> /)
+
+    // A thread rather than a note or two, with two messages sharing a day, so the log reads
+    // as something worth folding and the day grouping has more than one entry to group.
+    const thread = document.applications.find(({ correspondence }) => correspondence.length >= 4)
+    expect(thread).toBeDefined()
+    const days = thread!.correspondence.map(({ at }) => at.slice(0, 10))
+    expect(new Set(days).size).toBeLessThan(days.length)
+
+    // A first line past the preview's 48 characters and one inside it, so the row that
+    // truncates and the row that does not are both on screen somewhere.
+    const firstLines = messages.map(({ body }) => body.split('\n')[0]!.length)
+    expect(firstLines.some((length) => length > 48)).toBe(true)
+    expect(firstLines.some((length) => length <= 48)).toBe(true)
   })
 
   it('mints every demo id in UUIDv7 shape', () => {
