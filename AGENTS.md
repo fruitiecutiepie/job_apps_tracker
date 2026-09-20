@@ -452,10 +452,9 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 4. Before handing off, run:
 
 ```sh
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
+pnpm verify
 ```
 
-Run `pnpm test:smoke` explicitly when changing first launch, navigation, application editing, state movement, persistence, or reset behavior.
+which is `typecheck`, `lint`, `test` and `build` in that order, stopping at the first failure — cheapest signal first, so a type error does not cost you a test run. `pnpm test` already includes the smoke test; `pnpm test:smoke` runs it alone, which is worth doing while iterating on first launch, navigation, application editing, state movement, persistence, or reset behavior.
+
+`pnpm verify:all` adds the browser suite on the end. Run it when a change touches layout, the stylesheet, or anything the panel measures, and before handing off a branch. It is separate because it is the expensive one: three engines, a machine-wide lock, and a budget sized for a loaded laptop rather than for the code. A red browser suite on this machine is as likely to be contention as a regression — re-run a failure before believing it.
