@@ -396,6 +396,16 @@ describe('correspondence rows', () => {
     expect(body.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
   })
 
+  it('says what a folded row holds more quietly than the row itself', () => {
+    const body = ruleBody('.markdown__item-preview')
+
+    // The preview trails the header on the same line, so it has to read as the text
+    // underneath rather than as more header.
+    expect(body).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(body).toMatch(/font-weight:\s*400/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  })
+
   it('caps the messages against the dock without a second handle', () => {
     expect(ruleBody('.stage-note__log--messages')).toMatch(/max-height:\s*var\(--message-log\)/)
     // Two logs in one capped dock: the dock's cap squeezes them because both can reach zero.

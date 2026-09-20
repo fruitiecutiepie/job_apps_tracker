@@ -520,6 +520,7 @@ export function StageNotePane({
             // screen, so there is no live region for a reader to be told about.
             <div className="stage-note__log stage-note__log--messages">
               <MarkdownNotes
+                collapseInitially="entries"
                 currentMatch={currentMatch}
                 foldAll={false}
                 label={`${label} correspondence`}

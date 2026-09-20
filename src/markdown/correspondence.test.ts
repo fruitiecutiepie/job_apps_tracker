@@ -27,28 +27,34 @@ describe('correspondenceMarkdown', () => {
 
   it('reads a message under the day it was sent, with who and how it arrived', () => {
     expect(correspondenceMarkdown([message()], day, time)).toBe(
-      ['### 2026-08-10', '', '- `09:14` **Received** — Dana Okafor · Email', '', '  Could you send me some windows?'].join('\n'),
+      ['### 2026-08-10', '', '- `09:14` **Dana Okafor** · Email', '', '  Could you send me some windows?'].join('\n'),
     )
   })
 
-  it('says only which way a message went when nobody and no channel was recorded', () => {
-    const rendered = correspondenceMarkdown(
-      [message({ channel: null, who: null, direction: 'sent' })],
-      day,
-      time,
-    )
+  it('names you as the sender of what you sent, rather than labelling the direction', () => {
+    const sent = correspondenceMarkdown([message({ direction: 'sent' })], day, time)
 
-    expect(rendered).toContain('- `09:14` **Sent**\n')
-    expect(rendered).not.toContain('—')
+    expect(sent).toContain('- `09:14` **You** · Email')
+    // The words the header used to carry on every row are gone from it entirely.
+    expect(sent).not.toContain('Sent —')
+    expect(correspondenceMarkdown([message()], day, time)).not.toContain('Received')
+  })
+
+  it('still reads a message as theirs when nobody was recorded on it', () => {
+    // Direction has to survive a missing correspondent, or a received message with no name
+    // on it would read exactly like one you sent.
+    const rendered = correspondenceMarkdown([message({ who: null })], day, time)
+
+    expect(rendered).toContain('- `09:14` **Them** · Email')
   })
 
   it('drops just the part that is missing', () => {
     expect(correspondenceMarkdown([message({ channel: null })], day, time)).toContain(
-      '**Received** — Dana Okafor',
+      '- `09:14` **Dana Okafor**\n',
     )
-    expect(correspondenceMarkdown([message({ who: null })], day, time)).toContain(
-      '**Received** — Email',
-    )
+    expect(
+      correspondenceMarkdown([message({ channel: null, who: null, direction: 'sent' })], day, time),
+    ).toContain('- `09:14` **You**\n')
   })
 
   it('gives each day its own heading and puts them in send order', () => {
@@ -163,7 +169,7 @@ describe('correspondenceMarkdown', () => {
     )
 
     expect(rendered).toBe(
-      ['### 2026-08-10', '', '- `09:14` **Received** — Dana Okafor · Email', '', '  The whole message.'].join('\n'),
+      ['### 2026-08-10', '', '- `09:14` **Dana Okafor** · Email', '', '  The whole message.'].join('\n'),
     )
   })
 })

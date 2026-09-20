@@ -255,6 +255,23 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - The application editor shows `state_history` as a read-only **History** list, oldest first, so the order tells the story and the current state sits beside the State select that changes it. It renders only when editing: a new application has no history, and a state picked but not yet saved is deliberately absent because the list is the saved record.
 - Each entry shows how long that state held — the gap to the next move, or to now for the last one. Spans are derived on render in `stateTimeline`, never persisted, and counted in browser-local days like staleness, so two moves on one day read as `Same day` rather than a rounded fraction.
 - Stage prep notes are a top-level view, reached from the tab strip or from the Kanban card and the table row — which navigate to it rather than opening a dialog over it. What is open, how it is split, how wide the panes are and which tab is showing survive the app being closed, because the workspace is the point of a panel holding several applications at once. Arriving from a card opens only the note asked for; the fan of an application's current stage and its other noted stages (`openingLayout`) applies when there is no arrangement to restore, or every visit would pile that application's stages back up. The panel holds notes from **any application, not just the one it was opened from**: a tab is a `NoteRef` — an application and a state — and `Ctrl+P` reaches every application's notes. It opens on the application it was invoked for, that application's current stage first and then its other noted stages, so the stage you are interviewing for is the one you land on. Global search matches stage note text through `search_text`.
+- A message's header line names its **sender**, not its direction: `You` for one you sent, the
+  correspondent for one you received, and `Them` when none was recorded — because a received
+  message with no name on it must still not read as yours. A log holding both sides has no use
+  for the word "Sent" on every other row, and naming the sender says the same thing in space a
+  name was taking anyway. This is what every mail client does with "me".
+- The messages in the dock start **folded**, one row each, through `collapseInitially="entries"`
+  on `MarkdownNotes`. Correspondence is mostly email, and email is long: a log of them unfolded
+  buries the prep note above it, while a log folded to bare headers says nothing about what is
+  worth opening. So a folded record also summarises what it holds, the way a folded quote
+  already did. Both halves are needed; either alone is unreadable.
+- That summary is scoped to surfaces that start folded, through the `SummariseFolds` context.
+  Folding a point in a note **you wrote** is a deliberate act of putting it away, and previewing
+  it would undo the thing you just asked for; you know what is under there. A log you did not
+  write is the other case. Do not extend the preview to notes.
+- A quoted reply stays shut when its message is opened. In a log that keeps both sides, the
+  quoted chain is the message above quoted back — duplicate by construction — so unrolling the
+  whole thread under every message is the one thing that makes a mail log unreadable.
 - A pane's dock holds two collapsible sections, both collapsed by default: **Correspondence** above, then
   **What they said**. They read in that order down the pane, and the find numbers them in that order after
   the written note — `matchBase`, then `correspondenceMatchBase`, then `heardMatchBase`. Only the captures

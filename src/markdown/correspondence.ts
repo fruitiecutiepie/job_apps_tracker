@@ -28,9 +28,17 @@ interface Corresponded {
   at: string
 }
 
-const DIRECTION_LABELS: Record<Corresponded['direction'], string> = {
-  received: 'Received',
-  sent: 'Sent',
+/**
+ * Who a message is from, which is where its direction lives. A log holding both sides has
+ * no use for the word "Sent" on every other row: naming the sender says the same thing in
+ * the space a name was taking anyway, which is what every mail client does with "me".
+ *
+ * A received message whose correspondent was never recorded still has to read as theirs
+ * rather than yours, so it falls back to a word rather than to nothing.
+ */
+function sender(entry: Corresponded): string {
+  if (entry.direction === 'sent') return 'You'
+  return entry.who ?? 'Them'
 }
 
 /**
@@ -56,19 +64,21 @@ function indentedBody(body: string): string {
   return ['', ...lines.map((line) => (line.trim() ? `  ${line}` : ''))].join('\n')
 }
 
-/** The header line of one message: who it was with and how, after the time it was sent. */
+/**
+ * The header line of one message: when it was sent, who it was from, and how it arrived.
+ * This is the row a folded message reads as, so it carries everything needed to decide
+ * whether to open it and nothing else.
+ */
 function header(entry: Corresponded, time: (at: string) => string): string {
-  // Bold words rather than an arrow: direction is the one field always present, so it earns
-  // the emphasis, and an arrow reads as punctuation to a screen reader.
-  const said = [entry.who, entry.channel].filter(Boolean).join(' · ')
-  const direction = `**${DIRECTION_LABELS[entry.direction]}**`
-  return `- \`${time(entry.at)}\` ${said ? `${direction} — ${said}` : direction}`
+  const how = entry.channel ? ` · ${entry.channel}` : ''
+  return `- \`${time(entry.at)}\` **${sender(entry)}**${how}`
 }
 
 /**
  * Renders messages as Markdown: one `###` heading per day in the order they were sent, with
- * each message a bullet beneath its day — the time it was sent, which way it went, and who it
- * was with — and the message itself as an indented block under that.
+ * each message a bullet beneath its day — the time it was sent, who it was from, and how it
+ * arrived — and the message itself as an indented block under that, which is what lets a long
+ * one fold away behind its own header line.
  *
  * `day` and `time` are supplied for the reason `capturedMarkdown` gives: the caller owns how a
  * date reads, and the day formatter doubles as what decides where one day ends. The stamp is a

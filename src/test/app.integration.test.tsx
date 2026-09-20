@@ -1729,7 +1729,7 @@ describe('job applications tracker', () => {
     expect(document.activeElement).toBe(find)
   })
 
-  it('reads a stage\'s messages in the dock, under the day they were sent', async () => {
+  it('reads a stage\'s messages in the dock as folded rows, under the day they were sent', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -1742,17 +1742,23 @@ describe('job applications tracker', () => {
     // Collapsed by default, but the count says there is something behind it.
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
     expect(toggle).toHaveTextContent('1')
-    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
 
     await user.click(toggle)
 
-    expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
-    // Which way it went and how it arrived head the message; the day heads the group.
-    expect(within(dialog).getByText('Received')).toBeInTheDocument()
-    expect(within(dialog).getByText(/LinkedIn/)).toBeInTheDocument()
-    expect(
-      within(dialog).getByRole('heading', { name: formatShortDate('2026-08-12T08:00') }),
-    ).toBeInTheDocument()
+    // Scoped to the log, because the prep note above it has folds of its own.
+    const log = within(dialog.querySelector<HTMLElement>('.stage-note__log--messages')!)
+
+    // The message reads as one row: when it was sent, who it was from, and a line of what it
+    // says. Nobody was recorded on this one, so it still has to read as theirs.
+    expect(log.getByText(/Them/)).toBeInTheDocument()
+    expect(log.getByText(/LinkedIn/)).toBeInTheDocument()
+    expect(log.getByRole('heading', { name: formatShortDate('2026-08-12T08:00') })).toBeInTheDocument()
+    expect(log.getByText(/Moving the leadership interview/)).toBeInTheDocument()
+    // The rest of it is behind the fold rather than on screen.
+    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+
+    await user.click(log.getByRole('button', { name: /sub-points$/ }))
+    expect(log.getByText(/short notice/)).toBeInTheDocument()
   })
 
   it('shows a stage only the messages filed against it', async () => {

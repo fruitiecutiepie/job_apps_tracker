@@ -78,12 +78,32 @@ describe('a message in the dock, in a real browser', () => {
     await page.viewport(WIDE.width, WIDE.height)
   })
 
+  it('starts as one folded row saying what it holds, and opens to the whole message', async () => {
+    renderPanel(withMessages([message()]))
+    await openCorrespondence()
+
+    const item = messagesLog().querySelector('li')!
+    const folded = box(item).height
+
+    // Folded, the row carries the header and a line of the message — enough to decide
+    // whether to open it, which a bare "9:14 am Priya Raman" would not be.
+    expect(within(item).getByText(/Priya Raman/)).toBeInTheDocument()
+    expect(within(item).getByText(/Thanks for making the time/)).toBeInTheDocument()
+    expect(within(item).queryByText(/stay in touch/)).not.toBeInTheDocument()
+
+    await userEvent.click(within(item).getAllByRole('button')[0]!)
+
+    expect(box(item).height).toBeGreaterThan(folded * 2)
+    expect(within(item).getByText(/stay in touch/)).toBeInTheDocument()
+  })
+
   it('keeps a pasted email as separate paragraphs, indented under its own bullet', async () => {
     renderPanel(withMessages([message()]))
     await openCorrespondence()
 
     const log = messagesLog()
     const item = log.querySelector('li')!
+    await userEvent.click(within(item).getAllByRole('button')[0]!)
     const paragraphs = [...item.querySelectorAll('p')]
 
     // Three paragraphs and a signature, not one run-on block: the blank lines a person
@@ -107,22 +127,18 @@ describe('a message in the dock, in a real browser', () => {
     expect(box(paragraphs[0]!).left).toBeGreaterThan(box(heading).left)
   })
 
-  it('folds a long message away behind its header line', async () => {
+  it('leaves the quoted chain shut when a message is opened', async () => {
     renderPanel(withMessages([message()]))
     await openCorrespondence()
 
     const item = messagesLog().querySelector('li')!
-    const openHeight = box(item).height
+    await userEvent.click(within(item).getAllByRole('button')[0]!)
 
-    // A message has children, so it folds on its own — which is the point of rendering it
-    // as a block under the bullet rather than as one long line the way a capture is.
-    const fold = within(item).getAllByRole('button', { expanded: true })[0]!
-    await userEvent.click(fold)
-
-    expect(box(item).height).toBeLessThan(openHeight / 2)
-    expect(within(item).queryByText(/stay in touch/)).not.toBeInTheDocument()
-    // The header stays, so the day still reads as a list of messages.
-    expect(within(item).getByText('Received')).toBeInTheDocument()
+    // In a log that keeps both sides, the quoted chain is the message above, quoted back —
+    // so opening a message must not unroll the whole thread underneath it.
+    const quote = within(item).getByRole('button', { name: /^Quote:/ })
+    expect(quote).toHaveAttribute('aria-expanded', 'false')
+    expect(within(item).queryByText(/It would have been two more conversations/)).not.toBeInTheDocument()
   })
 
   it('scrolls inside its own cap rather than pushing the note off the pane', async () => {

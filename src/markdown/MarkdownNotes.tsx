@@ -7,6 +7,7 @@ import {
   blockText,
   buildSections,
   cellKey,
+  collectEntryKeys,
   collectFoldableKeys,
   itemKey,
   sectionPath,
@@ -74,6 +75,19 @@ function highlight(text: string, marks: Marks, cursor: Cursor, keyPrefix: string
  * otherwise have to carry a prop it makes no use of.
  */
 const FollowSection = createContext<(slug: string) => void>(() => {})
+
+/**
+ * Whether a folded record summarises what it holds. On where the records start folded, off
+ * where they do not, and the distinction is the point: folding a point in a note you wrote is
+ * a deliberate act of putting it away, and a preview would undo the thing you just asked for.
+ * A log of messages you did not write starts folded, and a row reading only "9:14 am Priya
+ * Raman" says nothing about whether you want it open.
+ *
+ * Through context rather than as a prop for the same reason `FollowSection` is: a list can sit
+ * at any depth, and every container between here and there would otherwise carry a prop it
+ * makes no use of.
+ */
+const SummariseFolds = createContext(false)
 
 /**
  * A link into the note itself. It never navigates: the panel is a dialog over the
@@ -209,6 +223,7 @@ function FoldRow({
 
 function MarkdownList({ list, path, collapsed, onToggle, marks }: FoldProps & { list: ListBlock; path: string }) {
   const Tag = list.ordered ? 'ol' : 'ul'
+  const summarise = useContext(SummariseFolds)
   return (
     <Tag className="markdown__list">
       {list.items.map((item, index) => {
@@ -226,6 +241,18 @@ function MarkdownList({ list, path, collapsed, onToggle, marks }: FoldProps & { 
                 onToggle={() => onToggle(key)}
               >
                 {content}
+                {/*
+                  What is folded away, in a line, the way a folded quote already summarises
+                  itself. A row that says only "9:14 am Priya Raman" tells a reader which
+                  message this is and nothing about whether they want it open; a log of long
+                  messages is unreadable folded without this and unreadable unfolded without
+                  the fold.
+                */}
+                {isCollapsed && summarise ? (
+                  <span className="markdown__item-preview">
+                    {` ${preview(blockText(item.children))}`}
+                  </span>
+                ) : null}
               </FoldRow>
             ) : (
               <span className="markdown__item-line">
@@ -438,6 +465,16 @@ interface MarkdownNotesProps {
    */
   foldAll?: boolean
   /**
+   * Whether the records in this note start closed. `entries` folds every message and every
+   * quoted reply, which is what a log of long emails wants: each message reads as one row
+   * carrying its own preview, and the quoted chain under it — already in the row above, in a
+   * log that keeps both sides — stays out of the way until asked for. Headings are never
+   * folded by this, so the days themselves stay open.
+   *
+   * A note you wrote opens flat, because you wrote it and want to read it. Default `none`.
+   */
+  collapseInitially?: 'none' | 'entries'
+  /**
    * Ancestor keys to force open, for a jump landing inside a section that is folded.
    * Left collapsed afterwards is not an option — the jump would have nothing to show.
    */
@@ -466,13 +503,32 @@ export function MarkdownNotes({
   matchBase = 0,
   currentMatch = null,
   foldAll = true,
+  collapseInitially = 'none',
   revealKeys,
   onJumpToSection,
   onFoldControls,
 }: MarkdownNotesProps) {
   const section = useMemo(() => buildSections(parseMarkdown(source)), [source])
   const keys = useMemo(() => collectFoldableKeys(section), [section])
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const entryKeys = useMemo(
+    () => (collapseInitially === 'entries' ? collectEntryKeys(section) : []),
+    [collapseInitially, section],
+  )
+  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(entryKeys))
+
+  /*
+   * A message logged while the panel is open arrives closed like the rest, without reopening
+   * what the reader has since opened. Only keys never seen before are added, so the fold
+   * state stays theirs: re-seeding the whole set on every change would slam shut everything
+   * they had just opened to read.
+   */
+  const seededKeys = useRef(new Set(entryKeys))
+  useEffect(() => {
+    const fresh = entryKeys.filter((key) => !seededKeys.current.has(key))
+    for (const key of entryKeys) seededKeys.current.add(key)
+    if (fresh.length === 0) return
+    setCollapsed((current) => new Set([...current, ...fresh]))
+  }, [entryKeys])
 
   const search = useMemo(() => searchNote(section, query), [section, query])
   const slugs = useMemo(() => sectionSlugs(section), [section])
@@ -572,12 +628,14 @@ export function MarkdownNotes({
         </button>
       ) : null}
       <FollowSection.Provider value={follow}>
+        <SummariseFolds.Provider value={collapseInitially === 'entries'}>
         <MarkdownSection
           collapsed={effectiveCollapsed}
           marks={marks}
           onToggle={toggle}
           section={section}
         />
+        </SummariseFolds.Provider>
       </FollowSection.Provider>
     </div>
   )

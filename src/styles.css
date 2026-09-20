@@ -2388,6 +2388,16 @@ tbody tr:hover {
   the one dock the panel already caps, and both can shrink to nothing, so that cap squeezes
   them and each scrolls on its own.
 */
+/*
+  The line a folded record shows of what it is hiding. Quieter than the row it trails, so a
+  header still reads as the header and the preview as the text underneath it — the same
+  weighting a folded quote's summary already keeps.
+*/
+.markdown__item-preview {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
 .stage-note__log--messages {
   max-height: var(--message-log);
 }
