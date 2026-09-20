@@ -1273,13 +1273,19 @@ export function StageNotesPanel({
       const ref = postingRef(applicationId)
       const key = noteRefKey(ref)
       const holding = groupHolding(layoutRef.current, key)
-      if (holding) {
+      // Already in a pane of its own: that is the answer, so focus it there.
+      if (holding && holding.id !== groupId) {
         applyLayout(activateTab(layoutRef.current, holding.id, key), holding.id)
         return
       }
-      // Beside it rather than in it: opening into this pane would cover the note the
-      // posting is here to be read against.
-      const next = splitWith(layoutRef.current, groupId, 'right', ref, newId)
+      /*
+       * Beside the note rather than over it. A posting open as a tab of this very pane —
+       * which is how an application's fan opens — is the case that makes this a split and
+       * not an activate: showing it here would cover the note it is meant to be read
+       * against, which is the one thing the control is for. `detachFrom` takes that tab out
+       * of this pane on the way, the same as dragging it to the edge.
+       */
+      const next = splitWith(layoutRef.current, groupId, 'right', ref, newId, holding ? groupId : null)
       applyLayout(next, groupHolding(next, key)?.id ?? groupId)
     },
     [applyLayout, newId],

@@ -8,7 +8,7 @@ import {
   saveArrangement,
   type Arrangement,
 } from "../notesArrangement";
-import { FIRST_PANE_ID, openInGroup, singleGroup, type NoteRequest } from "../notesLayout";
+import { openInGroup, type NoteRequest } from "../notesLayout";
 import { StageNotesPanel, type StageNoteDraftBatch } from "../StageNotesPanel";
 
 interface PrepNotesViewProps {
@@ -150,10 +150,12 @@ function openingFor(applications: Application[], request: NoteRequest | null): A
   if (!request) return null;
   const application = applications.find((candidate) => candidate.id === request.ref.applicationId);
   if (!application) return null;
-  // A posting prepares for no stage, so there are no sibling notes to open beside it: the
-  // arrangement it starts from is the one pane holding it.
+  // The fan is the application's own material either way — its posting and its noted
+  // stages. Which tab you land on is the one that was asked for.
+  const state = request.ref.kind === 'stage' ? request.ref.state : application.state;
+  const fan = openingLayout(application, state);
   const layout = request.ref.kind === 'posting'
-    ? singleGroup(FIRST_PANE_ID, request.ref)
-    : openingLayout(application, request.ref.state);
+    ? openInGroup(fan, fan.id, request.ref)
+    : fan;
   return { layout, focusedGroupId: layout.id };
 }

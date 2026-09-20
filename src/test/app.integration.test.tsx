@@ -1135,7 +1135,11 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
     const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    // Its fan is its posting and its one noted stage, so emptying the pane closes both.
     await user.click(within(panel).getByRole('button', { name: 'Close the Marble & Finch · Applied tab' }))
+    await user.click(
+      within(panel).getByRole('button', { name: 'Close the Marble & Finch · Job posting tab' }),
+    )
 
     expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
     expect(screen.queryByRole('tablist')).not.toBeInTheDocument()
@@ -4302,155 +4306,56 @@ describe('job applications tracker', () => {
     ).toBeNull()
   })
 
-  it('reads a posting in a pane beside the prep note written against it', async () => {
+  it('opens a posting in the same strip as the application’s stages, first', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
 
-    // Dragged out of the postings group at the top of the tree, into a pane of its own.
-    const tree = within(dialog).getByRole('list', { name: 'Prep notes by stage' })
-    const row = within(within(tree).getByRole('listitem', { name: 'Job postings' }))
-      .getByRole('button', { name: /^Marble & Finch/ })
-    pointerDragToEdge(row, 'right')
+    /*
+     * One strip holding everything written for one application is where this app says these
+     * belong together — the notes tree is grouped by stage on purpose, so a posting has no
+     * home there that reads as its application's.
+     */
+    const tabs = within(dialog).getAllByRole('tab').map((tab) => tab.textContent)
+    expect(tabs).toHaveLength(2)
+    expect(tabs[0]).toMatch(/Job posting/)
+    expect(tabs[1]).toMatch(/Applied/)
 
-    const panes = within(dialog).getAllByRole('tabpanel')
-    expect(panes).toHaveLength(2)
-    // One pane holds the posting, the other the stage it was opened for.
-    expect(panes.some((pane) => pane.textContent?.includes('independent booksellers'))).toBe(true)
-    expect(
-      within(dialog).getByRole('tab', { name: /Marble & Finch · Product Manager · Job posting/ }),
-    ).toBeInTheDocument()
-    // Written where it is read, like a prep note: a pasted posting arrives mangled often
-    // enough that being unable to tidy it here would be the wrong trade.
-    expect(
-      within(dialog).getByRole('button', { name: 'Edit the Marble & Finch job posting' }),
-    ).toBeInTheDocument()
+    // Still landing on the stage: the posting is context for the note being written, not
+    // the thing you came to write.
+    expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent(/Applied/)
   })
 
-  it('takes the stage picker off the subject line while a posting is focused', async () => {
+  it('leaves the fan alone for an application with no posting', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    expect(within(dialog).getAllByRole('tab')).toHaveLength(3)
+    expect(within(dialog).queryByRole('tab', { name: /Job posting/ })).toBeNull()
+  })
+
+  it('lands on the posting when that is what was asked for', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Opened from the tree rather than from a card, so the request names the posting.
     await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    const picker = () =>
-      within(dialog).queryByRole('combobox', {
-        name: 'Go to a different stage for Marble & Finch',
-      })
-
-    expect(picker()).not.toBeNull()
-
-    // The picker acts on the focused pane, and a posting prepares for no stage — there is
-    // none to switch away from and nothing the control could honestly show.
     const tree = within(dialog).getByRole('list', { name: 'Prep notes by stage' })
     await user.click(
       within(within(tree).getByRole('listitem', { name: 'Job postings' }))
         .getByRole('button', { name: /^Marble & Finch/ }),
     )
-    expect(picker()).toBeNull()
 
-    // Focusing a prep note again brings it back.
-    await user.click(within(dialog).getByRole('tab', { name: /Applied/ }))
-    expect(picker()).not.toBeNull()
-  })
-
-  it('opens the posting beside the prep note from the note’s own header', async () => {
-    const user = userEvent.setup()
-    await renderLoadedApp()
-
-    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
-    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(1)
-
-    // The motivating case: reading the posting next to the note written against it, without
-    // going out to the sidebar to find the application you are already looking at.
-    await user.click(
-      within(dialog).getByRole('button', {
-        name: /Read the Marble & Finch job posting beside/,
-      }),
-    )
-
-    const panes = within(dialog).getAllByRole('tabpanel')
-    expect(panes).toHaveLength(2)
-    expect(panes.some((pane) => pane.textContent?.includes('independent booksellers'))).toBe(true)
-    // Beside the note, not over it: the note it was opened against is still on screen.
-    expect(panes.some((pane) => pane.getAttribute('aria-label')?.includes('Applied'))).toBe(true)
-  })
-
-  it('writes a posting edited in its pane, without recapturing it', async () => {
-    const user = userEvent.setup()
-    await renderLoadedApp()
-
-    const saved = () =>
-      readSavedDocument().applications.find((entry) => entry.company === 'Marble & Finch')!
-    const capturedAt = saved().posting!.captured_at
-
-    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
-    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    await user.click(
-      within(dialog).getByRole('button', { name: /Read the Marble & Finch job posting/ }),
-    )
-    await user.click(
-      within(dialog).getByRole('button', { name: 'Edit the Marble & Finch job posting' }),
-    )
-
-    await user.type(
-      within(dialog).getByLabelText('Marble & Finch · Job posting prep notes'),
-      ' Tidied.',
-    )
-
-    // No Save, the same as a prep note: the pane writes itself once the typing pauses.
-    await waitFor(
-      () => expect(saved().posting!.body).toContain('Tidied.'),
-      { timeout: 4000 },
-    )
-    // Tidying is not recapturing, so when it arrived does not move.
-    expect(saved().posting!.captured_at).toBe(capturedAt)
-    expect(saved().posting!.source_url).toBe('https://example.com/jobs/3')
-
-    // Back to reading shows what was typed, rendered.
-    await user.click(
-      within(dialog).getByRole('button', { name: 'Read the Marble & Finch job posting' }),
-    )
+    expect(within(dialog).getByRole('tab', { selected: true })).toHaveTextContent(/Job posting/)
     expect(
-      within(dialog).getByRole('tabpanel', { name: /Job posting/ }),
-    ).toHaveTextContent('Tidied.')
-  })
-
-  it('focuses a posting already open rather than opening it twice', async () => {
-    const user = userEvent.setup()
-    await renderLoadedApp()
-
-    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
-    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    const openPosting = () =>
-      within(dialog).getByRole('button', {
-        name: /Read the Marble & Finch job posting beside/,
-      })
-
-    await user.click(openPosting())
-    expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(2)
-
-    // A second copy would give one match two ids and the find would step onto whichever the
-    // DOM returned first.
-    await user.click(openPosting())
-    expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(2)
-    expect(
-      within(dialog).getAllByRole('tab', { name: /Job posting/ }),
-    ).toHaveLength(1)
-  })
-
-  it('offers no posting button on a note whose application has captured none', async () => {
-    const user = userEvent.setup()
-    await renderLoadedApp()
-
-    // Echo Robotics is seeded without one, so there is nothing the button could open.
-    await user.click(screen.getByRole('button', { name: /prep notes for Echo Robotics/i }))
-    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-
-    expect(within(dialog).queryByRole('button', { name: /job posting beside/ })).toBeNull()
+      within(dialog).getByRole('tabpanel'),
+    ).toHaveTextContent('independent booksellers')
   })
 
   it('counts a hit inside a posting in the panel-wide find', async () => {

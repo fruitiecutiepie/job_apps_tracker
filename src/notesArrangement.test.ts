@@ -76,6 +76,28 @@ describe('highestPaneNumber', () => {
   })
 })
 
+describe('openingLayout', () => {
+  const posted = (id: string): Application => ({
+    ...application(id, ['applied', 'interview_1']),
+    posting: { body: 'Staff Engineer', captured_at: '2026-01-01T00:00:00.000Z', source_url: null },
+  })
+
+  it('leads the fan with the application’s posting', () => {
+    const layout = openingLayout(posted('acme'), 'interview_1')
+
+    expect(orderedRefs(layout).map(noteRefKey))
+      .toEqual(['acme::posting', 'acme::interview_1', 'acme::applied'])
+    // Still the stage you are interviewing for: the posting is context, not the errand.
+    expect(layout.activeKey).toBe('acme::interview_1')
+  })
+
+  it('leaves the fan as it was when there is no posting', () => {
+    const layout = openingLayout(acme, 'interview_1')
+
+    expect(orderedRefs(layout).map(noteRefKey)).toEqual(['acme::interview_1', 'acme::applied'])
+  })
+})
+
 describe('restoreArrangement', () => {
   it('round-trips a layout, its active tab and the focused pane', () => {
     const layout = split(
