@@ -5,6 +5,8 @@
  */
 import type { Application, CorrespondenceDirection, CorrespondenceDraft, StateId } from './domain'
 import { fromDateTimeInput, toDateTimeInput } from './dateInput'
+import { correspondenceSender, preview } from './markdown'
+import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
 
 /** One message as the editor holds it: local wall-time strings, not timestamps. */
 export interface CorrespondenceRow {
@@ -65,6 +67,27 @@ export function newCorrespondenceRow(
     body: '',
     at: '',
   }
+}
+
+/**
+ * What a message's row reads as while its fields are folded away: when it was sent, who it
+ * was with, and a line of what it says. The same three things the log's folded row shows, cut
+ * at the same length by the same `preview`, because a row that summarised a message one way
+ * in the editor and another way in the panel would read as two different messages.
+ *
+ * A row with nothing in it yet says so rather than rendering as a stack of separators — it is
+ * the row you just added and are about to fill in.
+ */
+export function correspondenceRowSummary(row: CorrespondenceRow): string {
+  const sent = fromDateTimeInput(row.at)
+  if (!sent && !row.body.trim() && !row.who.trim()) return 'New message'
+
+  const when = sent ? `${formatShortDate(sent)}, ${formatTimeOfDay(sent)}` : 'No date'
+  const parts = [when, correspondenceSender({ direction: row.direction, who: row.who || null })]
+  if (row.channel.trim()) parts.push(row.channel.trim())
+
+  const gist = preview(row.body)
+  return gist ? `${parts.join(' · ')} — ${gist}` : parts.join(' · ')
 }
 
 export function correspondenceDrafts(rows: CorrespondenceRow[]): CorrespondenceDraft[] {

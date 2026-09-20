@@ -1,6 +1,7 @@
 export { capturedMarkdown, CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE } from './capture'
 export {
   correspondenceMarkdown,
+  correspondenceSender,
   CORRESPONDENCE_SECTION,
   CORRESPONDENCE_SECTION_IN_SENTENCE,
 } from './correspondence'
@@ -22,5 +23,6 @@ export {
   sectionSlugs,
 } from './sections'
 export type { FoldRegion, OutlineEntry, OutlineNode, Section } from './sections'
+export { preview } from './preview'
 export { matchOffsets, searchNote, splitMatches } from './searchNote'
 export type { NoteSearch } from './searchNote'

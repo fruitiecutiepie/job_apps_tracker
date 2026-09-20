@@ -109,6 +109,17 @@ async function renderLoadedApp() {
   return view
 }
 
+/**
+ * Opens a message's fields in the editor, which read as one folded line until asked for: a
+ * message is six controls and an email, and five of them fill a dialog whose job is the
+ * application.
+ */
+async function openMessage(user: ReturnType<typeof userEvent.setup>, container: HTMLElement, index = 1) {
+  const row = within(container).getByRole('group', { name: `Message ${index}` })
+  await user.click(within(row).getByRole('button', { expanded: false }))
+  return row
+}
+
 /** Opens a stage's capture dock, collapsed by default, before a test reaches into it. */
 async function openCapture(user: ReturnType<typeof userEvent.setup>, container: HTMLElement, label: string) {
   await user.click(within(container).getByRole('button', { name: `Show what they said in ${label}` }))
@@ -3423,12 +3434,42 @@ describe('job applications tracker', () => {
     expect(logged()[0]!.at).toBe(new Date('2026-08-10T09:30').toISOString())
     expect(Date.parse(logged()[0]!.at)).toBeLessThan(Date.parse(logged()[0]!.created_at))
 
-    // And it reads back into its boxes.
+    // And it reads back into its boxes, once the row is asked for.
     await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
     dialog = screen.getByRole('dialog', { name: 'Edit application' })
-    expect(
-      within(within(dialog).getByRole('group', { name: 'Message 1' })).getByLabelText('Date sent'),
-    ).toHaveValue('2026-08-10T09:30')
+    const folded = within(dialog).getByRole('group', { name: 'Message 1' })
+    // Folded, the row is the summary: enough to find the message without opening it.
+    expect(within(folded).getByText(/Dana Okafor · Email — Could you send me/)).toBeInTheDocument()
+    expect(within(folded).queryByLabelText('Date sent')).not.toBeInTheDocument()
+
+    const opened = await openMessage(user, dialog)
+    expect(within(opened).getByLabelText('Date sent')).toHaveValue('2026-08-10T09:30')
+  })
+
+  it('folds a logged message down to one line, and opens a new one ready to fill in', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Halcyon Maps carries a seeded message, so the editor opens with one already logged.
+    await user.click(screen.getByRole('button', { name: /^Open Halcyon Maps/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    const logged = within(dialog).getByRole('group', { name: 'Message 1' })
+    expect(within(logged).getByRole('button', { expanded: false })).toBeInTheDocument()
+    expect(within(logged).queryByLabelText('Message')).not.toBeInTheDocument()
+    // The summary is what tells two messages apart, so it is the row's name.
+    expect(within(logged).getByText(/Them · LinkedIn — Moving the leadership/)).toBeInTheDocument()
+
+    await user.click(within(logged).getByRole('button', { expanded: false }))
+    expect(within(logged).getByLabelText('Message')).toBeInTheDocument()
+    await user.click(within(logged).getByRole('button', { expanded: true }))
+    expect(within(logged).queryByLabelText('Message')).not.toBeInTheDocument()
+
+    // A row you just added is a row you are about to fill in, so it arrives open.
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    const added = within(dialog).getByRole('group', { name: 'Message 1' })
+    expect(within(added).getByLabelText('Message')).toBeInTheDocument()
+    expect(within(added).getByText('New message')).toBeInTheDocument()
   })
 
   it('starts the next message from who the last one was with, and picks a direction in one press', async () => {
@@ -3484,7 +3525,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
     dialog = screen.getByRole('dialog', { name: 'Edit application' })
-    message = within(dialog).getByRole('group', { name: 'Message 1' })
+    message = await openMessage(user, dialog)
     const sent = within(message).getByLabelText('Date sent')
     await user.clear(sent)
     await user.type(sent, '2026-08-11T14:00')
@@ -3498,6 +3539,7 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
     dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await openMessage(user, dialog)
     await user.click(within(dialog).getByRole('button', { name: 'Remove message 1' }))
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
 

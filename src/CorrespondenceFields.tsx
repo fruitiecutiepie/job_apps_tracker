@@ -1,7 +1,12 @@
-import { Plus } from 'lucide-react'
+import { useState } from 'react'
+import { ChevronRight, Plus } from 'lucide-react'
 import { CHANNEL_SUGGESTIONS, CORRESPONDENCE_CONFIG, STATE_CONFIG, createUuidV7 } from './domain'
 import type { StateId } from './domain'
-import { newCorrespondenceRow, type CorrespondenceRow } from './correspondence'
+import {
+  correspondenceRowSummary,
+  newCorrespondenceRow,
+  type CorrespondenceRow,
+} from './correspondence'
 
 const CHANNEL_LIST_ID = 'correspondence-channels'
 
@@ -16,6 +21,19 @@ export function CorrespondenceFields({
   defaultState,
   onChange,
 }: CorrespondenceFieldsProps) {
+  /*
+   * Which rows are showing their fields. A message is a record with six controls and an email
+   * in it — five of them come to four screens of a dialog whose job is the application, not
+   * the thread — so a row reads as one line until it is the one being worked on. Held here
+   * rather than lifted: it is which row you are looking at, and it means nothing once the
+   * dialog closes.
+   */
+  const [open, setOpen] = useState<string[]>([])
+  const toggle = (id: string) =>
+    setOpen((current) =>
+      current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
+    )
+
   // Keyed by id rather than by position: the rows read newest first while the domain stores
   // them oldest first, so a position here does not mean a position there.
   const update = (id: string, changes: Partial<CorrespondenceRow>) => {
@@ -31,6 +49,22 @@ export function CorrespondenceFields({
           {rows.map((row, index) => (
             <fieldset className="correspondence-item" key={row.id}>
               <legend className="sr-only">Message {index + 1}</legend>
+              {/*
+                The row's own name, and what opens it. Its text is its accessible name rather
+                than a "Show message 3": the summary is what tells two messages apart, and a
+                number tells you only where in the list you are.
+              */}
+              <button
+                aria-expanded={open.includes(row.id)}
+                className="correspondence-item__summary"
+                onClick={() => toggle(row.id)}
+                type="button"
+              >
+                <ChevronRight aria-hidden="true" size={14} />
+                <span>{correspondenceRowSummary(row)}</span>
+              </button>
+              {open.includes(row.id) ? (
+                <>
               <div className="correspondence-item__head">
                 <label className="field">
                   <span>Stage</span>
@@ -115,6 +149,8 @@ export function CorrespondenceFields({
                   Remove message {index + 1}
                 </button>
               </div>
+                </>
+              ) : null}
             </fieldset>
           ))}
         </div>
@@ -123,7 +159,11 @@ export function CorrespondenceFields({
       <div className="correspondence-field__actions">
         <button
           className="button button--quiet"
-          onClick={() => onChange([newCorrespondenceRow(rows, defaultState, createUuidV7()), ...rows])}
+          onClick={() => {
+            const added = newCorrespondenceRow(rows, defaultState, createUuidV7())
+            setOpen((current) => [...current, added.id])
+            onChange([added, ...rows])
+          }}
           type="button"
         >
           <Plus aria-hidden="true" size={14} />

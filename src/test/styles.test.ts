@@ -395,6 +395,18 @@ describe('correspondence rows', () => {
     expect(css).toMatch(/\.correspondence-direction__option:has\(input:checked\)\s*\{[^}]*--accent/)
   })
 
+  it('reads a folded row as a line of record rather than as a button', () => {
+    const body = ruleBody('.correspondence-item__summary')
+
+    // No chrome of its own: it is the row's name, and the fields below are what the eye
+    // should go to once it is open.
+    expect(body).toMatch(/border:\s*0/)
+    expect(body).toMatch(/background:\s*none/)
+    expect(body).toMatch(/color:\s*var\(--ink-2\)/)
+    expect(ruleBody('.correspondence-item__summary span')).toMatch(/text-overflow:\s*ellipsis/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  })
+
   it('borrows the invite frame rather than inventing one', () => {
     // Grouped rules are looked up by their last selector, so the correspondence one goes
     // last. Sharing the frame is deliberate; reusing `.invite-item` itself would mean a

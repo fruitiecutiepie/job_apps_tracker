@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import { applyCorrespondence, createApplication } from './domain'
+import { preview } from './markdown'
 import {
   correspondenceDrafts,
+  correspondenceRowSummary,
   correspondenceRowsFor,
   firstCorrespondenceProblem,
   newCorrespondenceRow,
@@ -94,5 +96,38 @@ describe('correspondence rows', () => {
 
   it('starts empty when there is nothing to carry forward', () => {
     expect(newCorrespondenceRow([], 'applied', 'new-id')).toMatchObject({ who: '', channel: '' })
+  })
+
+  it('sums a row up as when, who, how, and a line of what it says', () => {
+    const summary = correspondenceRowSummary(
+      row({ who: 'Dana Okafor', channel: 'Email', at: '2026-08-10T09:30' }),
+    )
+
+    expect(summary).toContain('Dana Okafor')
+    expect(summary).toContain('Email')
+    expect(summary).toContain('Could you send me some windows?')
+  })
+
+  it('names you as the sender of what you sent, the way the log does', () => {
+    expect(correspondenceRowSummary(row({ direction: 'sent', who: 'Dana Okafor' })))
+      .toContain('You')
+    expect(correspondenceRowSummary(row({ who: '' }))).toContain('Them')
+  })
+
+  it('cuts the line at the same length the log cuts it', () => {
+    const long = 'x'.repeat(200)
+
+    // One rule, so a row does not summarise a message one way here and another way there.
+    expect(correspondenceRowSummary(row({ body: long }))).toContain(preview(long))
+    expect(correspondenceRowSummary(row({ body: long }))).toContain('…')
+  })
+
+  it('says a row is new rather than rendering as a stack of separators', () => {
+    expect(correspondenceRowSummary(row({ who: '', channel: '', body: '', at: '' })))
+      .toBe('New message')
+  })
+
+  it('says so when a message has text but no date yet', () => {
+    expect(correspondenceRowSummary(row({ at: '' }))).toContain('No date')
   })
 })

@@ -36,7 +36,10 @@ interface Corresponded {
  * A received message whose correspondent was never recorded still has to read as theirs
  * rather than yours, so it falls back to a word rather than to nothing.
  */
-function sender(entry: Corresponded): string {
+export function correspondenceSender(entry: {
+  direction: 'received' | 'sent'
+  who: string | null
+}): string {
   if (entry.direction === 'sent') return 'You'
   return entry.who ?? 'Them'
 }
@@ -71,7 +74,7 @@ function indentedBody(body: string): string {
  */
 function header(entry: Corresponded, time: (at: string) => string): string {
   const how = entry.channel ? ` · ${entry.channel}` : ''
-  return `- \`${time(entry.at)}\` **${sender(entry)}**${how}`
+  return `- \`${time(entry.at)}\` **${correspondenceSender(entry)}**${how}`
 }
 
 /**

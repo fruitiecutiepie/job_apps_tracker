@@ -119,6 +119,25 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   closed union would be wrong the first time a message arrives by SMS, and there are no migrations here
   that could widen one later. Unlike a currency it is not case-folded — `LinkedIn` is a name, not a code —
   so `email` and `Email` are two values, exactly as they already are for `source`.
+- A message's row in the editor is **folded to one line** until it is the one being worked on.
+  A message is six controls and an email; five of them came to four screens of a dialog whose
+  job is the application, not the thread. The line is `correspondenceRowSummary` — when, who,
+  how, and a line of what it says — and it is the row's accessible name, because the summary
+  is what tells two messages apart while a number says only where in the list you are. A row
+  just added arrives open, since it is the one you are about to fill in.
+- That line is cut by the same `preview` the log's folded row uses, and names its sender
+  through the same `correspondenceSender`. A row that summarised a message one way in the
+  editor and another way in the panel would read as two different messages. `preview` lives in
+  `src/markdown/preview.ts` rather than inside the renderer for that reason — and because a
+  component file exporting it costs the whole file its Fast Refresh.
+- Correspondence stays in the application editor rather than moving to a view of its own, and
+  the prep notes precedent does not transfer. A note is a document you compose over time, typed
+  mid-interview, which is why the panel autosaves and has no Save at all. A message is entered
+  once, complete, from a paste, at a keyboard — a record with fields and a date filed against a
+  stage, which is what `InviteFields` already is. What made it feel wrong in the editor was one
+  enormous field, and that is a rendering problem rather than a home. A view would earn its
+  place by showing correspondence **across** applications, which neither the editor nor the
+  dock does; that is a feature with its own argument, not a consequence of a tall form.
 - **Add message** seeds the new row's correspondent and channel from the newest row that has
   either, through `newCorrespondenceRow`. A hiring conversation is one recruiter on one
   channel far more often than not, so re-typing both for every message asks the reader to

@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { ChevronRight } from 'lucide-react'
 import { inlineText, parseMarkdown, type BlockNode, type InlineNode, type ListBlock, type QuoteBlock, type TableBlock } from './parseMarkdown'
 import { tokenizeCode } from './highlightCode'
+import { preview } from './preview'
 import {
   blockKey,
   blockText,
@@ -31,11 +32,6 @@ interface Marks {
 /** A running ordinal, shared by every inline node inside one text container. */
 interface Cursor {
   next: number
-}
-
-function preview(text: string, limit = 48): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim()
-  return collapsed.length > limit ? `${collapsed.slice(0, limit).trimEnd()}…` : collapsed
 }
 
 /** Seeds a container's cursor from the ordinal the search assigned it. */

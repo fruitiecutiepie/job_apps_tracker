@@ -282,7 +282,9 @@ neither a finger nor any browser automation.
     and that searching its description finds the application. On Table, sort by **Invites** and
     confirm rows with nothing coming sink to the bottom. Tick **Cancelled**, save, and confirm the
     table cell reads as cancelled and the card no longer shows it.
-12. In the application editor, open **Correspondence** and choose **Add message**. Paste a real
+12. In the application editor, confirm each logged message reads as one folded line — when,
+    who, how, and a line of what it says — and that the line tells you which message it is
+    without opening it. Then choose **Add message**. Paste a real
     multi-paragraph email into **Message**, set **Date sent** to a date several days in the past, name
     who it was from, and pick a channel from the suggestions — confirming the box still accepts a
     word that is not on the list. Save, reopen, and confirm the date you typed came back rather

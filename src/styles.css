@@ -1829,6 +1829,46 @@ tbody tr:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/*
+  The row while its fields are folded away: one line, the width of the item, reading as a
+  record rather than as a button. Quiet enough that the fields below it are what the eye goes
+  to once it is open.
+*/
+.correspondence-item__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  min-height: var(--control);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+.correspondence-item__summary span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.correspondence-item__summary svg {
+  flex: none;
+  transition: transform 120ms ease;
+}
+
+.correspondence-item__summary[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.correspondence-item__summary:hover {
+  color: var(--ink);
+}
+
 .invite-item__foot,
 .correspondence-item__foot {
   display: flex;
