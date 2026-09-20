@@ -32,7 +32,15 @@ export function PostingField({ row, onChange, applicationUrl, formatDate }: Post
 
   return (
     <div className="field field--wide posting-field" role="group" aria-label="Job posting">
-      <span className="posting-field__name">Job posting</span>
+      <p className="posting-field__heading">
+        <span className="posting-field__name">Job posting</span>
+        {row.capturedAt ? (
+          <small className="posting-field__meta">
+            Captured{' '}
+            <time dateTime={row.capturedAt}>{formatDate(row.capturedAt)}</time>
+          </small>
+        ) : null}
+      </p>
       <p className="posting-field__hint">
         Paste the posting here to keep what it said. Listings get taken down and quietly
         reworded, and the link above will not show you the version you applied to.
@@ -57,12 +65,6 @@ export function PostingField({ row, onChange, applicationUrl, formatDate }: Post
             value={row.sourceUrl}
           />
         </label>
-        {row.capturedAt ? (
-          <small className="posting-field__meta">
-            Captured{' '}
-            <time dateTime={row.capturedAt}>{formatDate(row.capturedAt)}</time>
-          </small>
-        ) : null}
         {hasBody ? (
           <button
             className="button button--quiet"

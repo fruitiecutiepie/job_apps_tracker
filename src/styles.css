@@ -2188,6 +2188,18 @@ tbody tr:hover {
   gap: var(--s3);
 }
 
+/*
+ * The name of the field and, once there is one, when its text was captured. The date
+ * describes the posting in the box below, not the link beside it, so it reads on this row
+ * rather than down in the footer — the same place `PostingPane` puts it in a pane header.
+ */
+.posting-field__heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0;
+}
+
 .posting-field__name {
   color: var(--ink-2);
   font-size: var(--t2);
@@ -2208,8 +2220,9 @@ tbody tr:hover {
 }
 
 /*
- * The source and the capture date read as notes about the text above them, so they sit on
- * one row under it rather than taking a field row each in the dialog's two-column grid.
+ * Where the posting was read, and the way to forget it. `align-items: end` lines the button
+ * up on the input rather than on the label above it, the same reason `.next-action-field`
+ * does — which works here because both are controls of their own height.
  */
 .posting-field__footer {
   display: flex;
@@ -2223,7 +2236,6 @@ tbody tr:hover {
 }
 
 .posting-field__meta {
-  margin-right: auto;
   color: var(--ink-3);
   font-size: var(--t2);
   font-weight: 400;

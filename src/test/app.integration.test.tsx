@@ -4070,6 +4070,26 @@ describe('job applications tracker', () => {
     ).toHaveValue('## Robotics Engineer\n\nClearance required for the role.')
   })
 
+  it('reads the capture date with the posting it describes, not with the link', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Marble & Finch is seeded with a posting, so the date is already there to place.
+    await user.click(screen.getByRole('button', { name: /^Open Marble & Finch/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const group = within(dialog).getByRole('group', { name: 'Job posting' })
+
+    /*
+     * The date says when the text was captured, so it belongs to the text and reads on the
+     * row that names the field. Down in the footer it bottom-aligns against the labelled
+     * link input it has nothing to do with, which is what looked wrong.
+     */
+    const heading = group.querySelector('.posting-field__heading')!
+    expect(heading).toHaveTextContent(/Job posting/)
+    expect(heading).toHaveTextContent(/Captured/)
+    expect(group.querySelector('.posting-field__footer')).not.toHaveTextContent(/Captured/)
+  })
+
   it('refuses a posting that is only a link, and one whose link is not one', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
