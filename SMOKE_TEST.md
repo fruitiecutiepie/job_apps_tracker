@@ -25,8 +25,9 @@ Importing a calendar invite through the editor, replacing a rescheduled one, and
 with no start time are covered by the app integration tests.
 
 Pasting a job posting into the editor and reading it back, refusing one that is only a link,
-clearing one, opening a posting in a pane beside the prep note written against it, and counting a
-hit inside it in the panel-wide find are covered by the app integration tests.
+clearing one, opening a posting in a pane beside the prep note written against it, editing it there
+and having it write itself without recapturing, and counting a hit inside it in the panel-wide find
+are covered by the app integration tests.
 
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.

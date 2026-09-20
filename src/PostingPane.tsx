@@ -1,19 +1,24 @@
 /**
  * One application's captured job posting, in one pane.
  *
- * A reading surface only. The posting is the one thing in the panel nobody here wrote: it
- * is pasted in whole, in the application editor, at the moment it was read. So there is no
- * draft to autosave, no external editor session, and no capture dock — the header keeps the
- * stage note's shape minus everything that belongs to a stage, because a posting prepares
- * for none.
+ * Read and written like a prep note, on the same draft and autosave machinery: a pasted
+ * posting arrives mangled often enough — a run of blank lines, a nav menu, one long
+ * paragraph — that being unable to tidy it where you read it is the wrong trade. What it
+ * does not carry is a capture dock, because nobody said a posting to you, or a stage, which
+ * it prepares for none of.
+ *
+ * Writing here corrects the posting rather than recapturing it, so `captured_at` stays put;
+ * `revisePosting` is where that lives.
  */
 
 import { useRef, useState } from 'react'
-import { ExternalLink, PencilLine, X } from 'lucide-react'
+import { ExternalLink, X } from 'lucide-react'
 import type { RefCallback } from 'react'
 import { MarkdownNotes } from './markdown'
+import { StageNoteEditor } from './StageNoteEditor'
+import { FORMATS, type Format } from './noteFormats'
 import type { Posting } from './domain'
-import type { PostingRef } from './notesLayout'
+import { noteRefKey, tabId, type PostingRef } from './notesLayout'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
 
 interface PostingPaneProps {
@@ -29,8 +34,16 @@ interface PostingPaneProps {
   onFocus: () => void
   /** Closes this pane. Absent when the panel is not split, since one pane must remain. */
   onClose: (() => void) | null
-  /** Opens the application editor, which is the only place a posting can be changed. */
-  onEdit: () => void
+  /** The text being read or written, which is the draft rather than what was stored. */
+  body: string
+  onChange: (value: string) => void
+  isEditing: boolean
+  onToggleEditing: () => void
+  /**
+   * Opens the application's editor, which is where the posting's link and the way to forget
+   * it live — neither belongs in a pane that shows its text.
+   */
+  onOpenApplication: () => void
   query: string
   matchBase: number
   currentMatch: number | null
@@ -47,10 +60,14 @@ export function PostingPane({
   company,
   role,
   posting,
+  body,
+  onChange,
+  isEditing,
+  onToggleEditing,
+  onOpenApplication,
   isFocused,
   onFocus,
   onClose,
-  onEdit,
   query,
   matchBase,
   currentMatch,
@@ -61,6 +78,7 @@ export function PostingPane({
   formatDate,
 }: PostingPaneProps) {
   const bodyRef = useRef<HTMLDivElement | null>(null)
+  const formatRef = useRef<((format: Format) => void) | null>(null)
   const [foldControls, setFoldControls] = useState<
     { allFolded: boolean; toggle: () => void } | null
   >(null)
@@ -108,6 +126,22 @@ export function PostingPane({
               {foldControls.allFolded ? 'Expand all' : 'Collapse all'}
             </button>
           ) : null}
+          {isEditing ? (
+            <span aria-label={`${label} formatting`} className="stage-note__toolbar" role="group">
+              {FORMATS.map((entry) => (
+                <button
+                  aria-label={`${entry.title} in ${label}`}
+                  className="icon-button stage-note__format"
+                  key={entry.id}
+                  onClick={() => formatRef.current?.(entry)}
+                  title={entry.title}
+                  type="button"
+                >
+                  <entry.icon aria-hidden="true" size={16} />
+                </button>
+              ))}
+            </span>
+          ) : null}
           <span className="stage-note__actions">
             {posting?.source_url ? (
               <a
@@ -121,16 +155,13 @@ export function PostingPane({
                 Original
               </a>
             ) : null}
-            {/* A posting is pasted in whole, in the editor that captured it, so editing it
-                here would be a second way to say the same thing. */}
             <button
-              aria-label={`Edit the ${company} posting`}
+              aria-label={`${isEditing ? 'Read' : 'Edit'} the ${company} job posting`}
               className="button button--quiet stage-note__mode"
-              onClick={onEdit}
+              onClick={onToggleEditing}
               type="button"
             >
-              <PencilLine aria-hidden="true" size={14} />
-              Edit
+              {isEditing ? 'Read' : 'Edit'}
             </button>
             {onClose ? (
               <button
@@ -156,7 +187,22 @@ export function PostingPane({
           }}
           tabIndex={-1}
         >
-          {posting ? (
+          {isEditing ? (
+            <StageNoteEditor
+              autoFocus={isFocused}
+              currentMatch={currentMatch}
+              formatRef={formatRef}
+              key={noteRefKey(noteRef)}
+              label={label}
+              matchBase={matchBase}
+              onChange={onChange}
+              onFoldControls={setFoldControls}
+              query={query}
+              revealKeys={revealKeys}
+              sourceId={tabId(groupId, noteRef)}
+              value={body}
+            />
+          ) : body.trim() ? (
             <MarkdownNotes
               currentMatch={currentMatch}
               foldAll={false}
@@ -166,13 +212,22 @@ export function PostingPane({
               onJumpToSection={onJumpToSection}
               query={query}
               revealKeys={revealKeys}
-              source={posting.body}
+              source={body}
             />
           ) : (
-            <p className="stage-note__empty">
-              No posting saved for {company} yet. Paste one into the application to keep what
-              it said.
-            </p>
+            <div className="stage-note__empty">
+              <p className="stage-note__empty-text">
+                No posting saved for {company} yet. Edit this pane to paste one in, or open
+                the application to record where it came from.
+              </p>
+              <button
+                className="button button--quiet"
+                onClick={onOpenApplication}
+                type="button"
+              >
+                Open {company}
+              </button>
+            </div>
           )}
         </div>
       </section>

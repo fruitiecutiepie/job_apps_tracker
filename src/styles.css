@@ -2053,6 +2053,20 @@ tbody tr:hover {
   background: var(--surface-2);
 }
 
+/*
+ * A posting pane with nothing in it: the text, then the way to the application, stacked
+ * rather than on one line so the button is not buried mid-sentence.
+ */
+.stage-note__empty:has(.stage-note__empty-text) {
+  display: grid;
+  justify-items: start;
+  gap: var(--s3);
+}
+
+.stage-note__empty-text {
+  margin: 0;
+}
+
 /* Where the posting is pasted in, in the application editor. */
 .posting-field {
   gap: var(--s3);

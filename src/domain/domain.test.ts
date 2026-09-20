@@ -33,6 +33,8 @@ import {
   RATING_IDS,
   rebuildIndexes,
   setPosting,
+  revisePosting,
+  reviseApplicationPosting,
   clearPosting,
   updateApplicationPosting,
   rejectedStateFor,
@@ -1729,6 +1731,47 @@ describe('job postings', () => {
     const bare = createApplication({ company: 'Northwind' }, REFERENCE)
     expect(clearPosting(bare, LATER)).toBe(bare)
     expect(setPosting(bare, { body: '' }, LATER)).toBe(bare)
+  })
+
+  it('corrects the text without moving when the posting arrived', () => {
+    const application = captured()
+    const fixed = revisePosting(application, '## Staff Engineer\n\nBuilds the thing well.', LATER)
+
+    // Tidying a mangled paste is not a recapture: it is still the posting you read when you
+    // read it, which is what `captured_at` records.
+    expect(fixed.posting!.captured_at).toBe(REFERENCE.toISOString())
+    expect(fixed.posting!.body).toBe('## Staff Engineer\n\nBuilds the thing well.')
+    expect(fixed.posting!.source_url).toBe('https://example.com/jobs/7')
+    expect(fixed.updated_at).toBe(LATER.toISOString())
+
+    // Unchanged text is no write at all.
+    expect(revisePosting(application, '## Staff Engineer\n\nBuilds the thing.', LATER))
+      .toBe(application)
+  })
+
+  it('captures rather than corrects when there was no posting to correct', () => {
+    const bare = createApplication({ company: 'Northwind' }, REFERENCE)
+    const first = revisePosting(bare, 'Pasted straight into the pane', LATER)
+
+    // Nothing to preserve, so this is the capture — and it is dated when it happened.
+    expect(first.posting!.captured_at).toBe(LATER.toISOString())
+    expect(first.posting!.source_url).toBeNull()
+  })
+
+  it('forgets a posting emptied in the pane', () => {
+    expect(revisePosting(captured(), '   ', LATER).posting).toBeNull()
+  })
+
+  it('revises the posting through the document without touching other applications', () => {
+    const document = createDemoDocument(REFERENCE)
+    const target = document.applications.find((entry) => entry.posting)!
+    const before = target.posting!.captured_at
+    const next = reviseApplicationPosting(document, target.id, 'Corrected text', LATER)
+    const after = next.applications.find((entry) => entry.id === target.id)!
+
+    expect(after.posting!.body).toBe('Corrected text')
+    expect(after.posting!.captured_at).toBe(before)
+    expect(reviseApplicationPosting(document, 'missing', 'x', LATER)).toBe(document)
   })
 
   it('rejects a source_url that is not http or https', () => {

@@ -152,6 +152,12 @@ const CLOSE_TAB_SHORTCUT = byKey('X', 'shift')
 export interface StageNoteDraftBatch {
   applicationId: string
   drafts: StageNoteDraft[]
+  /**
+   * The application's posting text, when that is what changed. On the same batch as the
+   * stage notes so an application whose note and posting were both edited is still one
+   * write, which is what `pendingBatches` groups by application for.
+   */
+  posting?: string
 }
 
 interface StageNotesPanelProps {
@@ -881,20 +887,18 @@ export function StageNotesPanel({
     let changed = false
 
     for (const ref of openRefs) {
-      /*
-       * A posting is captured in the application editor, never typed here. It has no draft
-       * to seed, nothing to adopt from underneath, and seeding it blank would open its pane
-       * "ready to type" and hand the autosave a prep note for a stage it names none of.
-       */
-      if (ref.kind === 'posting') continue
       const key = noteRefKey(ref)
-      const body = noteByKey.get(key)?.body ?? ''
+      const body = ref.kind === 'posting'
+        ? (postingByKey.get(key)?.body ?? '')
+        : (noteByKey.get(key)?.body ?? '')
       const draft = draftsRef.current[key]
 
       if (draft === undefined) {
         nextDrafts[key] = body
         nextStored[key] = body
-        seeded.push(ref)
+        // Not `seeded`: that list opens a blank note ready to type, and a posting with no
+        // text is one nobody has pasted yet — the pane says so and sends you to the editor.
+        if (ref.kind === 'stage') seeded.push(ref)
         changed = true
         continue
       }
@@ -917,7 +921,7 @@ export function StageNotesPanel({
     if (blank.length > 0) {
       setEditing((current) => [...current, ...blank.map(noteRefKey).filter((key) => !current.includes(key))])
     }
-  }, [noteByKey, openRefs])
+  }, [noteByKey, openRefs, postingByKey])
 
   const setDraft = (key: string, value: string) => {
     draftsRef.current = { ...draftsRef.current, [key]: value }
@@ -929,21 +933,20 @@ export function StageNotesPanel({
     if (mountedRef.current) setStored(storedRef.current)
   }
 
-  /** The open notes whose text differs from what was last written, by application. */
+  /** The open notes and postings whose text differs from what was last written, by application. */
   const pendingBatches = (): StageNoteDraftBatch[] => {
-    const byApplication = new Map<string, StageNoteDraft[]>()
+    const byApplication = new Map<string, { drafts: StageNoteDraft[]; posting?: string }>()
     for (const ref of orderedRefs(layoutRef.current)) {
-      // A posting is captured in the editor dialog, never typed here, so it has no draft
-      // to write back and must not be turned into a prep note for a stage it names none of.
-      if (ref.kind === 'posting') continue
       const key = noteRefKey(ref)
       const body = draftsRef.current[key]
       if (body === undefined || body === storedRef.current[key]) continue
-      const batch = byApplication.get(ref.applicationId) ?? []
-      batch.push({ state: ref.state, body })
+      const batch = byApplication.get(ref.applicationId) ?? { drafts: [] }
+      // A posting names no stage, so it cannot be a draft in the list beside them.
+      if (ref.kind === 'posting') batch.posting = body
+      else batch.drafts.push({ state: ref.state, body })
       byApplication.set(ref.applicationId, batch)
     }
-    return [...byApplication].map(([applicationId, batch]) => ({ applicationId, drafts: batch }))
+    return [...byApplication].map(([applicationId, batch]) => ({ applicationId, ...batch }))
   }
 
   /**
@@ -967,6 +970,9 @@ export function StageNotesPanel({
         for (const batch of batches) {
           for (const draft of batch.drafts) {
             markStored(noteRefKey(stageRef(batch.applicationId, draft.state)), draft.body)
+          }
+          if (batch.posting !== undefined) {
+            markStored(noteRefKey(postingRef(batch.applicationId)), batch.posting)
           }
         }
         if (mountedRef.current) setSavedAt(new Date())
@@ -1129,11 +1135,7 @@ export function StageNotesPanel({
     () => new Set(orderedRefs(layout).map(noteRefKey)),
     [layout],
   )
-  // A posting's text comes from what was captured rather than from a draft; without this
-  // the outline, the breadcrumbs and the word count all go blank on a posting pane.
-  const activeBody = activeRef.kind === 'posting'
-    ? (postingByKey.get(activeKey)?.body ?? '')
-    : (drafts[activeKey] ?? '')
+  const activeBody = drafts[activeKey] ?? ''
   const activeLabel = labelOf(activeRef)
   const isSplit = groups.length > 1
 
@@ -1183,20 +1185,21 @@ export function StageNotesPanel({
         // being numbered. Matches belong to a copy; drafts belong to a note.
         const id = tabId(groupId, ref)
         const key = noteRefKey(ref)
-        // A posting is never written here, so it has no draft and is never in the editor:
-        // its text is read straight from what was captured. Counting it is not optional —
-        // a pane left out of this is a pane the find steps straight past while the words
-        // it is looking for are on screen in it.
-        const isPosting = ref.kind === 'posting'
-        const inEditor = !isPosting && editing.includes(key) && !sessions[key]
-        const source = isPosting ? (postingByKey.get(key)?.body ?? '') : (drafts[key] ?? '')
+        // A posting is written here like a note, so it counts the same way — in the source
+        // it is while it is being written, and in the outline it renders to while it is
+        // being read. Counting it at all is not optional: a pane left out of this is one
+        // the find steps straight past while the words are on screen in it. It has no
+        // external editor session, so the editing flag alone decides.
+        const inEditor = editing.includes(key) && !sessions[key]
+        const source = drafts[key] ?? ''
         // A note being written is searched as the source it is. It carries no highlights,
         // so those matches are stepped onto by selecting them in the box instead — but
         // they are counted here with the rest, so one list runs through the whole panel.
         const written = inEditor ? matchOffsets(source, value).length : countIn(source)
         // Lines open for correcting still sit out: each is in a box of its own, and there
         // is no one place to send a caret that stands for all of them.
-        const said = isPosting || editingLines.includes(key)
+        // Nobody said a posting to you, so it has no captured lines under it.
+        const said = ref.kind === 'posting' || editingLines.includes(key)
           ? 0
           : countIn(capturedByKey.get(key) ?? '')
         const count = written + said
@@ -1207,7 +1210,7 @@ export function StageNotesPanel({
       }
       return { perTab, order, total }
     },
-    [capturedByKey, drafts, editing, editingLines, openTabs, postingByKey, sessions],
+    [capturedByKey, drafts, editing, editingLines, openTabs, sessions],
   )
 
   const matches = useMemo(() => findMatches(query), [findMatches, query])
@@ -2316,17 +2319,21 @@ export function StageNotesPanel({
 
         {shown.kind === 'posting' ? (
         <PostingPane
+          body={drafts[shownKey] ?? ''}
           company={shownApplication?.company ?? ''}
           currentMatch={currentMatch}
           formatDate={formatShortDate}
           groupId={group.id}
+          isEditing={editing.includes(shownKey)}
           isFocused={isFocusedGroup}
           label={labelOf(shown)}
           matchBase={found?.base ?? 0}
           noteRef={shown}
+          onChange={(value) => editDraft(shownKey, value)}
           onClose={isSplit ? () => applyLayout(closeGroup(layoutRef.current, group.id)) : null}
-          onEdit={() => onEditApplication(shown.applicationId)}
           onFocus={() => setFocusedGroupId(group.id)}
+          onOpenApplication={() => onEditApplication(shown.applicationId)}
+          onToggleEditing={() => toggleEditing(shown)}
           onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
           paneRef={(node) => {
             paneRefs.current[group.id] = node

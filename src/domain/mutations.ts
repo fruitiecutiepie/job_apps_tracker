@@ -825,6 +825,32 @@ export function setPosting(
   return { ...application, posting, updated_at: timestamp(at) }
 }
 
+/**
+ * Rewrites the captured posting's text in place, leaving `captured_at` where it is.
+ *
+ * Fixing a mangled paste is not a recapture — the posting is still the one you read when
+ * you read it — so this is to `setPosting` what `reviseStageNoteCapture` is to
+ * `captureStageNote`: same text, corrected, without moving when it arrived. Emptying it
+ * clears the record, the one way to say "no posting" that everything else uses.
+ */
+export function revisePosting(
+  application: Application,
+  body: string,
+  at: Date | string = new Date(),
+): Application {
+  const trimmed = body.trim()
+  if (!trimmed) return clearPosting(application, at)
+  const current = application.posting
+  if (!current) return setPosting(application, { body: trimmed }, at)
+  if (current.body === trimmed) return application
+
+  return {
+    ...application,
+    posting: { ...current, body: trimmed },
+    updated_at: timestamp(at),
+  }
+}
+
 /** Forgets the captured job posting, leaving the link on the application alone. */
 export function clearPosting(
   application: Application,
@@ -832,6 +858,24 @@ export function clearPosting(
 ): Application {
   if (!application.posting) return application
   return { ...application, posting: null, updated_at: timestamp(at) }
+}
+
+/** Rewrites one application's posting text, leaving the rest of the document alone. */
+export function reviseApplicationPosting(
+  document: TrackerDocument,
+  id: string,
+  body: string,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = revisePosting(application, body, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
 }
 
 /** Replaces one application's captured posting, leaving the rest of the document alone. */

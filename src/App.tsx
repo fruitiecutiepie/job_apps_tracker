@@ -50,6 +50,7 @@ import {
   reviseApplicationStageCapture,
   updateApplicationStageCapture,
   updateApplicationStageNotes,
+  reviseApplicationPosting,
   updateApplicationPosting,
   updateApplicationRatings,
   updateApplicationStateEvents,
@@ -977,11 +978,14 @@ export default function App() {
     // the same thing where the writing is already being watched.
     const at = new Date()
     return commit((current) =>
-      batches.reduce(
-        (document, batch) =>
-          updateApplicationStageNotes(document, batch.applicationId, batch.drafts, at),
-        current,
-      ),
+      batches.reduce((document, batch) => {
+        const next = updateApplicationStageNotes(document, batch.applicationId, batch.drafts, at)
+        // `revise` rather than `set`: typing in the pane corrects the posting you captured,
+        // it does not capture it again, so `captured_at` stays where it was.
+        return batch.posting === undefined
+          ? next
+          : reviseApplicationPosting(next, batch.applicationId, batch.posting, at)
+      }, current),
     )
   }
 

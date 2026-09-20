@@ -4322,9 +4322,11 @@ describe('job applications tracker', () => {
     expect(
       within(dialog).getByRole('tab', { name: /Marble & Finch · Product Manager · Job posting/ }),
     ).toBeInTheDocument()
-    // Nothing to type into: a posting is captured in the editor, not written here.
-    expect(within(dialog).getByRole('button', { name: 'Edit the Marble & Finch posting' }))
-      .toBeInTheDocument()
+    // Written where it is read, like a prep note: a pasted posting arrives mangled often
+    // enough that being unable to tidy it here would be the wrong trade.
+    expect(
+      within(dialog).getByRole('button', { name: 'Edit the Marble & Finch job posting' }),
+    ).toBeInTheDocument()
   })
 
   it('takes the stage picker off the subject line while a posting is focused', async () => {
@@ -4375,6 +4377,46 @@ describe('job applications tracker', () => {
     expect(panes.some((pane) => pane.textContent?.includes('independent booksellers'))).toBe(true)
     // Beside the note, not over it: the note it was opened against is still on screen.
     expect(panes.some((pane) => pane.getAttribute('aria-label')?.includes('Applied'))).toBe(true)
+  })
+
+  it('writes a posting edited in its pane, without recapturing it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    const saved = () =>
+      readSavedDocument().applications.find((entry) => entry.company === 'Marble & Finch')!
+    const capturedAt = saved().posting!.captured_at
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    await user.click(
+      within(dialog).getByRole('button', { name: /Read the Marble & Finch job posting/ }),
+    )
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Edit the Marble & Finch job posting' }),
+    )
+
+    await user.type(
+      within(dialog).getByLabelText('Marble & Finch · Job posting prep notes'),
+      ' Tidied.',
+    )
+
+    // No Save, the same as a prep note: the pane writes itself once the typing pauses.
+    await waitFor(
+      () => expect(saved().posting!.body).toContain('Tidied.'),
+      { timeout: 4000 },
+    )
+    // Tidying is not recapturing, so when it arrived does not move.
+    expect(saved().posting!.captured_at).toBe(capturedAt)
+    expect(saved().posting!.source_url).toBe('https://example.com/jobs/3')
+
+    // Back to reading shows what was typed, rendered.
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Read the Marble & Finch job posting' }),
+    )
+    expect(
+      within(dialog).getByRole('tabpanel', { name: /Job posting/ }),
+    ).toHaveTextContent('Tidied.')
   })
 
   it('focuses a posting already open rather than opening it twice', async () => {
