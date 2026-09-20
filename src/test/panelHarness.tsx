@@ -52,6 +52,7 @@ export function renderPanel(applications = fixtureApplications()) {
               onCapture={async () => {}}
               onEmpty={() => {}}
               onExternalChange={async () => {}}
+              onOpenApplication={() => {}}
               onRevise={async () => {}}
               onSaveDrafts={async () => true}
               request={null}
