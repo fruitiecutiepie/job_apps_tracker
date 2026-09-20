@@ -83,7 +83,7 @@ import {
   sidebarWidthWithin,
   type Arrangement,
 } from './notesArrangement'
-import { NotesTreeView } from './NotesTreeView'
+import { NotesTreeSearch, NotesTreeView, PostingsTreeView } from './NotesTreeView'
 import { StageNotePane } from './StageNotePane'
 import {
   DROP_EDGE,
@@ -677,6 +677,13 @@ export function StageNotesPanel({
    * are doing, and the heading that folds one away is always there to bring it back.
    */
   const [outlineShown, setOutlineShown] = useState(true)
+  const [postingsShown, setPostingsShown] = useState(true)
+  /*
+   * One query over both lists, held here rather than in either of them: a search box inside
+   * one section that filtered the other would be a control acting somewhere it does not
+   * appear.
+   */
+  const [treeQuery, setTreeQuery] = useState('')
   const [notesShown, setNotesShown] = useState(true)
   const [outlineShare, setOutlineShare] = useState(initial.outlineShare ?? DEFAULT_OUTLINE_SHARE)
   /** The column itself, so a drag can say what a pixel of it is worth as a share. */
@@ -2586,16 +2593,22 @@ export function StageNotesPanel({
                * outline said only how tall the outline was and left the space it was not
                * using to no one.
                */
+              /*
+               * Five children, in order: the outline, the handle, the search, the postings
+               * and the notes. Only the outline and the notes trade height — the search is
+               * a control and the postings hug what they hold — so the three between them
+               * are always `auto` and the row template speaks only about the ends.
+               */
               style={{
                 gridTemplateRows: outlineShown && notesShown
-                  ? `minmax(0, ${outlineShare}fr) auto minmax(0, ${
+                  ? `minmax(0, ${outlineShare}fr) auto auto auto minmax(0, ${
                       Math.round((1 - outlineShare) * 100) / 100
                     }fr)`
                   : outlineShown
-                    ? 'minmax(0, 1fr) auto'
+                    ? 'minmax(0, 1fr) auto auto auto'
                     : notesShown
-                      ? 'auto minmax(0, 1fr)'
-                      : 'auto auto',
+                      ? 'auto auto auto minmax(0, 1fr)'
+                      : 'auto auto auto auto',
               }}
             >
               <section aria-label="Outline" className="panel__sidebar-section">
@@ -2650,6 +2663,42 @@ export function StageNotesPanel({
                 />
               ) : null}
 
+              {/*
+                * One search over everything behind the note in front of you. It heads both
+                * lists rather than sitting in one, because it filters both.
+                */}
+              <NotesTreeSearch onChange={setTreeQuery} query={treeQuery} />
+
+              {/*
+                * Postings are a section of their own, not a group inside the prep notes.
+                * They are not prep notes — nobody wrote them — and a heading may not
+                * misdescribe what is under it. It hugs its content rather than taking a
+                * share of the column: there is at most one posting per application, so
+                * reserving a draggable band for a list that is usually three rows long is
+                * the mistake the outline's cap already avoids.
+                */}
+              <section aria-label="Job postings" className="panel__sidebar-section panel__sidebar-section--postings">
+                <SidebarHeading
+                  label="Job postings"
+                  names="job postings"
+                  onToggle={() => setPostingsShown((shown) => !shown)}
+                  shown={postingsShown}
+                />
+                {postingsShown ? (
+                  <PostingsTreeView
+                    applications={applications}
+                    currentKey={activeKey}
+                    draggingKey={drag.key}
+                    onDragStart={drag.start}
+                    onPick={showRef}
+                    onPickMatch={findInNote}
+                    openKeys={openKeys}
+                    query={treeQuery}
+                    wasDragged={drag.wasDragged}
+                  />
+                ) : null}
+              </section>
+
               <section aria-label="All prep notes" className="panel__sidebar-section">
                 <SidebarHeading
                   label="All prep notes"
@@ -2666,6 +2715,7 @@ export function StageNotesPanel({
                   onPick={showRef}
                   onPickMatch={findInNote}
                   openKeys={openKeys}
+                  query={treeQuery}
                   wasDragged={drag.wasDragged}
                 />
                 ) : null}

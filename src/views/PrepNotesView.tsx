@@ -120,7 +120,7 @@ export function PrepNotesView({
   }, []);
 
   return (
-    <section aria-label="Stage prep notes" className="panel-view">
+    <section aria-label="Prep" className="panel-view">
       {initial ? (
         <StageNotesPanel
           applications={applications}
@@ -137,7 +137,7 @@ export function PrepNotesView({
         />
       ) : (
         <p className="panel-view__empty">
-          Nothing open yet. Prep notes opened from a card on the board or a row in the table
+          Nothing open yet. Prep opened from a card on the board or a row in the table
           arrive here, and stay arranged the way you leave them.
         </p>
       )}

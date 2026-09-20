@@ -124,7 +124,7 @@ neither a finger nor any browser automation.
 5. Add an application with a next action and date. Drag it to another Kanban column,
    then use its **Move** control to move it again — by mouse, and again by Tab plus the
    arrow keys — confirming the control shows a focus ring and sits on one row beside
-   **Prep notes**. Reload the page and confirm it remains.
+   **Prep**. Reload the page and confirm it remains.
    Add a second application with only a deadline and no next action, and confirm the
    deadline saves, shows in the Table deadline column and bands the row under **Dated,
    soonest first**.
@@ -136,9 +136,9 @@ neither a finger nor any browser automation.
    import and confirm the saved data is unchanged; try a valid zip or JSON import and
    confirm the replacement prompt appears.
 8. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
-   app goes to the **Prep notes** destination in the header rather than opening a dialog over the
+   app goes to the **Prep** destination in the header rather than opening a dialog over the
    board, that the view strip no longer marks any view as current, that the bar above the panel offers none of the
-   collection's filters, that the sidebar stacks **Outline** over **All prep notes** with
+   collection's filters, that the sidebar stacks **Outline**, **Job postings** and **All prep notes** with
    that each half folds from its own heading and the handle
    between them sizes the two, that the title bar's icons name themselves on hover, that **Open**
    there reaches a stage with no note and **Sidebar** puts the whole column away and brings it back, that the tree groups notes by

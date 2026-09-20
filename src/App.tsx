@@ -122,7 +122,13 @@ const VIEW_OPTIONS = [
  * its values: the view underneath does not change while the notes are up, so putting it
  * back when they go needs nothing remembered.
  */
-const NOTES_VIEW = { label: 'Prep notes', icon: NotebookPen } as const
+/*
+ * "Prep" rather than "Prep notes": the view holds an application's job posting as well as
+ * the notes written against it, and a posting is not a note anybody wrote. What survives
+ * the rename is the adjective, which is true of everything here — you read the posting in
+ * order to prepare. The notes themselves are still prep notes, and still say so.
+ */
+const NOTES_VIEW = { label: 'Prep', icon: NotebookPen } as const
 
 /*
  * Occasional collection-wide actions (import, export, demo reset) live behind

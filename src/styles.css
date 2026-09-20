@@ -2054,6 +2054,20 @@ tbody tr:hover {
 }
 
 /*
+ * The postings list hugs its content instead of taking a share of the sidebar: there is at
+ * most one posting per application, so a draggable band sized for twenty rows would reserve
+ * dead space in the column that can least afford it — the same argument the outline's cap
+ * makes. It scrolls on its own once it outgrows the cap.
+ */
+.panel__sidebar-section--postings {
+  /* An `auto` grid row, so it is as tall as what it holds; the cap is what stops a reader
+     with twenty captured postings from pushing the prep notes off the column. */
+  min-height: 0;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+/*
  * A posting pane with nothing in it: the text, then the way to the application, stacked
  * rather than on one line so the button is not buried mid-sentence.
  */
@@ -2520,7 +2534,7 @@ tbody tr:hover {
 /* ------------------------------------------------------ notes panel --- */
 
 /*
- * Stage prep notes are a view of their own rather than a dialog over the board: a note is
+ * Prep is a view of its own rather than a dialog over the board: a note is
  * read while an interview is happening, and something you keep coming back to is not
  * something to dismiss. The panel takes what the viewport has left under the header, pins
  * its chrome, and scrolls only the notes column, so the stage list, the find bar and the
@@ -4127,9 +4141,11 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 /* A search that stays put over a tree that scrolls under it, so the row the section was
    given is spent on notes rather than on chrome. The hint between them is `sr-only` and so
    out of flow, which leaves these two rows the whole of it. */
+/* One row, the list, which takes whatever the section was given: the search that used to
+   sit above it now heads both lists from the sidebar itself. */
 .notes-tree {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--s2);
   min-height: 0;
 }

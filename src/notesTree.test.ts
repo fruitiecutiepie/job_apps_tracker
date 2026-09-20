@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import { createApplication } from './domain/mutations'
 import type { Application, StateId } from './domain'
-import { buildNotesTree, MATCHES_SHOWN } from './notesTree'
+import { buildNotesTree, buildPostingsTree, MATCHES_SHOWN } from './notesTree'
 
 function application(
   company: string,
@@ -38,47 +38,44 @@ const posted = (company: string, body: string): Application => ({
   posting: { body, captured_at: '2026-01-01T00:00:00.000Z', source_url: null },
 })
 
-describe('job postings in the tree', () => {
+describe('buildPostingsTree', () => {
   const marble = posted('Marble & Finch', '## Product Manager\n\nClearance required for the role.')
 
-  it('leads with the postings, above every stage', () => {
-    expect(shape(buildNotesTree([marble, atlas], ''))).toEqual([
-      ['Job postings', ['Marble & Finch']],
-      ['Interview 2', ['Atlas Thread', 'Marble & Finch']],
-    ])
+  /*
+   * Apart from the prep notes rather than a group inside them: a posting is not a prep note,
+   * and the sidebar section headed as prep notes may not hold things nobody wrote.
+   */
+  it('keeps postings out of the prep notes tree', () => {
+    expect(shape(buildNotesTree([marble, atlas], '')).map(([label]) => label))
+      .not.toContain('Job postings')
+    expect(buildNotesTree([marble], '').every((group) => typeof group.state === 'string'))
+      .toBe(true)
   })
 
-  it('leaves the group out when nothing has a posting', () => {
-    expect(shape(buildNotesTree([halcyon, atlas], '')).map(([label]) => label))
-      .not.toContain('Job postings')
+  it('lists a posting per application that captured one, by name', () => {
+    const postings = buildPostingsTree([marble, posted('Atlas Thread', 'Design lead'), halcyon], '')
+
+    expect(postings.map((entry) => entry.company)).toEqual(['Atlas Thread', 'Marble & Finch'])
+    // Nobody said a posting to you, so there is nothing captured under it.
+    expect(postings.every((entry) => entry.captured === 0 && entry.written)).toBe(true)
+    expect(postings[0]!.ref).toEqual({ kind: 'posting', applicationId: 'Atlas Thread' })
+  })
+
+  it('is empty when nothing has a posting', () => {
+    expect(buildPostingsTree([halcyon, atlas], '')).toEqual([])
   })
 
   it('shows what a hit inside a posting says', () => {
-    const [group] = buildNotesTree([marble], 'clearance')
+    const [entry] = buildPostingsTree([marble], 'clearance')
 
-    expect(group!.label).toBe('Job postings')
-    expect(group!.notes[0]!.hits).toBe(1)
-    expect(group!.notes[0]!.matches[0]!.snippet.toLowerCase()).toContain('clearance')
-    // Nobody said a posting to you, so a hit in one is never a captured line.
-    expect(group!.notes[0]!.matches.every((match) => match.where === 'written')).toBe(true)
+    expect(entry!.hits).toBe(1)
+    expect(entry!.matches[0]!.snippet.toLowerCase()).toContain('clearance')
+    expect(entry!.matches.every((match) => match.where === 'written')).toBe(true)
   })
 
   it('finds a posting by its company as well as by its words', () => {
-    const labels = buildNotesTree([marble], 'marble').map((group) => group.label)
-
-    expect(labels).toContain('Job postings')
-  })
-
-  it('leaves a posting out when the search matches nothing in it', () => {
-    expect(buildNotesTree([marble], 'zzzznothing')).toEqual([])
-  })
-
-  it('names the row by a ref that opens the posting, not a stage', () => {
-    const [group] = buildNotesTree([marble], '')
-
-    expect(group!.notes[0]!.ref).toEqual({ kind: 'posting', applicationId: 'Marble & Finch' })
-    expect(group!.notes[0]!.captured).toBe(0)
-    expect(group!.notes[0]!.written).toBe(true)
+    expect(buildPostingsTree([marble], 'marble')).toHaveLength(1)
+    expect(buildPostingsTree([marble], 'zzzznothing')).toEqual([])
   })
 })
 
