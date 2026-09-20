@@ -2,14 +2,14 @@ import { describe, expect, it } from 'vitest'
 
 import { emptyCompensation, RATING_IDS } from '../domain'
 import type { Application, Rating, RatingDimensionId, StateId } from '../domain'
-import { focusGroups, type FocusGroupId } from './focusGroups'
 import {
   DEFAULT_RATING_WEIGHTS,
   MAX_UNKNOWN_DISCOUNT,
   preferenceFor,
   type RatingWeights,
 } from './preference'
-import { rankByUrgency, urgencyFor } from './urgency'
+import { rankByUrgency, urgencyFor, type UrgencyRanking } from './urgency'
+import { compareBanded, urgencyBandFor, type BandPlacement } from './urgencyBands'
 
 const at = '2026-08-14T02:00:00.000Z'
 
@@ -263,27 +263,21 @@ describe('separation from urgency', () => {
     )
   })
 
-  it('leaves Focus placement and row reason untouched', () => {
+  it('leaves band placement and the row reason untouched', () => {
     const unrated = dated(0, {})
     const loathed = dated(0, { work: 1, growth: 1, people: 1, company: 1 })
 
-    const before = focusGroups([unrated], today).map(({ id, rows }) => [
-      id,
-      rows.map(({ reason }) => reason),
-    ])
-    const after = focusGroups([loathed], today).map(({ id, rows }) => [
-      id,
-      rows.map(({ reason }) => reason),
-    ])
-
-    expect(after).toEqual(before)
+    expect(urgencyBandFor(loathed, today)).toEqual(urgencyBandFor(unrated, today))
+    expect(rankByUrgency([loathed], today).map(({ reason }) => reason)).toEqual(
+      rankByUrgency([unrated], today).map(({ reason }) => reason),
+    )
   })
 })
 
-describe('focus ordering', () => {
-  // Preference is appended to the end of the within-group chain, so it decides only where a
-  // group's own rule and the urgency score have already tied. Everything here is built to
-  // tie deliberately, because in real data the tiebreak is invisible until enough
+describe('band ordering', () => {
+  // Preference is appended to the end of the within-band chain, so it decides only where
+  // the band's own rule and the urgency score have already tied. Everything here is built
+  // to tie deliberately, because in real data the tiebreak is invisible until enough
   // applications are rated.
   const today = new Date(2026, 7, 14, 12)
 
@@ -306,9 +300,29 @@ describe('focus ordering', () => {
     }
   }
 
-  function companiesIn(applications: Application[], id: FocusGroupId): string[] {
-    const group = focusGroups(applications, today).find((candidate) => candidate.id === id)!
-    return group.rows.map(({ application: item }) => item.company)
+  /**
+   * The order the banded table puts these rows in, built the way the table builds it: the
+   * comparator reads three lookups, and passing them in is what keeps preference visibly a
+   * separate axis rather than something folded into the score.
+   */
+  function bandedCompanies(applications: Application[]): string[] {
+    const bands = new Map<string, BandPlacement>(
+      applications.map((item) => [item.id, urgencyBandFor(item, today)]),
+    )
+    const urgency = new Map<string, UrgencyRanking>(
+      rankByUrgency(applications, today).map((ranking) => [ranking.application.id, ranking]),
+    )
+    const preference = new Map(
+      applications.flatMap((item) => {
+        const score = preferenceFor(item)
+        return score ? ([[item.id, score]] as const) : []
+      }),
+    )
+
+    return applications
+      .slice()
+      .sort((left, right) => compareBanded(left, right, bands, urgency, preference))
+      .map((item) => item.company)
   }
 
   const loved: Scores = { work: 5, growth: 5, people: 5, company: 5 }
@@ -324,8 +338,8 @@ describe('focus ordering', () => {
 
     // Same state, same silence, the same deadline timestamp: the urgency score is identical
     // and the ranking would otherwise fall through to the id.
-    expect(companiesIn(unrated, 'due_week')).toEqual(['Aardvark', 'Zebra'])
-    expect(companiesIn(rated, 'due_week')).toEqual(['Zebra', 'Aardvark'])
+    expect(bandedCompanies(unrated)).toEqual(['Aardvark', 'Zebra'])
+    expect(bandedCompanies(rated)).toEqual(['Zebra', 'Aardvark'])
   })
 
   it('keeps an unrated application above nothing but below a judged tie', () => {
@@ -337,27 +351,27 @@ describe('focus ordering', () => {
       row('Zebra', '2', loathed, deadline),
     ]
 
-    expect(companiesIn(applications, 'due_week')).toEqual(['Zebra', 'Aardvark'])
+    expect(bandedCompanies(applications)).toEqual(['Zebra', 'Aardvark'])
   })
 
   it('never lets preference reorder a schedule', () => {
-    // The group's own rule comes first: a date always beats a rating.
+    // The band's own rule comes first: a date always beats a rating.
     const applications = [
       row('Loathed Sooner', '1', loathed, at(1, 17)),
       row('Loved Later', '2', loved, at(5, 17)),
     ]
 
-    expect(companiesIn(applications, 'due_week')).toEqual(['Loathed Sooner', 'Loved Later'])
+    expect(bandedCompanies(applications)).toEqual(['Loathed Sooner', 'Loved Later'])
   })
 
-  it('keeps an alphabetical group alphabetical', () => {
+  it('lets preference speak in an undated band, where no date orders the rows', () => {
     const undated = (company: string, id: string, scores: Scores): Application => ({
       ...row(company, id, scores, at(3, 17)),
       deadline_at: null,
       next_action: 'Review the posting',
     })
 
-    expect(companiesIn([undated('Zebra', '2', loved), undated('Aardvark', '1', loathed)], 'no_date'))
-      .toEqual(['Aardvark', 'Zebra'])
+    expect(bandedCompanies([undated('Zebra', '2', loved), undated('Aardvark', '1', loathed)]))
+      .toEqual(['Zebra', 'Aardvark'])
   })
 })

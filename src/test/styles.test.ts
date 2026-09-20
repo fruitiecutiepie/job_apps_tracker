@@ -40,6 +40,61 @@ describe('idle pill', () => {
   })
 })
 
+describe('table band heading', () => {
+  it('reads as the quietest heading in the interface, in tokens only', () => {
+    const body = ruleBody('.table-view__band-heading')
+
+    // The same treatment the notes panel gives its section title.
+    const sidebar = ruleBody('.panel__sidebar-title')
+    expect(body).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(body).toMatch(/font-size:\s*var\(--t1\)/)
+    expect(sidebar).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(sidebar).toMatch(/font-size:\s*var\(--t1\)/)
+    // A band separates rows; it never signals state.
+    expect(body).not.toMatch(/--accent|--danger/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(body).not.toMatch(/\d+px/)
+
+    // The heading row spans the table, so it takes neither the row hover nor a cell fill.
+    expect(ruleBody('.table-view__band:hover')).toMatch(/background:\s*transparent/)
+    expect(ruleBody('.table-view__band th')).toMatch(/background:\s*transparent/)
+    expect(ruleBody('.table-view__band th')).not.toMatch(/\d+px/)
+  })
+})
+
+describe('reject shortcut', () => {
+  it('sits quieter than the state select it shortcuts, in tokens only', () => {
+    const body = ruleBody('.reject-button')
+    const select = ruleBody('.table-state-select')
+
+    // Same row height as the select above it, so the cell does not look ragged.
+    expect(body).toMatch(/min-height:\s*28px/)
+    expect(select).toMatch(/min-height:\s*28px/)
+    // Quieter: the select carries the row's state in full ink, this is a shortcut.
+    expect(body).toMatch(/color:\s*var\(--ink-2\)/)
+    expect(select).toMatch(/color:\s*var\(--ink\)/)
+    // Rejecting is an ordinary move, not a destructive act: no danger colour.
+    expect(body).not.toMatch(/--danger|--accent/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    // The 28px control height is the table's own convention; nothing else is raw.
+    expect(body.replace(/28px/g, '')).not.toMatch(/\d+px/)
+  })
+})
+
+describe('statistics figures', () => {
+  it('keeps a share quieter than the figure it qualifies, in tokens only', () => {
+    const body = ruleBody('.statistics__total small,\n.statistics td small')
+    const figure = ruleBody('.statistics__total strong')
+
+    // The count leads; the percentage beside it is context, not a second headline.
+    expect(figure).toMatch(/font-size:\s*var\(--t6\)/)
+    expect(body).toMatch(/font-size:\s*var\(--t2\)/)
+    expect(body).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(body).not.toMatch(/\d+px/)
+  })
+})
+
 describe('shortcut keys', () => {
   it('draws the key chip from the token scale, like every other chip', () => {
     const body = ruleBody('.panel__shortcut-key')
@@ -323,5 +378,35 @@ describe('prep notes view', () => {
 
     expect(block).toMatch(/\.topbar__places\s*\{[^}]*grid-row: 2/)
     expect(block).not.toMatch(/\.view-nav\s*\{[^}]*order:/)
+  })
+})
+
+describe('stage pill in the title bar', () => {
+  it('sizes to the stage it is showing rather than to its widest option', () => {
+    const body = ruleBody('.panel__stage-select')
+
+    // A select is laid out to its widest option by default, so every stage wore the width
+    // of "Recruiter messaged — Rejected". This is what holds it to its own value.
+    expect(body).toMatch(/field-sizing:\s*content/)
+    // And nothing caps it below that value: a stage is a name, and "Recruiter messa…" is
+    // the one thing this pill exists to say. Only the bar it sits in bounds it.
+    expect(body).toMatch(/max-width:\s*100%/)
+    // No cap in a length: `100%` is the bar it sits in, not a width chosen for it.
+    expect(body).not.toMatch(/max-width:\s*[\d.]+(rem|em|px|ch|vw)/)
+    expect(body).toMatch(/border-radius:\s*var\(--pill\)/)
+
+    // The application's own stage is marked on the tab above, badge and all. A second
+    // accent on the pill said the same thing one row later.
+    expect(css).not.toMatch(/\.panel__stage-select--current/)
+    expect(body).not.toMatch(/--accent/)
+
+    // The pair keeps together, and the name is the half that gives: it ellipses under a
+    // shrink factor lopsided enough that the stage is only reached once there is no name
+    // left to spend. The control between them keeps its own width throughout.
+    expect(ruleBody('.panel__subject-group')).toMatch(/flex:\s*1/)
+    expect(ruleBody('.panel__subject')).toMatch(/text-overflow:\s*ellipsis/)
+    expect(ruleBody('.panel__subject')).toMatch(/flex:\s*0 1000 auto/)
+    expect(ruleBody('.panel__subject-stage')).toMatch(/flex:\s*0 1 auto/)
+    expect(ruleBody('.panel__subject-open')).toMatch(/flex:\s*none/)
   })
 })

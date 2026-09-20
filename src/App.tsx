@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
-  CalendarDays,
   CircleCheck,
   ChartNoAxesColumnIncreasing,
   ClipboardCopy,
@@ -15,7 +14,6 @@ import {
   Search,
   Sun,
   Table2,
-  Target,
   Upload,
   X,
 } from 'lucide-react'
@@ -27,6 +25,7 @@ import {
   STATE_LABELS,
   addApplication,
   clearLegacyLocalStorage,
+  isRejectedState,
   completeApplicationNextAction,
   updateApplicationCompletedActions,
   createAttachmentMetadata,
@@ -36,17 +35,16 @@ import {
   downloadTrackerArchive,
   formatFileSize,
   importTrackerArchive,
-  isZipArchive,
+  describeImportErrors,
+  readTrackerImport,
   loadTrackerDatabase,
   MAX_ATTACHMENT_BYTES,
   moveApplication,
   openAttachmentFile,
-  parseTrackerDocument,
   readFileAsUint8Array,
   resetTrackerDatabase,
   saveTrackerDatabase,
   tryLoadLegacyLocalStorage,
-  unpackTrackerArchive,
   clearApplicationRating,
   updateApplication,
   reviseApplicationStageCapture,
@@ -68,6 +66,9 @@ import {
   type TrackerDocument,
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
+import { backend, isBrowserBackend } from './backend'
+import { DemoBanner, StorageIntro, StorageStatus, useStorageConnection } from './StorageStatus'
+import { useFileImport } from './useFileImport'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
 import { RatingFields } from './RatingFields'
 import { StateHistory } from './StateHistory'
@@ -96,24 +97,18 @@ import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
 import {
-  CalendarView,
   CompareNotesView,
-  FocusView,
   KanbanView,
   PrepNotesView,
-  StaleView,
   StatisticsView,
   TableView,
 } from './views'
 
-type ViewId = 'kanban' | 'table' | 'focus' | 'calendar' | 'stale' | 'statistics' | 'compare'
+type ViewId = 'kanban' | 'table' | 'statistics' | 'compare'
 
 const VIEW_OPTIONS = [
   { id: 'kanban', label: 'Kanban', icon: KanbanSquare },
   { id: 'table', label: 'Table', icon: Table2 },
-  { id: 'focus', label: 'Focus', icon: Target },
-  { id: 'calendar', label: 'Calendar', icon: CalendarDays },
-  { id: 'stale', label: 'Stale', icon: RotateCcw },
   { id: 'statistics', label: 'Statistics', icon: ChartNoAxesColumnIncreasing },
   { id: 'compare', label: 'Compare', icon: Columns3 },
 ] as const
@@ -689,6 +684,9 @@ export default function App() {
   const dialogOpenerRef = useRef<HTMLElement | null>(null)
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
+  const storageConnection = useStorageConnection()
+  const [introDismissed, setIntroDismissed] = useState(false)
+  // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
   const [theme, toggleTheme] = useTheme()
 
@@ -697,7 +695,12 @@ export default function App() {
 
     async function initialize() {
       try {
-        const legacy = tryLoadLegacyLocalStorage()
+        /*
+         * The migration is from the browser-storage era into the local JSON file, so it
+         * only makes sense for the backend that owns that file. The static build has its
+         * own storage and must not adopt a document it never wrote.
+         */
+        const legacy = isBrowserBackend() ? null : tryLoadLegacyLocalStorage()
         if (legacy && !isDemoTrackerProfile()) {
           await saveTrackerDatabase(legacy)
           clearLegacyLocalStorage()
@@ -792,6 +795,44 @@ export default function App() {
     return done
   }
 
+  /**
+   * The single way a file becomes the tracker, whichever of the three ways it arrived by.
+   *
+   * Reading and validating happen before the confirmation rather than after, so the
+   * question names what is actually in the file. A file that cannot be read never gets as
+   * far as asking, and says why instead.
+   */
+  const importFile = async (file: File) => {
+    try {
+      const result = readTrackerImport(await readFileAsUint8Array(file))
+      if (!result.ok) {
+        setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
+        return
+      }
+
+      const { applications } = result.document
+      const attachments = result.files.length
+      const carrying = attachments > 0 ? ` and ${attachments} attachments` : ''
+      if (!window.confirm(
+        `Replace your current tracker with ${applications.length} imported applications${carrying}?`,
+      )) {
+        return
+      }
+
+      const saved = await importTrackerArchive(result.document, result.files)
+      trackerRef.current = saved
+      setTracker(saved)
+      setNotice(`Imported ${saved.applications.length} applications.`)
+    } catch (error) {
+      setNotice(`Import failed: ${errorMessage(error)}`)
+    }
+  }
+
+  const dragging = useFileImport({
+    onFile: (file) => void importFile(file),
+    onRefused: setNotice,
+  })
+
   const companies = useMemo(() => {
     const names = [...new Set((tracker?.applications ?? []).map((application) => application.company))]
     return names.sort((left, right) => left.localeCompare(right))
@@ -875,6 +916,16 @@ export default function App() {
       </div>
     )
   }
+
+  /*
+   * Only while there is nothing to look at. Once the first application exists the banner
+   * would be in the way, and the topbar control says the same thing in a line.
+   */
+  const showStorageIntro =
+    storageConnection !== null
+    && !introDismissed
+    && storageConnection.kind !== 'connected'
+    && tracker.applications.length === 0
 
   const editingApplication = editor?.mode === 'edit'
     ? tracker.applications.find((application) => application.id === editor.id) ?? null
@@ -974,15 +1025,46 @@ export default function App() {
     setNotesOpen(true)
   }
 
+  /*
+   * Connecting adopts whatever the folder already holds, so the document has to be read
+   * back rather than assumed unchanged: pointing the site at last week's export is one of
+   * the two reasons anyone presses this.
+   */
+  const reloadAfter = async (connect: () => Promise<unknown>, message: string) => {
+    try {
+      await connect()
+      const loaded = await loadTrackerDatabase()
+      trackerRef.current = loaded
+      setTracker(loaded)
+      setIntroDismissed(true)
+      setNotice(message)
+    } catch (error) {
+      setNotice(`Could not open the folder: ${errorMessage(error)}`)
+    }
+  }
+
+  const connectStorage = () => {
+    void reloadAfter(() => backend.storage!.connect(), 'Changes are now saved to that folder too.')
+  }
+
+  const reconnectStorage = () => {
+    void reloadAfter(() => backend.storage!.reconnect(), 'Reconnected to your folder.')
+  }
+
   const closeEditor = () => setEditor(null)
 
   const move = (id: string, state: StateId) => {
     const moving = tracker.applications.find((application) => application.id === id)
+    // A rejection drops an outstanding next action, so the notice says so rather than
+    // leaving the task to vanish quietly off the plan.
+    const clearing = Boolean(moving?.next_action?.trim()) && isRejectedState(state)
     // A move to the state it already holds returns the same document, and `commit` reads
     // that as nothing to write, so no notice is shown for it either.
     commit(
       (current) => moveApplication(current, id, state),
-      `${moving?.company ?? 'Application'} moved to ${STATE_LABELS[state]}.`,
+      `${moving?.company ?? 'Application'} moved to ${STATE_LABELS[state]}.${
+        clearing ? ' Next action cleared.' : ''
+      }`,
     )
   }
 
@@ -1002,6 +1084,10 @@ export default function App() {
       onEditApplication={openApplication}
       onExternalChange={(applicationId: string, state: StateId, body: string) =>
         commitStageNote(applicationId, state, body, 'Prep notes saved from your editor.')}
+      // The editor opens over the workspace rather than instead of it: the arrangement,
+      // the drafts and the captures are all the panel's own state, and unmounting it to
+      // change a company name would throw the lot away.
+      onOpenApplication={openApplication}
       onRequested={() => setNotesRequest(null)}
       onRevise={reviseStageLine}
       onSaveDrafts={saveStageDrafts}
@@ -1019,12 +1105,6 @@ export default function App() {
     switch (activeView) {
       case 'table':
         return <TableView {...shared} onMove={move} />
-      case 'focus':
-        return <FocusView {...shared} />
-      case 'calendar':
-        return <CalendarView {...shared} />
-      case 'stale':
-        return <StaleView {...shared} onMove={move} />
       case 'statistics':
         return <StatisticsView applications={filteredApplications} />
       case 'compare':
@@ -1117,6 +1197,14 @@ export default function App() {
         </div>
 
         <div className="topbar__actions">
+          {storageConnection && (
+            <StorageStatus
+              connection={storageConnection}
+              onConnect={connectStorage}
+              onReconnect={reconnectStorage}
+            />
+          )}
+
           <button
             aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
             className="icon-button"
@@ -1189,36 +1277,24 @@ export default function App() {
       <input
         accept="application/json,.json,application/zip,.zip"
         className="sr-only"
-        onChange={async (event) => {
+        onChange={(event) => {
           const file = event.target.files?.[0]
           event.target.value = ''
-          if (!file) return
-          try {
-            const bytes = await readFileAsUint8Array(file)
-            if (isZipArchive(bytes)) {
-              const { document, files } = unpackTrackerArchive(bytes)
-              if (window.confirm(`Replace your current tracker with ${document.applications.length} imported applications and ${files.length} attachments?`)) {
-                const saved = await importTrackerArchive(document, files)
-                setTracker(saved)
-                setNotice(`Imported ${saved.applications.length} applications.`)
-              }
-              return
-            }
-
-            const imported = parseTrackerDocument(new TextDecoder().decode(bytes))
-            if (window.confirm(`Replace your current tracker with ${imported.applications.length} imported applications?`)) {
-              await importTrackerArchive(imported, [])
-              const saved = await loadTrackerDatabase()
-              setTracker(saved)
-              setNotice(`Imported ${saved.applications.length} applications.`)
-            }
-          } catch (error) {
-            setNotice(`Import failed: ${errorMessage(error)}`)
-          }
+          if (file) void importFile(file)
         }}
         ref={importInputRef}
         type="file"
       />
+
+      {/*
+        * Drop anywhere is invisible without this: the window is the target, so there is
+        * nothing on screen for someone holding a file to aim at.
+        */}
+      {dragging && (
+        <div aria-hidden="true" className="import-drop">
+          <p>Drop to import — replaces everything here</p>
+        </div>
+      )}
 
       <main id="main">
         {/*
@@ -1270,12 +1346,17 @@ export default function App() {
               >
                 <option value="all">All states</option>
                 {/*
-                  * The two outcome groups share this control rather than adding one beside
+                  * The outcome groups share this control rather than adding one beside
                   * it: they answer the same question a single state does, so a bar holding
                   * both would offer combinations — Offer and rejected — that select nothing.
-                  * Grouped so "Rejected" is not read as a nineteenth state.
+                  * Grouped so "Rejected" is not read as a twentieth state.
+                  *
+                  * Still live sits beside Not rejected rather than replacing it: the two
+                  * differ over Accepted and No openings, which nobody turned down and
+                  * nobody is still working, so each answers a question the other cannot.
                   */}
                 <optgroup label="By outcome">
+                  <option value="live">Still live</option>
                   <option value="rejected">Rejected</option>
                   <option value="not_rejected">Not rejected</option>
                 </optgroup>
@@ -1352,6 +1433,18 @@ export default function App() {
             </div>
             </>
           </section>
+        )}
+
+        {isBrowserBackend() && isDemoTrackerProfile() && <DemoBanner />}
+
+        {showStorageIntro && (
+          <StorageIntro
+            connection={storageConnection}
+            onConnect={connectStorage}
+            onDismiss={() => setIntroDismissed(true)}
+            onImport={() => importInputRef.current?.click()}
+            showDemoLink={!isDemoTrackerProfile()}
+          />
         )}
 
         {notice && (

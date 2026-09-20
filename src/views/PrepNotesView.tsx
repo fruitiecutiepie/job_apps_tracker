@@ -28,6 +28,8 @@ interface PrepNotesViewProps {
   /** Opens an application's editor, which is where a captured posting is changed. */
   onEditApplication: (id: string) => void;
   onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>;
+  /** Opens the application editor for the application a note in the panel prepares for. */
+  onOpenApplication: (applicationId: string) => void;
 }
 
 /**
@@ -47,6 +49,7 @@ export function PrepNotesView({
   onCapture,
   onEditApplication,
   onRevise,
+  onOpenApplication,
 }: PrepNotesViewProps) {
   /**
    * What the panel mounts with. Set once per sitting: the panel owns the arrangement from
@@ -127,6 +130,7 @@ export function PrepNotesView({
           onEditApplication={onEditApplication}
           onEmpty={empty}
           onExternalChange={onExternalChange}
+          onOpenApplication={onOpenApplication}
           onRevise={onRevise}
           onSaveDrafts={onSaveDrafts}
           request={request}

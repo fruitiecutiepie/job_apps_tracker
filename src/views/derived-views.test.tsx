@@ -12,13 +12,10 @@ import type {
   StateEvent,
   StateId,
 } from '../domain'
-import { CalendarView } from './CalendarView'
 import { KanbanView } from './KanbanView'
-import { FocusView } from './FocusView'
-import { StaleView } from './StaleView'
 import { StatisticsView } from './StatisticsView'
 import { TableView } from './TableView'
-import { formatLongDate, kanbanColumnGroups } from './viewUtils'
+import { kanbanColumnGroups } from './viewUtils'
 
 const now = new Date(2026, 7, 14, 12)
 
@@ -106,451 +103,17 @@ afterEach(() => {
   vi.useRealTimers()
 })
 
-describe('FocusView', () => {
-  function groupElement(heading: string): HTMLElement {
-    return screen.getByRole('heading', { name: heading }).closest('details')!
-  }
-
-  function rowsIn(heading: string): string[] {
-    const list = groupElement(heading).querySelector('ol, ul')
-    // Only the row's own button; each row also carries a prep-notes button.
-    return list ? [...list.querySelectorAll('.action-card')].map((row) => row.textContent ?? '') : []
-  }
-
-  it('groups live applications by the pressure that ranks them', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const onOpen = vi.fn()
-    const applications = [
-      application('Later & Co', { next_action: 'Prepare questions', next_action_at: localDate(4) }),
-      application('Oldest Follow-up', { next_action: 'Email recruiter', next_action_at: localDate(-5) }),
-      application('Today Labs', { next_action: 'Join interview', next_action_at: localDate(0) }),
-      application('No Date Studio', { next_action: 'Review portfolio' }),
-      application('Gone Quiet', {
-        state_history: [{ state: 'applied', at: localDate(-25) }],
-      }),
-      application('Nothing Planned Inc'),
-    ]
-
-    render(
-      <FocusView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />,
-    )
-
-    // Date-driven groups read chronologically, not by score.
-    expect(rowsIn('Overdue or due today')).toEqual([
-      expect.stringContaining('Oldest Follow-up'),
-      expect.stringContaining('Today Labs'),
-    ])
-    expect(rowsIn('Due in 1 to 7 days')).toEqual([expect.stringContaining('Later & Co')])
-    expect(rowsIn('Action with no date')).toEqual([expect.stringContaining('No Date Studio')])
-    expect(rowsIn('No stage change in more than 7 days')).toEqual([
-      expect.stringContaining('Gone Quiet'),
-    ])
-    expect(rowsIn('Nothing dated or planned')).toEqual([
-      expect.stringContaining('Nothing Planned Inc'),
-    ])
-
-    expect(screen.getByText('Action overdue 5 days')).toBeInTheDocument()
-    expect(screen.getByText('No stage change for 25 days')).toBeInTheDocument()
-
-    // A schedule is an ordered list; an alphabetical group is not.
-    expect(groupElement('Overdue or due today').querySelector('ol')).not.toBeNull()
-    expect(groupElement('Action with no date').querySelector('ul')).not.toBeNull()
-
-    fireEvent.click(
-      within(groupElement('Action with no date')).getByRole('button', {
-        name: /Open No Date Studio/,
-      }),
-    )
-    expect(onOpen).toHaveBeenCalledWith(applications[3].id)
-  })
-
-  it('surfaces an invite as the reason and shows it on the row', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const applications = [
-      application('Panel Co', {
-        state_events: [
-          stateEvent({ summary: 'Research panel', starts_at: localDate(2), location: 'Docklands' }),
-        ],
-      }),
-    ]
-
-    render(
-      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />,
-    )
-
-    // Without invites this row read as "Nothing dated or planned".
-    expect(rowsIn('Due in 1 to 7 days')).toEqual([expect.stringContaining('Panel Co')])
-    expect(screen.getByText('Invite in 2 days')).toBeInTheDocument()
-    expect(screen.getByText(/Research panel/)).toBeInTheDocument()
-  })
-
-  it('is unchanged by ratings, which belong to a different axis', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const base = { deadline_at: localDate(0), next_action: 'Prepare', next_action_at: localDate(0) }
-    const unrated = application('Same Co', base)
-    const loathed = application('Same Co', {
-      ...base,
-      ratings: ratings({ work: 1, growth: 1, people: 1, company: 1 }),
-    })
-
-    const { unmount } = render(
-      <FocusView applications={[unrated]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />,
-    )
-    const before = rowsIn('Overdue or due today')
-    unmount()
-
-    render(<FocusView applications={[loathed]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
-
-    expect(rowsIn('Overdue or due today')).toEqual(before)
-  })
-
-  it('offers prep notes on a row, like the Kanban card and the table row', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const onOpenStageNotes = vi.fn()
-    const applications = [
-      application('Prep Co', {
-        next_action: 'Join interview',
-        next_action_at: localDate(0),
-        stage_notes: [
-          {
-            state: 'applied',
-            body: '## Panel\n\n- Design',
-            heard: [],
-            created_at: localDate(-2),
-            updated_at: localDate(-1),
-          },
-        ],
-      }),
-    ]
-
-    render(
-      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={onOpenStageNotes} onCompleteAction={vi.fn()} />,
-    )
-
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Prep notes for Prep Co, 1 stage' }),
-    )
-    expect(onOpenStageNotes).toHaveBeenCalledWith(applications[0].id)
-  })
-
-  it('offers Done on a row that has an action, and not on one that does not', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const onCompleteAction = vi.fn()
-    const applications = [
-      application('Task Co', { next_action: 'Email the recruiter', next_action_at: localDate(0) }),
-      application('Deadline Only Co', { deadline_at: localDate(0) }),
-    ]
-
-    render(
-      <FocusView
-        applications={applications}
-        onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()}
-        onCompleteAction={onCompleteAction}
-      />,
-    )
-
-    // Named after the task, so a screen reader hears which one is being closed.
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Mark done for Task Co: Email the recruiter' }),
-    )
-    expect(onCompleteAction).toHaveBeenCalledWith(applications[0].id)
-
-    // Nothing to resolve on a row driven by a deadline, so no control at all.
-    expect(screen.queryByRole('button', { name: /^Mark done for Deadline Only Co/ }))
-      .not.toBeInTheDocument()
-  })
-
-  it('includes applications with a deadline and no action at all', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-
-    render(
-      <FocusView
-        applications={[application('Closing Soon', { deadline_at: localDate(2) })]}
-        onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()}
-        onCompleteAction={vi.fn()}
-      />,
-    )
-
-    expect(rowsIn('Due in 1 to 7 days')).toEqual([expect.stringContaining('Closing Soon')])
-    expect(screen.getByText('Deadline in 2 days')).toBeInTheDocument()
-    expect(screen.getByText('No action set')).toBeInTheDocument()
-  })
-
-  it('keeps tasks left on finished applications instead of dropping them', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const applications = [
-      application('Rejected Co', {
-        state: 'interview_1_rejected',
-        state_history: [{ state: 'interview_1_rejected', at: localDate(-4) }],
-        next_action: 'Thank the hiring manager',
-      }),
-      application('Accepted Co', {
-        state: 'accepted',
-        state_history: [{ state: 'accepted', at: localDate(-4) }],
-        next_action: 'Prepare for onboarding',
-      }),
-      application('Rejected And Done', {
-        state: 'auto_rejected',
-        state_history: [{ state: 'auto_rejected', at: localDate(-4) }],
-      }),
-    ]
-
-    render(
-      <FocusView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />,
-    )
-
-    expect(rowsIn('Finished, action outstanding')).toEqual([
-      expect.stringContaining('Accepted Co'),
-      expect.stringContaining('Rejected Co'),
-    ])
-    expect(screen.queryByText(/Rejected And Done/)).not.toBeInTheDocument()
-  })
-
-  it('expands only the leading non-empty group', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-
-    render(
-      <FocusView
-        applications={[
-          application('Gone Quiet', {
-            state_history: [{ state: 'applied', at: localDate(-25) }],
-          }),
-          application('Nothing Planned Inc'),
-        ]}
-        onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()}
-        onCompleteAction={vi.fn()}
-      />,
-    )
-
-    expect(groupElement('Overdue or due today')).not.toHaveAttribute('open')
-    expect(groupElement('No stage change in more than 7 days')).toHaveAttribute('open')
-    expect(groupElement('Nothing dated or planned')).not.toHaveAttribute('open')
-    expect(
-      within(groupElement('Overdue or due today')).getByText('Nothing is overdue or due today.'),
-    ).toBeInTheDocument()
-  })
-
-  it('shows a helpful empty state when nothing needs attention', () => {
-    render(
-      <FocusView
-        applications={[
-          application('Rejected Co', {
-            state: 'auto_rejected',
-            state_history: [{ state: 'auto_rejected', at: localDate(-4) }],
-          }),
-        ]}
-        onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()}
-        onCompleteAction={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByRole('heading', { name: 'Nothing needs attention' })).toBeInTheDocument()
-  })
-})
-
-describe('StaleView', () => {
-  it('defaults to 14 days, orders oldest first, and supports the display-only thresholds', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const applications = [
-      application('Eight Days', { updated_at: localDate(-8) }),
-      application('Fourteen Days', { updated_at: localDate(-14) }),
-      application('Thirty-one Days', { updated_at: localDate(-31) }),
-    ]
-
-    render(<StaleView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
-
-    expect(screen.getByRole('radio', { name: '14 days' })).toBeChecked()
-    expect(screen.queryByText('Eight Days')).not.toBeInTheDocument()
-    expect(screen.getAllByRole('listitem').map((item) => within(item).getByText(/Days$/).textContent)).toEqual([
-      'Thirty-one Days',
-      'Fourteen Days',
-    ])
-
-    fireEvent.click(screen.getByRole('radio', { name: '7 days' }))
-    expect(screen.getByText('Eight Days')).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('radio', { name: '30 days' }))
-    expect(screen.queryByText('Fourteen Days')).not.toBeInTheDocument()
-    expect(screen.getByText('Thirty-one Days')).toBeInTheDocument()
-  })
-
-  it('offers a Move to Rejected shortcut to the counterpart of the current state', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const onMove = vi.fn()
-    const live = application('Live Loop', { state: 'interview_1', updated_at: localDate(-14) })
-    const closed = application('Already Closed', { state: 'interview_1_rejected', updated_at: localDate(-20) })
-
-    render(<StaleView applications={[live, closed]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
-
-    const shortcut = screen.getByRole('button', { name: 'Move Live Loop to Interview 1 — Rejected' })
-    expect(shortcut).toHaveTextContent('Move to Rejected')
-    fireEvent.click(shortcut)
-    expect(onMove).toHaveBeenCalledWith(live.id, 'interview_1_rejected')
-    expect(
-      screen.queryByRole('button', { name: 'Move Already Closed to Interview 1 — Rejected' }),
-    ).not.toBeInTheDocument()
-  })
-
-  it('uses Auto-rejected as the counterpart for Applied', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const onMove = vi.fn()
-    const record = application('Applied Co', { updated_at: localDate(-14) })
-
-    render(<StaleView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Move Applied Co to Auto-rejected' }))
-    expect(onMove).toHaveBeenCalledWith(record.id, 'auto_rejected')
-  })
-
-  it('omits the Move to Rejected shortcut when the current state has no counterpart', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-
-    render(
-      <StaleView
-        applications={[application('Offer Taken', { state: 'accepted', updated_at: localDate(-14) })]}
-        onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()}
-        onCompleteAction={vi.fn()}
-        onMove={vi.fn()}
-      />,
-    )
-
-    expect(screen.queryByRole('button', { name: /Move Offer Taken to / })).not.toBeInTheDocument()
-  })
-})
-
-describe('CalendarView', () => {
-  it('exposes one weekday header row and six week rows in its accessible grid', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-
-    render(<CalendarView applications={[]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
-
-    const rows = within(screen.getByRole('grid')).getAllByRole('row')
-    expect(rows).toHaveLength(7)
-    expect(within(rows[0]!).getAllByRole('columnheader')).toHaveLength(7)
-    for (const row of rows.slice(1)) {
-      expect(within(row).getAllByRole('gridcell')).toHaveLength(7)
-    }
-  })
-
-  it('places only dated next actions on their local day and opens the selected application', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const onOpen = vi.fn()
-    const scheduled = application('Calendar Company', {
-      next_action: 'Talk with hiring manager',
-      next_action_at: new Date(2026, 7, 21, 9, 30).toISOString(),
-    })
-
-    render(
-      <CalendarView
-        applications={[
-          scheduled,
-          application('Undated Company', { next_action: 'Send a note' }),
-          application('Orphaned Date', { next_action_at: new Date(2026, 7, 22, 9).toISOString() }),
-        ]}
-        onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()}
-      />,
-    )
-
-    expect(screen.getByRole('heading', { name: 'August 2026' })).toBeInTheDocument()
-    const event = screen.getByRole('button', { name: /Calendar Company.*Talk with hiring manager/ })
-    expect(event).toBeInTheDocument()
-    expect(screen.queryByText('Undated Company')).not.toBeInTheDocument()
-    expect(screen.getByText('Orphaned Date')).toBeInTheDocument()
-    expect(screen.getByText('Scheduled action')).toBeInTheDocument()
-
-    fireEvent.click(event)
-    expect(onOpen).toHaveBeenCalledWith(scheduled.id)
-  })
-
-  it('places invites beside dated next actions in time order', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    const onOpen = vi.fn()
-    const scheduled = application('Panel Company', {
-      next_action: 'Reread the brief',
-      next_action_at: new Date(2026, 7, 21, 16).toISOString(),
-      state_events: [
-        stateEvent({ summary: 'Research panel', starts_at: new Date(2026, 7, 21, 9, 30).toISOString() }),
-      ],
-    })
-
-    render(<CalendarView applications={[scheduled]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
-
-    const day = screen.getByRole('gridcell', {
-      name: formatLongDate(new Date(2026, 7, 21)),
-    })
-    expect(within(day).getAllByRole('button').map((button) => button.textContent)).toEqual([
-      expect.stringContaining('Research panel'),
-      expect.stringContaining('Reread the brief'),
-    ])
-
-    fireEvent.click(within(day).getByRole('button', { name: /Research panel/ }))
-    expect(onOpen).toHaveBeenCalledWith(scheduled.id)
-  })
-
-  it('marks a cancelled invite as cancelled', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-    render(
-      <CalendarView
-        applications={[
-          application('Called Off', {
-            state_events: [
-              stateEvent({
-                summary: 'Leadership interview',
-                starts_at: new Date(2026, 7, 25, 10).toISOString(),
-                cancelled: true,
-              }),
-            ],
-          }),
-        ]}
-        onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()}
-        onCompleteAction={vi.fn()}
-      />,
-    )
-
-    expect(
-      screen.getByRole('button', { name: /Cancelled.*Leadership interview/ }),
-    ).toBeInTheDocument()
-  })
-
-  it('moves between months and returns to the current month', () => {
-    vi.useFakeTimers()
-    vi.setSystemTime(now)
-
-    render(<CalendarView applications={[]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Next month' }))
-    expect(screen.getByRole('heading', { name: 'September 2026' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))
-    expect(screen.getByRole('heading', { name: 'August 2026' })).toBeInTheDocument()
-
-    fireEvent.click(screen.getByRole('button', { name: 'Previous month' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Today' }))
-    expect(screen.getByRole('heading', { name: 'August 2026' })).toBeInTheDocument()
-  })
-})
+/**
+ * The company cell of each row, in order. A banded table puts its band headings in the
+ * same role, so they are filtered out here rather than worked around by every sort test;
+ * the tests that are about the bands assert on the headings directly.
+ */
+function rowCompanies(): (string | null)[] {
+  return screen
+    .getAllByRole('rowheader')
+    .filter((cell) => !cell.closest('.table-view__band'))
+    .map((cell) => cell.textContent)
+}
 
 describe('TableView', () => {
   beforeAll(() => {
@@ -580,14 +143,14 @@ describe('TableView', () => {
     // A row that is not idle has no value here, so it stays last whichever way the
     // column is pointed rather than reading as the freshest or the quietest.
     fireEvent.click(screen.getByRole('button', { name: 'Activity' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Silent Co',
       'Quiet Co',
       'Busy Co',
     ])
 
     fireEvent.click(screen.getByRole('button', { name: 'Activity' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Quiet Co',
       'Silent Co',
       'Busy Co',
@@ -596,7 +159,7 @@ describe('TableView', () => {
     fireEvent.change(screen.getByLabelText('Filter Activity column'), {
       target: { value: '40' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Quiet Co'])
+    expect(rowCompanies()).toEqual(['Quiet Co'])
   })
 
   it('sorts, opens, and moves an application without changing the data', () => {
@@ -617,21 +180,23 @@ describe('TableView', () => {
       <TableView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />,
     )
 
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    // The default sort: both live rows tie on score and neither is rated, so the band's
+    // last tiebreak decides between them, and the accepted one sits in a later band.
+    expect(rowCompanies()).toEqual([
       'Middle Studio',
-      'Alpha Labs',
       'Zebra Works',
+      'Alpha Labs',
     ])
 
     fireEvent.click(screen.getByRole('button', { name: 'Company' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Alpha Labs',
       'Middle Studio',
       'Zebra Works',
     ])
 
     fireEvent.click(screen.getByRole('button', { name: 'Created' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Zebra Works',
       'Middle Studio',
       'Alpha Labs',
@@ -670,21 +235,21 @@ describe('TableView', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter Company column' }), {
       target: { value: 'Alpha' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+    expect(rowCompanies()).toEqual(['Alpha Labs'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
-    expect(screen.getAllByRole('rowheader')).toHaveLength(2)
+    expect(rowCompanies()).toHaveLength(2)
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter State column' }), {
       target: { value: 'accepted' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+    expect(rowCompanies()).toEqual(['Alpha Labs'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Attachments column' }), {
       target: { value: 'resume.pdf' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+    expect(rowCompanies()).toEqual(['Alpha Labs'])
     expect(applications).toHaveLength(2)
   })
 
@@ -716,7 +281,7 @@ describe('TableView', () => {
     ])
 
     fireEvent.click(screen.getByRole('button', { name: 'Invites' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Sooner Panel',
       'Later Panel',
       'No Invites',
@@ -726,13 +291,13 @@ describe('TableView', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Invites column' }), {
       target: { value: 'docklands' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Sooner Panel'])
+    expect(rowCompanies()).toEqual(['Sooner Panel'])
 
     fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Invites column' }), {
       target: { value: 'cancelled' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Sooner Panel'])
+    expect(rowCompanies()).toEqual(['Sooner Panel'])
   })
 
   it('sorts by deadline with undated applications last', () => {
@@ -753,7 +318,7 @@ describe('TableView', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Deadline' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Middle Studio',
       'Zebra Works',
       'Alpha Labs',
@@ -761,7 +326,7 @@ describe('TableView', () => {
 
     // Undated is absent rather than late, so it stays last when the order flips too.
     fireEvent.click(screen.getByRole('button', { name: 'Deadline' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Zebra Works',
       'Middle Studio',
       'Alpha Labs',
@@ -813,7 +378,7 @@ describe('TableView', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Deadline column' }), {
       target: { value: 'Sep' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Alpha Labs'])
+    expect(rowCompanies()).toEqual(['Alpha Labs'])
   })
 
   it('ranks by urgency, showing the reason and leaving finished applications out', () => {
@@ -841,11 +406,15 @@ describe('TableView', () => {
       />,
     )
 
-    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
+    // The table opens on urgency, which bands the rows; the ranking inside each band is
+    // what this asserts.
     expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+      'Dated, soonest first2',
       'Overdue Co',
       'Deadline Co',
+      'Live, nothing dated1',
       'Quiet Co',
+      'Finished1',
       'Rejected Co',
     ])
 
@@ -854,6 +423,194 @@ describe('TableView', () => {
     expect(
       within(screen.getByRole('row', { name: /Rejected Co/ })).getByLabelText('Not ranked'),
     ).toBeInTheDocument()
+  })
+
+  it('bands the rows under headings when sorted by urgency, and only then', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    const applications = [
+      application('Quiet Co'),
+      application('Loose End Co', {
+        state: 'auto_rejected',
+        state_history: [{ state: 'auto_rejected', at: localDate(-2) }],
+        next_action: 'Ask for feedback',
+      }),
+      application('Closed Co', {
+        state: 'auto_rejected',
+        state_history: [{ state: 'auto_rejected', at: localDate(-2) }],
+      }),
+      application('Overdue Co', { next_action: 'Follow up', next_action_at: localDate(-3) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    // The table opens banded, because it opens sorted by urgency.
+    expect(
+      screen.getAllByRole('rowgroup')
+        .flatMap((group) => within(group).queryAllByRole('rowheader'))
+        .map((cell) => cell.textContent),
+    ).toEqual([
+      'Dated, soonest first1',
+      'Overdue Co',
+      'Live, nothing dated1',
+      'Quiet Co',
+      'Finished, action outstanding1',
+      'Loose End Co',
+      'Finished1',
+      'Closed Co',
+    ])
+
+    // Flipping the direction takes the bands away: the order no longer follows their rule.
+    fireEvent.click(screen.getByRole('button', { name: 'Urgency' }))
+    expect(screen.queryByText('Dated, soonest first')).not.toBeInTheDocument()
+    expect(rowCompanies()).toEqual([
+      'Loose End Co',
+      'Closed Co',
+      'Quiet Co',
+      'Overdue Co',
+    ])
+
+    // So does sorting on a column the bands say nothing about.
+    fireEvent.click(screen.getByRole('button', { name: 'Company' }))
+    expect(screen.queryByText('Live, nothing dated')).not.toBeInTheDocument()
+  })
+
+  it('prints no heading for a band that holds nothing', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    render(
+      <TableView
+        applications={[application('Quiet Co')]}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Live, nothing dated')).toBeInTheDocument()
+    expect(screen.queryByText('Dated, soonest first')).not.toBeInTheDocument()
+    expect(screen.queryByText('Finished')).not.toBeInTheDocument()
+  })
+
+  it('orders a dated band by its date rather than by the score, as its heading says', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    const applications = [
+      // An invite decays over 21 days and a self-set action over 7, so at these distances
+      // the invite scores higher while the action falls due first.
+      application('Invite Co', {
+        state_events: [
+          {
+            id: '00000000-0000-7000-8000-000000000009',
+            state: 'recruiter_interview',
+            summary: 'Recruiter interview',
+            starts_at: localDate(6),
+            ends_at: null,
+            location: null,
+            url: null,
+            ics_uid: null,
+            sequence: 0,
+            cancelled: false,
+            created_at: localDate(-1),
+            updated_at: localDate(-1),
+          },
+        ],
+      }),
+      application('Action Co', { next_action: 'Send the draft', next_action_at: localDate(2) }),
+    ]
+
+    render(
+      <TableView
+        applications={applications}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    expect(rowCompanies()).toEqual(['Action Co', 'Invite Co'])
+  })
+
+  it('offers a one-click rejection beside the state select, for the counterpart state', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const onMove = vi.fn()
+    const waiting = application('Waiting Co', { state: 'recruiter_interview' })
+
+    render(
+      <TableView
+        applications={[waiting]}
+        onOpen={vi.fn()}
+        onMove={onMove}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(
+      screen.getByRole('button', { name: 'Move Waiting Co to Recruiter interview — Rejected' }),
+    )
+    expect(onMove).toHaveBeenCalledWith(waiting.id, 'recruiter_interview_rejected')
+  })
+
+  it('uses Auto-rejected as the counterpart for Applied', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    render(
+      <TableView
+        applications={[application('Sent Co')]}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    expect(
+      screen.getByRole('button', { name: 'Move Sent Co to Auto-rejected' }),
+    ).toBeInTheDocument()
+  })
+
+  it('omits the rejection shortcut on a row that is already finished', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    render(
+      <TableView
+        applications={[
+          application('Offer Taken', {
+            state: 'accepted',
+            state_history: [{ state: 'accepted', at: localDate(-2) }],
+          }),
+          application('Turned Down', {
+            state: 'auto_rejected',
+            state_history: [{ state: 'auto_rejected', at: localDate(-2) }],
+          }),
+        ]}
+        onOpen={vi.fn()}
+        onMove={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    // Accepted has no rejected counterpart, and a rejected row has nowhere left to go.
+    expect(screen.queryByRole('button', { name: /^Move Offer Taken to / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Move Turned Down to / })).not.toBeInTheDocument()
   })
 
   it('filters the urgency column by its reason', () => {
@@ -878,7 +635,7 @@ describe('TableView', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Urgency column' }), {
       target: { value: 'overdue' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Overdue Co'])
+    expect(rowCompanies()).toEqual(['Overdue Co'])
   })
 
   it('shows a preference score with what is missing, and a dash when unrated', () => {
@@ -948,7 +705,7 @@ describe('TableView', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Preference' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Best Co',
       'Middle Co',
       'Unrated Co',
@@ -956,7 +713,7 @@ describe('TableView', () => {
 
     // Unrated is absent, not worst, so it stays last when the order flips.
     fireEvent.click(screen.getByRole('button', { name: 'Preference' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Middle Co',
       'Best Co',
       'Unrated Co',
@@ -982,7 +739,7 @@ describe('TableView', () => {
     fireEvent.change(screen.getByRole('searchbox', { name: 'Filter Preference column' }), {
       target: { value: 'unknown' },
     })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Unknown Co'])
+    expect(rowCompanies()).toEqual(['Unknown Co'])
   })
 
   it('shows the progression and how far off target it lands', () => {
@@ -1039,7 +796,7 @@ describe('TableView', () => {
     )
 
     fireEvent.click(screen.getByRole('button', { name: 'Compensation' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Best Co',
       'Middle Co',
       'Target Only Co',
@@ -1049,7 +806,7 @@ describe('TableView', () => {
     // Absent is not the lowest pay, so both rows without a figure stay last when the order
     // flips. A sentinel number could not do this: it would sort to the wrong end here.
     fireEvent.click(screen.getByRole('button', { name: 'Compensation' }))
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual([
+    expect(rowCompanies()).toEqual([
       'Middle Co',
       'Best Co',
       'Target Only Co',
@@ -1088,7 +845,7 @@ describe('TableView', () => {
 
     // 100,000-120,000 overlaps 110,000-130,000; 200,000-250,000 does not; the offer is the
     // right number but the wrong stage.
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Advertised Co'])
+    expect(rowCompanies()).toEqual(['Advertised Co'])
   })
 
   it('checks every stage when none is picked, and leaves an open bound unbounded', () => {
@@ -1114,12 +871,12 @@ describe('TableView', () => {
     // "Any stage" is the default, so a range can catch an offer without picking it out.
     fireEvent.change(minimum, { target: { value: '125000' } })
     fireEvent.change(maximum, { target: { value: '135000' } })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Offered Co'])
+    expect(rowCompanies()).toEqual(['Offered Co'])
 
     // A minimum with no maximum reads as "at least", not as a band the row must fit inside.
     fireEvent.change(minimum, { target: { value: '150000' } })
     fireEvent.change(maximum, { target: { value: '' } })
-    expect(screen.getAllByRole('rowheader').map((cell) => cell.textContent)).toEqual(['Well Paid Co'])
+    expect(rowCompanies()).toEqual(['Well Paid Co'])
   })
 
   it('ignores a range that has not been typed as a number yet, rather than hiding every row', () => {
@@ -1141,7 +898,7 @@ describe('TableView', () => {
     fireEvent.change(screen.getByLabelText('Filter Compensation column, minimum'), {
       target: { value: 'abc' },
     })
-    expect(screen.getAllByRole('rowheader')).toHaveLength(2)
+    expect(rowCompanies()).toHaveLength(2)
 
     // Clear column filters resets the stage as well as both bounds.
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter Compensation column by stage' }), {
@@ -1156,7 +913,7 @@ describe('TableView', () => {
     expect(
       screen.getByRole('combobox', { name: 'Filter Compensation column by stage' }),
     ).toHaveValue('any')
-    expect(screen.getAllByRole('rowheader')).toHaveLength(2)
+    expect(rowCompanies()).toHaveLength(2)
   })
 
   it('offers company and source datalist suggestions', () => {
@@ -1262,52 +1019,114 @@ describe('TableView', () => {
 })
 
 describe('StatisticsView', () => {
-  function stateTable(): HTMLElement {
-    return screen.getByRole('table', {
-      name: 'Current and ever-reached application counts by state',
-    })
+  function tableNamed(name: string): HTMLElement {
+    return screen.getByRole('table', { name })
   }
 
-  function ratingsTable(): HTMLElement {
-    return screen.getByRole('table', {
-      name: 'Judgement counts and mean judged score by rating dimension',
-    })
+  const stagesTable = () =>
+    tableNamed(
+      'Applications that reached each live stage, that sit in it now, and that got no further',
+    )
+  const sourcesTable = () =>
+    tableNamed('Applications, replies, and progress by where the role came from')
+  const ratingsTable = () =>
+    tableNamed('Judgement counts and mean judged score by rating dimension')
+
+  function rowCells(table: HTMLElement, rowHeader: string): string[] {
+    const row = within(table).getByRole('rowheader', { name: rowHeader }).closest('tr')!
+    return within(row).getAllByRole('cell').map((cell) => cell.textContent ?? '')
   }
 
-  it('distinguishes current-state counts from states ever reached', () => {
-    const applications = [
-      application('Completed Journey', {
-        state: 'accepted',
-        state_history: [
-          { state: 'applied', at: localDate(-20) },
-          { state: 'interview_1', at: localDate(-10) },
-          { state: 'accepted', at: localDate(-2) },
-        ],
-      }),
-      application('Fresh Application'),
-    ]
+  /** Two rejected, one live and talking, one live and silent. */
+  const searched = [
+    application('Bounced Co', {
+      state: 'auto_rejected',
+      state_history: [
+        { state: 'applied', at: localDate(-30) },
+        { state: 'auto_rejected', at: localDate(-28) },
+      ],
+      source: 'LinkedIn',
+    }),
+    application('Nearly Co', {
+      state: 'recruiter_interview_rejected',
+      state_history: [
+        { state: 'applied', at: localDate(-40) },
+        { state: 'recruiter_interview', at: localDate(-30) },
+        { state: 'recruiter_interview_rejected', at: localDate(-20) },
+      ],
+      source: 'LinkedIn',
+    }),
+    application('Talking Co', {
+      state: 'recruiter_interview',
+      state_history: [
+        { state: 'applied', at: localDate(-25) },
+        { state: 'recruiter_interview', at: localDate(-12) },
+      ],
+      source: 'Referral',
+    }),
+    application('Silent Co', {
+      state_history: [{ state: 'applied', at: localDate(-20) }],
+      source: 'Referral',
+    }),
+  ]
 
-    render(<StatisticsView applications={applications} />)
+  it('leads with what the search did, not with how many sit in each state', () => {
+    render(<StatisticsView applications={searched} />)
 
+    expect(screen.getByLabelText('Applications: 4')).toBeInTheDocument()
+    expect(screen.getByLabelText('Still live: 2, 50%')).toBeInTheDocument()
+    expect(screen.getByLabelText('Heard back: 3, 75%')).toBeInTheDocument()
+    // Bounced Co heard back without getting anywhere, which is the distinction.
+    expect(screen.getByLabelText('Got past the first stage: 2, 50%')).toBeInTheDocument()
+    // Replies came after 2, 10 and 13 days. Silent Co has none and is left out rather
+    // than counted as zero, which would drag the figure to 2.
+    expect(screen.getByLabelText('Median days to first reply: 10')).toBeInTheDocument()
+  })
+
+  it('separates reaching a stage from sitting in it and from ending there', () => {
+    render(<StatisticsView applications={searched} />)
+
+    expect(rowCells(stagesTable(), 'Applied')).toEqual(['4', '1', '1'])
+    expect(rowCells(stagesTable(), 'Recruiter interview')).toEqual(['2', '1', '1'])
+  })
+
+  it('leaves out the stages nothing has reached rather than listing them as zeros', () => {
+    render(<StatisticsView applications={searched} />)
+
+    // Two stages reached, plus the header row. The old table printed all nineteen states.
+    expect(within(stagesTable()).getAllByRole('row')).toHaveLength(3)
     expect(
-      within(screen.getByRole('row', { name: /^Applied / })).getAllByRole('cell').map((cell) =>
-        cell.textContent,
-      ),
-    ).toEqual(['1', '2'])
-    const interviewOneRow = screen.getByRole('rowheader', { name: 'Interview 1' }).closest('tr')
-    expect(interviewOneRow).not.toBeNull()
+      within(stagesTable()).queryByRole('rowheader', { name: 'Offer' }),
+    ).not.toBeInTheDocument()
+    // Rejected states are outcomes of live stages, never rows of their own.
     expect(
-      within(interviewOneRow!)
-        .getAllByRole('cell')
-        .map((cell) => cell.textContent),
-    ).toEqual(['0', '1'])
-    expect(
-      within(screen.getByRole('row', { name: /^Accepted / })).getAllByRole('cell').map((cell) =>
-        cell.textContent,
-      ),
-    ).toEqual(['1', '1'])
-    // Scoped to the state table, so the ratings table below is free to grow.
-    expect(within(stateTable()).getAllByRole('row')).toHaveLength(20)
+      within(stagesTable()).queryByRole('rowheader', { name: /Rejected/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('reports each source against what came of it', () => {
+    render(<StatisticsView applications={searched} />)
+
+    expect(rowCells(sourcesTable(), 'LinkedIn')).toEqual(['2', '2 100%', '1 50%'])
+    expect(rowCells(sourcesTable(), 'Referral')).toEqual(['2', '1 50%', '1 50%'])
+  })
+
+  it('names an unrecorded source rather than dropping those applications', () => {
+    render(
+      <StatisticsView
+        applications={[
+          ...searched,
+          application('Nowhere Co', { state_history: [{ state: 'applied', at: localDate(-5) }] }),
+        ]}
+      />,
+    )
+
+    const row = within(sourcesTable()).getByLabelText('Not recorded').closest('tr')!
+    expect(within(row).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
+      '1',
+      '0 0%',
+      '0 0%',
+    ])
   })
 
   it('summarises how the collection was rated, per dimension', () => {
@@ -1322,29 +1141,27 @@ describe('StatisticsView', () => {
 
     render(<StatisticsView applications={applications} />)
 
-    // Three of four carry a judgement; the mean is of their discounted scores.
-    expect(screen.getByLabelText('3 of 4 applications rated')).toBeInTheDocument()
-    expect(screen.getByLabelText('Mean preference 3.48')).toBeInTheDocument()
-
-    function ratingRow(dimension: string): string[] {
-      const row = within(ratingsTable()).getByRole('rowheader', { name: dimension }).closest('tr')!
-      return within(row).getAllByRole('cell').map((cell) => cell.textContent ?? '')
-    }
-
     // Rated, Don't know, Not rated, Mean of the judged scores.
-    expect(ratingRow('Work')).toEqual(['3', '0', '1', '4.00'])
-    expect(ratingRow('Growth')).toEqual(['2', '1', '1', '4.50'])
+    expect(rowCells(ratingsTable(), 'Work')).toEqual(['3', '0', '1', '4.00'])
+    expect(rowCells(ratingsTable(), 'Growth')).toEqual(['2', '1', '1', '4.50'])
     // People reads low because it was judged low, not because it went unassessed.
-    expect(ratingRow('People')).toEqual(['2', '0', '2', '2.50'])
-    expect(ratingRow('Company & product')).toEqual(['2', '0', '2', '4.50'])
+    expect(rowCells(ratingsTable(), 'People')).toEqual(['2', '0', '2', '2.50'])
+    expect(rowCells(ratingsTable(), 'Company & product')).toEqual(['2', '0', '2', '4.50'])
+    expect(screen.getByText('3 of 4 rated, mean preference 3.48.')).toBeInTheDocument()
   })
 
   it('says so plainly when nothing has been rated', () => {
     render(<StatisticsView applications={[application('Unrated Co')]} />)
 
     expect(screen.getByText('No application has been rated yet.')).toBeInTheDocument()
-    expect(screen.getByLabelText('0 of 1 applications rated')).toBeInTheDocument()
-    expect(screen.queryByLabelText(/^Mean preference /)).not.toBeInTheDocument()
+    expect(screen.queryByText(/mean preference/)).not.toBeInTheDocument()
+  })
+
+  it('offers an empty state rather than a page of dashes when there is nothing yet', () => {
+    render(<StatisticsView applications={[]} />)
+
+    expect(screen.getByRole('heading', { name: 'Nothing to summarise yet' })).toBeInTheDocument()
+    expect(screen.queryByRole('table')).not.toBeInTheDocument()
   })
 })
 

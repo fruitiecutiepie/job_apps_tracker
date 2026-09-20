@@ -260,3 +260,70 @@ describe('folding a note that is open for writing', () => {
     expect(box().value).toContain('Growing seniors into leads.')
   })
 })
+
+function lineNumbers(container: HTMLElement): string[] {
+  return [...container.querySelectorAll('.stage-note__line-number')].map(
+    (node) => node.textContent ?? '',
+  )
+}
+
+describe('line numbers beside the note being written', () => {
+  it('numbers every line while nothing is folded', () => {
+    const { container } = render(<Writing />)
+    expect(lineNumbers(container)).toEqual(['1', '2', '3', '4', '5', '6', '7', '8', '9'])
+  })
+
+  it('is hidden from assistive tech, since the box already carries the note', () => {
+    const { container } = render(<Writing />)
+    expect(container.querySelector('.stage-note__line-numbers')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    )
+  })
+
+  it('jumps across a closed fold rather than renumbering what is still shown', () => {
+    const { container } = render(<Writing />)
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    // Lines 2 and 3 (the blank line and the point folded under Themes) are hidden, so the
+    // numbers on either side of the fold keep the source line they always named.
+    expect(lineNumbers(container)).toEqual(['1', '4', '5', '6', '7', '8', '9'])
+  })
+})
+
+describe('auto-continuing a list on Enter', () => {
+  it('repeats the marker on the next line', () => {
+    render(<Writing note="- first" />)
+    box().setSelectionRange(box().value.length, box().value.length)
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    expect(box().value).toBe('- first\n- ')
+  })
+
+  it('increments a numbered marker', () => {
+    render(<Writing note="1. first" />)
+    box().setSelectionRange(box().value.length, box().value.length)
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    expect(box().value).toBe('1. first\n2. ')
+  })
+
+  it('clears an empty item instead of continuing it', () => {
+    render(<Writing note={'- first\n- '} />)
+    box().setSelectionRange(box().value.length, box().value.length)
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    expect(box().value).toBe('- first\n')
+  })
+
+  it('leaves a plain line break alone outside a list', () => {
+    render(<Writing note="Just a paragraph" />)
+    box().setSelectionRange(box().value.length, box().value.length)
+    fireEvent.keyDown(box(), { key: 'Enter' })
+    // Nothing here is a list continuation's business, so the value is untouched — the
+    // native newline jsdom does not simulate is the box's own concern, not this handler's.
+    expect(box().value).toBe('Just a paragraph')
+  })
+
+  it('leaves Shift+Enter to the box’s native behaviour', () => {
+    render(<Writing note="- first" />)
+    box().setSelectionRange(box().value.length, box().value.length)
+    fireEvent.keyDown(box(), { key: 'Enter', shiftKey: true })
+    expect(box().value).toBe('- first')
+  })
+})

@@ -111,6 +111,19 @@ describe('the note as the box holds it', () => {
     expect(toProjectedLine(2, ranges)).toBe(0)
   })
 
+  it('accounts for every hidden range before a line, not only the nearest one', () => {
+    // Themes (line 0) and the On-call point (line 6) fold two separate ranges, with
+    // Questions' own header and blank line left visible between them.
+    const { ranges } = fold(NOTE, 0, 6)
+    expect(ranges).toEqual([
+      { start: 1, end: 2 },
+      { start: 7, end: 8 },
+    ])
+    // Box line 6 ('- Comp') sits after both folds, so its source line has to count the
+    // lines both of them hid, not just whichever range is checked first.
+    expect(toSourceLine(6, ranges)).toBe(10)
+  })
+
   it('maps a caret in the box to the same character of the note', () => {
     const { ranges, projected } = fold(NOTE, 0)
     const offset = projected.indexOf('Ask about')

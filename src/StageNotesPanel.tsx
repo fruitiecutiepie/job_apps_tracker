@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { ChevronRight, Columns2, Keyboard, PanelLeft, Plus, Search, X } from 'lucide-react'
+import { ChevronRight, Columns2, Keyboard, PanelLeft, Plus, Search, SquarePen, X } from 'lucide-react'
 import {
   closeStageNoteEditor,
   openStageNoteInEditor,
   readStageNoteFromEditor,
+  supportsExternalEditor,
   STATE_CONFIG,
   stateLabel,
   stateRank,
@@ -194,6 +195,12 @@ interface StageNotesPanelProps {
    * already written down has nothing a Save could still be waiting for.
    */
   onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>
+  /**
+   * Opens the application editor for the application a note prepares for. The panel holds
+   * notes from several applications at once, so the id travels with the request rather
+   * than being the one the panel was opened on.
+   */
+  onOpenApplication: (applicationId: string) => void
 }
 
 function errorMessage(error: unknown): string {
@@ -542,6 +549,7 @@ export function StageNotesPanel({
   onCapture,
   onEditApplication,
   onRevise,
+  onOpenApplication,
 }: StageNotesPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -852,29 +860,60 @@ export function StageNotesPanel({
 
   /**
    * Seeds a draft for every note as it joins the panel, so what is typed is measured
-   * against what was stored rather than against nothing. A note already seeded is left
-   * alone: re-seeding it from the document would throw away the keystrokes that have not
-   * been written yet.
+   * against what was stored rather than against nothing — and afterwards keeps a seeded
+   * note in step with the document when something else writes it.
+   *
+   * The panel is not the only thing that writes a note. The external editor has its own
+   * channel and is handled by the poll below, but a note can also be written from anywhere
+   * else holding the same document. Left alone, the panel would go on showing the body it
+   * seeded and write that back over the newer one on the next keystroke, which is how an
+   * edit made elsewhere disappears without anything reporting a failure.
+   *
+   * Adopting is gated on the panel having nothing unsaved for that note — `draft` still
+   * equal to what was last written from here. Where it has, the keystrokes that have not
+   * been written yet win, since dropping them is the one thing worse than showing a stale
+   * body. That is the same choice a compare card makes while it holds focus.
    */
   useEffect(() => {
-    const missing = openRefs.filter(
-      (ref) => ref.kind === 'stage' && draftsRef.current[noteRefKey(ref)] === undefined,
-    )
-    if (missing.length === 0) return
     const nextDrafts = { ...draftsRef.current }
     const nextStored = { ...storedRef.current }
-    for (const ref of missing) {
+    const seeded: NoteRef[] = []
+    let changed = false
+
+    for (const ref of openRefs) {
+      /*
+       * A posting is captured in the application editor, never typed here. It has no draft
+       * to seed, nothing to adopt from underneath, and seeding it blank would open its pane
+       * "ready to type" and hand the autosave a prep note for a stage it names none of.
+       */
+      if (ref.kind === 'posting') continue
       const key = noteRefKey(ref)
       const body = noteByKey.get(key)?.body ?? ''
-      nextDrafts[key] = body
-      nextStored[key] = body
+      const draft = draftsRef.current[key]
+
+      if (draft === undefined) {
+        nextDrafts[key] = body
+        nextStored[key] = body
+        seeded.push(ref)
+        changed = true
+        continue
+      }
+
+      if (storedRef.current[key] !== body && draft === storedRef.current[key]) {
+        nextDrafts[key] = body
+        nextStored[key] = body
+        changed = true
+      }
     }
+
+    if (!changed) return
     draftsRef.current = nextDrafts
     storedRef.current = nextStored
     setDrafts(nextDrafts)
     setStored(nextStored)
-    // A note opened with nothing in it opens ready to type, the way an empty stage always has.
-    const blank = missing.filter((ref) => !(noteByKey.get(noteRefKey(ref))?.body ?? '').trim())
+    // A note opened with nothing in it opens ready to type, the way an empty stage always
+    // has. Only a note joining the panel, never one that merely went empty elsewhere.
+    const blank = seeded.filter((ref) => !(noteByKey.get(noteRefKey(ref))?.body ?? '').trim())
     if (blank.length > 0) {
       setEditing((current) => [...current, ...blank.map(noteRefKey).filter((key) => !current.includes(key))])
     }
@@ -2297,12 +2336,10 @@ export function StageNotesPanel({
           // Only the focused pane, which is the one the jump scrolls; a link clicked in
           // another pane focuses it first, so this is that pane by the time it lands.
           onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
-          onOpenInEditor={() => openInEditor(shown)}
+          onOpenInEditor={supportsExternalEditor() ? () => openInEditor(shown) : undefined}
           onRevise={(entryId, revised) =>
             onRevise(shown.applicationId, shown.state, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}
-          onSwitchStage={(state) =>
-            switchStage(group.id, shownKey, stageRef(shown.applicationId, state))}
           onToggleCapture={() =>
             setCaptureOpen((current) =>
               current.includes(shownKey)
@@ -2367,7 +2404,71 @@ export function StageNotesPanel({
           </button>
           {/* The view is already named by the tab that reached it and by the heading over
               it, so the title bar carries only what the panel itself is showing. */}
-          <p className="panel__subject">{title}</p>
+          <div className="panel__subject-group">
+            <p className="panel__subject">{title}</p>
+            {/*
+              * Beside the name it acts on, for the reason the sidebar toggle is over the
+              * column it opens: this bar already says which application is being read, and
+              * the record behind that name is then one step from it rather than a trip back
+              * to the board to find the card again. One control for the panel rather than
+              * one per pane — it follows the focused pane the way the breadcrumbs, the
+              * outline and the find do, and pane chrome is charged once per pane on screen.
+              * Absent when the focused tab names an application the document no longer
+              * holds, which is also when the title beside it is blank.
+              */}
+            {activeApplication ? (
+              <button
+                aria-label={`Open the application for ${title}`}
+                className="icon-button panel__chrome-button panel__subject-open"
+                onClick={() => onOpenApplication(activeApplication.id)}
+                title={`Open the application for ${title}`}
+                type="button"
+              >
+                <SquarePen aria-hidden="true" size={16} />
+              </button>
+            ) : null}
+            {/*
+              * The stage continues the name: this bar says which application is being read,
+              * and the pill beside it says which of its stages. In the pane header it was
+              * the first visible thing in the row — the note's own name is `sr-only` there,
+              * the tab above carrying it — so a control ended up standing in for a heading,
+              * flush against a formatting toolbar it shares no scope with. Here it sits
+              * with the name it qualifies, and the pane header keeps the height.
+              *
+              * It acts on the focused pane, like the breadcrumbs, the outline, the status
+              * bar and the find. A pane that is not focused still says which stage it holds
+              * — on its own tab, badge and all — so what a split loses is the switch, not
+              * the reading, and clicking a pane is what focuses it.
+              */}
+            {/*
+              * Absent when the focused pane holds a job posting: a posting prepares for no
+              * stage, so there is none to switch away from and nothing the control could
+              * honestly show. Focusing a prep note brings it back.
+              */}
+            {activeRef.kind === 'stage' ? (
+              <label className="panel__subject-stage">
+                <span className="sr-only">
+                  Go to a different stage for {activeApplication?.company ?? 'this application'}
+                </span>
+                <select
+                  className="panel__stage-select"
+                  onChange={(event) =>
+                    switchStage(
+                      focusedGroupId,
+                      activeKey,
+                      stageRef(activeRef.applicationId, event.target.value as StateId),
+                    )}
+                  value={activeRef.state}
+                >
+                  {STATE_CONFIG.map((state) => (
+                    <option key={state.id} value={state.id}>
+                      {state.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+          </div>
           {/*
             * Icons alone, each naming itself on hover and to a screen reader. Labels here
             * spent more of the title bar on saying what these are than on the note the bar
