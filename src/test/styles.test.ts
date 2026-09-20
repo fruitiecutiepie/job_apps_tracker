@@ -380,3 +380,33 @@ describe('prep notes view', () => {
     expect(block).not.toMatch(/\.view-nav\s*\{[^}]*order:/)
   })
 })
+
+describe('stage pill in the title bar', () => {
+  it('sizes to the stage it is showing rather than to its widest option', () => {
+    const body = ruleBody('.panel__stage-select')
+
+    // A select is laid out to its widest option by default, so every stage wore the width
+    // of "Recruiter messaged — Rejected". This is what holds it to its own value.
+    expect(body).toMatch(/field-sizing:\s*content/)
+    // And nothing caps it below that value: a stage is a name, and "Recruiter messa…" is
+    // the one thing this pill exists to say. Only the bar it sits in bounds it.
+    expect(body).toMatch(/max-width:\s*100%/)
+    // No cap in a length: `100%` is the bar it sits in, not a width chosen for it.
+    expect(body).not.toMatch(/max-width:\s*[\d.]+(rem|em|px|ch|vw)/)
+    expect(body).toMatch(/border-radius:\s*var\(--pill\)/)
+
+    // The application's own stage is marked on the tab above, badge and all. A second
+    // accent on the pill said the same thing one row later.
+    expect(css).not.toMatch(/\.panel__stage-select--current/)
+    expect(body).not.toMatch(/--accent/)
+
+    // The pair keeps together, and the name is the half that gives: it ellipses under a
+    // shrink factor lopsided enough that the stage is only reached once there is no name
+    // left to spend. The control between them keeps its own width throughout.
+    expect(ruleBody('.panel__subject-group')).toMatch(/flex:\s*1/)
+    expect(ruleBody('.panel__subject')).toMatch(/text-overflow:\s*ellipsis/)
+    expect(ruleBody('.panel__subject')).toMatch(/flex:\s*0 1000 auto/)
+    expect(ruleBody('.panel__subject-stage')).toMatch(/flex:\s*0 1 auto/)
+    expect(ruleBody('.panel__subject-open')).toMatch(/flex:\s*none/)
+  })
+})

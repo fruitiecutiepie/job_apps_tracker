@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
-import { ChevronRight, Columns2, Keyboard, PanelLeft, Plus, Search, X } from 'lucide-react'
+import { ChevronRight, Columns2, Keyboard, PanelLeft, Plus, Search, SquarePen, X } from 'lucide-react'
 import {
   closeStageNoteEditor,
   openStageNoteInEditor,
@@ -185,6 +185,12 @@ interface StageNotesPanelProps {
    * already written down has nothing a Save could still be waiting for.
    */
   onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>
+  /**
+   * Opens the application editor for the application a note prepares for. The panel holds
+   * notes from several applications at once, so the id travels with the request rather
+   * than being the one the panel was opened on.
+   */
+  onOpenApplication: (applicationId: string) => void
 }
 
 function errorMessage(error: unknown): string {
@@ -530,6 +536,7 @@ export function StageNotesPanel({
   onExternalChange,
   onCapture,
   onRevise,
+  onOpenApplication,
 }: StageNotesPanelProps) {
   const panelRef = useRef<HTMLDivElement>(null)
 
@@ -2255,8 +2262,6 @@ export function StageNotesPanel({
           onRevise={(entryId, revised) =>
             onRevise(shown.applicationId, shown.state, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}
-          onSwitchStage={(state) =>
-            switchStage(group.id, shownKey, { applicationId: shown.applicationId, state })}
           onToggleCapture={() =>
             setCaptureOpen((current) =>
               current.includes(shownKey)
@@ -2320,7 +2325,63 @@ export function StageNotesPanel({
           </button>
           {/* The view is already named by the tab that reached it and by the heading over
               it, so the title bar carries only what the panel itself is showing. */}
-          <p className="panel__subject">{title}</p>
+          <div className="panel__subject-group">
+            <p className="panel__subject">{title}</p>
+            {/*
+              * Beside the name it acts on, for the reason the sidebar toggle is over the
+              * column it opens: this bar already says which application is being read, and
+              * the record behind that name is then one step from it rather than a trip back
+              * to the board to find the card again. One control for the panel rather than
+              * one per pane — it follows the focused pane the way the breadcrumbs, the
+              * outline and the find do, and pane chrome is charged once per pane on screen.
+              * Absent when the focused tab names an application the document no longer
+              * holds, which is also when the title beside it is blank.
+              */}
+            {activeApplication ? (
+              <button
+                aria-label={`Open the application for ${title}`}
+                className="icon-button panel__chrome-button panel__subject-open"
+                onClick={() => onOpenApplication(activeApplication.id)}
+                title={`Open the application for ${title}`}
+                type="button"
+              >
+                <SquarePen aria-hidden="true" size={16} />
+              </button>
+            ) : null}
+            {/*
+              * The stage continues the name: this bar says which application is being read,
+              * and the pill beside it says which of its stages. In the pane header it was
+              * the first visible thing in the row — the note's own name is `sr-only` there,
+              * the tab above carrying it — so a control ended up standing in for a heading,
+              * flush against a formatting toolbar it shares no scope with. Here it sits
+              * with the name it qualifies, and the pane header keeps the height.
+              *
+              * It acts on the focused pane, like the breadcrumbs, the outline, the status
+              * bar and the find. A pane that is not focused still says which stage it holds
+              * — on its own tab, badge and all — so what a split loses is the switch, not
+              * the reading, and clicking a pane is what focuses it.
+              */}
+            <label className="panel__subject-stage">
+              <span className="sr-only">
+                Go to a different stage for {activeApplication?.company ?? 'this application'}
+              </span>
+              <select
+                className="panel__stage-select"
+                onChange={(event) =>
+                  switchStage(focusedGroupId, activeKey, {
+                    applicationId: activeRef.applicationId,
+                    state: event.target.value as StateId,
+                  })}
+                value={activeRef.state}
+              >
+                {STATE_CONFIG.map((state) => (
+                  <option key={state.id} value={state.id}>
+                    {state.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
           {/*
             * Icons alone, each naming itself on hover and to a screen reader. Labels here
             * spent more of the title bar on saying what these are than on the note the bar
