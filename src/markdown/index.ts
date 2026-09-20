@@ -7,7 +7,7 @@ export {
 export { dayGroups } from './dayLog'
 export type { DayGroup } from './dayLog'
 export { MarkdownNotes } from './MarkdownNotes'
-export { inlineText, parseInline, parseMarkdown } from './parseMarkdown'
+export { inlineText, LIST_ITEM, parseInline, parseMarkdown } from './parseMarkdown'
 export type { BlockNode, InlineNode, ListBlock, ListItem } from './parseMarkdown'
 export {
   buildSections,

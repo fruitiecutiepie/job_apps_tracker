@@ -78,6 +78,10 @@
   --fold-gutter: 1rem;
   --fold-indent: calc(var(--fold-gutter) + var(--s2));
 
+  /* The note-editor line-number column: wide enough for three digits, since its numbers
+     are absolutely positioned and so cannot size the column themselves */
+  --line-number-gutter: 1.75rem;
+
   /* The capture box: a few lines to write in, fixed so the dock cannot grow into the
      note it is pinned over */
   --capture-box: 4.5rem;
@@ -394,8 +398,7 @@ p {
 /* -------------------------------------------------------------- buttons --- */
 
 .button,
-.icon-button,
-.stale-row__reject {
+.icon-button {
   min-height: var(--control);
   border: 1px solid var(--line-strong);
   border-radius: var(--r1);
@@ -408,8 +411,7 @@ p {
     background 120ms ease;
 }
 
-.button,
-.stale-row__reject {
+.button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -429,8 +431,7 @@ p {
 }
 
 .button:hover,
-.icon-button:hover,
-.stale-row__reject:hover {
+.icon-button:hover {
   border-color: var(--ink-3);
   background: var(--surface-2);
 }
@@ -468,15 +469,13 @@ p {
   cursor: not-allowed;
 }
 
-.button--danger,
-.stale-row__reject {
+.button--danger {
   border-color: transparent;
   color: var(--danger);
   background: var(--danger-weak);
 }
 
-.button--danger:hover,
-.stale-row__reject:hover {
+.button--danger:hover {
   border-color: var(--danger);
   background: var(--danger-weak);
 }
@@ -490,6 +489,142 @@ p {
 .topbar .add-button {
   min-height: 36px;
   white-space: nowrap;
+}
+
+/* ----------------------------------------------------------- drop target --- */
+
+/*
+ * Shown only while a file is over the window. It covers everything because the drop
+ * target is everything: an outline around one panel would say the opposite.
+ */
+.import-drop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--s6);
+  border: 2px dashed var(--accent);
+  color: var(--accent-strong);
+  background: var(--scrim);
+  pointer-events: none;
+}
+
+.import-drop p {
+  margin: 0;
+  padding: var(--s4) var(--s6);
+  border-radius: var(--r3);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-size: var(--t5);
+  font-weight: 600;
+}
+
+/* -------------------------------------------------------- storage status --- */
+
+/*
+ * Where the data is going, in one line. It sits left of everything else in the topbar
+ * because "is this reaching a folder I can find again" outranks every other control here
+ * on a site that holds the only copy.
+ */
+.storage-status {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  height: var(--control);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--pill);
+  color: var(--ink-2);
+  background: var(--surface-2);
+  font-size: var(--t2);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.storage-status:hover {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.storage-status--inert {
+  margin: 0;
+  cursor: default;
+}
+
+.storage-status--inert:hover {
+  border-color: var(--line);
+  color: var(--ink-2);
+}
+
+/* Nothing is wrong, but a copy the browser could clear is the only copy. */
+.storage-status--attention {
+  border-color: var(--accent);
+  color: var(--accent-strong);
+  background: var(--accent-weak);
+}
+
+.storage-intro {
+  margin: 0 var(--gutter) var(--s3);
+  padding: var(--s5);
+  border: 1px solid var(--line);
+  border-radius: var(--r3);
+  background: var(--surface);
+}
+
+.storage-intro h2 {
+  margin: 0 0 var(--s2);
+  color: var(--ink);
+  font-size: var(--t5);
+  font-weight: 600;
+}
+
+.storage-intro p {
+  max-width: 62ch;
+  margin: 0 0 var(--s4);
+  color: var(--ink-2);
+  font-size: var(--t3);
+}
+
+.storage-intro__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s3);
+}
+
+.storage-intro__aside {
+  margin: var(--s4) 0 0;
+  padding-top: var(--s4);
+  border-top: 1px solid var(--line);
+  font-size: var(--t2);
+}
+
+/*
+ * The demo's standing warning. It borrows the notice's accent treatment rather than the
+ * danger colours: nothing is wrong here, and a red bar over a working app would read as
+ * a fault rather than as a label.
+ */
+.demo-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  margin: 0 var(--gutter) var(--s3);
+  padding: var(--s3) var(--s3) var(--s3) var(--s4);
+  border: 1px solid var(--accent);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--accent-weak);
+  font-size: var(--t3);
+}
+
+.demo-banner p {
+  flex: 1;
+  margin: 0;
+}
+
+.demo-banner .button {
+  flex-shrink: 0;
 }
 
 /* --------------------------------------------------- header actions menu --- */
@@ -712,16 +847,14 @@ p {
   background: var(--surface);
 }
 
-.view-toolbar,
-.calendar__toolbar {
+.view-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--s3);
 }
 
-.view-toolbar,
-.calendar__toolbar {
+.view-toolbar {
   flex-wrap: wrap;
   margin-bottom: var(--s3);
 }
@@ -735,8 +868,7 @@ p {
 }
 
 .view-heading h2,
-.view-toolbar h2,
-.calendar__toolbar h2 {
+.view-toolbar h2 {
   margin: 0;
   color: var(--ink);
   font-size: var(--t4);
@@ -776,8 +908,7 @@ p {
 }
 
 .kanban__scroller,
-.table-scroll,
-.calendar__scroll {
+.table-scroll {
   width: 100%;
   overflow: auto;
   scrollbar-color: var(--line-strong) transparent;
@@ -1094,6 +1225,27 @@ tbody tr:hover {
   background: var(--surface-2);
 }
 
+/* A band heading spans the table, so it gets no hover and no row treatment. */
+.table-view__band:hover {
+  background: transparent;
+}
+
+.table-view__band th {
+  padding: var(--s5) var(--s3) var(--s2);
+  background: transparent;
+  text-align: left;
+}
+
+/* Matches the notes panel's section title: the quietest heading in the interface. */
+.table-view__band-heading {
+  margin-right: var(--s3);
+  color: var(--ink-3);
+  font-size: var(--t1);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .table-sort,
 .table-link {
   padding: 0;
@@ -1188,292 +1340,6 @@ tbody tr:hover {
   font-size: var(--t2);
 }
 
-/* --------------------------------------------- next actions and stale --- */
-
-.action-groups,
-.action-list,
-.stale-list {
-  display: grid;
-  gap: var(--s3);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-.action-groups {
-  gap: var(--s5);
-}
-
-.focus-group__summary {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  cursor: pointer;
-  list-style: none;
-}
-
-.focus-group__summary::-webkit-details-marker {
-  display: none;
-}
-
-.focus-group__summary::before {
-  content: "\25b8";
-  color: var(--ink-3);
-  font-size: var(--t2);
-}
-
-.action-group[open] > .focus-group__summary::before {
-  content: "\25be";
-}
-
-.action-group[open] > .focus-group__summary {
-  margin-bottom: var(--s3);
-}
-
-.focus-group__heading {
-  flex: 1;
-  margin: 0;
-  color: var(--ink);
-  font-size: var(--t4);
-  font-weight: 600;
-}
-
-.action-list > li {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-}
-
-.action-list .action-card {
-  flex: 1;
-  min-width: 0;
-}
-
-.action-card,
-.stale-row {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: var(--r2);
-  background: var(--surface);
-}
-
-.action-card {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--s4);
-  row-gap: var(--s1);
-  align-items: start;
-  padding: var(--s3);
-  text-align: left;
-}
-
-.action-card:hover,
-.stale-row:hover {
-  border-color: var(--line-strong);
-}
-
-.action-card__date {
-  grid-column: 2;
-  grid-row: 1 / span 2;
-  justify-self: end;
-  align-self: center;
-  color: var(--ink-2);
-  font-size: var(--t2);
-  white-space: nowrap;
-}
-
-.action-card strong,
-.stale-row__open strong {
-  color: var(--ink);
-  font-size: var(--t3);
-  font-weight: 600;
-}
-
-.action-card > span:not(.action-card__date),
-.stale-row__open small {
-  color: var(--ink-2);
-  font-size: var(--t2);
-}
-
-.stale-row {
-  display: flex;
-  align-items: center;
-  gap: var(--s3);
-  padding: var(--s3);
-}
-
-.stale-row__open {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  column-gap: var(--s4);
-  row-gap: var(--s1);
-  flex: 1;
-  min-width: 0;
-  margin: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  text-align: left;
-}
-
-.stale-row__open > span {
-  display: grid;
-  gap: var(--s1);
-}
-
-.stale-row__open > span:last-child {
-  justify-items: end;
-  text-align: right;
-}
-
-.stale-row__open small {
-  display: block;
-}
-
-.stale-row__reject {
-  flex: none;
-  min-height: 28px;
-  padding: 0 var(--s3);
-  font-size: var(--t2);
-  white-space: nowrap;
-}
-
-.segmented-control {
-  display: inline-flex;
-  min-width: 0;
-  margin: 0;
-  padding: var(--s1);
-  border: 1px solid var(--line);
-  border-radius: var(--r1);
-  background: var(--surface-2);
-}
-
-.segmented-control label {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 26px;
-  padding: 0 var(--s3);
-  border-radius: var(--r1);
-  color: var(--ink-2);
-  font-size: var(--t2);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.segmented-control label:hover {
-  color: var(--ink);
-}
-
-.segmented-control label:has(:checked) {
-  color: var(--ink);
-  background: var(--surface);
-  font-weight: 600;
-}
-
-/* ------------------------------------------------------------ calendar --- */
-
-.calendar__month-nav {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  min-width: 0;
-}
-
-.calendar__grid {
-  display: grid;
-  grid-template-columns: repeat(7, minmax(7rem, 1fr));
-  min-width: 52rem;
-  border-top: 1px solid var(--line);
-  border-left: 1px solid var(--line);
-}
-
-.calendar__row {
-  display: contents;
-}
-
-.calendar__weekday {
-  padding: var(--s2) var(--s3);
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  color: var(--ink-2);
-  background: var(--surface-2);
-  font-size: var(--t1);
-  font-weight: 600;
-}
-
-.calendar__day {
-  min-height: 4.5rem;
-  padding: var(--s2);
-  border-right: 1px solid var(--line);
-  border-bottom: 1px solid var(--line);
-  background: var(--surface);
-}
-
-.calendar__day--muted {
-  color: var(--ink-3);
-  background: var(--surface-2);
-}
-
-.calendar__day--today {
-  box-shadow: inset 0 0 0 2px var(--accent);
-}
-
-.calendar__date {
-  display: block;
-  margin-bottom: var(--s2);
-  font-size: var(--t2);
-  font-weight: 600;
-}
-
-.calendar__events {
-  display: grid;
-  gap: var(--s1);
-}
-
-.calendar__event {
-  display: grid;
-  gap: 0;
-  width: 100%;
-  padding: var(--s1) var(--s2);
-  overflow: hidden;
-  border: 0;
-  border-left: 2px solid var(--accent);
-  border-radius: var(--r1);
-  color: var(--ink);
-  background: var(--accent-weak);
-  font-size: var(--t1);
-  font-weight: 500;
-  text-align: left;
-}
-
-.calendar__event strong,
-.calendar__event span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.calendar__event span {
-  color: var(--ink-2);
-  font-weight: 400;
-}
-
-.calendar__event--invite {
-  border-left-color: var(--line-strong);
-  background: var(--surface-2);
-}
-
-.calendar__event--cancelled {
-  border-left-color: var(--line);
-}
-
-.calendar__event--cancelled strong,
-.calendar__event--cancelled span {
-  color: var(--ink-3);
-  text-decoration: line-through;
-}
-
 /* ---------------------------------------------------------- statistics --- */
 
 /* Headline figures sit on one baseline and wrap rather than shrink. */
@@ -1498,6 +1364,24 @@ tbody tr:hover {
   font-size: var(--t6);
   font-weight: 600;
   line-height: 1.1;
+}
+
+/* The share a figure is out of its total, quieter than the label it follows. */
+.statistics__total small,
+.statistics td small {
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+/*
+ * The preference means sit under their table as a sentence rather than as more headline
+ * figures: they describe that table, and promoting them would put two kinds of number on
+ * one baseline at the top.
+ */
+.statistics__note {
+  margin: var(--s3) 0 0;
+  color: var(--ink-2);
+  font-size: var(--t2);
 }
 
 .statistics__table {
@@ -2079,6 +1963,21 @@ tbody tr:hover {
   margin-top: var(--s2);
 }
 
+/*
+ * Sits under the state select in the same cell, the way Done sits under the action text.
+ * Quieter than the select above it: the select is how a row's state is read, this is only
+ * a shortcut to one of its options.
+ */
+.reject-button {
+  gap: var(--s2);
+  min-height: 28px;
+  margin-top: var(--s2);
+  padding: 0 var(--s3);
+  color: var(--ink-2);
+  font-size: var(--t2);
+  white-space: nowrap;
+}
+
 .stage-note {
   display: grid;
   gap: var(--s3);
@@ -2197,15 +2096,16 @@ tbody tr:hover {
  * is transparent — it exists to be measured and painted behind, never read.
  */
 /*
- * The box, the layer of marks behind it, and the column of fold controls beside it. The
- * controls stand outside the box because a textarea has no room in its text for anything
- * that is not text, and the column is a real one rather than padding stolen from the box:
- * a chevron over the text would sit on the words it folds.
+ * The box, the layer of marks behind it, and the columns of fold controls and line
+ * numbers beside it. Both columns stand outside the box because a textarea has no room
+ * in its text for anything that is not text, and each is a real column rather than
+ * padding stolen from the box: a chevron or a number over the text would sit on the
+ * words it names.
  */
 .stage-note__source {
   position: relative;
   display: grid;
-  grid-template-columns: var(--fold-gutter) minmax(0, 1fr);
+  grid-template-columns: var(--fold-gutter) var(--line-number-gutter) minmax(0, 1fr);
   gap: var(--s2);
   min-height: 0;
 }
@@ -2217,11 +2117,17 @@ tbody tr:hover {
   min-height: 0;
 }
 
-/* Clips the controls to the box, so one belonging to a line scrolled out of view is not
-   left drawn against the pane's edge. */
+/*
+ * Clips the controls to the box, so one belonging to a line scrolled out of view is not
+ * left drawn against the pane's edge. Bordered like the box itself, transparently: the
+ * box's own border sits above its padding, so without a border here of the same width
+ * every control would measure one line high before where the text it names actually
+ * starts — the same reasoning .stage-note__marks below is bordered for.
+ */
 .stage-note__gutter {
   position: relative;
   overflow: hidden;
+  border: 1px solid transparent;
 }
 
 /*
@@ -2263,6 +2169,40 @@ tbody tr:hover {
   padding: 0 var(--s2);
   color: var(--ink-2);
   font-size: var(--t2);
+}
+
+/* Clips the numbers to the box, matching .stage-note__gutter, so one belonging to a
+   scrolled-out line is not left drawn against the pane's edge — bordered the same way
+   and for the same reason. */
+.stage-note__line-numbers {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid transparent;
+}
+
+.stage-note__line-numbers-lines {
+  position: absolute;
+  inset: var(--s3) 0 auto 0;
+}
+
+/*
+ * Its own top is measured off the box's text, so it has to sit the same distance into
+ * its own line as that text does into the box's — which needs the same font-size and
+ * line-height, not only the same top. A smaller size or a shorter line here would still
+ * land at the right pixel, but centre its glyph higher within it, drifting above the
+ * line it names. Weight matters too: .stage-note__marks is stated for the same reason,
+ * being outside .field and so not heir to the 500 it sets there.
+ */
+.stage-note__line-number {
+  position: absolute;
+  right: 0;
+  left: 0;
+  color: var(--ink-3);
+  font-size: var(--t3);
+  font-weight: 500;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 
 .stage-note__marks {
@@ -4344,7 +4284,7 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .table-col-header input,
   .table-col-header select,
   .table-state-select,
-  .stale-row__reject,
+  .reject-button,
   .stage-notes-button--table,
   .complete-action-button--table,
   .stage-note__mode {
@@ -4360,10 +4300,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .stage-note__format {
     min-width: 40px;
     min-height: 40px;
-  }
-
-  .segmented-control label {
-    min-height: 34px;
   }
 
   /* Under the floors above, one row would leave every control at its minimum. Wrapping
@@ -4393,44 +4329,6 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .field--wide {
     grid-column: auto;
-  }
-
-  .action-card {
-    grid-template-columns: 1fr;
-    gap: var(--s2);
-  }
-
-  .action-card__date {
-    grid-column: 1;
-    grid-row: auto;
-    justify-self: start;
-    white-space: normal;
-  }
-
-  .stale-row {
-    flex-wrap: wrap;
-  }
-
-  /*
-   * A Focus row now carries two controls beside the card. Let them drop below it the way the
-   * stale row's do, rather than crushing the card to make space.
-   */
-  .action-list > li {
-    flex-wrap: wrap;
-  }
-
-  .action-list .action-card {
-    flex: 1 1 12rem;
-  }
-
-  .stale-row__open {
-    flex: 1 1 12rem;
-    grid-template-columns: 1fr;
-  }
-
-  .stale-row__open > span:last-child {
-    justify-items: start;
-    text-align: left;
   }
 
   .dialog-backdrop {
@@ -4476,19 +4374,9 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   }
 
   .view-toolbar,
-  .calendar__toolbar,
   .view-heading {
     align-items: stretch;
     flex-direction: column;
-  }
-
-  .calendar__month-nav {
-    justify-content: space-between;
-  }
-
-  .segmented-control {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
   }
 
   .dialog__actions {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { emptyCompensation } from '../domain'
+import { STATE_IDS, emptyCompensation, stateFilterMatches } from '../domain'
 import type { Application, StateEvent, StateId } from '../domain'
 import {
   ACTION_HORIZON_DAYS,
@@ -119,6 +119,22 @@ describe('lifecycle classification', () => {
     expect(rankByUrgency(applications, today).map(({ application: item }) => item.company)).toEqual([
       'Live Co',
     ])
+  })
+})
+
+describe('the live filter and the ranking share one definition', () => {
+  it('ranks exactly the states the live filter admits', () => {
+    const applications: Application[] = STATE_IDS.map((state) =>
+      application(`${state} Co`, { state, state_history: [{ state, at: at(-3) }] }),
+    )
+
+    const ranked = rankByUrgency(applications, today).map(({ application: item }) => item.state)
+    const admitted = STATE_IDS.filter((state) => stateFilterMatches('live', state))
+
+    expect(ranked.slice().sort()).toEqual(admitted.slice().sort())
+    expect(applications.filter((item) => urgencyFor(item, today) !== null)).toHaveLength(
+      admitted.length,
+    )
   })
 })
 

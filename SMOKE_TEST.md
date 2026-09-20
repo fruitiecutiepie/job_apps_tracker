@@ -8,8 +8,8 @@ Run:
 pnpm test:smoke
 ```
 
-This checks the demo-profile journey: 19 first-load examples, navigation through all six views
-(Kanban, Table, Focus, Calendar, Stale, Statistics), creating and searching for an application,
+This checks the demo-profile journey: 19 first-load examples, navigation through all four views
+(Kanban, Table, Statistics, Compare), creating and searching for an application,
 changing its state and recording history, marking a next action done and logging it in the
 notes, recording stage prep notes against it, persistence across an app reload, and confirmed
 demo-data reset.
@@ -98,29 +98,33 @@ neither a finger nor any browser automation.
    plain score, and that an unrated card shows no preference line at all.
 3. Confirm the view name and the "N of M applications shown" count each appear exactly
    once, in the context bar, and that no view repeats them as a visible heading.
-   Open Table, Focus, Calendar, Stale, and Statistics. Confirm each view is
+   Open Table and Statistics. Confirm each view is
    readable at both wide and narrow window sizes.
-   On Focus, confirm only the leading non-empty group starts open, that group headers show
-   counts even while collapsed, that expanding and collapsing works with keyboard alone, and
-   that each row's stated reason agrees with the group heading it sits under.
-   Confirm the dated groups still read in date order regardless of how their rows are rated:
+   On Table, confirm it opens sorted by Urgency with the rows banded under headings, that
+   each band shows a count, that every band holds at least one application so each heading
+   is visible, and that each row's stated reason agrees with the band it sits under.
+   Confirm the dated band reads in date order regardless of how its rows are rated:
    preference only separates rows whose date and urgency already match, so a well-rated
    application must never appear above one that is due sooner.
-   Confirm Northstar Labs appears under **No stage change in more than 7 days** and does not
-   appear on Stale at any threshold: it was edited yesterday but has not moved in weeks.
-   Confirm every group has at least one application, so each heading and row format is visible.
-   On Table, confirm a column filter narrows rows without changing Kanban, and that
+   Sort by Company and confirm the band headings go away, then sort by Urgency again and
+   confirm they come back.
+   Confirm Northstar Labs bands under **Live, nothing dated** with a reason naming the
+   silence: it was edited yesterday but has not moved in weeks, and the Activity column
+   reads it as Idle while its band reason names the stage change it has not had.
+   Confirm a column filter narrows rows without changing Kanban, and that
    Clear column filters restores the table, including when only the Preference filter is set.
-   Sort by Urgency and confirm the most pressing live applications lead, that each row
+   Confirm the most pressing live applications lead, that each row
    explains itself, and that rejected, accepted, and no-openings rows show an unranked dash.
-   On Stale, confirm a live-state row has Move to Rejected and that already-rejected,
-   accepted, headhunted, and no-openings rows do not.
-4. Confirm **Done** appears beside a next action in all three places and nowhere else: on the
+   Confirm a live row has a **Reject** button beside its state select and that
+   already-rejected, accepted, and no-openings rows do not. Press it on one and confirm the
+   row moves to that state's rejected counterpart and gains a history entry.
+4. Confirm **Done** appears beside a next action in both places and nowhere else: on the
    Atlas Thread Kanban card — on the **Next** line itself, not down beside Move and Prep notes —
-   on its Focus row, and in its Table **Next action** cell, but on no card or row without an
+   and in its Table **Next action** cell, but on no card or row without an
    action. Select **Done** on the Saffron Systems card, an accepted application whose only
    remaining reason to appear is its task. Confirm the Next line and the Done control both go,
-   that the row leaves Focus's **Finished, action outstanding** group, and that the stage, the
+   that the row moves from the table's **Finished, action outstanding** band to **Finished**,
+   and that the stage, the
    state history, the deadline, and the Notes text are all unchanged.
    Open Saffron Systems and confirm **Completed actions** lists the task you just closed above
    the Notes box, newest first, with today's date and nothing written into Notes itself. Open
@@ -137,8 +141,8 @@ neither a finger nor any browser automation.
    arrow keys — confirming the control shows a focus ring and sits on one row beside
    **Prep notes**. Reload the page and confirm it remains.
    Add a second application with only a deadline and no next action, and confirm the
-   deadline saves, shows in the Table deadline column and in Focus, and does not appear on
-   the Calendar.
+   deadline saves, shows in the Table deadline column and bands the row under **Dated,
+   soonest first**.
 6. Use Tab, Shift+Tab, Enter, and Escape to navigate controls and the application
    dialog. Confirm focus is visible and every form field has a useful label.
 7. Open **More actions**, close it with Escape, reopen it and close it by clicking
@@ -273,10 +277,10 @@ neither a finger nor any browser automation.
     the description, times, place, and any joining link are filled in, and that the stage defaults to
     the application's current state. Save, reopen, and confirm the invite persisted. Import the same
     file again and confirm it updates that invite rather than adding a second one. Confirm the invite
-    appears on the Calendar on its local day, on the Kanban card, and in the table's Invites column,
+    appears on the Kanban card and in the table's Invites column,
     and that searching its description finds the application. On Table, sort by **Invites** and
     confirm rows with nothing coming sink to the bottom. Tick **Cancelled**, save, and confirm the
-    calendar entry and the table cell read as cancelled and the card no longer shows it.
+    table cell reads as cancelled and the card no longer shows it.
 12. In the application editor, open **Correspondence** and choose **Add message**. Paste a real
     multi-paragraph email into **Message**, set **Sent** to a date several days in the past, name
     who it was from, and pick a channel from the suggestions — confirming the box still accepts a
@@ -295,10 +299,17 @@ neither a finger nor any browser automation.
     low judgement. Confirm the Kanban card for the same application reads the same text as the
     column. Sort Preference both ways and confirm unrated rows stay at the bottom in
     each direction.
-    On Statistics, confirm the header reads 19 total, 3 rated, and a mean preference of 3.96,
-    and that the **Ratings** table lists all four dimensions with the demo's counts — People
-    judged twice with a mean of 2.50, and one **Don't know**. Filter by a company you have not
-    rated and confirm the table is replaced by a plain sentence rather than a grid of zeros.
+    On Statistics, confirm the five headline figures read 19 applications with the demo's
+    live count, heard-back count, got-past-the-first-stage count and median reply days, and
+    that each shows its share of the total. Confirm the **Stages** table lists only stages
+    something has reached, with no rejected states among them, and that Here now plus Ended
+    here across the table equals 19. Confirm **Sources** lists each of the demo's sources
+    with its own reply and progress counts. Confirm the **Ratings** table lists all four
+    dimensions with the demo's counts — People judged twice with a mean of 2.50, and one
+    **Don't know** — above a line reading 3 of 19 rated with a mean preference of 3.96.
+    Filter by a company you have not rated and confirm that table is replaced by a plain
+    sentence rather than a grid of zeros. Filter to nothing at all and confirm the view
+    offers an empty state rather than a page of dashes.
 14. In the application editor, pick a currency, set an **Advertised** band and an **Expected**
     single figure, save, reopen, and confirm the band reads back in both boxes while the
     single figure leaves its **to** box empty. With the cursor in an amount box, press the up

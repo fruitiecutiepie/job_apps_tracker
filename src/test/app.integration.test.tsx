@@ -185,16 +185,16 @@ describe('job applications tracker', () => {
     expect(testTrackerStore.getItem('job-applications-tracker:v1')).toBe('{invalid')
   })
 
-  it('offers all seven views and keeps the shared collection available while navigating', async () => {
+  it('offers all four views and keeps the shared collection available while navigating', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
     // Scoped to the nav rather than searched for across the page, per AGENTS.md: a role
     // query walks the tree computing an accessible name per candidate, which costs far
-    // more over a thousand-node app than over the seven buttons in this one landmark.
+    // more over a thousand-node app than over the four buttons in this one landmark.
     const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
 
-    for (const view of ['Table', 'Focus', 'Calendar', 'Stale', 'Statistics', 'Compare'] as const) {
+    for (const view of ['Table', 'Statistics', 'Compare'] as const) {
       const viewButton = views.getByRole('button', { name: view })
       await user.click(viewButton)
       expect(viewButton).toHaveAttribute('aria-current', 'page')
@@ -280,6 +280,27 @@ describe('job applications tracker', () => {
     // Neither is a rejection, so both survive a filter that only removes them.
     expect(screen.getByRole('heading', { name: 'Accepted' })).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'No openings' })).toBeInTheDocument()
+
+    expect(readSavedDocument().applications).toHaveLength(19)
+  })
+
+  it('filters to what is still running, which keeps less than everything not rejected', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.selectOptions(screen.getByLabelText('Filter by state'), 'live')
+
+    // Nine live stages, one application in each: the eleven that are not rejections, less
+    // Accepted and No openings.
+    expect(screen.getByText('9 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Offer' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Offer — Rejected' })).not.toBeInTheDocument()
+    // The pair that separates this filter from Not rejected: neither was turned down, and
+    // neither is still in play.
+    expect(screen.queryByRole('heading', { name: 'Accepted' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'No openings' })).not.toBeInTheDocument()
 
     expect(readSavedDocument().applications).toHaveLength(19)
   })
@@ -491,6 +512,60 @@ describe('job applications tracker', () => {
       screen.queryByRole('button', { name: /^Mark done for Saffron Systems/ }),
     ).not.toBeInTheDocument()
     expect(readSavedDocument().applications).toHaveLength(19)
+  })
+
+  it('clears an outstanding next action when the application is rejected', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
+    const user = userEvent.setup()
+    const { unmount } = await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Marble & Finch',
+    )!
+    expect(before.next_action).toBe('Follow up on the application')
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Move Marble & Finch to state' }),
+      'auto_rejected',
+    )
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.state).toBe('auto_rejected')
+    expect(after.next_action).toBeNull()
+    expect(after.next_action_at).toBeNull()
+    // Abandoned, not carried out, so it leaves no record of having been done.
+    expect(after.completed_actions).toEqual(before.completed_actions)
+    // A closing date is not the task, and the move is still one stage change.
+    expect(after.deadline_at).toBe(before.deadline_at)
+    expect(after.state_history).toHaveLength(before.state_history.length + 1)
+
+    // Said out loud rather than left to be noticed, since a task disappeared.
+    expect(await screen.findByText(/Next action cleared\./)).toBeInTheDocument()
+
+    unmount()
+    await renderLoadedApp()
+    expect(
+      readSavedDocument().applications.find((item) => item.id === before.id)!.next_action,
+    ).toBeNull()
+  })
+
+  it('keeps a next action when the move is to a live stage, not a rejection', async () => {
+    seedFullDemo()
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Marble & Finch',
+    )!
+
+    await user.selectOptions(
+      screen.getByRole('combobox', { name: 'Move Marble & Finch to state' }),
+      'recruiter_messaged',
+    )
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.state).toBe('recruiter_messaged')
+    expect(after.next_action).toBe('Follow up on the application')
+    expect(after.next_action_at).toBe(before.next_action_at)
   })
 
   it('marks an action done from the editor and lists it apart from the notes', async () => {
@@ -853,9 +928,9 @@ describe('job applications tracker', () => {
     expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
 
     // A tab that changed only what was underneath would look like a button doing nothing.
-    await user.click(views.getByRole('button', { name: 'Calendar' }))
+    await user.click(views.getByRole('button', { name: 'Statistics' }))
     expect(screen.queryByRole('region', { name: 'Stage prep notes' })).not.toBeInTheDocument()
-    expect(views.getByRole('button', { name: 'Calendar' })).toHaveAttribute('aria-current', 'page')
+    expect(views.getByRole('button', { name: 'Statistics' })).toHaveAttribute('aria-current', 'page')
     expect(screen.getByRole('button', { name: 'Prep notes' })).toHaveAttribute('aria-pressed', 'false')
   })
 
@@ -878,12 +953,12 @@ describe('job applications tracker', () => {
     expect(notesButton()).toHaveAttribute('aria-pressed', 'false')
 
     // Including when a card put you there rather than the header button.
-    await user.click(views.getByRole('button', { name: 'Focus' }))
+    await user.click(views.getByRole('button', { name: 'Kanban' }))
     await user.click(screen.getAllByRole('button', { name: /prep notes for/i })[0])
     expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
 
     await user.click(notesButton())
-    expect(views.getByRole('button', { name: 'Focus' })).toHaveAttribute('aria-current', 'page')
+    expect(views.getByRole('button', { name: 'Kanban' })).toHaveAttribute('aria-current', 'page')
   })
 
   it('offers no collection filters on the prep notes view', async () => {
@@ -4246,6 +4321,65 @@ describe('job applications tracker', () => {
     )!
     expect(halcyonAfter.stage_notes).toEqual(halcyonBefore.stage_notes)
   })
+
+  it('does not lose a compare-card edit when the full editor is opened over it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Halcyon Maps',
+    )!
+    const originalBody = before.stage_notes.find((note) => note.state === 'interview_2')!.body
+
+    await user.click(screen.getByRole('button', { name: 'Compare' }))
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Stage' }), 'Interview 2')
+
+    const group = screen.getByRole('region', { name: 'Interview 2' })
+    const card = within(group)
+      .getByRole('heading', { level: 4, name: /Halcyon Maps/ })
+      .closest('article')!
+
+    // Type into the card, then leave for the full editor before the autosave runs.
+    await user.click(within(card).getByRole('button', { name: /^Edit / }))
+    const editor = within(card).getByLabelText('Halcyon Maps · Interview 2 prep notes')
+    await user.type(editor, '\n\nAsk who owns the platform roadmap.')
+    await user.click(within(card).getByRole('button', { name: /in the full editor$/ }))
+
+    const panel = await screen.findByRole('region', { name: 'Stage prep notes' })
+    // Let the card's own autosave land while the panel is holding the same note.
+    await waitFor(
+      () => {
+        const saved = readSavedDocument().applications.find((item) => item.id === before.id)!
+        expect(saved.stage_notes.find((note) => note.state === 'interview_2')!.body).toContain(
+          'Ask who owns the platform roadmap.',
+        )
+      },
+      { timeout: 4000 },
+    )
+
+    // Now edit in the panel, which seeded its draft before that write landed.
+    await user.click(within(panel).getByRole('button', { name: /^Edit .*Interview 2/ }))
+    const panelEditor = within(panel).getByLabelText(/Interview 2 prep notes/)
+    await user.type(panelEditor, '\n\nConfirm the start date.')
+
+    await waitFor(
+      () => {
+        const saved = readSavedDocument().applications.find((item) => item.id === before.id)!
+        expect(saved.stage_notes.find((note) => note.state === 'interview_2')!.body).toContain(
+          'Confirm the start date.',
+        )
+      },
+      { timeout: 4000 },
+    )
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    const body = after.stage_notes.find((note) => note.state === 'interview_2')!.body
+    expect(body).toContain(originalBody)
+    // The card's sentence must survive the panel's write rather than being overwritten by
+    // a draft the panel seeded before it landed.
+    expect(body).toContain('Ask who owns the platform roadmap.')
+    expect(body).toContain('Confirm the start date.')
+  }, 30_000)
 
   it('drops an application from the board when its chip is unchecked, and shows the empty state when none remain', async () => {
     const user = userEvent.setup()

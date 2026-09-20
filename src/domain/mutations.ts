@@ -7,7 +7,7 @@ import {
 import { isCorrespondenceDirection } from './correspondence'
 import { createUuidV7 } from './id'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
-import { isStateId, stateRank } from './states'
+import { isRejectedState, isStateId, stateRank } from './states'
 import { safeAttachmentFilename } from './attachmentPaths'
 import type {
   Application,
@@ -794,6 +794,22 @@ export function removeAttachment(
   }
 }
 
+/**
+ * A rejection ends the application, so a task still sitting on it is work that will not
+ * happen. The move drops it rather than leaving it to be cleared by hand, which is what
+ * otherwise accumulates: the rejection arrives, the stage moves, and the follow-up stays
+ * on the plan forever because nothing ever asks about it again.
+ *
+ * It is dropped, never recorded through `completeNextAction`. An abandoned task was not
+ * carried out, and `completed_actions` means carried out. The history entry for the move
+ * is the record of why it went, and `deadline_at` is untouched for the same reason it
+ * survives a completion: an external closing date is not the task.
+ *
+ * Only rejected states, not every ending. `accepted` is an outcome you act on — sign the
+ * contract, give notice — so a task there is live work, and `no_openings` is close enough
+ * to a rejection to be tempting but is a state you may still be working, since nothing was
+ * turned down. Widening this would mean guessing, and guessing wrong deletes a task.
+ */
 export function moveApplicationState(
   application: Application,
   state: StateId,
@@ -802,9 +818,11 @@ export function moveApplicationState(
   if (!isStateId(state)) throw new TypeError('State is invalid')
   if (application.state === state) return application
   const updatedAt = timestamp(at)
+  const abandonsNextAction = isRejectedState(state) && Boolean(optionalText(application.next_action))
   return {
     ...application,
     state,
+    ...(abandonsNextAction ? { next_action: null, next_action_at: null } : null),
     state_history: [...application.state_history, { state, at: updatedAt }],
     updated_at: updatedAt,
   }

@@ -74,14 +74,42 @@ export const NOT_REJECTED_STATE_IDS = Object.freeze(
 ) as readonly StateId[]
 
 /**
- * What the state filter can be set to: one state, one of the two outcome groups, or all.
+ * Whether an application in this state is still running, was turned down, or ended some
+ * other way. `accepted` and `no_openings` are the states that make this more than a synonym
+ * for `isRejectedState`: nobody rejected either one, and neither is still in play.
+ *
+ * A view-only grouping, like the rejection one above. It never restricts moves: any state
+ * can still move to any other.
+ */
+export type Lifecycle = 'live' | 'rejected' | 'closed'
+
+const CLOSED_STATES = new Set<StateId>(['accepted', 'no_openings'])
+
+export function classifyLifecycle(state: StateId): Lifecycle {
+  if (isRejectedState(state)) return 'rejected'
+  if (CLOSED_STATES.has(state)) return 'closed'
+  return 'live'
+}
+
+export const LIVE_STATE_IDS = Object.freeze(
+  STATE_IDS.filter((id) => classifyLifecycle(id) === 'live'),
+) as readonly StateId[]
+
+/**
+ * What the state filter can be set to: one state, one of the three outcome groups, or all.
  * The groups share the control rather than adding one of their own — they answer the same
  * question a single state does, so picking both at once was never meaningful.
+ *
+ * `live` is not a third spelling of `not_rejected`. Not-rejected keeps `accepted` and
+ * `no_openings`, because neither is a rejection; live drops them, because neither is still
+ * running. It reads the same `classifyLifecycle` the urgency ranking does, so what this
+ * filter shows and what that ranking scores cannot drift apart.
  */
-export type StateFilter = StateId | 'all' | 'rejected' | 'not_rejected'
+export type StateFilter = StateId | 'all' | 'live' | 'rejected' | 'not_rejected'
 
 export function stateFilterMatches(filter: StateFilter, state: StateId): boolean {
   if (filter === 'all') return true
+  if (filter === 'live') return classifyLifecycle(state) === 'live'
   if (filter === 'rejected') return isRejectedState(state)
   if (filter === 'not_rejected') return !isRejectedState(state)
   return state === filter
@@ -90,6 +118,7 @@ export function stateFilterMatches(filter: StateFilter, state: StateId): boolean
 /** The states a filter admits, or undefined for the filter that admits every one. */
 export function statesForFilter(filter: StateFilter): readonly StateId[] | undefined {
   if (filter === 'all') return undefined
+  if (filter === 'live') return LIVE_STATE_IDS
   if (filter === 'rejected') return REJECTED_STATE_IDS
   if (filter === 'not_rejected') return NOT_REJECTED_STATE_IDS
   return [filter]

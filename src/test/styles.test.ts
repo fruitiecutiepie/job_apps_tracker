@@ -40,6 +40,61 @@ describe('idle pill', () => {
   })
 })
 
+describe('table band heading', () => {
+  it('reads as the quietest heading in the interface, in tokens only', () => {
+    const body = ruleBody('.table-view__band-heading')
+
+    // The same treatment the notes panel gives its section title.
+    const sidebar = ruleBody('.panel__sidebar-title')
+    expect(body).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(body).toMatch(/font-size:\s*var\(--t1\)/)
+    expect(sidebar).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(sidebar).toMatch(/font-size:\s*var\(--t1\)/)
+    // A band separates rows; it never signals state.
+    expect(body).not.toMatch(/--accent|--danger/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(body).not.toMatch(/\d+px/)
+
+    // The heading row spans the table, so it takes neither the row hover nor a cell fill.
+    expect(ruleBody('.table-view__band:hover')).toMatch(/background:\s*transparent/)
+    expect(ruleBody('.table-view__band th')).toMatch(/background:\s*transparent/)
+    expect(ruleBody('.table-view__band th')).not.toMatch(/\d+px/)
+  })
+})
+
+describe('reject shortcut', () => {
+  it('sits quieter than the state select it shortcuts, in tokens only', () => {
+    const body = ruleBody('.reject-button')
+    const select = ruleBody('.table-state-select')
+
+    // Same row height as the select above it, so the cell does not look ragged.
+    expect(body).toMatch(/min-height:\s*28px/)
+    expect(select).toMatch(/min-height:\s*28px/)
+    // Quieter: the select carries the row's state in full ink, this is a shortcut.
+    expect(body).toMatch(/color:\s*var\(--ink-2\)/)
+    expect(select).toMatch(/color:\s*var\(--ink\)/)
+    // Rejecting is an ordinary move, not a destructive act: no danger colour.
+    expect(body).not.toMatch(/--danger|--accent/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    // The 28px control height is the table's own convention; nothing else is raw.
+    expect(body.replace(/28px/g, '')).not.toMatch(/\d+px/)
+  })
+})
+
+describe('statistics figures', () => {
+  it('keeps a share quieter than the figure it qualifies, in tokens only', () => {
+    const body = ruleBody('.statistics__total small,\n.statistics td small')
+    const figure = ruleBody('.statistics__total strong')
+
+    // The count leads; the percentage beside it is context, not a second headline.
+    expect(figure).toMatch(/font-size:\s*var\(--t6\)/)
+    expect(body).toMatch(/font-size:\s*var\(--t2\)/)
+    expect(body).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(body).not.toMatch(/\d+px/)
+  })
+})
+
 describe('shortcut keys', () => {
   it('draws the key chip from the token scale, like every other chip', () => {
     const body = ruleBody('.panel__shortcut-key')

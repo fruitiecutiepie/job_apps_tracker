@@ -80,7 +80,12 @@ export type BlockNode = HeadingBlock | ParagraphBlock | ListBlock | CodeBlock | 
 
 const HEADING = /^ {0,3}(#{1,6})\s+(.*?)\s*#*\s*$/
 const FENCE = /^ {0,3}(`{3,}|~{3,})\s*([^\s`~]+)?\s*$/
-const LIST_ITEM = /^(\s*)(?:([-*+])|(\d{1,9})[.)])\s+(.*)$/
+/**
+ * Exported so the editor can recognise a list item on its own line without re-deriving
+ * this pattern: it is the one definition of what counts as a bullet or numbered marker,
+ * shared by the parser and by list-continuation on Enter.
+ */
+export const LIST_ITEM = /^(\s*)(?:([-*+])|(\d{1,9})[.)])\s+(.*)$/
 const QUOTE = /^ {0,3}> ?(.*)$/
 const ESCAPABLE = /[\\`*_[\]()#+\-.!>]/
 // A table's second line: one or more `-`, optionally flanked by `:`, per column. `|`
