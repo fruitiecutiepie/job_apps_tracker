@@ -6,7 +6,7 @@ import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangeme
 import { CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE, MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
 import { FORMATS, type Format } from './noteFormats'
-import { STATE_CONFIG, type StageNote, type StageNoteEditSession, type StateId } from './domain'
+import type { StageNote, StageNoteEditSession } from './domain'
 import { noteRefKey, tabId, type NoteRef } from './notesLayout'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
 import { shortcutKeys } from './shortcuts'
@@ -24,12 +24,6 @@ interface StageNotePaneProps {
   role: string
   /** Whether this is the application's own stage, which the panel tints. */
   isCurrentState: boolean
-  /**
-   * Swaps this pane's own tab for a different one of the application's stages — a change
-   * to what this tab is showing, not a change to the application itself, and not a second
-   * tab opened alongside it.
-   */
-  onSwitchStage: (state: StateId) => void
   body: string
   saved: StageNote | undefined
   session: StageNoteEditSession | undefined
@@ -104,7 +98,6 @@ export function StageNotePane({
   company,
   role,
   isCurrentState,
-  onSwitchStage,
   body,
   saved,
   session,
@@ -248,20 +241,6 @@ export function StageNotePane({
               view, so it is never the case that the header says something the strip does
               not. What a screen reader is handed for the note stays. */}
           <h3 className="sr-only" id={stageNoteHeadingId(groupId, noteRef)}>{company} · {role}</h3>
-          <label className="stage-note__state">
-            <span className="sr-only">Go to a different stage for {company}</span>
-            <select
-              className={`stage-note__state-select${isCurrentState ? ' stage-note__state-select--current' : ''}`}
-              onChange={(event) => onSwitchStage(event.target.value as StateId)}
-              value={noteRef.state}
-            >
-              {STATE_CONFIG.map((state) => (
-                <option key={state.id} value={state.id}>
-                  {state.label}
-                </option>
-              ))}
-            </select>
-          </label>
           {saved ? (
             /*
              * The date carries the word only to a screen reader. A bare date in a note's

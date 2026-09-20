@@ -671,6 +671,48 @@ describe('job applications tracker', () => {
     expect(views.queryByRole('button', { current: 'page' })).not.toBeInTheDocument()
   })
 
+  it('opens the application editor from the note that prepares for it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    const before = within(panel).getAllByRole('tab').length
+
+    const opener = within(panel).getByRole('button', {
+      name: 'Open the application for Halcyon Maps — Engineering Manager',
+    })
+    // Beside the name it acts on, in the bar that already says which application is being
+    // read — not one control per pane header.
+    expect(opener.closest('.panel__titlebar')).not.toBeNull()
+    expect(opener.closest('.stage-note__header')).toBeNull()
+
+    await user.click(opener)
+
+    // The record behind the name on the tab, reached without going back to the board.
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    expect(within(dialog).getByLabelText('Company')).toHaveValue('Halcyon Maps')
+
+    const role = within(dialog).getByLabelText('Role')
+    await user.clear(role)
+    await user.type(role, 'Principal Engineer')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(
+      readSavedDocument().applications.find((application) => application.company === 'Halcyon Maps')?.role,
+    ).toBe('Principal Engineer')
+
+    // The editor opened over the workspace rather than instead of it, so what was
+    // arranged is still arranged, and focus comes back to the control that opened it.
+    const after = screen.getByRole('region', { name: 'Stage prep notes' })
+    expect(within(after).getAllByRole('tab')).toHaveLength(before)
+    expect(
+      within(after).getByRole('button', {
+        name: 'Open the application for Halcyon Maps — Principal Engineer',
+      }),
+    ).toHaveFocus()
+  })
+
   it('closes the note being read with the panel\'s own close binding', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
@@ -1234,6 +1276,12 @@ describe('job applications tracker', () => {
       within(dialog).getByRole('combobox', {
         name: 'Go to a different stage for Halcyon Maps',
       }) as HTMLSelectElement
+
+    // Beside the name it qualifies, in the title bar: the bar says which application is
+    // being read, the pill says which of its stages. In the pane header it was the first
+    // visible thing in a row whose name is `sr-only`, so a control stood in for a heading.
+    expect(select().closest('.panel__titlebar')).not.toBeNull()
+    expect(select().closest('.stage-note__header')).toBeNull()
 
     // Reads as the tab open in front of you, not as wherever the application actually
     // stands — an older or a not-yet-reached stage can be open without being where the

@@ -2013,35 +2013,6 @@ tbody tr:hover {
   font-weight: 600;
 }
 
-/* Which of the application's stages is open here, changeable without leaving the note:
-   reading as a pill until it is touched, the pipeline's own vocabulary rather than a form
-   field's. Capped rather than left to size itself to its longest option — "Recruiter
-   messaged — Rejected" would otherwise widen every header to fit a value most stages
-   never hold. */
-.stage-note__state-select {
-  max-width: 9rem;
-  min-height: 22px;
-  padding: 0 var(--s5) 0 var(--s2);
-  overflow: hidden;
-  border: 1px solid transparent;
-  border-radius: var(--pill);
-  color: var(--ink-2);
-  background: var(--surface-3);
-  font-size: var(--t1);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.stage-note__state-select:hover {
-  border-color: var(--line-strong);
-}
-
-.stage-note__state-select--current {
-  color: var(--surface);
-  background: var(--accent);
-}
-
 .stage-note__meta {
   /* Takes the row's slack, so what follows it ends the row rather than floating in the
      middle of it — and the fold and format controls sit with the stage they act on. */
@@ -2537,13 +2508,83 @@ tbody tr:hover {
   background: var(--surface-2);
 }
 
-.panel__subject {
+/* The name and the control that opens the record behind it travel together, so the pair
+   takes the free space and the control stays against the name rather than drifting to the
+   far end of the bar with the panel's own chrome. */
+.panel__subject-group {
+  display: flex;
   flex: 1;
   min-width: 0;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.panel__subject {
+  /* Inside the group now: it gives up the free space to the group and takes what the
+     controls beside it leave, so a long company name ellipses instead of pushing them off.
+
+     The shrink factor is what orders that. Squeezed, the name and the stage beside it are
+     comparable lengths, so an even share would start cutting both at once — and the pill
+     would lose its value to save a name that is written out in full on the tab below. A
+     factor this lopsided spends the name first and reaches the stage only once there is no
+     name left to give. */
+  flex: 0 1000 auto;
+  min-width: 0;
   margin: 0;
+  overflow: hidden;
   color: var(--ink);
   font-size: var(--t5);
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The control keeps its width whatever the name does. */
+.panel__subject-open {
+  flex: none;
+}
+
+/* Shrinkable, but last: this is what gives `max-width: 100%` on the pill inside it
+   something to clamp against, so a panel too narrow for the whole label ends in an
+   ellipsis rather than pushing the label past the edge the panel clips at. */
+.panel__subject-stage {
+  display: flex;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+/* Which of the focused pane's stages is open, changeable without leaving the note: reading
+   as a pill until it is touched, the pipeline's own vocabulary rather than a form field's.
+
+   `field-sizing` sizes it to the stage it is showing rather than to its widest option, and
+   nothing caps it below that: a stage is a name, and a name cut to "Recruiter messa…" is
+   the one thing this pill exists to say. It was held to `9rem` to stop the longest label
+   widening the bar, which bought that width by spending the value. The name beside it is
+   what gives instead — it ellipses, and is written out in full on the tab below — which is
+   the same trade the note header makes for the same reason.
+
+   `max-width: 100%` is the floor of last resort rather than a cap: the pill can never grow
+   past the bar it sits in, so a panel too narrow to hold the whole label clips it to the
+   ellipsis instead of pushing it out of sight. */
+.panel__stage-select {
+  field-sizing: content;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 22px;
+  padding: 0 var(--s5) 0 var(--s2);
+  overflow: hidden;
+  border: 1px solid transparent;
+  border-radius: var(--pill);
+  color: var(--ink-2);
+  background: var(--surface-3);
+  font-size: var(--t1);
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.panel__stage-select:hover {
+  border-color: var(--line-strong);
 }
 
 /* The panel's buttons are sized here rather than inherited from `.dialog .button`, which

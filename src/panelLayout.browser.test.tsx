@@ -79,6 +79,7 @@ function renderPanel(applications = fixtureApplications()) {
               onCapture={async () => {}}
               onEmpty={() => {}}
               onExternalChange={async () => {}}
+              onOpenApplication={() => {}}
               onRevise={async () => {}}
               onSaveDrafts={async () => true}
               request={null}
@@ -668,5 +669,58 @@ describe('the panel in a real browser', () => {
     await userEvent.dragAndDrop(within(strips()[0]).getAllByRole('tab')[1], target)
 
     expect(counts()).toEqual([1, 2])
+  })
+})
+
+describe('the stage pill in the title bar', () => {
+  beforeEach(async () => {
+    await page.viewport(WIDE.width, WIDE.height)
+  })
+
+  /**
+   * How wide the pill would have to be to say all of its label. Measured from the pill's
+   * own font and padding rather than assumed, so it follows the token scale instead of
+   * pinning a number that a type step would quietly invalidate.
+   */
+  function needed(pill: HTMLSelectElement): number {
+    const style = getComputedStyle(pill)
+    const ruler = document.createElement('span')
+    ruler.style.cssText = 'position:absolute;visibility:hidden;white-space:nowrap'
+    ruler.style.font = style.font
+    ruler.style.letterSpacing = style.letterSpacing
+    ruler.textContent = pill.options[pill.selectedIndex].text
+    document.body.append(ruler)
+    const text = ruler.getBoundingClientRect().width
+    ruler.remove()
+    return text + parseFloat(style.paddingLeft) + parseFloat(style.paddingRight)
+  }
+
+  it('shows the whole stage, however long the stage is called', async () => {
+    renderPanel()
+    const pill = document.querySelector<HTMLSelectElement>('.panel__stage-select')!
+
+    /*
+     * The label in full, not "Recruiter messa…". A select is laid out to its widest option,
+     * so this took `field-sizing` to size to its own value — and then took the cap coming
+     * off, because a pill held to 9rem spent the value to buy the width. jsdom cannot
+     * answer either half: it lays nothing out and every box measures zero.
+     */
+    for (const state of ['interview_2', 'recruiter_interview_rejected'] as const) {
+      await userEvent.selectOptions(pill, stateLabel(state))
+      expect(pill.getBoundingClientRect().width).toBeGreaterThanOrEqual(needed(pill) - 1)
+    }
+  })
+
+  it('spends the name before it touches the stage', async () => {
+    renderPanel()
+    const pill = document.querySelector<HTMLSelectElement>('.panel__stage-select')!
+    await userEvent.selectOptions(pill, stateLabel('recruiter_interview_rejected'))
+    const name = document.querySelector<HTMLElement>('.panel__subject')!
+
+    // Narrow enough that the two cannot both be written out. The name is the half that
+    // gives: it is on the tab below in full, and a stage cut in half says nothing.
+    await page.viewport(520, 800)
+    expect(name.scrollWidth).toBeGreaterThan(name.clientWidth)
+    expect(pill.getBoundingClientRect().width).toBeGreaterThanOrEqual(needed(pill) - 1)
   })
 })

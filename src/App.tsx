@@ -1064,6 +1064,10 @@ export default function App() {
       onCapture={captureStageLine}
       onExternalChange={(applicationId: string, state: StateId, body: string) =>
         commitStageNote(applicationId, state, body, 'Prep notes saved from your editor.')}
+      // The editor opens over the workspace rather than instead of it: the arrangement,
+      // the drafts and the captures are all the panel's own state, and unmounting it to
+      // change a company name would throw the lot away.
+      onOpenApplication={openApplication}
       onRequested={() => setNotesRequest(null)}
       onRevise={reviseStageLine}
       onSaveDrafts={saveStageDrafts}
