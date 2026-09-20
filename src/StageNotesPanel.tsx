@@ -1256,6 +1256,33 @@ export function StageNotesPanel({
   )
 
   /**
+   * Puts an application's job posting beside the prep note being written against it, which
+   * is the whole reason a posting is a pane rather than a field in the editor. Reached from
+   * the note's own header, because hunting the same application down again in the sidebar
+   * is the long way round to the thing you are already looking at.
+   *
+   * Already on screen somewhere, it is focused there rather than opened twice — the same
+   * rule `showRef` follows, and for the same reason: two copies would give one match two
+   * ids and the find would step onto whichever the DOM returned first.
+   */
+  const openPostingBeside = useCallback(
+    (groupId: string, applicationId: string) => {
+      const ref = postingRef(applicationId)
+      const key = noteRefKey(ref)
+      const holding = groupHolding(layoutRef.current, key)
+      if (holding) {
+        applyLayout(activateTab(layoutRef.current, holding.id, key), holding.id)
+        return
+      }
+      // Beside it rather than in it: opening into this pane would cover the note the
+      // posting is here to be read against.
+      const next = splitWith(layoutRef.current, groupId, 'right', ref, newId)
+      applyLayout(next, groupHolding(next, key)?.id ?? groupId)
+    },
+    [applyLayout, newId],
+  )
+
+  /**
    * What the stage-switch dropdown on a pane picks: swaps the tab it sits on for the
    * stage chosen, in that tab's own place — "show me this stage instead" rather than
    * "also open this one". A stage already open elsewhere is focused there instead of
@@ -2337,6 +2364,13 @@ export function StageNotesPanel({
           // another pane focuses it first, so this is that pane by the time it lands.
           onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
           onOpenInEditor={supportsExternalEditor() ? () => openInEditor(shown) : undefined}
+          // Absent when the application has captured no posting: a control that opened an
+          // empty pane would be offering something that is not there.
+          onOpenPosting={
+            postingByKey.has(noteRefKey(postingRef(shown.applicationId)))
+              ? () => openPostingBeside(group.id, shown.applicationId)
+              : null
+          }
           onRevise={(entryId, revised) =>
             onRevise(shown.applicationId, shown.state, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}

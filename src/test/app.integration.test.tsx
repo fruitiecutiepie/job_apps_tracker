@@ -4354,6 +4354,63 @@ describe('job applications tracker', () => {
     expect(picker()).not.toBeNull()
   })
 
+  it('opens the posting beside the prep note from the note’s own header', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(1)
+
+    // The motivating case: reading the posting next to the note written against it, without
+    // going out to the sidebar to find the application you are already looking at.
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: /Read the Marble & Finch job posting beside/,
+      }),
+    )
+
+    const panes = within(dialog).getAllByRole('tabpanel')
+    expect(panes).toHaveLength(2)
+    expect(panes.some((pane) => pane.textContent?.includes('independent booksellers'))).toBe(true)
+    // Beside the note, not over it: the note it was opened against is still on screen.
+    expect(panes.some((pane) => pane.getAttribute('aria-label')?.includes('Applied'))).toBe(true)
+  })
+
+  it('focuses a posting already open rather than opening it twice', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const openPosting = () =>
+      within(dialog).getByRole('button', {
+        name: /Read the Marble & Finch job posting beside/,
+      })
+
+    await user.click(openPosting())
+    expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(2)
+
+    // A second copy would give one match two ids and the find would step onto whichever the
+    // DOM returned first.
+    await user.click(openPosting())
+    expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(2)
+    expect(
+      within(dialog).getAllByRole('tab', { name: /Job posting/ }),
+    ).toHaveLength(1)
+  })
+
+  it('offers no posting button on a note whose application has captured none', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Echo Robotics is seeded without one, so there is nothing the button could open.
+    await user.click(screen.getByRole('button', { name: /prep notes for Echo Robotics/i }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    expect(within(dialog).queryByRole('button', { name: /job posting beside/ })).toBeNull()
+  })
+
   it('counts a hit inside a posting in the panel-wide find', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

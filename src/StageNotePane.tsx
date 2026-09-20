@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, CornerDownLeft, ExternalLink, PencilLine, X } from 'lucide-react'
+import { ChevronRight, CornerDownLeft, ExternalLink, FileText, PencilLine, X } from 'lucide-react'
 import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangement'
@@ -78,6 +78,11 @@ interface StageNotePaneProps {
   onToggleEditing: () => void
   /** Absent when the build cannot reach an editor process, which the static site cannot. */
   onOpenInEditor?: () => void
+  /**
+   * Opens this application's captured job posting in a pane beside this one. Null when it
+   * has captured none, since there would be nothing to show.
+   */
+  onOpenPosting: (() => void) | null
   onStopExternal: () => void
   paneRef: RefCallback<HTMLDivElement>
   formatDate: (iso: string) => string
@@ -124,6 +129,7 @@ export function StageNotePane({
   onCapture,
   onToggleEditing,
   onOpenInEditor,
+  onOpenPosting,
   onStopExternal,
   paneRef,
   formatDate,
@@ -289,6 +295,17 @@ export function StageNotePane({
             </span>
           ) : null}
           <span className="stage-note__actions">
+            {onOpenPosting ? (
+              <button
+                aria-label={`Read the ${company} job posting beside ${label}`}
+                className="button button--quiet stage-note__mode"
+                onClick={onOpenPosting}
+                type="button"
+              >
+                <FileText aria-hidden="true" size={14} />
+                Posting
+              </button>
+            ) : null}
             {session ? (
               <button
                 aria-label={`Stop editing ${label} externally`}
