@@ -1,27 +1,7 @@
-import { useEffect, useState } from 'react'
 import { FlaskConical, FolderOpen, HardDrive, TriangleAlert, Upload } from 'lucide-react'
 
-import { backend } from './backend'
 import type { StorageConnection } from './backend'
 import { demoSiteUrl, trackerSiteUrl } from './siteLinks'
-
-/**
- * Follows where the data is being saved. Only the static build has anything to follow:
- * the dev server writes a fixed path, so `connection` stays null there and every caller
- * renders nothing.
- */
-export function useStorageConnection(): StorageConnection | null {
-  const storage = backend.storage
-  const [connection, setConnection] = useState<StorageConnection | null>(
-    storage ? storage.connection() : null,
-  )
-
-  // `subscribe` reports the current connection straight away, so nothing that changed
-  // between this render and this effect is missed.
-  useEffect(() => storage?.subscribe(setConnection), [storage])
-
-  return connection
-}
 
 function describe(connection: StorageConnection): string {
   switch (connection.kind) {

@@ -6,7 +6,7 @@ interface AttachmentFilenamesProps {
   variant: "card" | "table";
 }
 
-export function formatAttachmentFilenames(attachments: Attachment[]): string {
+function formatAttachmentFilenames(attachments: Attachment[]): string {
   return attachments.map((attachment) => attachment.filename).join(" · ");
 }
 

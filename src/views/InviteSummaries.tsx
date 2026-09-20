@@ -5,22 +5,6 @@ interface InviteSummariesProps {
   invites: StateEvent[];
 }
 
-/** Text a column filter can match against every invite on an application. */
-export function inviteFilterText(invites: StateEvent[]): string {
-  return invites
-    .map((invite) =>
-      [
-        invite.summary,
-        invite.location,
-        formatShortDate(invite.starts_at),
-        invite.cancelled ? "cancelled" : null,
-      ]
-        .filter(Boolean)
-        .join(" "),
-    )
-    .join(" ");
-}
-
 /**
  * Every invite on an application, soonest first, for one table cell. A cancelled
  * invite says so in words rather than relying on the strike-through alone.
