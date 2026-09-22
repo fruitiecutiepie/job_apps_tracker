@@ -90,7 +90,7 @@ import {
   type InviteRow,
 } from './invites'
 import type { StageNoteDraftBatch } from './StageNotesPanel'
-import { stageRef, type NoteRequest } from './notesLayout'
+import { postingRef, stageRef, type NoteRequest } from './notesLayout'
 import { PostingField } from './PostingField'
 import { formatShortDate } from './views/viewUtils'
 import { firstPostingProblem, postingDraftFrom, postingRowFor, type PostingRow } from './posting'
@@ -1019,20 +1019,33 @@ export default function App() {
    * navigation: there is no opener to return focus to afterwards, and a stale one would
    * aim at a card the switch has already unmounted.
    */
-  const openStageNotes = (id: string) => {
-    const application = tracker.applications.find((candidate) => candidate.id === id)
-    if (!application) return
+  /** Goes to Prep and asks for one thing in it, whatever was reached for. */
+  const openNotesAt = (ref: NoteRequest['ref']) => {
     dialogOpenerRef.current = null
     // Nothing to restore focus to either: coming here from the application editor is the
     // editor handing over, and the note it opens onto takes the caret. Without this the
     // editor closing would fire the restore and pull focus back out to the topbar.
     dialogWasOpenRef.current = false
     notesNonce.current += 1
-    setNotesRequest({
-      ref: stageRef(id, application.state),
-      nonce: notesNonce.current,
-    })
+    setNotesRequest({ ref, nonce: notesNonce.current })
     setNotesOpen(true)
+  }
+
+  const openStageNotes = (id: string) => {
+    const application = tracker.applications.find((candidate) => candidate.id === id)
+    if (!application) return
+    openNotesAt(stageRef(id, application.state))
+  }
+
+  /**
+   * Goes straight to an application's captured posting. The fan it opens into is the same
+   * one the prep notes open — the application's own material — so this differs only in
+   * which of its tabs you land on.
+   */
+  const openPosting = (id: string) => {
+    const application = tracker.applications.find((candidate) => candidate.id === id)
+    if (!application?.posting) return
+    openNotesAt(postingRef(id))
   }
 
   /*
@@ -1110,6 +1123,7 @@ export default function App() {
       applications: filteredApplications,
       onOpen: openApplication,
       onOpenStageNotes: openStageNotes,
+      onOpenPosting: openPosting,
       onCompleteAction: completeAction,
     }
     switch (activeView) {

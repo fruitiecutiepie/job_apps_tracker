@@ -1015,6 +1015,7 @@ p {
 .application-card--idle .application-card__attachments-icon,
 .application-card--idle .application-card__label,
 .application-card--idle .stage-notes-button--card,
+.application-card--idle .posting-button--card,
 .application-card--idle .complete-action-button--card {
   color: var(--ink-2);
 }
@@ -1928,6 +1929,7 @@ tbody tr:hover {
 /* --------------------------------------------------------- stage notes --- */
 
 .stage-notes-button,
+.posting-button,
 .complete-action-button {
   gap: var(--s2);
   padding: 0 var(--s3);
@@ -1935,12 +1937,14 @@ tbody tr:hover {
 }
 
 .stage-notes-button--card,
+.posting-button--card,
 .complete-action-button--card {
   min-height: 30px;
   color: var(--ink-2);
 }
 
 .stage-notes-button--table,
+.posting-button--table,
 .complete-action-button--table {
   min-height: 28px;
   white-space: nowrap;

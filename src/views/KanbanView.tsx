@@ -5,6 +5,7 @@ import { AttachmentFilenames } from "./AttachmentFilenames";
 import { CompleteActionButton } from "./CompleteActionButton";
 import { describeIdle, idleStatusFor } from "./idle";
 import { describePreference, preferenceFor } from "./preference";
+import { PostingButton } from "./PostingButton";
 import { StageNotesButton } from "./StageNotesButton";
 import type { MovableApplicationsViewProps } from "./types";
 import { formatShortDate, kanbanColumnGroups, upcomingStateEvent } from "./viewUtils";
@@ -13,6 +14,7 @@ export function KanbanView({
   applications,
   onOpen,
   onOpenStageNotes,
+  onOpenPosting,
   onCompleteAction,
   onMove,
   visibleStates,
@@ -212,6 +214,11 @@ export function KanbanView({
                               <StageNotesButton
                                 application={application}
                                 onOpenStageNotes={onOpenStageNotes}
+                                variant="card"
+                              />
+                              <PostingButton
+                                application={application}
+                                onOpenPosting={onOpenPosting}
                                 variant="card"
                               />
                             </div>
