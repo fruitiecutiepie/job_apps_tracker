@@ -1921,6 +1921,25 @@ describe('job applications tracker', () => {
     expect(read()).toHaveAttribute('aria-pressed', 'false')
   })
 
+  it('gives a message that arrived without a subject no heading of its own', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // Grouping runs is `correspondenceMarkdown`'s job and is tested there. What this asks is
+    // that the dock renders the other case: a LinkedIn note has no thread to belong to.
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'Show the correspondence in Halcyon Maps · Interview 2',
+      }),
+    )
+    const log = within(dialog.querySelector<HTMLElement>('.stage-note__log--messages')!)
+    expect(log.getByText(/Moving the leadership interview/)).toBeInTheDocument()
+    expect(log.queryByRole('heading', { level: 6, name: /—/ })).not.toBeInTheDocument()
+  })
+
   it('shows a stage only the messages filed against it', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

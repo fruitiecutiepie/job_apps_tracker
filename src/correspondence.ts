@@ -13,6 +13,7 @@ export interface CorrespondenceRow {
   id: string
   state: StateId
   direction: CorrespondenceDirection
+  subject: string
   channel: string
   who: string
   body: string
@@ -32,6 +33,7 @@ export function correspondenceRowsFor(application: Application | null): Correspo
       id: entry.id,
       state: entry.state,
       direction: entry.direction,
+      subject: entry.subject ?? '',
       channel: entry.channel ?? '',
       who: entry.who ?? '',
       body: entry.body,
@@ -55,13 +57,16 @@ export function newCorrespondenceRow(
   defaultState: StateId,
   id: string,
 ): CorrespondenceRow {
-  const recent = rows.find((row) => row.who.trim() || row.channel.trim())
+  const recent = rows.find((row) => row.who.trim() || row.channel.trim() || row.subject.trim())
   return {
     id,
     state: defaultState,
     // Received far more often than sent, and the row above is no guide: a reply follows a
     // message rather than another reply.
     direction: 'received',
+    // The subject comes forward with the correspondent: the next message in a thread is a
+    // reply to it, and a thread is what a shared subject means.
+    subject: recent?.subject ?? '',
     channel: recent?.channel ?? '',
     who: recent?.who ?? '',
     body: '',
@@ -86,7 +91,9 @@ export function correspondenceRowSummary(row: CorrespondenceRow): string {
   const parts = [when, correspondenceSender({ direction: row.direction, who: row.who || null })]
   if (row.channel.trim()) parts.push(row.channel.trim())
 
-  const gist = preview(row.body)
+  // Subject first when there is one: a pasted email opens with a greeting far more often
+  // than not, and "Hi Audrey," on every row says nothing about which message it is.
+  const gist = preview(row.subject.trim() || row.body)
   return gist ? `${parts.join(' · ')} — ${gist}` : parts.join(' · ')
 }
 
@@ -97,6 +104,7 @@ export function correspondenceDrafts(rows: CorrespondenceRow[]): CorrespondenceD
       id: row.id,
       state: row.state,
       direction: row.direction,
+      subject: row.subject || null,
       channel: row.channel || null,
       who: row.who || null,
       body: row.body,

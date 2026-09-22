@@ -18,6 +18,7 @@ function row(overrides: Partial<CorrespondenceRow> = {}): CorrespondenceRow {
     id: '018f24c0-0000-7000-8000-0000000000aa',
     state: 'recruiter_messaged',
     direction: 'received',
+    subject: '',
     channel: '',
     who: '',
     body: 'Could you send me some windows?',
@@ -129,5 +130,29 @@ describe('correspondence rows', () => {
 
   it('says so when a message has text but no date yet', () => {
     expect(correspondenceRowSummary(row({ at: '' }))).toContain('No date')
+  })
+
+  it('leads the summary with the subject, which a greeting would otherwise crowd out', () => {
+    const greeting = 'Hi Audrey,\n\nThanks for making the time on Thursday.'
+
+    // A pasted email opens with a greeting far more often than not, and "Hi Audrey," on
+    // every row says nothing about which message it is.
+    expect(correspondenceRowSummary(row({ subject: 'Next steps', body: greeting })))
+      .toContain('Next steps')
+    expect(correspondenceRowSummary(row({ subject: 'Next steps', body: greeting })))
+      .not.toContain('Hi Audrey')
+    // Without one, the body is still the best summary there is.
+    expect(correspondenceRowSummary(row({ subject: '', body: greeting }))).toContain('Hi Audrey')
+  })
+
+  it('carries the thread forward into the next message, not just the correspondent', () => {
+    const next = newCorrespondenceRow(
+      [row({ subject: 'Next steps', who: 'Dana Okafor' })],
+      'interview_1',
+      'new-id',
+    )
+
+    // The next message in a thread is a reply to it, and a shared subject is what a thread is.
+    expect(next.subject).toBe('Next steps')
   })
 })

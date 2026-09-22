@@ -201,6 +201,14 @@ export interface CorrespondenceEntry {
   id: string
   state: StateId
   direction: CorrespondenceDirection
+  /**
+   * What the message was about, when it came with one. Optional because a LinkedIn message
+   * or an SMS has none — and those are exactly the messages whose first line makes a good
+   * summary on its own. Where it is present it is also the thread: messages sharing a
+   * subject within a stage are the same conversation, which is why there is no separate
+   * thread id to keep in step with it.
+   */
+  subject: string | null
   /** How it arrived. Free text, because the next one may come by SMS. */
   channel: string | null
   /** The other person: the sender when received, the recipient when sent. */
@@ -223,6 +231,7 @@ export interface CorrespondenceDraft {
   id?: string
   state: StateId
   direction: CorrespondenceDirection
+  subject?: string | null
   channel?: string | null
   who?: string | null
   body: string

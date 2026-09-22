@@ -89,7 +89,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       // every application you have ever emailed. That is the test `source` passes — one value
       // per application, so it partitions the collection — and the one ratings already fail.
       ...application.correspondence.map((entry) =>
-        [STATE_LABELS[entry.state], entry.who, entry.body].filter(Boolean).join(' '),
+        [STATE_LABELS[entry.state], entry.who, entry.subject, entry.body].filter(Boolean).join(' '),
       ),
       ...application.attachments.map((attachment) => attachment.filename),
     ]

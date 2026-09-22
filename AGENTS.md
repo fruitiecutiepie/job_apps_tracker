@@ -114,6 +114,23 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   from the room its stage note already names, and asking who was speaking is a question to answer
   mid-interview. A message has exactly one correspondent, it is in the header you are copying from, and a
   log mixing a recruiter, a coordinator and a hiring manager cannot be read without it.
+- `subject` is what the message was about, and may be absent: a LinkedIn note or an SMS has
+  none, and those are exactly the messages whose first line is its own summary. Where it is
+  present it is **also the thread** — messages sharing a subject within a stage are the same
+  conversation — which is why there is no separate thread id to keep in step with it. It goes
+  in `search_text`: it is the most searchable thing about a message.
+- The log puts one `####` heading over a **run** of messages sharing a subject, rather than
+  restating it on every row. Grouping, never reordering: the log stays in send order, so two
+  threads answered in turn read as they happened and a subject simply comes back when the
+  conversation does. A message with no subject ends a run and opens none of its own. Because
+  the heading is a fold, a thread folds as one.
+- The day grouping stays the outer spine, so a thread spanning days shows its heading under
+  each day it has messages in. That is the cost of keeping the log chronological, and it is
+  the right way round for a log: each day reads on its own. Making the subject the spine
+  instead would read as a mailbox rather than as what happened when.
+- The editor's folded row leads with the subject and falls back to the body. A pasted email
+  opens with a greeting far more often than not, so without it half the rows would read
+  "Hi Audrey," and say nothing about which message they are.
 - `channel` is free text with `CHANNEL_SUGGESTIONS` behind the editor's picker, the arrangement `source`
   already keeps: the picker curates the vocabulary and widening it must never narrow what import accepts. A
   closed union would be wrong the first time a message arrives by SMS, and there are no migrations here

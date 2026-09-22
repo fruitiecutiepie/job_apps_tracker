@@ -551,6 +551,7 @@ function correspondenceEntryValue(
     id: value.id.trim(),
     state: value.state,
     direction: value.direction,
+    subject: nullableText(value.subject, `${path}.subject`, errors),
     channel: nullableText(value.channel, `${path}.channel`, errors),
     who: nullableText(value.who, `${path}.who`, errors),
     body: value.body.trim(),

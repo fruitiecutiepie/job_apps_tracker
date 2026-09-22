@@ -676,6 +676,7 @@ function sameCorrespondence(entry: CorrespondenceEntry, other: CorrespondenceEnt
   return (
     entry.state === other.state
     && entry.direction === other.direction
+    && entry.subject === other.subject
     && entry.channel === other.channel
     && entry.who === other.who
     && entry.body === other.body
@@ -703,6 +704,7 @@ function canonicalCorrespondence(
     id,
     state: draft.state,
     direction: draft.direction,
+    subject: optionalText(draft.subject),
     channel: optionalText(draft.channel),
     who: optionalText(draft.who),
     body: draft.body.trim(),

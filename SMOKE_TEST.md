@@ -286,8 +286,10 @@ neither a finger nor any browser automation.
     who, how, and a line of what it says — and that the line tells you which message it is
     without opening it. Then choose **Add message**. Paste a real
     multi-paragraph email into **Message**, set **Date sent** to a date several days in the past, name
-    who it was from, and pick a channel from the suggestions — confirming the box still accepts a
-    word that is not on the list. Save, reopen, and confirm the date you typed came back rather
+    who it was from, give it the email's subject, and pick a channel from the suggestions —
+    confirming the box still accepts a word that is not on the list. Log a second message with
+    the same subject and confirm the two read as one thread under a single heading, and that a
+    message with no subject sits on its own. Save, reopen, and confirm the date you typed came back rather
     than the moment you saved. The structure of the rendered message is covered by the browser
     suite; what is left here is judgement. Open Prep notes for that stage, expand
     **Correspondence**, and ask whether the hint makes the two dates distinct before you have to

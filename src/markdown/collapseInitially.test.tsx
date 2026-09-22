@@ -24,6 +24,7 @@ const LONG = [
 
 const message = (overrides: Record<string, unknown> = {}) => ({
   direction: 'received' as const,
+  subject: null as string | null,
   channel: 'Email',
   who: 'Priya Raman',
   body: LONG,

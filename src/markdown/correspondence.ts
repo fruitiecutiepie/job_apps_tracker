@@ -22,6 +22,7 @@ export const CORRESPONDENCE_SECTION_IN_SENTENCE = 'the correspondence'
 /** What this needs of a message, which is less than the stored record. */
 interface Corresponded {
   direction: 'received' | 'sent'
+  subject: string | null
   channel: string | null
   who: string | null
   body: string
@@ -100,7 +101,24 @@ export function correspondenceMarkdown(
   for (const [index, group] of dayGroups(entries, day).entries()) {
     if (index > 0) lines.push('')
     lines.push(`### ${group.label}`, '')
+
+    let thread: string | null = null
     for (const entry of group.entries) {
+      /*
+       * A run of messages sharing a subject is a thread, and gets one heading over it rather
+       * than the subject restated on every row. Grouping rather than reordering: the log
+       * stays in send order, so two threads answered in turn read as they happened — the
+       * subject simply comes back when the conversation does, which is the honest picture.
+       *
+       * A message with no subject ends the run and opens none of its own. Those are the
+       * LinkedIn notes and the texts, which have no thread to belong to and whose first line
+       * is their own summary anyway.
+       */
+      if (entry.subject !== thread) {
+        if (thread !== null || entry.subject) lines.push('')
+        if (entry.subject) lines.push(`#### ${entry.subject}`, '')
+        thread = entry.subject
+      }
       lines.push(header(entry, time), indentedBody(entry.body))
     }
   }

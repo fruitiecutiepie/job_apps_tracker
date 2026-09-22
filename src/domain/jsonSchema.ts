@@ -187,6 +187,7 @@ export const TRACKER_JSON_SCHEMA = {
         'id',
         'state',
         'direction',
+        'subject',
         'channel',
         'who',
         'body',
@@ -199,6 +200,12 @@ export const TRACKER_JSON_SCHEMA = {
         id: { type: 'string', minLength: 1 },
         state: { type: 'string', enum: [...STATE_IDS] },
         direction: { type: 'string', enum: [...CORRESPONDENCE_DIRECTION_IDS] },
+        subject: {
+          type: ['string', 'null'],
+          description:
+            'What the message was about, when it came with one. Also the thread: messages '
+            + 'sharing a subject within a stage are the same conversation.',
+        },
         channel: {
           type: ['string', 'null'],
           description: 'How it arrived. Free text; the editor offers a list of suggestions.',

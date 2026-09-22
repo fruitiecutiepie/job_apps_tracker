@@ -103,6 +103,14 @@ export function CorrespondenceFields({
                   </div>
                 </fieldset>
               </div>
+              <label className="field">
+                <span>Subject</span>
+                <input
+                  onChange={(event) => update(row.id, { subject: event.target.value })}
+                  placeholder="What it was about, if it came with one"
+                  value={row.subject}
+                />
+              </label>
               <div className="correspondence-item__grid">
                 <label className="field">
                   <span>Who</span>

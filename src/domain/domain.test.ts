@@ -215,6 +215,15 @@ describe('state configuration and demo content', () => {
     expect(messages.some(({ direction }) => direction === 'sent')).toBe(true)
     expect(messages.some(({ who }) => who === null)).toBe(true)
     expect(messages.some(({ channel }) => channel === null)).toBe(true)
+    expect(messages.some(({ subject }) => subject === null)).toBe(true)
+    // A subject shared by more than one message in a stage, which is what the log groups on.
+    const threads = new Map<string, number>()
+    for (const { state, subject } of messages) {
+      if (!subject) continue
+      const key = `${state}:${subject}`
+      threads.set(key, (threads.get(key) ?? 0) + 1)
+    }
+    expect([...threads.values()].some((count) => count > 1)).toBe(true)
     // A message filed against a stage the application was rejected at, and one written down
     // well after it arrived — the shape the record exists for.
     expect(messages.some(({ state }) => isRejectedState(state))).toBe(true)

@@ -12,6 +12,7 @@ const time = (at: string) => at.slice(11, 16)
 function message(overrides: Partial<Parameters<typeof correspondenceMarkdown>[0][number]> = {}) {
   return {
     direction: 'received' as const,
+    subject: null as string | null,
     channel: 'Email',
     who: 'Dana Okafor',
     body: 'Could you send me some windows?',
@@ -171,5 +172,68 @@ describe('correspondenceMarkdown', () => {
     expect(rendered).toBe(
       ['### 2026-08-10', '', '- `09:14` **Dana Okafor** · Email', '', '  The whole message.'].join('\n'),
     )
+  })
+
+  it('puts one heading over a run of messages sharing a subject', () => {
+    const rendered = correspondenceMarkdown(
+      [
+        message({ subject: 'Next steps', body: 'First' }),
+        message({ subject: 'Next steps', body: 'Second', at: '2026-08-10T17:02:00.000Z' }),
+      ],
+      day,
+      time,
+    )
+
+    // One thread, one heading — not the subject restated on every row.
+    expect(rendered.match(/#### Next steps/g)).toHaveLength(1)
+    expect(rendered.indexOf('#### Next steps')).toBeLessThan(rendered.indexOf('First'))
+  })
+
+  it('opens a new heading when the subject changes, and closes one when it goes', () => {
+    const rendered = correspondenceMarkdown(
+      [
+        message({ subject: 'Scheduling', body: 'First' }),
+        message({ subject: 'Next steps', body: 'Second', at: '2026-08-10T11:00:00.000Z' }),
+        message({ subject: null, body: 'Third', at: '2026-08-10T12:00:00.000Z' }),
+      ],
+      day,
+      time,
+    )
+
+    expect(rendered).toContain('#### Scheduling')
+    expect(rendered).toContain('#### Next steps')
+    // A message with no subject has no thread to belong to and opens none of its own.
+    expect(rendered.match(/^#### /gm)).toHaveLength(2)
+    expect(rendered.indexOf('Third')).toBeGreaterThan(rendered.indexOf('#### Next steps'))
+  })
+
+  it('lets a subject come back rather than reordering the log to keep it together', () => {
+    const rendered = correspondenceMarkdown(
+      [
+        message({ subject: 'Scheduling', body: 'First' }),
+        message({ subject: 'Offer', body: 'Second', at: '2026-08-10T11:00:00.000Z' }),
+        message({ subject: 'Scheduling', body: 'Third', at: '2026-08-10T12:00:00.000Z' }),
+      ],
+      day,
+      time,
+    )
+
+    // Two threads answered in turn read as they happened. Grouping must not become a reason
+    // to move a message away from when it was sent.
+    expect(rendered.match(/#### Scheduling/g)).toHaveLength(2)
+    expect(rendered.indexOf('First')).toBeLessThan(rendered.indexOf('Second'))
+    expect(rendered.indexOf('Second')).toBeLessThan(rendered.indexOf('Third'))
+  })
+
+  it('folds a thread as one, since its heading is a fold of its own', () => {
+    const rendered = correspondenceMarkdown(
+      [message({ subject: 'Next steps' }), message({ subject: 'Next steps', at: '2026-08-10T17:02:00.000Z' })],
+      day,
+      time,
+    )
+    const outline = outlineTree(buildSections(parseMarkdown(rendered)))
+
+    expect(outline.map((node) => node.text)).toEqual(['2026-08-10'])
+    expect(outline[0]!.children.map((node) => node.text)).toEqual(['Next steps'])
   })
 })

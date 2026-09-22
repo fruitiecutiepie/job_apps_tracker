@@ -41,6 +41,7 @@ const message = (overrides: Partial<CorrespondenceEntry> = {}): CorrespondenceEn
   id: '018f0000-0000-7001-8000-000000000001',
   state: 'interview_2',
   direction: 'received',
+  subject: 'After Thursday — next steps',
   channel: 'Email',
   who: 'Priya Raman',
   body: PASTED,
