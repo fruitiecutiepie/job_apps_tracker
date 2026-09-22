@@ -1835,10 +1835,32 @@ tbody tr:hover {
   that is already a list of cards.
 */
 .correspondence-thread {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
   margin: var(--s2) 0 0;
   color: var(--ink);
   font-size: var(--t2);
   font-weight: 500;
+}
+
+/*
+  Pushed to the end of the line so the subject reads first. Quiet until the thread is what the
+  reader is looking at: a button per thread is several on screen at once, and the one at the
+  foot of the section is still the way to start a new conversation.
+*/
+.correspondence-thread__add {
+  gap: var(--s2);
+  min-height: 24px;
+  margin-left: auto;
+  padding: 0 var(--s2);
+  color: var(--ink-3);
+  font-size: var(--t2);
+  font-weight: 400;
+}
+
+.correspondence-thread__add:hover {
+  color: var(--ink);
 }
 
 .correspondence-thread:first-child {

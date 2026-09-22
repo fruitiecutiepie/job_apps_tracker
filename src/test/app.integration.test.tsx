@@ -1800,7 +1800,7 @@ describe('job applications tracker', () => {
     })
     // Collapsed by default, but the count says there is something behind it.
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
-    expect(toggle).toHaveTextContent('1')
+    expect(toggle).toHaveTextContent('3')
 
     await user.click(toggle)
 
@@ -1816,7 +1816,9 @@ describe('job applications tracker', () => {
     // The rest of it is behind the fold rather than on screen.
     expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
 
-    await user.click(log.getByRole('button', { name: /sub-points$/ }))
+    // The loose note is the last row of the log — the stage's thread comes before it.
+    const rows = log.getAllByRole('button', { name: /sub-points$/ })
+    await user.click(rows[rows.length - 1]!)
     expect(log.getByText(/short notice/)).toBeInTheDocument()
   })
 
@@ -1915,9 +1917,17 @@ describe('job applications tracker', () => {
     // stepping onto one hands it back — the same rule a collapsed section follows.
     await user.keyboard('{Control>}f{/Control}')
     await user.type(within(dialog).getByLabelText('Find in notes'), 'leadership')
-    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
-    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
 
+    /*
+     * Previous then Next, rather than counting steps to the note: the written note's matches
+     * come first in the list, so Previous wraps to the last one — a message or a capture —
+     * and Next wraps back to the first, which is in the note. That holds however many
+     * matches the stage happens to have, which a count does not.
+     */
+    await user.click(within(dialog).getByRole('button', { name: 'Previous match' }))
+    expect(read()).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
     expect(read()).toHaveAttribute('aria-pressed', 'false')
   })
 
@@ -1936,8 +1946,14 @@ describe('job applications tracker', () => {
       }),
     )
     const log = within(dialog.querySelector<HTMLElement>('.stage-note__log--messages')!)
-    expect(log.getByText(/Moving the leadership interview/)).toBeInTheDocument()
-    expect(log.queryByRole('heading', { level: 6, name: /—/ })).not.toBeInTheDocument()
+
+    // The stage holds a thread and a loose LinkedIn note. One heading, for the thread.
+    expect(log.getAllByRole('heading', { name: 'Leadership interview — Thursday' })).toHaveLength(1)
+    // And the note reads under no heading of its own, below the thread it is not part of.
+    const note = log.getByText(/Moving the leadership interview/)
+    expect(note).toBeInTheDocument()
+    const headings = [...log.getAllByRole('heading')].map((heading) => heading.textContent)
+    expect(headings.filter((text) => text === 'Leadership interview — Thursday')).toHaveLength(1)
   })
 
   it('shows a stage only the messages filed against it', async () => {
@@ -1976,8 +1992,9 @@ describe('job applications tracker', () => {
     await user.keyboard('{Control>}f{/Control}')
     await user.type(within(dialog).getByLabelText('Find in notes'), 'leadership')
 
-    // Written note, then messages, then captures — the order they read in down the pane.
-    expect(within(dialog).getByText('1 of 3')).toBeInTheDocument()
+    // Written note, then messages, then captures — the order they read in down the pane. The
+    // stage holds a thread as well as the loose note, so four in all.
+    expect(within(dialog).getByText('1 of 4')).toBeInTheDocument()
 
     // The second is in the correspondence section, which is still collapsed: stepping onto
     // a match opens the section holding it, or the count would move and nothing would.
@@ -1988,7 +2005,7 @@ describe('job applications tracker', () => {
     ).toHaveAttribute('aria-expanded', 'false')
 
     await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
-    expect(within(dialog).getByText('2 of 3')).toBeInTheDocument()
+    expect(within(dialog).getByText('2 of 4')).toBeInTheDocument()
     expect(
       within(dialog).getByRole('button', {
         name: 'Hide the correspondence in Halcyon Maps · Interview 2',
@@ -1997,7 +2014,9 @@ describe('job applications tracker', () => {
     expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
 
     await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
-    expect(within(dialog).getByText('3 of 3')).toBeInTheDocument()
+    expect(within(dialog).getByText('3 of 4')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    expect(within(dialog).getByText('4 of 4')).toBeInTheDocument()
     expect(
       within(dialog).getAllByText('Leadership').some((node) => node.tagName === 'MARK'),
     ).toBe(true)
@@ -3515,7 +3534,9 @@ describe('job applications tracker', () => {
     await log('Reference check', 'Who should we contact?', '2026-08-11T09:00')
 
     const list = dialog.querySelector<HTMLElement>('.correspondence-list')!
-    const headings = [...list.querySelectorAll('.correspondence-thread')].map((n) => n.textContent)
+    const headings = [...list.querySelectorAll('.correspondence-thread span')].map(
+      (node) => node.textContent,
+    )
 
     // One line over the two that share a subject, and one over the other conversation —
     // not the subject restated on every row.
@@ -3528,6 +3549,34 @@ describe('job applications tracker', () => {
     expect(summaries.some((line) => line.includes('Could you send me some windows?'))).toBe(true)
     expect(summaries.some((line) => line.includes('Thursday works.'))).toBe(true)
     expect(summaries.every((line) => !line.includes('Scheduling a call'))).toBe(true)
+  })
+
+  it('adds into a thread with everything that makes it that thread already filled in', async () => {
+    const user = userEvent.setup()
+    // Lumen Pantry is not one of the six the default fixture seeds, and its offer thread is
+    // the one worth adding into: three messages, one correspondent, one subject.
+    seedFullDemo()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: /^Open Lumen Pantry/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Add a message to Offer — Head of Growth' }),
+    )
+
+    // It lands inside the thread rather than at the top of the list, so it is Message 1 of
+    // that run and not a second heading saying the same words.
+    const list = dialog.querySelector<HTMLElement>('.correspondence-list')!
+    expect(list.querySelectorAll('.correspondence-thread')).toHaveLength(1)
+
+    const added = within(dialog).getByRole('group', { name: 'Message 1' })
+    expect(within(added).getByLabelText('Subject')).toHaveValue('Offer — Head of Growth')
+    expect(within(added).getByLabelText('Who')).toHaveValue('Marta Oyelaran')
+    expect(within(added).getByLabelText('Channel')).toHaveValue('Email')
+    // What the message says and when it was sent is the part you are there to write.
+    expect(within(added).getByLabelText('Message')).toHaveValue('')
+    expect(within(added).getByLabelText('Date sent')).toHaveValue('')
   })
 
   it('starts the next message from who the last one was with, and picks a direction in one press', async () => {

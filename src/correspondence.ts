@@ -59,6 +59,29 @@ export function opensThread(rows: CorrespondenceRow[], index: number): boolean {
 }
 
 /**
+ * A row to add to a thread, taking everything that makes it that thread: the subject, the
+ * stage it is filed against, and who it is with. Unlike the generic new row it files against
+ * the **thread's** stage rather than the application's current one — a message in a
+ * conversation belongs where that conversation is, and a shared subject in a different stage
+ * is a different thread by the rule the grouping already keeps.
+ *
+ * The direction does not come across, for the reason it never does: a reply follows a
+ * message, and which way the next one goes is a guess either way. It is one press.
+ */
+export function newThreadRow(source: CorrespondenceRow, id: string): CorrespondenceRow {
+  return {
+    id,
+    state: source.state,
+    direction: 'received',
+    subject: source.subject,
+    channel: source.channel,
+    who: source.who,
+    body: '',
+    at: '',
+  }
+}
+
+/**
  * A row to start filing the next message into, carrying forward who it is with and how it
  * arrived. A hiring conversation is one recruiter on one channel far more often than not, so
  * re-typing both for every message is asking the reader to restate what the row above already

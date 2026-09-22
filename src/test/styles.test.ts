@@ -404,6 +404,9 @@ describe('correspondence rows', () => {
     expect(body).not.toMatch(/border/)
     expect(body).not.toMatch(/background/)
     expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    // The subject reads first; the control for the thread is pushed past it.
+    expect(ruleBody('.correspondence-thread__add')).toMatch(/margin-left:\s*auto/)
+    expect(ruleBody('.correspondence-thread__add')).toMatch(/color:\s*var\(--ink-3\)/)
   })
 
   it('reads a folded row as a line of record rather than as a button', () => {

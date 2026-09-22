@@ -5,6 +5,7 @@ import type { StateId } from './domain'
 import {
   correspondenceRowSummary,
   newCorrespondenceRow,
+  newThreadRow,
   opensThread,
   type CorrespondenceRow,
 } from './correspondence'
@@ -30,6 +31,12 @@ export function CorrespondenceFields({
    * dialog closes.
    */
   const [open, setOpen] = useState<string[]>([])
+
+  /** Puts a row into the list at `index`, open, since it is the one about to be filled in. */
+  const insert = (added: CorrespondenceRow, index: number) => {
+    setOpen((current) => [...current, added.id])
+    onChange([...rows.slice(0, index), added, ...rows.slice(index)])
+  }
   const toggle = (id: string) =>
     setOpen((current) =>
       current.includes(id) ? current.filter((entry) => entry !== id) : [...current, id],
@@ -56,7 +63,26 @@ export function CorrespondenceFields({
               position in it.
             */}
             {opensThread(rows, index) ? (
-              <p className="correspondence-thread">{row.subject.trim()}</p>
+              <div className="correspondence-thread">
+                <span>{row.subject.trim()}</span>
+                {/*
+                  Added into the thread rather than at the top of the list, because the run is
+                  where it belongs and a row carrying this subject anywhere else would open a
+                  second heading saying the same words. This row is the newest of its thread,
+                  so the new one goes just above it.
+                */}
+                <button
+                  aria-label={`Add a message to ${row.subject.trim()}`}
+                  className="button button--quiet correspondence-thread__add"
+                  onClick={() => insert(newThreadRow(row, createUuidV7()), index)}
+                  type="button"
+                >
+                  <Plus aria-hidden="true" size={13} />
+                  {/* Short on screen, specific to a screen reader: a subject can be a
+                      sentence, and every thread carries one of these. */}
+                  Add
+                </button>
+              </div>
             ) : null}
             <fieldset className="correspondence-item">
               <legend className="sr-only">Message {index + 1}</legend>
@@ -179,11 +205,7 @@ export function CorrespondenceFields({
       <div className="correspondence-field__actions">
         <button
           className="button button--quiet"
-          onClick={() => {
-            const added = newCorrespondenceRow(rows, defaultState, createUuidV7())
-            setOpen((current) => [...current, added.id])
-            onChange([added, ...rows])
-          }}
+          onClick={() => insert(newCorrespondenceRow(rows, defaultState, createUuidV7()), 0)}
           type="button"
         >
           <Plus aria-hidden="true" size={14} />

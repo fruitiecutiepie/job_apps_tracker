@@ -4,11 +4,12 @@ import { applyCorrespondence, createApplication } from './domain'
 import { preview } from './markdown'
 import {
   correspondenceDrafts,
-  opensThread,
   correspondenceRowSummary,
   correspondenceRowsFor,
   firstCorrespondenceProblem,
   newCorrespondenceRow,
+  newThreadRow,
+  opensThread,
   type CorrespondenceRow,
 } from './correspondence'
 
@@ -178,5 +179,29 @@ describe('correspondence rows', () => {
   it('opens no thread for a message that arrived without a subject', () => {
     expect(opensThread([row({ subject: '' })], 0)).toBe(false)
     expect(opensThread([row({ subject: '   ' })], 0)).toBe(false)
+  })
+
+  it('takes everything that makes a message part of a thread, and nothing else', () => {
+    const source = row({
+      state: 'interview_1',
+      subject: 'Offer — Head of Growth',
+      who: 'Marta Oyelaran',
+      channel: 'Email',
+      body: 'The headline terms are below.',
+      at: '2026-08-10T09:30',
+    })
+    const next = newThreadRow(source, 'new-id')
+
+    // The thread's stage, not the application's: a shared subject in another stage is a
+    // different thread by the rule the grouping keeps.
+    expect(next).toMatchObject({
+      id: 'new-id',
+      state: 'interview_1',
+      subject: 'Offer — Head of Growth',
+      who: 'Marta Oyelaran',
+      channel: 'Email',
+    })
+    // What the message itself says, and when, is the part you are here to write.
+    expect(next).toMatchObject({ body: '', at: '', direction: 'received' })
   })
 })

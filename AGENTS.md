@@ -159,7 +159,16 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   enormous field, and that is a rendering problem rather than a home. A view would earn its
   place by showing correspondence **across** applications, which neither the editor nor the
   dock does; that is a feature with its own argument, not a consequence of a tall form.
-- **Add message** seeds the new row's correspondent and channel from the newest row that has
+- Each thread carries its own **Add**, beside its subject, through `newThreadRow`. It takes
+  everything that makes a message part of that conversation — the subject, the correspondent,
+  the channel, and the **thread's** stage rather than the application's current one, since a
+  shared subject in another stage is a different thread by the rule the grouping keeps — and
+  leaves the two things you are there to write. The row lands inside the run rather than at
+  the top of the list: anywhere else it would open a second heading saying the same words. Its
+  visible label is just "Add", with the subject in its accessible name, because a subject can
+  be a sentence and every thread carries one of these.
+- **Add message** at the foot of the section stays the way to start a conversation, and seeds
+  the new row's correspondent and channel from the newest row that has
   either, through `newCorrespondenceRow`. A hiring conversation is one recruiter on one
   channel far more often than not, so re-typing both for every message asks the reader to
   restate what the row above already says; both stay editable, so a thread that does change
@@ -262,8 +271,11 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - `pnpm dev:demo` and `pnpm start:demo` first launch, plus confirmed demo reset, must produce the same 19 deterministic fictional records, exactly one ending in each configured state. Demo reset is unavailable on the live profile and must not write demo records into `data/tracker.json`.
 - The examples intentionally include prior history, dated and undated actions, overdue work, past and future deadlines, notes, stage prep notes, calendar invites (including one cancelled), hiring correspondence, ratings in all three states (including one whose 4.00 mean hides a 1), compensation in every comparison shape, and silent timestamps so every view has useful content.
 - The demo seeds correspondence in both directions across several applications, including one message with
-  no correspondent named, one with no channel, one filed against a rejected state, and one whose `at`
-  precedes the record's `created_at`, so the log written after the fact is exercised.
+  no correspondent named, one with no channel, one with no subject, one filed against a rejected state, and
+  one whose `at` precedes the record's `created_at`, so the log written after the fact is exercised.
+- Threads are seeded as threads: more than one conversation on an application, more than one correspondent
+  within an application, a loose note sitting beside a threaded conversation, and an offer negotiation —
+  which is the message anyone rereads most and so the one the reading surfaces most need to carry well.
 - One seed carries a **real email** — several paragraphs, a list, a signature, and the thread quoted
   underneath — and one application carries a **thread** of four or more with two of them on the same day.
   Both are load-bearing rather than decorative: a log of one-liners exercises neither the folded row nor
