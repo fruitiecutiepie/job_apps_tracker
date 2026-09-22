@@ -4,6 +4,7 @@ import { applyCorrespondence, createApplication } from './domain'
 import { preview } from './markdown'
 import {
   correspondenceDrafts,
+  opensThread,
   correspondenceRowSummary,
   correspondenceRowsFor,
   firstCorrespondenceProblem,
@@ -132,17 +133,14 @@ describe('correspondence rows', () => {
     expect(correspondenceRowSummary(row({ at: '' }))).toContain('No date')
   })
 
-  it('leads the summary with the subject, which a greeting would otherwise crowd out', () => {
+  it('summarises a row by its body, leaving the subject to the heading over the thread', () => {
     const greeting = 'Hi Audrey,\n\nThanks for making the time on Thursday.'
+    const summary = correspondenceRowSummary(row({ subject: 'Next steps', body: greeting }))
 
-    // A pasted email opens with a greeting far more often than not, and "Hi Audrey," on
-    // every row says nothing about which message it is.
-    expect(correspondenceRowSummary(row({ subject: 'Next steps', body: greeting })))
-      .toContain('Next steps')
-    expect(correspondenceRowSummary(row({ subject: 'Next steps', body: greeting })))
-      .not.toContain('Hi Audrey')
-    // Without one, the body is still the best summary there is.
-    expect(correspondenceRowSummary(row({ subject: '', body: greeting }))).toContain('Hi Audrey')
+    // The same split the log makes. Three rows each reading "Next steps" under a heading
+    // reading "Next steps" would say nothing about which is which.
+    expect(summary).toContain('Hi Audrey')
+    expect(summary).not.toContain('Next steps')
   })
 
   it('carries the thread forward into the next message, not just the correspondent', () => {
@@ -154,5 +152,31 @@ describe('correspondence rows', () => {
 
     // The next message in a thread is a reply to it, and a shared subject is what a thread is.
     expect(next.subject).toBe('Next steps')
+  })
+
+  it('opens a thread at the first row of a run and not at the ones following it', () => {
+    const rows = [
+      row({ id: 'a', subject: 'Next steps' }),
+      row({ id: 'b', subject: 'Next steps' }),
+      row({ id: 'c', subject: 'Scheduling' }),
+    ]
+
+    expect([0, 1, 2].map((index) => opensThread(rows, index))).toEqual([true, false, true])
+  })
+
+  it('breaks a run when the stage changes, even on the same subject', () => {
+    const rows = [
+      row({ id: 'a', subject: 'Next steps', state: 'recruiter_messaged' }),
+      row({ id: 'b', subject: 'Next steps', state: 'interview_1' }),
+    ]
+
+    // Two conversations that happen to share a subject in different stages are not one
+    // conversation, which is the same rule the log groups on.
+    expect(opensThread(rows, 1)).toBe(true)
+  })
+
+  it('opens no thread for a message that arrived without a subject', () => {
+    expect(opensThread([row({ subject: '' })], 0)).toBe(false)
+    expect(opensThread([row({ subject: '   ' })], 0)).toBe(false)
   })
 })

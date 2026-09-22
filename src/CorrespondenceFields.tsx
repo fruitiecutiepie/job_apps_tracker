@@ -1,10 +1,11 @@
-import { useState } from 'react'
+import { Fragment, useState } from 'react'
 import { ChevronRight, Plus } from 'lucide-react'
 import { CHANNEL_SUGGESTIONS, CORRESPONDENCE_CONFIG, STATE_CONFIG, createUuidV7 } from './domain'
 import type { StateId } from './domain'
 import {
   correspondenceRowSummary,
   newCorrespondenceRow,
+  opensThread,
   type CorrespondenceRow,
 } from './correspondence'
 
@@ -47,7 +48,17 @@ export function CorrespondenceFields({
       {rows.length > 0 && (
         <div className="correspondence-list">
           {rows.map((row, index) => (
-            <fieldset className="correspondence-item" key={row.id}>
+            <Fragment key={row.id}>
+            {/*
+              One line over the messages of a thread, the same grouping the log makes and on
+              the same rule — a subject shared inside a stage. Between the rows rather than
+              wrapped around them, so the list stays flat and a message's number stays its
+              position in it.
+            */}
+            {opensThread(rows, index) ? (
+              <p className="correspondence-thread">{row.subject.trim()}</p>
+            ) : null}
+            <fieldset className="correspondence-item">
               <legend className="sr-only">Message {index + 1}</legend>
               {/*
                 The row's own name, and what opens it. Its text is its accessible name rather
@@ -160,6 +171,7 @@ export function CorrespondenceFields({
                 </>
               ) : null}
             </fieldset>
+            </Fragment>
           ))}
         </div>
       )}

@@ -3491,6 +3491,45 @@ describe('job applications tracker', () => {
     expect(within(added).getByText('New message')).toBeInTheDocument()
   })
 
+  it('gathers the editor rows of a thread under one subject', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    const log = async (subject: string, body: string, at: string) => {
+      await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+      const row = within(dialog).getByRole('group', { name: 'Message 1' })
+      const box = within(row).getByLabelText('Subject')
+      await user.clear(box)
+      await user.type(box, subject)
+      await user.type(within(row).getByLabelText('Date sent'), at)
+      await user.type(within(row).getByLabelText('Message'), body)
+    }
+
+    await log('Scheduling a call', 'Could you send me some windows?', '2026-08-10T09:00')
+    await log('Scheduling a call', 'Thursday works.', '2026-08-10T17:00')
+    await log('Reference check', 'Who should we contact?', '2026-08-11T09:00')
+
+    const list = dialog.querySelector<HTMLElement>('.correspondence-list')!
+    const headings = [...list.querySelectorAll('.correspondence-thread')].map((n) => n.textContent)
+
+    // One line over the two that share a subject, and one over the other conversation —
+    // not the subject restated on every row.
+    expect(headings).toEqual(['Reference check', 'Scheduling a call'])
+    // And each row's own line says its content rather than the subject a third time. Read off
+    // the summaries, since the rows are still open and their boxes hold the same words.
+    const summaries = [...list.querySelectorAll('.correspondence-item__summary')].map(
+      (node) => node.textContent ?? '',
+    )
+    expect(summaries.some((line) => line.includes('Could you send me some windows?'))).toBe(true)
+    expect(summaries.some((line) => line.includes('Thursday works.'))).toBe(true)
+    expect(summaries.every((line) => !line.includes('Scheduling a call'))).toBe(true)
+  })
+
   it('starts the next message from who the last one was with, and picks a direction in one press', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

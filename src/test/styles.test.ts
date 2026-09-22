@@ -395,6 +395,17 @@ describe('correspondence rows', () => {
     expect(css).toMatch(/\.correspondence-direction__option:has\(input:checked\)\s*\{[^}]*--accent/)
   })
 
+  it('marks a thread by weight alone, not by another box', () => {
+    const body = ruleBody('.correspondence-thread')
+
+    // It sits in the list rather than around it: a box would make each thread a card inside
+    // a section that is already a list of cards.
+    expect(body).toMatch(/font-weight:\s*500/)
+    expect(body).not.toMatch(/border/)
+    expect(body).not.toMatch(/background/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  })
+
   it('reads a folded row as a line of record rather than as a button', () => {
     const body = ruleBody('.correspondence-item__summary')
 

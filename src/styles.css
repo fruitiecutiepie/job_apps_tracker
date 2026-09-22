@@ -1830,6 +1830,22 @@ tbody tr:hover {
 }
 
 /*
+  The subject over the messages of a thread. Sits in the list rather than around it, so it has
+  to read as a heading by weight alone — a box would make each thread a card inside a section
+  that is already a list of cards.
+*/
+.correspondence-thread {
+  margin: var(--s2) 0 0;
+  color: var(--ink);
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+.correspondence-thread:first-child {
+  margin-top: 0;
+}
+
+/*
   The row while its fields are folded away: one line, the width of the item, reading as a
   record rather than as a button. Quiet enough that the fields below it are what the eye goes
   to once it is open.

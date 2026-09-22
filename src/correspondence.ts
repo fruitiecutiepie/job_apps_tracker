@@ -43,6 +43,22 @@ export function correspondenceRowsFor(application: Application | null): Correspo
 }
 
 /**
+ * Whether a row opens a thread rather than continuing the one above it. A thread is a subject
+ * shared inside a stage, so a run breaks when either changes — two conversations that happen
+ * to share a subject in different stages are not the same conversation.
+ *
+ * Read off neighbours rather than by collecting groups, so the rows stay one flat list: their
+ * numbering is their position in it, and a message's name should not move because the
+ * message above it was given a subject.
+ */
+export function opensThread(rows: CorrespondenceRow[], index: number): boolean {
+  const subject = rows[index]?.subject.trim()
+  if (!subject) return false
+  const previous = rows[index - 1]
+  return !previous || previous.subject.trim() !== subject || previous.state !== rows[index]!.state
+}
+
+/**
  * A row to start filing the next message into, carrying forward who it is with and how it
  * arrived. A hiring conversation is one recruiter on one channel far more often than not, so
  * re-typing both for every message is asking the reader to restate what the row above already
@@ -91,9 +107,12 @@ export function correspondenceRowSummary(row: CorrespondenceRow): string {
   const parts = [when, correspondenceSender({ direction: row.direction, who: row.who || null })]
   if (row.channel.trim()) parts.push(row.channel.trim())
 
-  // Subject first when there is one: a pasted email opens with a greeting far more often
-  // than not, and "Hi Audrey," on every row says nothing about which message it is.
-  const gist = preview(row.subject.trim() || row.body)
+  /*
+   * The body, not the subject — the heading above a thread carries that, the same split the
+   * log makes. A row leading with its own subject under a heading saying the same words
+   * would be three rows reading "Next steps" and telling you nothing about which is which.
+   */
+  const gist = preview(row.body)
   return gist ? `${parts.join(' · ')} — ${gist}` : parts.join(' · ')
 }
 

@@ -128,9 +128,13 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   each day it has messages in. That is the cost of keeping the log chronological, and it is
   the right way round for a log: each day reads on its own. Making the subject the spine
   instead would read as a mailbox rather than as what happened when.
-- The editor's folded row leads with the subject and falls back to the body. A pasted email
-  opens with a greeting far more often than not, so without it half the rows would read
-  "Hi Audrey," and say nothing about which message they are.
+- The editor groups its rows the same way and on the same rule, through `opensThread`: one
+  line over a run of rows sharing a subject inside a stage. The line goes **between** the rows
+  rather than wrapped around them, so the list stays flat — a message's number is its position
+  in it, and a name must not move because the message above it was given a subject.
+- With the subject on that line, a row summarises itself by its **body**, which is the split
+  the log already makes. Three rows each reading "Next steps" under a heading reading "Next
+  steps" would say nothing about which is which.
 - `channel` is free text with `CHANNEL_SUGGESTIONS` behind the editor's picker, the arrangement `source`
   already keeps: the picker curates the vocabulary and widening it must never narrow what import accepts. A
   closed union would be wrong the first time a message arrives by SMS, and there are no migrations here
