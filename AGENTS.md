@@ -403,6 +403,12 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   nowhere to send a caret. Both sections are counted whether or not they are open, so stepping onto a match
   opens the section holding it — from the step handler, never from an effect on the cursor, which moves on
   every keystroke in the find box.
+- A Kanban card carries a **Messages** button beside its prep notes one, through
+  `MessagesButton`, showing how many the application holds. It opens the **form**, not the
+  panel — the button beside it already reaches the panel, a card is one application, and the
+  panel reads one stage at a time, so the form is the surface holding the whole log and the
+  only one that can write it. It lands on the card's own stage, which is the conversation most
+  likely to be live, reusing the `messagesFor` the dock's Edit messages already passes.
 - The panel **reads** correspondence and does not write it. A message carries a send time you
   supply and a stage you file it under, and `dateInput.ts` is deliberately the only place wall
   time becomes a timestamp — a conversion that belongs in a form. What the dock offers instead

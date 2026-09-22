@@ -2087,6 +2087,7 @@ tbody tr:hover {
 /* --------------------------------------------------------- stage notes --- */
 
 .stage-notes-button,
+.messages-button,
 .complete-action-button {
   gap: var(--s2);
   padding: 0 var(--s3);
@@ -2094,6 +2095,7 @@ tbody tr:hover {
 }
 
 .stage-notes-button--card,
+.messages-button--card,
 .complete-action-button--card {
   min-height: 30px;
   color: var(--ink-2);

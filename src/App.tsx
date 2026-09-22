@@ -1118,6 +1118,7 @@ export default function App() {
       applications: filteredApplications,
       onOpen: openApplication,
       onOpenStageNotes: openStageNotes,
+      onOpenMessages: openApplication,
       onCompleteAction: completeAction,
     }
     switch (activeView) {
