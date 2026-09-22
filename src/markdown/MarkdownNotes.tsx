@@ -471,6 +471,16 @@ interface MarkdownNotesProps {
    */
   collapseInitially?: 'none' | 'entries'
   /**
+   * Whether this note is a **log of records** rather than something someone wrote. It decides
+   * two things that go together: a folded record summarises what it holds, and "all" means the
+   * records rather than every fold — folding the day headings of a log away leaves dates with
+   * nothing under them.
+   *
+   * Separate from `collapseInitially` because they are separate questions. A log can start
+   * open and still want both of those the moment a reader folds it by hand.
+   */
+  summariseFolds?: boolean
+  /**
    * Ancestor keys to force open, for a jump landing inside a section that is folded.
    * Left collapsed afterwards is not an option — the jump would have nothing to show.
    */
@@ -512,6 +522,7 @@ export function MarkdownNotes({
   currentMatch = null,
   foldAll = true,
   collapseInitially = 'none',
+  summariseFolds = false,
   revealKeys,
   onJumpToSection,
   onFoldControls,
@@ -519,10 +530,12 @@ export function MarkdownNotes({
   const section = useMemo(() => buildSections(parseMarkdown(source)), [source])
   const keys = useMemo(() => collectFoldableKeys(section), [section])
   const entryKeys = useMemo(
-    () => (collapseInitially === 'entries' ? collectEntryKeys(section) : []),
-    [collapseInitially, section],
+    () => (summariseFolds ? collectEntryKeys(section) : []),
+    [summariseFolds, section],
   )
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set(entryKeys))
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(collapseInitially === 'entries' ? entryKeys : []),
+  )
 
   /*
    * A message logged while the panel is open arrives closed like the rest, without reopening
@@ -534,9 +547,11 @@ export function MarkdownNotes({
   useEffect(() => {
     const fresh = entryKeys.filter((key) => !seededKeys.current.has(key))
     for (const key of entryKeys) seededKeys.current.add(key)
-    if (fresh.length === 0) return
+    // Only where records start folded. Where they start open, one arriving open is the rule
+    // it should follow rather than an exception to it.
+    if (collapseInitially !== 'entries' || fresh.length === 0) return
     setCollapsed((current) => new Set([...current, ...fresh]))
-  }, [entryKeys])
+  }, [collapseInitially, entryKeys])
 
   const search = useMemo(() => searchNote(section, query), [section, query])
   const slugs = useMemo(() => sectionSlugs(section), [section])
@@ -603,7 +618,7 @@ export function MarkdownNotes({
    * away leaves two dates and nothing else — neither readable nor scannable — so the same
    * prop that says records are the unit here says it to this control too.
    */
-  const foldAllKeys = collapseInitially === 'entries' ? entryKeys : keys
+  const foldAllKeys = summariseFolds ? entryKeys : keys
   const allCollapsed = foldAllKeys.length > 0 && foldAllKeys.every((key) => collapsed.has(key))
 
   /*
@@ -657,7 +672,7 @@ export function MarkdownNotes({
         </button>
       ) : null}
       <FollowSection.Provider value={follow}>
-        <SummariseFolds.Provider value={collapseInitially === 'entries'}>
+        <SummariseFolds.Provider value={summariseFolds}>
         <MarkdownSection
           collapsed={effectiveCollapsed}
           marks={marks}

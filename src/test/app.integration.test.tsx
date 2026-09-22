@@ -1796,7 +1796,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
 
     const toggle = within(dialog).getByRole('button', {
-      name: 'Show the correspondence in Halcyon Maps · Interview 2',
+      name: 'Show the messages in Halcyon Maps · Interview 2',
     })
     // Collapsed by default, but the count says there is something behind it.
     expect(toggle).toHaveAttribute('aria-expanded', 'false')
@@ -1831,11 +1831,11 @@ describe('job applications tracker', () => {
     const label = 'Halcyon Maps · Interview 2'
 
     // Folded in the strip: the row says what it holds and the rest is behind the chevron.
-    await user.click(within(dialog).getByRole('button', { name: `Show the correspondence in ${label}` }))
+    await user.click(within(dialog).getByRole('button', { name: `Show the messages in ${label}` }))
     expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
 
     // Reading them opens them, so it is not a press per message to start reading.
-    await user.click(within(dialog).getByRole('button', { name: `Read the correspondence in ${label}` }))
+    await user.click(within(dialog).getByRole('button', { name: `Read the messages in ${label}` }))
     expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
 
     // And the same control the prep note has folds them back without leaving the pane.
@@ -1859,7 +1859,7 @@ describe('job applications tracker', () => {
       within(dialog).getByRole('button', { name: `Collapse all points in ${label}` }),
     ).toBeInTheDocument()
 
-    await user.click(within(dialog).getByRole('button', { name: `Read the correspondence in ${label}` }))
+    await user.click(within(dialog).getByRole('button', { name: `Read the messages in ${label}` }))
 
     // The note is hidden, so folding it would appear to do nothing — and two buttons reading
     // "Collapse all" at once are told apart only by their accessible names.
@@ -1889,6 +1889,47 @@ describe('job applications tracker', () => {
     ).not.toBeInTheDocument()
   })
 
+  it('opens the form on the stage\'s messages, already unfolded', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    const label = 'Halcyon Maps · Interview 2'
+
+    await user.click(within(panel).getByRole('button', { name: `Show the messages in ${label}` }))
+    await user.click(within(panel).getByRole('button', { name: `Edit messages in ${label}` }))
+
+    // The panel reads correspondence and does not write it, so what it offers is the shortest
+    // way to the form — landing on the rows rather than at the top of a long one.
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const list = dialog.querySelector<HTMLElement>('.correspondence-list')!
+    const boxes = within(list).getAllByLabelText('Message')
+    expect(boxes).toHaveLength(3)
+    expect(boxes.some((box) => (box as HTMLTextAreaElement).value.includes('short notice'))).toBe(true)
+
+    // Landing on the section's own name rather than in the form's first field. The dialog
+    // autofocuses that field otherwise, which scrolls the form back to the top and undoes
+    // the arriving — and a screen reader dropped into a textarea mid-form is told nothing
+    // about where it is.
+    expect(document.activeElement).toBe(within(dialog).getByText('Messages'))
+    expect(document.activeElement).not.toBe(within(dialog).getByLabelText('Company'))
+  })
+
+  it('opens the form closed when it was the application that was asked for', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // The pencil in the subject line opens the application, not a message, so the rows stay
+    // folded — this is the form, not a way back to one row of it.
+    await user.click(screen.getByRole('button', { name: /^Open Halcyon Maps/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    expect(within(dialog).queryByLabelText('Message')).not.toBeInTheDocument()
+    // And the form opens where a form opens.
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Company'))
+  })
+
   it('hands the pane back to the note when the find steps into it', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
@@ -1909,7 +1950,7 @@ describe('job applications tracker', () => {
     expect(read()).toHaveAttribute('aria-pressed', 'true')
     expect(
       within(dialog).getByRole('button', {
-        name: 'Hide the correspondence in Halcyon Maps · Interview 2',
+        name: 'Hide the messages in Halcyon Maps · Interview 2',
       }),
     ).toBeInTheDocument()
 
@@ -1942,7 +1983,7 @@ describe('job applications tracker', () => {
     // that the dock renders the other case: a LinkedIn note has no thread to belong to.
     await user.click(
       within(dialog).getByRole('button', {
-        name: 'Show the correspondence in Halcyon Maps · Interview 2',
+        name: 'Show the messages in Halcyon Maps · Interview 2',
       }),
     )
     const log = within(dialog.querySelector<HTMLElement>('.stage-note__log--messages')!)
@@ -1965,7 +2006,7 @@ describe('job applications tracker', () => {
 
     await user.click(within(dialog).getByRole('tab', { name: /Interview 1/ }))
     const toggle = within(dialog).getByRole('button', {
-      name: 'Show the correspondence in Halcyon Maps · Interview 1',
+      name: 'Show the messages in Halcyon Maps · Interview 1',
     })
 
     // Filing is the reader's decision, so the panel honours it rather than showing the lot.
@@ -2000,7 +2041,7 @@ describe('job applications tracker', () => {
     // a match opens the section holding it, or the count would move and nothing would.
     expect(
       within(dialog).getByRole('button', {
-        name: 'Show the correspondence in Halcyon Maps · Interview 2',
+        name: 'Show the messages in Halcyon Maps · Interview 2',
       }),
     ).toHaveAttribute('aria-expanded', 'false')
 
@@ -2008,7 +2049,7 @@ describe('job applications tracker', () => {
     expect(within(dialog).getByText('2 of 4')).toBeInTheDocument()
     expect(
       within(dialog).getByRole('button', {
-        name: 'Hide the correspondence in Halcyon Maps · Interview 2',
+        name: 'Hide the messages in Halcyon Maps · Interview 2',
       }),
     ).toHaveAttribute('aria-expanded', 'true')
     expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
@@ -2684,7 +2725,7 @@ describe('job applications tracker', () => {
     // In a box being typed into, ⌘⇧← selects to the start of the line. That is what the
     // reader means there, and taking it cost them the selection and moved a tab they were
     // not thinking about.
-    await user.click(within(panel).getAllByRole('button', { name: /^Edit / })[0])
+    await user.click(within(panel).getAllByRole('button', { name: /^Edit [A-Z]/ })[0])
     const box = within(panel).getAllByRole('textbox')[0]
     await user.click(box)
     await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
@@ -2751,7 +2792,7 @@ describe('job applications tracker', () => {
     await user.click(foldAll)
     expect(within(panel).getByRole('button', { name: /^Expand all points in/ })).toBeInTheDocument()
 
-    await user.click(within(panel).getAllByRole('button', { name: /^Edit / })[0])
+    await user.click(within(panel).getAllByRole('button', { name: /^Edit [A-Z]/ })[0])
     const bold = within(panel).getByRole('button', { name: /^Bold in / })
     expect(header().contains(bold)).toBe(true)
 
@@ -4676,7 +4717,7 @@ describe('job applications tracker', () => {
       .closest('article')!
 
     // Type into the card, then leave for the full editor before the autosave runs.
-    await user.click(within(card).getByRole('button', { name: /^Edit / }))
+    await user.click(within(card).getByRole('button', { name: /^Edit [A-Z]/ }))
     const editor = within(card).getByLabelText('Halcyon Maps · Interview 2 prep notes')
     await user.type(editor, '\n\nAsk who owns the platform roadmap.')
     await user.click(within(card).getByRole('button', { name: /in the full editor$/ }))
@@ -4694,7 +4735,7 @@ describe('job applications tracker', () => {
     )
 
     // Now edit in the panel, which seeded its draft before that write landed.
-    await user.click(within(panel).getByRole('button', { name: /^Edit .*Interview 2/ }))
+    await user.click(within(panel).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
     const panelEditor = within(panel).getByLabelText(/Interview 2 prep notes/)
     await user.type(panelEditor, '\n\nConfirm the start date.')
 

@@ -334,15 +334,19 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   message with no name on it must still not read as yours. A log holding both sides has no use
   for the word "Sent" on every other row, and naming the sender says the same thing in space a
   name was taking anyway. This is what every mail client does with "me".
-- The messages in the dock start **folded**, one row each, through `collapseInitially="entries"`
-  on `MarkdownNotes`. Correspondence is mostly email, and email is long: a log of them unfolded
-  buries the prep note above it, while a log folded to bare headers says nothing about what is
-  worth opening. So a folded record also summarises what it holds, the way a folded quote
-  already did. Both halves are needed; either alone is unreadable.
-- That summary is scoped to surfaces that start folded, through the `SummariseFolds` context.
-  Folding a point in a note **you wrote** is a deliberate act of putting it away, and previewing
-  it would undo the thing you just asked for; you know what is under there. A log you did not
-  write is the other case. Do not extend the preview to notes.
+- The messages in the dock read **open**. You went to the section to read them, and a press per
+  message before any reading starts is a toll on the common case. **Collapse all** is one press
+  the other way, and the strip's cap means a long thread scrolls rather than swallowing the
+  prep note above it — **Read** is the answer when it needs the column.
+- Whether a record starts folded and whether a log **summarises** its folded records are two
+  props, not one: `collapseInitially` and `summariseFolds`. They were one while the messages
+  started folded, and separating them is what let the default flip without quietly losing the
+  summary the moment a reader pressed Collapse all.
+- `summariseFolds` also decides what "all" means to the fold-all control — the records, not
+  every fold, since folding a log's day headings away leaves dates with nothing under them.
+  It is off for notes on purpose. Folding a point in a note **you wrote** is a deliberate act of
+  putting it away, and previewing it would undo the thing you just asked for; you know what is
+  under there. Do not extend the preview to notes.
 - **Read** gives the messages the pane instead of the strip at the bottom of it, and swaps
   back to the prep note. Folding made the log scannable, which is what a strip is for; it did
   nothing for the message you then open, which is a whole email read through an 11rem window.
@@ -376,7 +380,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   fold control is withdrawn while the messages have the pane — the note is hidden then, so
   folding it would appear to do nothing, and two buttons reading "Collapse all" at once are
   told apart only by their accessible names.
-- What "all" means to that control follows `collapseInitially`. In a note it is every fold,
+- What "all" means to that control follows `summariseFolds`. In a note it is every fold,
   which leaves the bare outline that is the whole use of it there. In a log it is the records
   only: folding the day headings away leaves two dates and nothing under them, neither
   readable nor scannable.
@@ -384,7 +388,14 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   a log that keeps both sides, the quoted chain is the message above quoted back — duplicate
   by construction — so a log that arrived with every one of them unrolled would be unreadable.
   Opening the lot deliberately is another matter, and reaches them.
-- A pane's dock holds two collapsible sections, both collapsed by default: **Correspondence** above, then
+- The section a reader sees is called **Messages**, through `CORRESPONDENCE_SECTION`. The stored
+  field stays `correspondence`: renaming it would be a migration, and this document runs none —
+  so the code says correspondence and the interface says messages, deliberately.
+- Every control in the dock's section row is one height, through `align-items: stretch` on
+  `.stage-note__dock-row`. Matching their `min-height` floors does not do it: the toggle carries
+  a count badge with padding of its own, so the row's height comes from content rather than from
+  the floor either of them declares.
+- A pane's dock holds two collapsible sections, both collapsed by default: **Messages** above, then
   **What they said**. They read in that order down the pane, and the find numbers them in that order after
   the written note — `matchBase`, then `correspondenceMatchBase`, then `heardMatchBase`. Only the captures
   have a carve-out (lines open for correcting sit out, each being in a box with no highlight to step onto);
@@ -392,6 +403,27 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   nowhere to send a caret. Both sections are counted whether or not they are open, so stepping onto a match
   opens the section holding it — from the step handler, never from an effect on the cursor, which moves on
   every keystroke in the find box.
+- The panel **reads** correspondence and does not write it. A message carries a send time you
+  supply and a stage you file it under, and `dateInput.ts` is deliberately the only place wall
+  time becomes a timestamp — a conversion that belongs in a form. What the dock offers instead
+  is **Edit messages**, which opens the application's form with that stage's rows already
+  unfolded and scrolled to, through `messagesFor` on the editor. Landing at the top of a long
+  form to hunt for the row you were just reading was the whole of the annoyance; the form was
+  never the wrong place to write in.
+- Arriving that way **focuses the section's own name**, not the form's first field. The dialog
+  autofocuses that field otherwise, and focusing an element scrolls it into view — so a scroll
+  on its own is undone a frame later, which is what made the first attempt at this look like it
+  had done nothing. Landing on the name also gives a screen reader somewhere that says where it
+  is, rather than dropping it into a textarea mid-form. The name is focusable programmatically
+  only: nobody tabbing through the form should stop on a label.
+- `messagesFor` unfolds once, on the way in. Re-running it would drag the reader back to the
+  section every time the rows changed — and they change because the reader is typing into them.
+  Opening the application from the subject line passes none, so the rows stay folded: that is
+  the form, not a way back to one row of it.
+- The button is named **Edit messages in {stage}**, which contains its visible label so voice
+  control can reach it. That collides with a loose `/^Edit /` in the tests, which is the tests'
+  problem: those queries were written when the note's own Edit was the only one, and they name
+  it exactly now.
 - The pane shows only the messages filed against **that stage**, because filing is a judgement the reader
   made and the panel honours it. The application editor is therefore the only place the whole log reads in
   order, and the only place it can be written. Correspondence is also invisible to `src/notesTree.ts`, which

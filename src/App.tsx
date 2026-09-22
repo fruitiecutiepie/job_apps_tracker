@@ -268,6 +268,8 @@ interface AttachmentSavePlan {
 
 interface ApplicationEditorProps {
   application: Application | null
+  /** A stage whose messages open, and scroll to, when the dialog does. */
+  messagesFor?: StateId
   onClose: () => void
   onDelete?: () => void
   onOpenStageNotes?: (id: string) => void
@@ -280,7 +282,7 @@ interface ApplicationEditorProps {
   ) => Promise<void>
 }
 
-function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, onSave }: ApplicationEditorProps) {
+function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpenStageNotes, onSave }: ApplicationEditorProps) {
   const isEditing = application !== null
   const dialogRef = useRef<HTMLElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -427,7 +429,9 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
             <label className="field">
               <span>Company</span>
               <input
-                autoFocus
+                // Not when the dialog was opened at a message: that lands on the
+                // correspondence section, and this would take the focus straight back.
+                autoFocus={!messagesFor}
                 onChange={(event) => update('company', event.target.value)}
                 placeholder="e.g. Paper Kite"
                 required
@@ -548,6 +552,7 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
             />
             <CorrespondenceFields
               defaultState={values.state}
+              messagesFor={messagesFor}
               onChange={setCorrespondence}
               rows={correspondence}
             />
@@ -677,7 +682,15 @@ export default function App() {
   const [idleFilter, setIdleFilter] = useState<IdleFilter>('all')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
-  const [editor, setEditor] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
+  /*
+   * `messagesFor` opens the dialog with one stage's messages already unfolded and the section
+   * scrolled to. Reading a message and wanting to fix it is the commonest way into this form
+   * from the panel, and landing at the top of a long form to hunt for the row you were just
+   * looking at is the whole of the annoyance.
+   */
+  const [editor, setEditor] = useState<
+    { mode: 'add' } | { mode: 'edit'; id: string; messagesFor?: StateId } | null
+  >(null)
   /**
    * The note a card or a row asked for, waiting to be opened into the prep notes view. The
    * nonce is what makes asking twice for the same note two requests: the second would
@@ -997,9 +1010,9 @@ export default function App() {
       ?? (activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null)
   }
 
-  const openApplication = (id: string) => {
+  const openApplication = (id: string, messagesFor?: StateId) => {
     rememberDialogOpener()
-    setEditor({ mode: 'edit', id })
+    setEditor({ mode: 'edit', id, messagesFor })
   }
 
   const openNewApplication = (opener: HTMLButtonElement) => {
@@ -1468,6 +1481,7 @@ export default function App() {
       {editor && (editor.mode === 'add' || editingApplication) && (
         <ApplicationEditor
           application={editor.mode === 'edit' ? editingApplication : null}
+          messagesFor={editor.mode === 'edit' ? editor.messagesFor : undefined}
           onClose={closeEditor}
           onDelete={editor.mode === 'edit' ? async () => {
             if (window.confirm(`Delete ${editingApplication?.company ?? 'this application'}?`)) {

@@ -192,7 +192,8 @@ interface StageNotesPanelProps {
    * notes from several applications at once, so the id travels with the request rather
    * than being the one the panel was opened on.
    */
-  onOpenApplication: (applicationId: string) => void
+  /** The stage, when the caller is a message rather than the application itself. */
+  onOpenApplication: (applicationId: string, messagesFor?: StateId) => void
 }
 
 function errorMessage(error: unknown): string {
@@ -2338,6 +2339,7 @@ export function StageNotesPanel({
           heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0) + (found?.wrote ?? 0)}
           isCorrespondenceOpen={correspondenceOpen.includes(shownKey)}
           isCorrespondenceReading={correspondenceReading.includes(shownKey)}
+          onEditCorrespondence={() => onOpenApplication(shown.applicationId, shown.state)}
           isCurrentState={shownApplication?.state === shown.state}
           captureHeight={captureHeight}
           isCaptureOpen={captureOpen.includes(shownKey)}

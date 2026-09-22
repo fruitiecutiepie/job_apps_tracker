@@ -293,10 +293,13 @@ neither a finger nor any browser automation.
     its own in both. Save, reopen, and confirm the date you typed came back rather
     than the moment you saved. The structure of the rendered message is covered by the browser
     suite; what is left here is judgement. Open Prep notes for that stage, expand
-    **Correspondence**, and ask whether the hint makes the two dates distinct before you have to
-    find the difference out, whether a folded row — the time, who it was from, and a line of
-    what it says — tells you enough to decide whether to open it, and whether the line it shows
-    is cut at a useful length. Press **Read** and confirm a long email is comfortable to read
+    **Messages**, and ask whether the hint makes the two dates distinct before you have to find
+    the difference out, and whether a thread reads well open — which is how the section now
+    arrives. Press **Collapse all** and ask the other half: whether a folded row, carrying the
+    time, who it was from, and a line of what it says, tells you enough to decide whether to
+    open it, and whether that line is cut at a useful length. Press **Edit messages** and confirm the form opens on that
+    stage's rows, already unfolded, rather than at the top. Press **Read** and confirm a
+    long email is comfortable to read
     down the column, that the quoted chain stays out of the way until asked for, and that
     **Prep note** brings the note back where you left it.
 13. In the application editor, set all four ratings, save, reopen, and confirm they persisted.

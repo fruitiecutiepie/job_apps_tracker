@@ -64,7 +64,7 @@ const DOCK_LABEL = 'Halcyon Maps · Interview 2'
 
 async function openCorrespondence() {
   await userEvent.click(
-    screen.getByRole('button', { name: `Show the correspondence in ${DOCK_LABEL}` }),
+    screen.getByRole('button', { name: `Show the messages in ${DOCK_LABEL}` }),
   )
 }
 
@@ -137,7 +137,7 @@ describe('a message in the dock, in a real browser', () => {
     expect(box(note).height).toBeGreaterThan(100)
 
     await userEvent.click(
-      screen.getByRole('button', { name: `Read the correspondence in ${DOCK_LABEL}` }),
+      screen.getByRole('button', { name: `Read the messages in ${DOCK_LABEL}` }),
     )
 
     // The note is out of the way rather than squeezed, and the log has what it was using.
@@ -176,7 +176,7 @@ describe('a message in the dock, in a real browser', () => {
     await openCorrespondence()
 
     expect(
-      screen.queryByRole('button', { name: `Read the correspondence in ${DOCK_LABEL}` }),
+      screen.queryByRole('button', { name: `Read the messages in ${DOCK_LABEL}` }),
     ).not.toBeInTheDocument()
   })
 

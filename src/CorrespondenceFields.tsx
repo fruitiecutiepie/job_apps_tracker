@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useEffect, useRef, useState } from 'react'
 import { ChevronRight, Plus } from 'lucide-react'
 import { CHANNEL_SUGGESTIONS, CORRESPONDENCE_CONFIG, STATE_CONFIG, createUuidV7 } from './domain'
 import type { StateId } from './domain'
@@ -15,12 +15,19 @@ const CHANNEL_LIST_ID = 'correspondence-channels'
 interface CorrespondenceFieldsProps {
   rows: CorrespondenceRow[]
   defaultState: StateId
+  /**
+   * A stage whose messages start open, and which this section scrolls to. Set when the
+   * dialog was opened from a message rather than from the application: landing at the top of
+   * a long form to hunt for the row you were just reading is the whole of the annoyance.
+   */
+  messagesFor?: StateId
   onChange: (rows: CorrespondenceRow[]) => void
 }
 
 export function CorrespondenceFields({
   rows,
   defaultState,
+  messagesFor,
   onChange,
 }: CorrespondenceFieldsProps) {
   /*
@@ -30,7 +37,27 @@ export function CorrespondenceFields({
    * rather than lifted: it is which row you are looking at, and it means nothing once the
    * dialog closes.
    */
-  const [open, setOpen] = useState<string[]>([])
+  const [open, setOpen] = useState<string[]>(() =>
+    messagesFor ? rows.filter((row) => row.state === messagesFor).map((row) => row.id) : [],
+  )
+
+  /*
+   * Once, on the way in. Re-running it would drag the reader back here every time the rows
+   * changed, and they are changing because the reader is typing into them.
+   *
+   * Focus as well as scroll, and the focus is the part that matters: the dialog autofocuses
+   * its first field, which scrolls the form back to the top — so a scroll on its own is undone
+   * a frame later. Landing on the section's own name also gives a screen reader somewhere to
+   * be that says where it is, rather than dropping it into a textarea mid-form. Scrolled after
+   * focusing rather than by it, because `focus()` scrolls as little as it can get away with
+   * and this wants the section at the top.
+   */
+  const heading = useRef<HTMLSpanElement>(null)
+  useEffect(() => {
+    if (!messagesFor) return
+    heading.current?.focus({ preventScroll: true })
+    heading.current?.scrollIntoView?.({ block: 'start' })
+  }, [messagesFor])
 
   /** Puts a row into the list at `index`, open, since it is the one about to be filled in. */
   const insert = (added: CorrespondenceRow, index: number) => {
@@ -50,7 +77,11 @@ export function CorrespondenceFields({
 
   return (
     <div className="field field--wide correspondence-field">
-      <span>Correspondence</span>
+      {/* Focusable only programmatically: it is where this section is entered from the panel,
+          and a label nobody navigated to should not be a Tab stop. */}
+      <span className="correspondence-field__name" ref={heading} tabIndex={-1}>
+        Messages
+      </span>
 
       {rows.length > 0 && (
         <div className="correspondence-list">

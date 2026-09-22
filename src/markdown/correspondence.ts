@@ -11,13 +11,13 @@
 import { dayGroups } from './dayLog'
 
 /** The heading a stage's messages are read under, and the toggle that opens them. */
-export const CORRESPONDENCE_SECTION = 'Correspondence'
+export const CORRESPONDENCE_SECTION = 'Messages'
 
 /**
  * The same word inside a sentence, for the labels that put it in one: "Show the correspondence
  * in …". Written out rather than lowercased on the fly, matching `CAPTURE_SECTION_IN_SENTENCE`.
  */
-export const CORRESPONDENCE_SECTION_IN_SENTENCE = 'the correspondence'
+export const CORRESPONDENCE_SECTION_IN_SENTENCE = 'the messages'
 
 /** What this needs of a message, which is less than the stored record. */
 interface Corresponded {

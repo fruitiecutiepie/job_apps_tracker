@@ -540,7 +540,7 @@ describe('the panel in a real browser', () => {
 
   it('gives the whole pane to the note being written in it', async () => {
     renderPanel()
-    await userEvent.click(screen.getAllByRole('button', { name: /^Edit / })[0])
+    await userEvent.click(screen.getAllByRole('button', { name: /^Edit [A-Z]/ })[0])
 
     const box = screen.getByRole('textbox', { name: /prep notes$/ }).getBoundingClientRect()
     const body = document.querySelector('.stage-note__body')!.getBoundingClientRect()

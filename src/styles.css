@@ -1829,6 +1829,16 @@ tbody tr:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+/* Programmatically focusable, so it must not draw a ring when it is merely clicked past. */
+.correspondence-field__name:focus {
+  outline: none;
+}
+
+.correspondence-field__name:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
 /*
   The subject over the messages of a thread. Sits in the list rather than around it, so it has
   to read as a heading by weight alone — a box would make each thread a card inside a section
@@ -2421,9 +2431,14 @@ tbody tr:hover {
 }
 
 /* The section's own name and the control that swaps the pane over to it, on one line. */
+/*
+  Stretched rather than centred, so every control in the row is the height of the row. The
+  toggle sets that height and is taller than its own floor, because the count badge beside its
+  name carries padding of its own — which is why matching the floors did not match the boxes.
+*/
 .stage-note__dock-row {
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: var(--s2);
 }
 
@@ -2433,9 +2448,10 @@ tbody tr:hover {
 }
 
 .stage-note__dock-read {
+  display: flex;
   flex: none;
+  align-items: center;
   gap: var(--s2);
-  min-height: 26px;
   padding: 0 var(--s2);
   color: var(--ink-2);
   font-size: var(--t2);

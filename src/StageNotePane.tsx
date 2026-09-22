@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, CornerDownLeft, ExternalLink, Maximize2, Minimize2, PencilLine, X } from 'lucide-react'
+import { ChevronRight, CornerDownLeft, ExternalLink, Maximize2, Minimize2, PencilLine, SquarePen, X } from 'lucide-react'
 import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangement'
@@ -72,6 +72,12 @@ interface StageNotePaneProps {
    */
   isCorrespondenceReading: boolean
   onToggleCorrespondenceReading: () => void
+  /**
+   * Opens the application's form on this stage's messages. The panel reads correspondence and
+   * does not write it — a message carries a supplied send time and a stage it is filed under,
+   * which are form questions — so what it offers instead is the shortest way to the form.
+   */
+  onEditCorrespondence: () => void
   /** The same lines as records, for correcting them one at a time. */
   lines: readonly CapturedLine[]
   /** Whether the captured lines are open for correcting rather than being read. */
@@ -145,6 +151,7 @@ export function StageNotePane({
   onToggleCorrespondence,
   isCorrespondenceReading,
   onToggleCorrespondenceReading,
+  onEditCorrespondence,
   lines,
   isEditingLines,
   onToggleEditLines,
@@ -562,6 +569,17 @@ export function StageNotePane({
             ) : null}
             {correspondenceCount > 0 ? (
               <button
+                aria-label={`Edit messages in ${label}`}
+                className="button button--quiet stage-note__dock-read"
+                onClick={onEditCorrespondence}
+                type="button"
+              >
+                <SquarePen aria-hidden="true" size={13} />
+                Edit messages
+              </button>
+            ) : null}
+            {correspondenceCount > 0 ? (
+              <button
                 aria-label={
                   isCorrespondenceReading
                     ? `Show the prep note in ${label}`
@@ -583,7 +601,6 @@ export function StageNotePane({
             // screen, so there is no live region for a reader to be told about.
             <div className="stage-note__log stage-note__log--messages">
               <MarkdownNotes
-                collapseInitially="entries"
                 currentMatch={currentMatch}
                 foldAll={false}
                 label={`${label} correspondence`}
@@ -591,6 +608,7 @@ export function StageNotePane({
                 onFoldControls={setMessageFolds}
                 query={query}
                 source={corresponded}
+                summariseFolds
               />
             </div>
           ) : null}
