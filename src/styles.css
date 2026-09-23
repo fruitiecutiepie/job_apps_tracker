@@ -1951,6 +1951,18 @@ tbody tr:hover {
 }
 
 /*
+ * Both ways into Prep for a row, stacked rather than side by side: the column is narrower
+ * than the two of them, and a button that wrapped onto its own line unevenly would read as
+ * two different kinds of control. Starts at the left so a row with only one still lines up
+ * with the rows around it.
+ */
+.table-prep-actions {
+  display: grid;
+  gap: var(--s2);
+  justify-items: start;
+}
+
+/*
  * In the table the button sits under the action text inside its own cell, so it needs the
  * gap the surrounding cell layout does not provide.
  */

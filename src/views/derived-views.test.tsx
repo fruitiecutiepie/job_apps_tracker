@@ -1179,6 +1179,36 @@ describe('kanbanColumnGroups', () => {
   })
 })
 
+describe('TableView job posting', () => {
+  it('offers the posting beside the prep notes on the row that has one', () => {
+    const onOpenPosting = vi.fn()
+    const posted = application('Marble & Finch', {
+      posting: { body: '## Product Manager', captured_at: localDate(-5), source_url: null },
+    })
+    const bare = application('Echo Robotics')
+
+    render(
+      <TableView
+        applications={[posted, bare]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onOpenPosting={onOpenPosting}
+        onCompleteAction={vi.fn()}
+        onMove={vi.fn()}
+      />,
+    )
+
+    // The column is the way into Prep, and Prep holds more than notes, so it is not headed
+    // as notes — the same reason the sidebar stopped filing postings under prep notes.
+    expect(screen.getByRole('columnheader', { name: /^Prep/ })).toBeInTheDocument()
+
+    expect(screen.queryByRole('button', { name: 'Job posting for Echo Robotics' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Job posting for Marble & Finch' }))
+
+    expect(onOpenPosting).toHaveBeenCalledWith(posted.id)
+  })
+})
+
 describe('KanbanView', () => {
   it('offers the job posting from the card that has one, and not from one that has not', () => {
     const onOpenPosting = vi.fn()
