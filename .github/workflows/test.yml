@@ -49,5 +49,11 @@ jobs:
       - name: Lint
         run: corepack pnpm lint
 
+      # Two workers, not one per core. The pool is a shared machine that also carries the
+      # other runners and whatever else is on it, so a suite that forks ten workers spends
+      # its time competing with itself: every failure seen here has been a timeout rather
+      # than an assertion, and the set of tests that time out moves between runs. Fewer
+      # workers is the honest lever — `testTimeout` is a floor for how slow a passing test
+      # may be, and raising it to fit a loaded machine would only hide the next real one.
       - name: Test
-        run: corepack pnpm test
+        run: corepack pnpm test --maxWorkers=2
