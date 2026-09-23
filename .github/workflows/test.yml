@@ -1,0 +1,53 @@
+# Every pull request, checked before it can be merged.
+#
+# Runs on the self-hosted pool rather than a GitHub runner, so it needs to leave the machine
+# as it found it: the checkout is clean per run, but the toolchain and the pnpm store are the
+# machine's own and are deliberately not touched.
+#
+# The browser suite is not here. It wants three browser downloads per run and answers a
+# different question — where things end up on screen — which is worth a local run when the
+# panel's layout changes, not a download on every push.
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+# A second push supersedes the first. The pool is one machine shared with everything else on
+# it, so a queue of runs nobody is waiting for is the expensive kind of waste.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # Both runners in the pool carry this label, so either may take the job. `self-hosted`
+    # alongside it is what keeps a GitHub-hosted runner from matching.
+    runs-on: [self-hosted, local-mac-pool]
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # The machine's own pnpm is older than the lockfile format. `packageManager` in
+      # package.json pins the version this repo is built with, and corepack is what honours
+      # it — without this the install silently re-resolves every `latest` dependency.
+      - name: Use the pinned pnpm
+        run: |
+          corepack enable
+          corepack pnpm --version
+
+      # Frozen, so a run can only ever build the tree the lockfile describes. A drifted
+      # specifier fails here rather than quietly resolving to something else.
+      - name: Install
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: corepack pnpm typecheck
+
+      - name: Lint
+        run: corepack pnpm lint
+
+      - name: Test
+        run: corepack pnpm test
