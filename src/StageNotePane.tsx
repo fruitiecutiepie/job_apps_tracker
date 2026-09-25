@@ -1,5 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, CornerDownLeft, ExternalLink, Maximize2, Minimize2, PencilLine, SquarePen, X } from 'lucide-react'
+import {
+  ChevronRight,
+  CornerDownLeft,
+  ExternalLink,
+  FileText,
+  Maximize2,
+  Minimize2,
+  PencilLine,
+  SquarePen,
+  X,
+} from 'lucide-react'
 import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangement'
@@ -13,13 +23,13 @@ import {
 import { StageNoteEditor } from './StageNoteEditor'
 import { FORMATS, type Format } from './noteFormats'
 import type { StageNote, StageNoteEditSession } from './domain'
-import { noteRefKey, tabId, type NoteRef } from './notesLayout'
+import { noteRefKey, tabId, type StageNoteRef } from './notesLayout'
 import { stageNoteHeadingId, stageNotePanelId } from './stageNoteIds'
 import { shortcutKeys } from './shortcuts'
 
 interface StageNotePaneProps {
   /** Which application's note, and for which stage. */
-  noteRef: NoteRef
+  noteRef: StageNoteRef
   label: string
   /**
    * The application's own name and role, not restated per stage: the header names the
@@ -112,6 +122,11 @@ interface StageNotePaneProps {
   onToggleEditing: () => void
   /** Absent when the build cannot reach an editor process, which the static site cannot. */
   onOpenInEditor?: () => void
+  /**
+   * Opens this application's captured job posting in a pane beside this one. Null when it
+   * has captured none, since there would be nothing to show.
+   */
+  onOpenPosting: (() => void) | null
   onStopExternal: () => void
   paneRef: RefCallback<HTMLDivElement>
   formatDate: (iso: string) => string
@@ -166,6 +181,7 @@ export function StageNotePane({
   onCapture,
   onToggleEditing,
   onOpenInEditor,
+  onOpenPosting,
   onStopExternal,
   paneRef,
   formatDate,
@@ -371,6 +387,17 @@ export function StageNotePane({
             </span>
           ) : null}
           <span className="stage-note__actions">
+            {onOpenPosting ? (
+              <button
+                aria-label={`Read the ${company} job posting beside ${label}`}
+                className="button button--quiet stage-note__mode"
+                onClick={onOpenPosting}
+                type="button"
+              >
+                <FileText aria-hidden="true" size={14} />
+                Posting
+              </button>
+            ) : null}
             {session ? (
               <button
                 aria-label={`Stop editing ${label} externally`}

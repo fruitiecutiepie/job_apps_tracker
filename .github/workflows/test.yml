@@ -1,0 +1,62 @@
+# Every pull request, checked before it can be merged.
+#
+# On a GitHub runner rather than the self-hosted pool, which is one shared machine: a gate
+# that goes red because something else on that machine is busy is a gate people learn to
+# wave through, and this one did exactly that twice before moving here. The repo is public,
+# so the minutes cost nothing.
+#
+# The browser suite is not here. It wants three browser downloads per run and answers a
+# different question — where things end up on screen — which is worth a local run when the
+# panel's layout changes, not a download on every push.
+name: Test
+
+on:
+  pull_request:
+  push:
+    branches: [master]
+
+# A second push supersedes the first: nobody is waiting on the answer to a commit that has
+# already been replaced.
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Before `setup-node`, so the pnpm it caches for is the one `packageManager` pins.
+      # Without corepack the install silently re-resolves every `latest` dependency against
+      # whatever pnpm the runner happens to carry.
+      - name: Use the pinned pnpm
+        run: |
+          corepack enable
+          corepack pnpm --version
+
+      # Pinned rather than whatever the image ships, so the gate does not change its mind
+      # when the runner image updates.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Frozen, so a run can only ever build the tree the lockfile describes. A drifted
+      # specifier fails here rather than quietly resolving to something else.
+      - name: Install
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Typecheck
+        run: corepack pnpm typecheck
+
+      - name: Lint
+        run: corepack pnpm lint
+
+      # No worker cap. The one this had was for a machine shared with two other runners and
+      # everything else on it; a dedicated runner has nothing to compete with, and capping
+      # it there would only make the gate slower for a reason that no longer holds.
+      - name: Test
+        run: corepack pnpm test

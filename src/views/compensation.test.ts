@@ -61,6 +61,7 @@ function application(compensation: Compensation, company = 'Fixture'): Applicati
     state_events: [],
     correspondence: [],
     attachments: [],
+    posting: null,
     ratings: [],
     compensation,
     created_at: at,

@@ -50,6 +50,8 @@ import {
   reviseApplicationStageCapture,
   updateApplicationStageCapture,
   updateApplicationStageNotes,
+  reviseApplicationPosting,
+  updateApplicationPosting,
   updateApplicationRatings,
   updateApplicationCorrespondence,
   updateApplicationStateEvents,
@@ -59,6 +61,7 @@ import {
   type ApplicationInput,
   type Attachment,
   type CompletedActionDraft,
+  type PostingDraft,
   type CorrespondenceDraft,
   type StateEventDraft,
   type StateFilter,
@@ -97,7 +100,10 @@ import {
   type InviteRow,
 } from './invites'
 import type { StageNoteDraftBatch } from './StageNotesPanel'
-import type { NoteRequest } from './notesLayout'
+import { postingRef, stageRef, type NoteRequest } from './notesLayout'
+import { PostingField } from './PostingField'
+import { formatShortDate } from './views/viewUtils'
+import { firstPostingProblem, postingDraftFrom, postingRowFor, type PostingRow } from './posting'
 import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
@@ -126,7 +132,13 @@ const VIEW_OPTIONS = [
  * its values: the view underneath does not change while the notes are up, so putting it
  * back when they go needs nothing remembered.
  */
-const NOTES_VIEW = { label: 'Prep notes', icon: NotebookPen } as const
+/*
+ * "Prep" rather than "Prep notes": the view holds an application's job posting as well as
+ * the notes written against it, and a posting is not a note anybody wrote. What survives
+ * the rename is the adjective, which is true of everything here — you read the posting in
+ * order to prepare. The notes themselves are still prep notes, and still say so.
+ */
+const NOTES_VIEW = { label: 'Prep', icon: NotebookPen } as const
 
 /*
  * Occasional collection-wide actions (import, export, demo reset) live behind
@@ -278,6 +290,7 @@ interface ApplicationEditorProps {
     attachmentPlan: AttachmentSavePlan,
     invites: StateEventDraft[],
     completedActions: CompletedActionDraft[],
+    posting: PostingDraft | null,
     correspondence: CorrespondenceDraft[],
   ) => Promise<void>
 }
@@ -311,6 +324,7 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
       at: entry.at,
     })),
   )
+  const [posting, setPosting] = useState<PostingRow>(() => postingRowFor(application))
   const [keptAttachments] = useState<Attachment[]>(() => application?.attachments ?? [])
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([])
   const [stagedFiles, setStagedFiles] = useState<StagedAttachmentFile[]>([])
@@ -405,6 +419,11 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
               setFormError(compensationProblem)
               return
             }
+            const postingProblem = firstPostingProblem(posting)
+            if (postingProblem) {
+              setFormError(postingProblem)
+              return
+            }
             setSaving(true)
             try {
               await onSave(
@@ -416,6 +435,7 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
                 },
                 inviteDrafts(invites),
                 completedActions.map(({ id, action, at }) => ({ id, action, at })),
+                postingDraftFrom(posting),
                 correspondenceDrafts(correspondence),
               )
             } catch (error) {
@@ -470,6 +490,12 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
                 value={values.url}
               />
             </label>
+            <PostingField
+              applicationUrl={values.url}
+              formatDate={formatShortDate}
+              onChange={setPosting}
+              row={posting}
+            />
             <label className="field field--wide">
               <span>State</span>
               <select onChange={(event) => update('state', event.target.value as StateId)} value={values.state}>
@@ -996,11 +1022,14 @@ export default function App() {
     // the same thing where the writing is already being watched.
     const at = new Date()
     return commit((current) =>
-      batches.reduce(
-        (document, batch) =>
-          updateApplicationStageNotes(document, batch.applicationId, batch.drafts, at),
-        current,
-      ),
+      batches.reduce((document, batch) => {
+        const next = updateApplicationStageNotes(document, batch.applicationId, batch.drafts, at)
+        // `revise` rather than `set`: typing in the pane corrects the posting you captured,
+        // it does not capture it again, so `captured_at` stays where it was.
+        return batch.posting === undefined
+          ? next
+          : reviseApplicationPosting(next, batch.applicationId, batch.posting, at)
+      }, current),
     )
   }
 
@@ -1028,20 +1057,33 @@ export default function App() {
    * navigation: there is no opener to return focus to afterwards, and a stale one would
    * aim at a card the switch has already unmounted.
    */
-  const openStageNotes = (id: string) => {
-    const application = tracker.applications.find((candidate) => candidate.id === id)
-    if (!application) return
+  /** Goes to Prep and asks for one thing in it, whatever was reached for. */
+  const openNotesAt = (ref: NoteRequest['ref']) => {
     dialogOpenerRef.current = null
     // Nothing to restore focus to either: coming here from the application editor is the
     // editor handing over, and the note it opens onto takes the caret. Without this the
     // editor closing would fire the restore and pull focus back out to the topbar.
     dialogWasOpenRef.current = false
     notesNonce.current += 1
-    setNotesRequest({
-      ref: { applicationId: id, state: application.state },
-      nonce: notesNonce.current,
-    })
+    setNotesRequest({ ref, nonce: notesNonce.current })
     setNotesOpen(true)
+  }
+
+  const openStageNotes = (id: string) => {
+    const application = tracker.applications.find((candidate) => candidate.id === id)
+    if (!application) return
+    openNotesAt(stageRef(id, application.state))
+  }
+
+  /**
+   * Goes straight to an application's captured posting. The fan it opens into is the same
+   * one the prep notes open — the application's own material — so this differs only in
+   * which of its tabs you land on.
+   */
+  const openPosting = (id: string) => {
+    const application = tracker.applications.find((candidate) => candidate.id === id)
+    if (!application?.posting) return
+    openNotesAt(postingRef(id))
   }
 
   /*
@@ -1118,6 +1160,7 @@ export default function App() {
       applications: filteredApplications,
       onOpen: openApplication,
       onOpenStageNotes: openStageNotes,
+      onOpenPosting: openPosting,
       onOpenMessages: openApplication,
       onCompleteAction: completeAction,
     }
@@ -1495,7 +1538,14 @@ export default function App() {
             closeEditor()
             openStageNotes(id)
           } : undefined}
-          onSave={async (values, attachmentPlan, invites, completedActions, correspondence) => {
+          onSave={async (
+            values,
+            attachmentPlan,
+            invites,
+            completedActions,
+            posting,
+            correspondence,
+          ) => {
             const input: ApplicationInput = {
               company: values.company,
               role: values.role || null,
@@ -1523,6 +1573,7 @@ export default function App() {
                 next = updateApplicationStateEvents(next, id, invites, now)
                 next = updateApplicationCorrespondence(next, id, correspondence, now)
                 next = updateApplicationCompletedActions(next, id, completedActions, now)
+                next = updateApplicationPosting(next, id, posting, now)
                 return updateApplicationRatings(next, id, ratingDrafts(values.ratings), now)
               }, 'Application added.')
             } else {
@@ -1543,6 +1594,7 @@ export default function App() {
                 next = updateApplicationStateEvents(next, editor.id, invites, now)
                 next = updateApplicationCorrespondence(next, editor.id, correspondence, now)
                 next = updateApplicationCompletedActions(next, editor.id, completedActions, now)
+                next = updateApplicationPosting(next, editor.id, posting, now)
                 next = updateApplicationRatings(next, editor.id, ratingDrafts(values.ratings), now)
                 // Drafts cannot express "back to never assessed", so blanked ones clear here.
                 for (const dimension of clearedRatingDimensions(editingApplication, values.ratings)) {

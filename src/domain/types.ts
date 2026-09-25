@@ -246,6 +246,28 @@ export interface Attachment {
   created_at: string
 }
 
+/**
+ * The job posting as it read when you captured it, in Markdown.
+ *
+ * Listings get taken down, quietly reworded, or moved behind a login, so the `url` on an
+ * application is not a reliable way back to what you actually applied to. The text is
+ * pasted in by hand rather than fetched: postings are routinely JS-rendered or
+ * login-walled, and this tracker talks to no network but its own file.
+ */
+export interface Posting {
+  /** Markdown source, never blank — a posting with no text is no posting, and stored as `null`. */
+  body: string
+  /** When the text was pasted in. A later edit to `source_url` alone does not move it. */
+  captured_at: string
+  source_url: string | null
+}
+
+/** What the editor hands the mutation: `captured_at` is the document's to assign, not the form's. */
+export interface PostingDraft {
+  body: string
+  source_url?: string | null
+}
+
 export interface Application {
   id: string
   company: string
@@ -265,6 +287,7 @@ export interface Application {
   /** Messages exchanged with the employer, oldest first by the time they were sent. */
   correspondence: CorrespondenceEntry[]
   attachments: Attachment[]
+  posting: Posting | null
   ratings: Rating[]
   compensation: Compensation
   created_at: string

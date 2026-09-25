@@ -24,6 +24,10 @@ refusing an amount with no currency are covered by the app integration tests.
 Importing a calendar invite through the editor, replacing a rescheduled one, and refusing an invite
 with no start time are covered by the app integration tests.
 
+Pasting a job posting into the editor and reading it back, refusing one that is only a link,
+clearing one, opening a posting in a pane beside the prep note written against it, editing it there
+and having it write itself without recapturing, and counting a hit inside it in the panel-wide find
+are covered by the app integration tests.
 Logging hiring correspondence through the editor — keeping the time a message was sent rather than
 the moment it was filed, correcting that time, removing a message, refusing one with no text or no
 time, a drafted message surviving nothing when the dialog is cancelled, and finding an application
@@ -81,8 +85,8 @@ test cannot judge reliably.
 Some of the panel's layout is no longer only here. `pnpm test:browser` measures, in
 Chromium, Firefox and WebKit, that split panes sit side by side and stay wide enough to
 read a note in, that dragging the divider resizes both and holds a pane at its minimum,
-that a narrow window stacks a row, and that a long note scrolls inside its card rather
-than the page. Dragging a **tab** is covered there too, by mouse and by
+that a narrow window stacks a row, that a job posting lays out beside the prep note written
+against it, and that a long note scrolls inside its card rather than the page. Dragging a **tab** is covered there too, by mouse and by
 finger, now that it is built on pointer events rather than HTML5 drag-and-drop. Dragging a
 Kanban **card** is still a manual check: that one is HTML5 drag-and-drop, which works with
 neither a finger nor any browser automation.
@@ -140,7 +144,7 @@ neither a finger nor any browser automation.
 5. Add an application with a next action and date. Drag it to another Kanban column,
    then use its **Move** control to move it again — by mouse, and again by Tab plus the
    arrow keys — confirming the control shows a focus ring and sits on one row beside
-   **Prep notes**. Reload the page and confirm it remains.
+   **Prep**. Reload the page and confirm it remains.
    Add a second application with only a deadline and no next action, and confirm the
    deadline saves, shows in the Table deadline column and bands the row under **Dated,
    soonest first**.
@@ -152,9 +156,9 @@ neither a finger nor any browser automation.
    import and confirm the saved data is unchanged; try a valid zip or JSON import and
    confirm the replacement prompt appears.
 8. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
-   app goes to the **Prep notes** destination in the header rather than opening a dialog over the
+   app goes to the **Prep** destination in the header rather than opening a dialog over the
    board, that the view strip no longer marks any view as current, that the bar above the panel offers none of the
-   collection's filters, that the sidebar stacks **Outline** over **All prep notes** with
+   collection's filters, that the sidebar stacks **Outline**, **Job postings** and **All prep notes** with
    that each half folds from its own heading and the handle
    between them sizes the two, that the title bar's icons name themselves on hover, that **Open**
    there reaches a stage with no note and **Sidebar** puts the whole column away and brings it back, that the tree groups notes by

@@ -37,6 +37,10 @@ interface DemoSeed {
   /** Omit a dimension for never-assessed; give it null for an explicit "don't know". */
   ratings?: Partial<Record<RatingDimensionId, number | null>>
   compensation?: DemoCompensationSeed
+  /** The job posting as pasted in, in Markdown. Most seeds have none: the empty path is the common one. */
+  posting?: string
+  /** Where the posting was read. Only meaningful alongside `posting`. */
+  postingUrl?: string
   stageNotes?: Partial<Record<StateId, string>>
   /** Lines captured during a stage, in the order they were said. */
   stageHeard?: Partial<Record<StateId, readonly string[]>>
@@ -142,9 +146,9 @@ const CINDER_REJECTION = [
 const DEMO_SEEDS: readonly DemoSeed[] = [
   { company: 'Northstar Labs', role: 'Staff Product Designer', state: 'headhunted', createdDaysAgo: 34, updatedDaysAgo: 34, compensation: { currency: 'AUD', expected: 190_000 }, editedDaysAgo: 1, notes: 'Introduced through a former teammate. Tidied these notes yesterday, but the conversation itself has not moved since the first message.', source: 'Referral' },
   { company: 'Juniper Works', role: 'Frontend Engineer', state: 'no_openings', createdDaysAgo: 47, updatedDaysAgo: 31, priorStates: ['headhunted'], nextAction: 'Check the careers page next quarter', notes: 'Hiring is paused, but the team asked to stay in touch.', source: 'Company site' },
-  { company: 'Marble & Finch', role: 'Product Manager', state: 'applied', createdDaysAgo: 9, updatedDaysAgo: 9, compensation: { currency: 'AUD', advertised: [110_000, 125_000] }, nextAction: 'Follow up on the application', nextActionDaysFromNow: -2, deadlineDaysFromNow: -1, notes: 'Applied with a tailored portfolio.', source: 'LinkedIn' },
+  { company: 'Marble & Finch', role: 'Product Manager', posting: '## Product Manager\n\nMarble & Finch is a small studio building tools for independent booksellers.\n\n### What you will do\n\n- Own the roadmap for the inventory product\n- Work directly with booksellers, weekly\n- Write the specs yourself\n\n### What we are looking for\n\n- Five years in product, at least two on a tool people use daily\n- Comfortable reading a query and a stack trace\n- Based in Melbourne or willing to overlap AEST', postingUrl: 'https://example.com/jobs/3', state: 'applied', createdDaysAgo: 9, updatedDaysAgo: 9, compensation: { currency: 'AUD', advertised: [110_000, 125_000] }, nextAction: 'Follow up on the application', nextActionDaysFromNow: -2, deadlineDaysFromNow: -1, notes: 'Applied with a tailored portfolio.', source: 'LinkedIn' },
   { company: 'Copperline Health', role: 'Data Analyst', state: 'auto_rejected', createdDaysAgo: 39, updatedDaysAgo: 38, priorStates: ['applied'], notes: 'Automated rejection arrived the following morning.', source: 'Job board' },
-  { company: 'Paper Kite', role: 'Senior UX Researcher', state: 'recruiter_messaged', createdDaysAgo: 7, updatedDaysAgo: 3, compensation: { currency: 'AUD', advertised: [100_000, 115_000], expected: 130_000 }, priorStates: ['applied'], nextAction: 'Send availability to the recruiter', nextActionDaysFromNow: -1, notes: 'Recruiter asked for three interview windows.', source: 'Recruiter' },
+  { company: 'Paper Kite', role: 'Senior UX Researcher', posting: '# Senior UX Researcher\n\nPasted from the recruiter\'s email, so there is no link to go back to.\n\nWe are looking for a researcher to lead discovery across two product teams. You will run the studies end to end: recruiting, moderating, analysis, and the readout that changes what gets built.\n\nMixed methods. Some survey work. A lot of talking to people who do not use our product yet.', state: 'recruiter_messaged', createdDaysAgo: 7, updatedDaysAgo: 3, compensation: { currency: 'AUD', advertised: [100_000, 115_000], expected: 130_000 }, priorStates: ['applied'], nextAction: 'Send availability to the recruiter', nextActionDaysFromNow: -1, notes: 'Recruiter asked for three interview windows.', source: 'Recruiter' },
   { company: 'Tidal Grove', role: 'Platform Engineer', state: 'recruiter_messaged_rejected', createdDaysAgo: 26, updatedDaysAgo: 17, priorStates: ['applied', 'recruiter_messaged'], notes: 'Role requires a different on-call timezone.', source: 'LinkedIn' },
   { company: 'Orbit & Oak', role: 'Operations Lead', state: 'online_assessment', createdDaysAgo: 12, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [120_000, 140_000], expected: 135_000 }, priorStates: ['applied', 'recruiter_messaged'], nextAction: 'Complete the scenario assessment', nextActionDaysFromNow: 3, deadlineDaysFromNow: 4, notes: 'Assessment should take about 75 minutes.', source: 'Company site' },
   { company: 'Bright Harbor', role: 'Software Engineer', state: 'online_assessment_rejected', createdDaysAgo: 44, updatedDaysAgo: 29, priorStates: ['applied', 'online_assessment'], notes: 'Passed most cases; concurrency section was incomplete.' },
@@ -352,6 +356,13 @@ export function createDemoDocument(
       state_events: demoStateEvents(seed, index, reference, updatedAt),
       correspondence: demoCorrespondence(seed, index, reference, updatedAt),
       attachments: [],
+      posting: seed.posting
+        ? {
+            body: seed.posting,
+            captured_at: createdAt,
+            source_url: seed.postingUrl ?? null,
+          }
+        : null,
       ratings: ratingsFor(seed, updatedAt),
       compensation: compensationFor(seed),
       created_at: createdAt,

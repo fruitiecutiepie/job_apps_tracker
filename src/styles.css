@@ -1016,6 +1016,7 @@ p {
 .application-card--idle .application-card__attachments-icon,
 .application-card--idle .application-card__label,
 .application-card--idle .stage-notes-button--card,
+.application-card--idle .posting-button--card,
 .application-card--idle .complete-action-button--card {
   color: var(--ink-2);
 }
@@ -2121,6 +2122,7 @@ tbody tr:hover {
 /* --------------------------------------------------------- stage notes --- */
 
 .stage-notes-button,
+.posting-button,
 .messages-button,
 .complete-action-button {
   gap: var(--s2);
@@ -2129,6 +2131,7 @@ tbody tr:hover {
 }
 
 .stage-notes-button--card,
+.posting-button--card,
 .messages-button--card,
 .complete-action-button--card {
   min-height: 30px;
@@ -2136,9 +2139,22 @@ tbody tr:hover {
 }
 
 .stage-notes-button--table,
+.posting-button--table,
 .complete-action-button--table {
   min-height: 28px;
   white-space: nowrap;
+}
+
+/*
+ * Both ways into Prep for a row, stacked rather than side by side: the column is narrower
+ * than the two of them, and a button that wrapped onto its own line unevenly would read as
+ * two different kinds of control. Starts at the left so a row with only one still lines up
+ * with the rows around it.
+ */
+.table-prep-actions {
+  display: grid;
+  gap: var(--s2);
+  justify-items: start;
 }
 
 /*
@@ -2226,6 +2242,112 @@ tbody tr:hover {
   margin: 0;
   color: var(--ink-2);
   font-size: var(--t2);
+}
+
+/*
+ * The job posting, where the stage-switch dropdown sits on a prep note. A posting prepares
+ * for no stage, so there is nothing to switch to and the pane says what it is instead —
+ * drawn as a label rather than as a control, so nothing here looks pressable.
+ */
+.stage-note__posting-name {
+  flex: none;
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+/*
+ * A posting is the one thing in the panel nobody here wrote, and it cannot be edited in
+ * place. The recessed ground says so before the header does.
+ */
+.stage-note--posting {
+  background: var(--surface-2);
+}
+
+/*
+ * The postings list hugs its content instead of taking a share of the sidebar: there is at
+ * most one posting per application, so a draggable band sized for twenty rows would reserve
+ * dead space in the column that can least afford it — the same argument the outline's cap
+ * makes. It scrolls on its own once it outgrows the cap.
+ */
+.panel__sidebar-section--postings {
+  /* An `auto` grid row, so it is as tall as what it holds; the cap is what stops a reader
+     with twenty captured postings from pushing the prep notes off the column. */
+  min-height: 0;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+
+/*
+ * A posting pane with nothing in it: the text, then the way to the application, stacked
+ * rather than on one line so the button is not buried mid-sentence.
+ */
+.stage-note__empty:has(.stage-note__empty-text) {
+  display: grid;
+  justify-items: start;
+  gap: var(--s3);
+}
+
+.stage-note__empty-text {
+  margin: 0;
+}
+
+/* Where the posting is pasted in, in the application editor. */
+.posting-field {
+  gap: var(--s3);
+}
+
+/*
+ * The name of the field and, once there is one, when its text was captured. The date
+ * describes the posting in the box below, not the link beside it, so it reads on this row
+ * rather than down in the footer — the same place `PostingPane` puts it in a pane header.
+ */
+.posting-field__heading {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s2);
+  margin: 0;
+}
+
+.posting-field__name {
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+.posting-field__hint {
+  margin: 0;
+  color: var(--ink-3);
+  font-size: var(--t2);
+  font-weight: 400;
+}
+
+/* Tall, because a posting is long and the box is where it is checked after pasting. */
+.posting-field textarea {
+  min-height: 10rem;
+  font-size: var(--t3);
+}
+
+/*
+ * Where the posting was read, and the way to forget it. `align-items: end` lines the button
+ * up on the input rather than on the label above it, the same reason `.next-action-field`
+ * does — which works here because both are controls of their own height.
+ */
+.posting-field__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  gap: var(--s3);
+}
+
+.posting-field__source {
+  flex: 1 1 16rem;
+}
+
+.posting-field__meta {
+  color: var(--ink-3);
+  font-size: var(--t2);
+  font-weight: 400;
 }
 
 .stage-note__actions {
@@ -2671,7 +2793,7 @@ tbody tr:hover {
 /* ------------------------------------------------------ notes panel --- */
 
 /*
- * Stage prep notes are a view of their own rather than a dialog over the board: a note is
+ * Prep is a view of its own rather than a dialog over the board: a note is
  * read while an interview is happening, and something you keep coming back to is not
  * something to dismiss. The panel takes what the viewport has left under the header, pins
  * its chrome, and scrolls only the notes column, so the stage list, the find bar and the
@@ -4301,9 +4423,11 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 /* A search that stays put over a tree that scrolls under it, so the row the section was
    given is spent on notes rather than on chrome. The hint between them is `sr-only` and so
    out of flow, which leaves these two rows the whole of it. */
+/* One row, the list, which takes whatever the section was given: the search that used to
+   sit above it now heads both lists from the sidebar itself. */
 .notes-tree {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   gap: var(--s2);
   min-height: 0;
 }

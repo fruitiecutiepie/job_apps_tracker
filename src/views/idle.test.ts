@@ -37,6 +37,7 @@ function application(
     state_events: [],
     correspondence: [],
     attachments: [],
+    posting: null,
     ratings: [],
     compensation: emptyCompensation(),
     updated_at: at(-movedDaysAgo),

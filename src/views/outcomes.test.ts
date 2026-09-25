@@ -54,6 +54,7 @@ function application(
     correspondence: [],
     completed_actions: [],
     attachments: [],
+    posting: null,
     created_at: trail[0]?.at ?? at(0),
     updated_at: last?.at ?? at(0),
     ...overrides,

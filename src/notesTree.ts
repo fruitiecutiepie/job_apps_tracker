@@ -12,7 +12,7 @@
 
 import type { Application, StateId } from './domain'
 import { STATE_CONFIG, stateLabel } from './domain'
-import type { NoteRef } from './notesLayout'
+import { postingRef, stageRef, type NoteRef } from './notesLayout'
 
 /** How much of a note a hit shows around the words that matched. */
 export const SNIPPET_CHARS = 96
@@ -50,11 +50,15 @@ export interface NotesTreeEntry {
   hits: number
 }
 
+/** A stage heading in the tree and the rows under it. */
 export interface NotesTreeGroup {
   state: StateId
   label: string
   notes: NotesTreeEntry[]
 }
+
+/** What a posting is searched by, standing where a stage's label would. */
+export const POSTING_LABEL = 'Job posting'
 
 /**
  * What a row can be found by. The words of the note are the point, but a reader looking
@@ -110,6 +114,9 @@ function hitsIn(source: string, needle: string, where: MatchWhere): NotesTreeMat
   return found
 }
 
+const byName = (left: NotesTreeEntry, right: NotesTreeEntry) =>
+  left.company.localeCompare(right.company) || (left.role ?? '').localeCompare(right.role ?? '')
+
 export function buildNotesTree(
   applications: readonly Application[],
   query: string,
@@ -118,6 +125,7 @@ export function buildNotesTree(
   const byState = new Map<StateId, NotesTreeEntry[]>()
 
   for (const application of applications) {
+
     for (const note of application.stage_notes) {
       const written = note.body.trim().length > 0
       if (!written && note.heard.length === 0) continue
@@ -132,7 +140,7 @@ export function buildNotesTree(
 
       const entries = byState.get(note.state) ?? []
       entries.push({
-        ref: { applicationId: application.id, state: note.state },
+        ref: stageRef(application.id, note.state),
         company: application.company,
         role: application.role,
         written,
@@ -149,12 +157,48 @@ export function buildNotesTree(
   return STATE_CONFIG.flatMap(({ id }) => {
     const notes = byState.get(id)
     if (!notes || notes.length === 0) return []
-    notes.sort(
-      (left, right) =>
-        left.company.localeCompare(right.company) || (left.role ?? '').localeCompare(right.role ?? ''),
-    )
+    notes.sort(byName)
     return [{ state: id, label: stateLabel(id), notes }]
   })
+}
+
+/**
+ * Every captured job posting, as its own list.
+ *
+ * Apart from `buildNotesTree` because a posting is not a prep note — nobody wrote it — and
+ * the sidebar section headed "Prep notes" may not hold things nobody wrote. Flat rather
+ * than grouped: a posting belongs to no stage, so there is nothing to group it under, and
+ * the section's own heading already says what these are.
+ */
+export function buildPostingsTree(
+  applications: readonly Application[],
+  query: string,
+): NotesTreeEntry[] {
+  const needle = query.trim().toLowerCase()
+  const found: NotesTreeEntry[] = []
+
+  for (const application of applications) {
+    const posting = application.posting
+    if (!posting) continue
+    const hay = [application.company, application.role ?? '', POSTING_LABEL, posting.body]
+      .join('\n')
+      .toLowerCase()
+    if (needle && !hay.includes(needle)) continue
+    const hits = needle ? hitsIn(posting.body, needle, 'written') : []
+    found.push({
+      ref: postingRef(application.id),
+      company: application.company,
+      role: application.role,
+      // Always something written, and never something captured: nobody said a posting to
+      // you, and there is no dock under it to say it into.
+      written: true,
+      captured: 0,
+      matches: hits.slice(0, MATCHES_SHOWN),
+      hits: hits.length,
+    })
+  }
+
+  return found.sort(byName)
 }
 
 /** Every note in the tree, for a count that does not have to walk it twice. */

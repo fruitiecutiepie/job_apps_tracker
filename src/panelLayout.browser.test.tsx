@@ -20,6 +20,13 @@ import { page, userEvent } from '@vitest/browser/context'
 
 import { stateLabel } from './domain'
 import type { Application } from './domain'
+import {
+  FIRST_PANE_ID,
+  postingRef,
+  singleGroup,
+  splitWith,
+  stageRef,
+} from './notesLayout'
 import { WIDE, fixtureApplications, renderPanel } from './test/panelHarness'
 
 /** The same fixture with one note long enough to overflow a pane, for the scrolling test. */
@@ -38,6 +45,21 @@ function withLongNote(applications: Application[]): Application[] {
   )
 }
 
+/** The same fixture with a posting on Halcyon, for the tests that open one in a pane. */
+function withPosting(applications: Application[]): Application[] {
+  return applications.map((application) =>
+    application.company === 'Halcyon Maps'
+      ? {
+          ...application,
+          posting: {
+            body: '## Engineering Manager\n\nRuns a team of eight across two products.',
+            captured_at: application.created_at,
+            source_url: 'https://example.com/jobs/halcyon',
+          },
+        }
+      : application,
+  )
+}
 /**
  * The box a pane occupies, which is the sized wrapper rather than the note inside it. Read
  * from the panes themselves rather than from the notes in them: a pane can be open and
@@ -81,6 +103,30 @@ describe('the panel in a real browser', () => {
     // A pane nobody could read a note in would satisfy every assertion above.
     expect(left.width).toBeGreaterThan(200)
     expect(left.height).toBeGreaterThan(200)
+  })
+
+  it('lays a job posting beside the prep note written against it', async () => {
+    // The whole point of putting a posting in a pane rather than in the editor: reading it
+    // next to the note being written against it, at a width where both are readable.
+    renderPanel(withPosting(fixtureApplications()), (halcyon) =>
+      splitWith(
+        singleGroup(FIRST_PANE_ID, postingRef(halcyon.id)),
+        FIRST_PANE_ID,
+        'right',
+        stageRef(halcyon.id, halcyon.state),
+        () => 'pane-2',
+      )!,
+    )
+
+    const [left, right] = paneBoxes()
+    expect(paneBoxes()).toHaveLength(2)
+    expect(Math.abs(left.top - right.top)).toBeLessThan(2)
+    expect(right.left).toBeGreaterThanOrEqual(left.right - 1)
+    expect(left.width).toBeGreaterThan(200)
+    expect(right.width).toBeGreaterThan(200)
+
+    const panels = [...document.querySelectorAll('[role="tabpanel"]')]
+    expect(panels.some((panel) => panel.textContent?.includes('team of eight'))).toBe(true)
   })
 
   it('ends inside the viewport, under the chrome above it', async () => {
@@ -438,24 +484,38 @@ describe('the panel in a real browser', () => {
     expect(row.getBoundingClientRect().height).toBeGreaterThanOrEqual(32)
   })
 
-  it('stacks both headings at the top when both halves are folded', async () => {
+  it('stacks every heading at the top when they are all folded', async () => {
     renderPanel()
 
+    // All three sections: the sidebar stacks the outline, the postings and the notes.
     await userEvent.click(screen.getByRole('button', { name: 'Hide the outline' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Hide job postings' }))
     await userEvent.click(screen.getByRole('button', { name: 'Hide all prep notes' }))
 
     const outline = screen.getByRole('button', { name: 'Show the outline' }).getBoundingClientRect()
+    const postings = screen.getByRole('button', { name: 'Show job postings' }).getBoundingClientRect()
     const tree = screen.getByRole('button', { name: 'Show all prep notes' }).getBoundingClientRect()
 
-    // One under the other, not one at each end of the column. With nothing to divide, the
-    // two headings are a list of two things, and a grid row that grows to fill what is
-    // left is what pushed them apart.
-    expect(tree.top - outline.bottom).toBeLessThan(24)
+    /*
+     * All of them at the top, not one at each end of the column. With nothing to divide,
+     * the headings are a list of three things, and a grid row that grows to fill what is
+     * left is what pushed them apart. Measured as one stack rather than pairwise, because
+     * the shared search sits between the outline and the postings and is meant to.
+     */
+    const sidebar = document.querySelector('.panel__sidebar')!.getBoundingClientRect()
+    expect(outline.top - sidebar.top).toBeLessThan(24)
+    expect(tree.bottom - outline.top).toBeLessThan(160)
+    // And the column really is taller than that, which is the only way it could go wrong.
+    expect(sidebar.bottom - tree.bottom).toBeGreaterThan(100)
+    expect(postings.top).toBeGreaterThan(outline.bottom)
+    expect(tree.top).toBeGreaterThan(postings.bottom)
   })
 
   it('spaces the tree by its own rhythm when it has the column to itself', async () => {
     renderPanel()
+    // Both the other sections away, or the column is not the tree's to have to itself.
     await userEvent.click(screen.getByRole('button', { name: 'Hide the outline' }))
+    await userEvent.click(screen.getByRole('button', { name: 'Hide job postings' }))
 
     const stages = screen.getAllByRole('listitem', { name: /^Stage / })
     expect(stages.length).toBeGreaterThan(1)

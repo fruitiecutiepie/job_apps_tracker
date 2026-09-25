@@ -63,8 +63,8 @@ it('completes the primary tracker journey and persists it across reloads', async
   }
   // Prep notes is reached from the header rather than the strip: it is a workspace, not a
   // view of the collection, and it shares none of the filters the strip's views do.
-  await user.click(screen.getByRole('button', { name: 'Prep notes' }))
-  expect(screen.getByRole('region', { name: 'Stage prep notes' })).toBeInTheDocument()
+  await user.click(screen.getByRole('button', { name: 'Prep' }))
+  expect(screen.getByRole('region', { name: 'Prep' })).toBeInTheDocument()
 
   await user.click(views.getByRole('button', { name: 'Kanban' }))
   expect(screen.getByRole('heading', { name: 'Applied' })).toBeInTheDocument()
@@ -87,7 +87,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   expect(screen.getByRole('status')).toHaveTextContent('Application updated.')
 
   await user.click(screen.getByRole('button', { name: 'Add prep notes for Smoke Test Co' }))
-  const prepDialog = screen.getByRole('region', { name: 'Stage prep notes' })
+  const prepDialog = screen.getByRole('region', { name: 'Prep' })
   await user.type(
     within(prepDialog).getByLabelText('Smoke Test Co · Offer prep notes'),
     'Confirm the review cycle',
