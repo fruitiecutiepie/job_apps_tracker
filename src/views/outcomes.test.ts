@@ -51,6 +51,7 @@ function application(
     ratings: [],
     stage_notes: [],
     state_events: [] as StateEvent[],
+    correspondence: [],
     completed_actions: [],
     attachments: [],
     created_at: trail[0]?.at ?? at(0),

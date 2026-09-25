@@ -109,6 +109,17 @@ async function renderLoadedApp() {
   return view
 }
 
+/**
+ * Opens a message's fields in the editor, which read as one folded line until asked for: a
+ * message is six controls and an email, and five of them fill a dialog whose job is the
+ * application.
+ */
+async function openMessage(user: ReturnType<typeof userEvent.setup>, container: HTMLElement, index = 1) {
+  const row = within(container).getByRole('group', { name: `Message ${index}` })
+  await user.click(within(row).getByRole('button', { expanded: false }))
+  return row
+}
+
 /** Opens a stage's capture dock, collapsed by default, before a test reaches into it. */
 async function openCapture(user: ReturnType<typeof userEvent.setup>, container: HTMLElement, label: string) {
   await user.click(within(container).getByRole('button', { name: `Show what they said in ${label}` }))
@@ -1777,6 +1788,283 @@ describe('job applications tracker', () => {
     expect(document.activeElement).toBe(find)
   })
 
+  it('reads a stage\'s messages in the dock as folded rows, under the day they were sent', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    const toggle = within(dialog).getByRole('button', {
+      name: 'Show the messages in Halcyon Maps · Interview 2',
+    })
+    // Collapsed by default, but the count says there is something behind it.
+    expect(toggle).toHaveAttribute('aria-expanded', 'false')
+    expect(toggle).toHaveTextContent('3')
+
+    await user.click(toggle)
+
+    // Scoped to the log, because the prep note above it has folds of its own.
+    const log = within(dialog.querySelector<HTMLElement>('.stage-note__log--messages')!)
+
+    // The message reads as one row: when it was sent, who it was from, and a line of what it
+    // says. Nobody was recorded on this one, so it still has to read as theirs.
+    expect(log.getByText(/Them/)).toBeInTheDocument()
+    expect(log.getByText(/LinkedIn/)).toBeInTheDocument()
+    expect(log.getByRole('heading', { name: formatShortDate('2026-08-12T08:00') })).toBeInTheDocument()
+    expect(log.getByText(/Moving the leadership interview/)).toBeInTheDocument()
+    // Open, because you came to the section to read them.
+    expect(log.getByText(/short notice/)).toBeInTheDocument()
+
+    // Folded by hand, the row still says what it holds — the loose note is the last row of
+    // the log, the stage's thread coming before it.
+    const rows = log.getAllByRole('button', { name: /sub-points$/ })
+    await user.click(rows[rows.length - 1]!)
+    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+    expect(log.getByText(/Moving the leadership interview/)).toBeInTheDocument()
+  })
+
+  it('opens the messages when reading starts, and folds them back on request', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const label = 'Halcyon Maps · Interview 2'
+
+    // Open in the strip: you came to the section to read them, so they read.
+    await user.click(within(dialog).getByRole('button', { name: `Show the messages in ${label}` }))
+    expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
+
+    // And still open when they take the pane.
+    await user.click(within(dialog).getByRole('button', { name: `Read the messages in ${label}` }))
+    expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
+
+    // And the same control the prep note has folds them back without leaving the pane.
+    await user.click(within(dialog).getByRole('button', { name: `Collapse all messages in ${label}` }))
+    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+    expect(within(dialog).getByText(/Moving the leadership interview/)).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: `Expand all messages in ${label}` }))
+    expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
+  })
+
+  it('puts away the note\'s own fold control while the messages have the pane', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const label = 'Halcyon Maps · Interview 2'
+
+    expect(
+      within(dialog).getByRole('button', { name: `Collapse all points in ${label}` }),
+    ).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: `Read the messages in ${label}` }))
+
+    // The note is hidden, so folding it would appear to do nothing — and two buttons reading
+    // "Collapse all" at once are told apart only by their accessible names.
+    expect(
+      within(dialog).queryByRole('button', { name: `Collapse all points in ${label}` }),
+    ).not.toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('button', { name: `Collapse all messages in ${label}` }),
+    ).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: `Show the prep note in ${label}` }))
+    expect(
+      within(dialog).getByRole('button', { name: `Collapse all points in ${label}` }),
+    ).toBeInTheDocument()
+  })
+
+  it('offers no fold control while the messages are out of sight', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // Collapsed by default, so there is nothing to fold and no button claiming otherwise.
+    expect(
+      within(dialog).queryByRole('button', { name: /all messages in Halcyon Maps · Interview 2/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('opens the form on the stage\'s messages, already unfolded', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    const label = 'Halcyon Maps · Interview 2'
+
+    await user.click(within(panel).getByRole('button', { name: `Show the messages in ${label}` }))
+    await user.click(within(panel).getByRole('button', { name: `Edit messages in ${label}` }))
+
+    // The panel reads correspondence and does not write it, so what it offers is the shortest
+    // way to the form — landing on the rows rather than at the top of a long one.
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const list = dialog.querySelector<HTMLElement>('.correspondence-list')!
+    const boxes = within(list).getAllByLabelText('Message')
+    expect(boxes).toHaveLength(3)
+    expect(boxes.some((box) => (box as HTMLTextAreaElement).value.includes('short notice'))).toBe(true)
+
+    // Landing on the section's own name rather than in the form's first field. The dialog
+    // autofocuses that field otherwise, which scrolls the form back to the top and undoes
+    // the arriving — and a screen reader dropped into a textarea mid-form is told nothing
+    // about where it is.
+    expect(document.activeElement).toBe(within(dialog).getByText('Messages'))
+    expect(document.activeElement).not.toBe(within(dialog).getByLabelText('Company'))
+  })
+
+  it('opens the form closed when it was the application that was asked for', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // The pencil in the subject line opens the application, not a message, so the rows stay
+    // folded — this is the form, not a way back to one row of it.
+    await user.click(screen.getByRole('button', { name: /^Open Halcyon Maps/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    expect(within(dialog).queryByLabelText('Message')).not.toBeInTheDocument()
+    // And the form opens where a form opens.
+    expect(document.activeElement).toBe(within(dialog).getByLabelText('Company'))
+  })
+
+  it('hands the pane back to the note when the find steps into it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+    const read = () =>
+      within(dialog).getByRole('button', {
+        name: /(Read the messages|Show the prep note) in Halcyon Maps · Interview 2/,
+      })
+
+    // What the reading mode does to the layout is the browser suite's business — this
+    // stylesheet is not loaded here. What is checkable here is the state it is in.
+    expect(read()).toHaveAttribute('aria-pressed', 'false')
+
+    // Reading them means seeing them, so this opens the section as well as filling the pane.
+    await user.click(read())
+    expect(read()).toHaveAttribute('aria-pressed', 'true')
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Hide the messages in Halcyon Maps · Interview 2',
+      }),
+    ).toBeInTheDocument()
+
+    // A match in the written note has nowhere to land while the messages hold the pane, so
+    // stepping onto one hands it back — the same rule a collapsed section follows.
+    await user.keyboard('{Control>}f{/Control}')
+    await user.type(within(dialog).getByLabelText('Find in notes'), 'leadership')
+
+    /*
+     * Previous then Next, rather than counting steps to the note: the written note's matches
+     * come first in the list, so Previous wraps to the last one — a message or a capture —
+     * and Next wraps back to the first, which is in the note. That holds however many
+     * matches the stage happens to have, which a count does not.
+     */
+    await user.click(within(dialog).getByRole('button', { name: 'Previous match' }))
+    expect(read()).toHaveAttribute('aria-pressed', 'true')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    expect(read()).toHaveAttribute('aria-pressed', 'false')
+  })
+
+  it('gives a message that arrived without a subject no heading of its own', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // Grouping runs is `correspondenceMarkdown`'s job and is tested there. What this asks is
+    // that the dock renders the other case: a LinkedIn note has no thread to belong to.
+    await user.click(
+      within(dialog).getByRole('button', {
+        name: 'Show the messages in Halcyon Maps · Interview 2',
+      }),
+    )
+    const log = within(dialog.querySelector<HTMLElement>('.stage-note__log--messages')!)
+
+    // The stage holds a thread and a loose LinkedIn note. One heading, for the thread.
+    expect(log.getAllByRole('heading', { name: 'Leadership interview — Thursday' })).toHaveLength(1)
+    // And the note reads under no heading of its own, below the thread it is not part of.
+    const note = log.getByText(/Moving the leadership interview/)
+    expect(note).toBeInTheDocument()
+    const headings = [...log.getAllByRole('heading')].map((heading) => heading.textContent)
+    expect(headings.filter((text) => text === 'Leadership interview — Thursday')).toHaveLength(1)
+  })
+
+  it('shows a stage only the messages filed against it', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    await user.click(within(dialog).getByRole('tab', { name: /Interview 1/ }))
+    const toggle = within(dialog).getByRole('button', {
+      name: 'Show the messages in Halcyon Maps · Interview 1',
+    })
+
+    // Filing is the reader's decision, so the panel honours it rather than showing the lot.
+    expect(toggle).not.toHaveTextContent('1')
+    await user.click(toggle)
+    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+  })
+
+  it('numbers a note, its messages and its captures as one list down the pane', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
+
+    // A capture holding the word the note and the seeded message already share.
+    await openCapture(user, dialog, 'Halcyon Maps · Interview 2')
+    await user.type(
+      within(dialog).getByLabelText('Capture a line in Halcyon Maps · Interview 2'),
+      'Leadership rounds run long',
+    )
+    await user.keyboard('{Enter}')
+
+    await user.keyboard('{Control>}f{/Control}')
+    await user.type(within(dialog).getByLabelText('Find in notes'), 'leadership')
+
+    // Written note, then messages, then captures — the order they read in down the pane. The
+    // stage holds a thread as well as the loose note, so four in all.
+    expect(within(dialog).getByText('1 of 4')).toBeInTheDocument()
+
+    // The second is in the correspondence section, which is still collapsed: stepping onto
+    // a match opens the section holding it, or the count would move and nothing would.
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Show the messages in Halcyon Maps · Interview 2',
+      }),
+    ).toHaveAttribute('aria-expanded', 'false')
+
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    expect(within(dialog).getByText('2 of 4')).toBeInTheDocument()
+    expect(
+      within(dialog).getByRole('button', {
+        name: 'Hide the messages in Halcyon Maps · Interview 2',
+      }),
+    ).toHaveAttribute('aria-expanded', 'true')
+    expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    expect(within(dialog).getByText('3 of 4')).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Next match' }))
+    expect(within(dialog).getByText('4 of 4')).toBeInTheDocument()
+    expect(
+      within(dialog).getAllByText('Leadership').some((node) => node.tagName === 'MARK'),
+    ).toBe(true)
+  })
+
   it('numbers a written note and its captured lines as one list while it is being edited', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
@@ -2439,7 +2727,7 @@ describe('job applications tracker', () => {
     // In a box being typed into, ⌘⇧← selects to the start of the line. That is what the
     // reader means there, and taking it cost them the selection and moved a tab they were
     // not thinking about.
-    await user.click(within(panel).getAllByRole('button', { name: /^Edit / })[0])
+    await user.click(within(panel).getAllByRole('button', { name: /^Edit [A-Z]/ })[0])
     const box = within(panel).getAllByRole('textbox')[0]
     await user.click(box)
     await user.keyboard('{Control>}{Shift>}{ArrowRight}{/Shift}{/Control}')
@@ -2506,7 +2794,7 @@ describe('job applications tracker', () => {
     await user.click(foldAll)
     expect(within(panel).getByRole('button', { name: /^Expand all points in/ })).toBeInTheDocument()
 
-    await user.click(within(panel).getAllByRole('button', { name: /^Edit / })[0])
+    await user.click(within(panel).getAllByRole('button', { name: /^Edit [A-Z]/ })[0])
     const bold = within(panel).getByRole('button', { name: /^Bold in / })
     expect(header().contains(bold)).toBe(true)
 
@@ -3190,6 +3478,285 @@ describe('job applications tracker', () => {
       readSavedDocument().applications.find((application) => application.company === 'Paper Kite')
         ?.state_events,
     ).toEqual([])
+  })
+
+  it('logs a message against a stage and keeps the time it was sent', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    let dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+
+    const message = within(dialog).getByRole('group', { name: 'Message 1' })
+    await user.click(within(message).getByRole('radio', { name: 'Received' }))
+    await user.type(within(message).getByLabelText('Who'), 'Dana Okafor')
+    await user.type(within(message).getByLabelText('Channel'), 'Email')
+    await user.type(within(message).getByLabelText('Date sent'), '2026-08-10T09:30')
+    await user.type(within(message).getByLabelText('Message'), 'Could you send me some windows?')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const logged = () =>
+      readSavedDocument().applications.find(({ company }) => company === 'Paper Kite')
+        ?.correspondence ?? []
+
+    expect(logged()).toHaveLength(1)
+    expect(logged()[0]).toMatchObject({
+      state: 'recruiter_messaged',
+      direction: 'received',
+      who: 'Dana Okafor',
+      channel: 'Email',
+      body: 'Could you send me some windows?',
+    })
+    // Sent on the 10th and logged on the 14th: the record keeps both, and `at` is the one
+    // the reader typed rather than the clock the save ran against.
+    expect(logged()[0]!.at).toBe(new Date('2026-08-10T09:30').toISOString())
+    expect(Date.parse(logged()[0]!.at)).toBeLessThan(Date.parse(logged()[0]!.created_at))
+
+    // And it reads back into its boxes, once the row is asked for.
+    await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
+    dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const folded = within(dialog).getByRole('group', { name: 'Message 1' })
+    // Folded, the row is the summary: enough to find the message without opening it.
+    expect(within(folded).getByText(/Dana Okafor · Email — Could you send me/)).toBeInTheDocument()
+    expect(within(folded).queryByLabelText('Date sent')).not.toBeInTheDocument()
+
+    const opened = await openMessage(user, dialog)
+    expect(within(opened).getByLabelText('Date sent')).toHaveValue('2026-08-10T09:30')
+  })
+
+  it('folds a logged message down to one line, and opens a new one ready to fill in', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Halcyon Maps carries a seeded message, so the editor opens with one already logged.
+    await user.click(screen.getByRole('button', { name: /^Open Halcyon Maps/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    const logged = within(dialog).getByRole('group', { name: 'Message 1' })
+    expect(within(logged).getByRole('button', { expanded: false })).toBeInTheDocument()
+    expect(within(logged).queryByLabelText('Message')).not.toBeInTheDocument()
+    // The summary is what tells two messages apart, so it is the row's name.
+    expect(within(logged).getByText(/Them · LinkedIn — Moving the leadership/)).toBeInTheDocument()
+
+    await user.click(within(logged).getByRole('button', { expanded: false }))
+    expect(within(logged).getByLabelText('Message')).toBeInTheDocument()
+    await user.click(within(logged).getByRole('button', { expanded: true }))
+    expect(within(logged).queryByLabelText('Message')).not.toBeInTheDocument()
+
+    // A row you just added is a row you are about to fill in, so it arrives open.
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    const added = within(dialog).getByRole('group', { name: 'Message 1' })
+    expect(within(added).getByLabelText('Message')).toBeInTheDocument()
+    expect(within(added).getByText('New message')).toBeInTheDocument()
+  })
+
+  it('gathers the editor rows of a thread under one subject', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    const log = async (subject: string, body: string, at: string) => {
+      await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+      const row = within(dialog).getByRole('group', { name: 'Message 1' })
+      const box = within(row).getByLabelText('Subject')
+      await user.clear(box)
+      await user.type(box, subject)
+      await user.type(within(row).getByLabelText('Date sent'), at)
+      await user.type(within(row).getByLabelText('Message'), body)
+    }
+
+    await log('Scheduling a call', 'Could you send me some windows?', '2026-08-10T09:00')
+    await log('Scheduling a call', 'Thursday works.', '2026-08-10T17:00')
+    await log('Reference check', 'Who should we contact?', '2026-08-11T09:00')
+
+    const list = dialog.querySelector<HTMLElement>('.correspondence-list')!
+    const headings = [...list.querySelectorAll('.correspondence-thread span')].map(
+      (node) => node.textContent,
+    )
+
+    // One line over the two that share a subject, and one over the other conversation —
+    // not the subject restated on every row.
+    expect(headings).toEqual(['Reference check', 'Scheduling a call'])
+    // And each row's own line says its content rather than the subject a third time. Read off
+    // the summaries, since the rows are still open and their boxes hold the same words.
+    const summaries = [...list.querySelectorAll('.correspondence-item__summary')].map(
+      (node) => node.textContent ?? '',
+    )
+    expect(summaries.some((line) => line.includes('Could you send me some windows?'))).toBe(true)
+    expect(summaries.some((line) => line.includes('Thursday works.'))).toBe(true)
+    expect(summaries.every((line) => !line.includes('Scheduling a call'))).toBe(true)
+  })
+
+  it('adds into a thread with everything that makes it that thread already filled in', async () => {
+    const user = userEvent.setup()
+    // Lumen Pantry is not one of the six the default fixture seeds, and its offer thread is
+    // the one worth adding into: three messages, one correspondent, one subject.
+    seedFullDemo()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: /^Open Lumen Pantry/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Add a message to Offer — Head of Growth' }),
+    )
+
+    // It lands inside the thread rather than at the top of the list, so it is Message 1 of
+    // that run and not a second heading saying the same words.
+    const list = dialog.querySelector<HTMLElement>('.correspondence-list')!
+    expect(list.querySelectorAll('.correspondence-thread')).toHaveLength(1)
+
+    const added = within(dialog).getByRole('group', { name: 'Message 1' })
+    expect(within(added).getByLabelText('Subject')).toHaveValue('Offer — Head of Growth')
+    expect(within(added).getByLabelText('Who')).toHaveValue('Marta Oyelaran')
+    expect(within(added).getByLabelText('Channel')).toHaveValue('Email')
+    // What the message says and when it was sent is the part you are there to write.
+    expect(within(added).getByLabelText('Message')).toHaveValue('')
+    expect(within(added).getByLabelText('Date sent')).toHaveValue('')
+  })
+
+  it('starts the next message from who the last one was with, and picks a direction in one press', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    const first = within(dialog).getByRole('group', { name: 'Message 1' })
+    await user.type(within(first).getByLabelText('Who'), 'Dana Okafor')
+    await user.type(within(first).getByLabelText('Channel'), 'Email')
+
+    // Received is where a row starts, and one press is the whole cost of saying otherwise.
+    expect(within(first).getByRole('radio', { name: 'Received' })).toBeChecked()
+    await user.click(within(first).getByRole('radio', { name: 'Sent' }))
+    expect(within(first).getByRole('radio', { name: 'Sent' })).toBeChecked()
+    expect(within(first).getByRole('radio', { name: 'Received' })).not.toBeChecked()
+
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    const added = within(dialog).getByRole('group', { name: 'Message 1' })
+
+    // The new row is the newest, so it takes the number, and it arrives already knowing who
+    // the conversation is with — but not what was said, when, or which way it went.
+    expect(within(added).getByLabelText('Who')).toHaveValue('Dana Okafor')
+    expect(within(added).getByLabelText('Channel')).toHaveValue('Email')
+    expect(within(added).getByLabelText('Message')).toHaveValue('')
+    expect(within(added).getByLabelText('Date sent')).toHaveValue('')
+    expect(within(added).getByRole('radio', { name: 'Received' })).toBeChecked()
+  })
+
+  it('corrects the time a message was sent and removes one logged by mistake', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    let dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    let message = within(dialog).getByRole('group', { name: 'Message 1' })
+    await user.type(within(message).getByLabelText('Date sent'), '2026-08-10T09:30')
+    await user.type(within(message).getByLabelText('Message'), 'Windows please')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const logged = () =>
+      readSavedDocument().applications.find(({ company }) => company === 'Paper Kite')
+        ?.correspondence ?? []
+    const [first] = logged()
+
+    await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
+    dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    message = await openMessage(user, dialog)
+    const sent = within(message).getByLabelText('Date sent')
+    await user.clear(sent)
+    await user.type(sent, '2026-08-11T14:00')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    // Unlike a captured line, a send time moves: it is a fact about the world, not a record
+    // of a keystroke. The id and the moment it was written down do not move with it.
+    expect(logged()[0]!.at).toBe(new Date('2026-08-11T14:00').toISOString())
+    expect(logged()[0]!.id).toBe(first!.id)
+    expect(logged()[0]!.created_at).toBe(first!.created_at)
+
+    await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
+    dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await openMessage(user, dialog)
+    await user.click(within(dialog).getByRole('button', { name: 'Remove message 1' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    expect(logged()).toEqual([])
+  })
+
+  it('refuses to save a message with no text or no time', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    const message = within(dialog).getByRole('group', { name: 'Message 1' })
+
+    await user.type(within(message).getByLabelText('Date sent'), '2026-08-10T09:30')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent('Message 1 needs its text.')
+
+    await user.clear(within(message).getByLabelText('Date sent'))
+    await user.type(within(message).getByLabelText('Message'), 'Windows please')
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    expect(within(dialog).getByRole('alert')).toHaveTextContent(
+      'Message 1 needs the date and time it was sent.',
+    )
+
+    expect(
+      readSavedDocument().applications.find(({ company }) => company === 'Paper Kite')
+        ?.correspondence,
+    ).toEqual([])
+  })
+
+  it('writes nothing for a message drafted in a dialog that was cancelled', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Add message' }))
+    const message = within(dialog).getByRole('group', { name: 'Message 1' })
+    await user.type(within(message).getByLabelText('Date sent'), '2026-08-10T09:30')
+    await user.type(within(message).getByLabelText('Message'), 'Never saved')
+    // Draft only, like every other control in this form: nothing is written until Save.
+    await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
+
+    expect(
+      readSavedDocument().applications.find(({ company }) => company === 'Paper Kite')
+        ?.correspondence,
+    ).toEqual([])
+  })
+
+  it('finds an application by a word only a message holds', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Halcyon Maps carries a seeded message, and nothing else in the fixture mentions this.
+    await user.type(
+      screen.getByRole('searchbox', { name: 'Search applications' }),
+      'short notice',
+    )
+
+    expect(await screen.findByRole('button', { name: /^Open Halcyon Maps/ })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^Open Paper Kite/ })).not.toBeInTheDocument()
   })
 
   it('saves ratings set while adding an application', async () => {
@@ -4152,7 +4719,7 @@ describe('job applications tracker', () => {
       .closest('article')!
 
     // Type into the card, then leave for the full editor before the autosave runs.
-    await user.click(within(card).getByRole('button', { name: /^Edit / }))
+    await user.click(within(card).getByRole('button', { name: /^Edit [A-Z]/ }))
     const editor = within(card).getByLabelText('Halcyon Maps · Interview 2 prep notes')
     await user.type(editor, '\n\nAsk who owns the platform roadmap.')
     await user.click(within(card).getByRole('button', { name: /in the full editor$/ }))
@@ -4170,7 +4737,7 @@ describe('job applications tracker', () => {
     )
 
     // Now edit in the panel, which seeded its draft before that write landed.
-    await user.click(within(panel).getByRole('button', { name: /^Edit .*Interview 2/ }))
+    await user.click(within(panel).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
     const panelEditor = within(panel).getByLabelText(/Interview 2 prep notes/)
     await user.type(panelEditor, '\n\nConfirm the start date.')
 

@@ -74,6 +74,43 @@ function collectBlockKeys(blocks: BlockNode[], path: string, keys: string[]): vo
 }
 
 /** Every key that can fold, in render order, for Collapse all. */
+/**
+ * The keys of the folds that hold a record rather than a section of a note: a list item with
+ * children, and a quote. Headings are left out on purpose — a correspondence log folds its
+ * messages so each reads as one row, and folding the day above them would hide the lot.
+ *
+ * Separate from `collectFoldableKeys`, which answers "what can Collapse all reach". This
+ * answers "what should start closed", and the two are deliberately different questions.
+ */
+export function collectEntryKeys(section: Section): string[] {
+  const keys: string[] = []
+  const walk = (current: Section) => {
+    collectEntryBlockKeys(current.blocks, current.key, keys)
+    current.children.forEach(walk)
+  }
+  walk(section)
+  return keys
+}
+
+function collectEntryBlockKeys(blocks: BlockNode[], path: string, keys: string[]): void {
+  blocks.forEach((block, index) => {
+    const key = blockKey(path, index)
+    if (block.type === 'quote') {
+      keys.push(key)
+      collectEntryBlockKeys(block.children, key, keys)
+      return
+    }
+    if (block.type === 'list') {
+      block.items.forEach((item, itemIndex) => {
+        if (item.children.length === 0) return
+        const nested = itemKey(key, itemIndex)
+        keys.push(nested)
+        collectEntryBlockKeys(item.children, nested, keys)
+      })
+    }
+  })
+}
+
 export function collectFoldableKeys(section: Section): string[] {
   const keys: string[] = []
   const walk = (current: Section) => {

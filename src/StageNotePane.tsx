@@ -1,9 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { ChevronRight, CornerDownLeft, ExternalLink, PencilLine, X } from 'lucide-react'
+import { ChevronRight, CornerDownLeft, ExternalLink, Maximize2, Minimize2, PencilLine, SquarePen, X } from 'lucide-react'
 import type { RefCallback } from 'react'
 import { CapturedLines, type CapturedLine } from './CapturedLines'
 import { CAPTURE_STEP, MAX_CAPTURE_LOG, MIN_CAPTURE_LOG } from './notesArrangement'
-import { CAPTURE_SECTION, CAPTURE_SECTION_IN_SENTENCE, MarkdownNotes } from './markdown'
+import {
+  CAPTURE_SECTION,
+  CAPTURE_SECTION_IN_SENTENCE,
+  CORRESPONDENCE_SECTION,
+  CORRESPONDENCE_SECTION_IN_SENTENCE,
+  MarkdownNotes,
+} from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
 import { FORMATS, type Format } from './noteFormats'
 import type { StageNote, StageNoteEditSession } from './domain'
@@ -35,7 +41,9 @@ interface StageNotePaneProps {
   onClose: (() => void) | null
   query: string
   matchBase: number
-  /** Where the captured lines' matches start, after this stage's written note. */
+  /** Where the correspondence's matches start, after this stage's written note. */
+  correspondenceMatchBase: number
+  /** Where the captured lines' matches start, after the written note and the messages. */
   heardMatchBase: number
   currentMatch: number | null
   /**
@@ -44,6 +52,32 @@ interface StageNotePaneProps {
    * version of it here that Save could still change.
    */
   captured: string
+  /**
+   * The messages filed against this stage, as Markdown to read. Derived from what is stored,
+   * like the captures — but unlike them it cannot be written from here at all: a message
+   * carries a send time you supply, and that belongs in a form with a Save rather than in a
+   * box you type one line into mid-conversation.
+   */
+  corresponded: string
+  /** How many messages this stage holds, for the toggle's count. */
+  correspondenceCount: number
+  /** Whether the correspondence section of the dock is open. Collapsed by default. */
+  isCorrespondenceOpen: boolean
+  onToggleCorrespondence: () => void
+  /**
+   * Whether the messages have the pane to themselves rather than a strip at the bottom of
+   * it. Folding made the log scannable, which is what the strip is for; it did nothing for
+   * the message you then open, which is a whole email read through an 11rem window. This is
+   * what that message gets read in.
+   */
+  isCorrespondenceReading: boolean
+  onToggleCorrespondenceReading: () => void
+  /**
+   * Opens the application's form on this stage's messages. The panel reads correspondence and
+   * does not write it — a message carries a supplied send time and a stage it is filed under,
+   * which are form questions — so what it offers instead is the shortest way to the form.
+   */
+  onEditCorrespondence: () => void
   /** The same lines as records, for correcting them one at a time. */
   lines: readonly CapturedLine[]
   /** Whether the captured lines are open for correcting rather than being read. */
@@ -107,9 +141,17 @@ export function StageNotePane({
   onClose,
   query,
   matchBase,
+  correspondenceMatchBase,
   heardMatchBase,
   currentMatch,
   captured,
+  corresponded,
+  correspondenceCount,
+  isCorrespondenceOpen,
+  onToggleCorrespondence,
+  isCorrespondenceReading,
+  onToggleCorrespondenceReading,
+  onEditCorrespondence,
   lines,
   isEditingLines,
   onToggleEditLines,
@@ -171,6 +213,34 @@ export function StageNotePane({
    * formatter is only ever called, so it arrives as a ref and costs no render.
    */
   const [foldControls, setFoldControls] = useState<{ allFolded: boolean; toggle: () => void } | null>(null)
+  /**
+   * The same controls for the messages, kept apart from the note's: two logs on screen, and
+   * a button that folded whichever reported last would be a button nobody could predict.
+   */
+  type FoldControls = { allFolded: boolean; toggle: () => void; openEntries: () => void }
+  const [messageFolds, setMessageFolds] = useState<FoldControls | null>(null)
+
+  /*
+   * Reading them opens them. Pressing Read is saying "I am reading this now", and leaving
+   * every message shut would make that a second job. The quoted chains stay as they were:
+   * in a log holding both sides each one is the message above, quoted back, so unrolling
+   * them is the thing that makes a thread unreadable rather than the thing that opens it.
+   *
+   * Waits for the controls rather than firing on the press. Read opens the section too, so
+   * the log is not mounted in the render that starts this and has nothing to report yet;
+   * the latch is what keeps it to once per reading rather than once per fold afterwards,
+   * since the controls arrive new whenever anything folds.
+   */
+  const openedForReading = useRef(false)
+  useEffect(() => {
+    if (!isCorrespondenceReading) {
+      openedForReading.current = false
+      return
+    }
+    if (openedForReading.current || !messageFolds) return
+    openedForReading.current = true
+    messageFolds.openEntries()
+  }, [isCorrespondenceReading, messageFolds])
   const formatRef = useRef<((entry: Format) => void) | null>(null)
 
   /**
@@ -231,7 +301,13 @@ export function StageNotePane({
         // for the same application's different stages would otherwise share a heading —
         // "Halcyon Maps · Engineering Manager" — and read as the same region twice.
         aria-label={label}
-        className={`stage-note${isCurrentState ? ' stage-note--current' : ''}`}
+        className={[
+          'stage-note',
+          isCurrentState ? 'stage-note--current' : '',
+          isCorrespondenceReading ? 'stage-note--reading' : '',
+        ]
+          .filter(Boolean)
+          .join(' ')}
         id={stageNotePanelId(groupId, noteRef)}
         role="tabpanel"
       >
@@ -262,7 +338,13 @@ export function StageNotePane({
             * charged to every pane. Both are handed up by whichever mode is showing, so
             * this row draws them and neither owns a row.
             */}
-          {foldControls ? (
+          {/*
+            Not while the messages have the pane: the note is hidden then, and a control that
+            folds what nobody can see is a control that appears to do nothing. It also puts a
+            second Collapse all on screen reading the same word as the log's own, which only
+            an accessible name tells apart.
+          */}
+          {foldControls && !isCorrespondenceReading ? (
             <button
               aria-label={`${foldControls.allFolded ? 'Expand' : 'Collapse'} all points in ${label}`}
               className="button button--quiet stage-note__fold-all"
@@ -400,7 +482,7 @@ export function StageNotePane({
           />
         ) : (
           <p className="stage-note__empty">
-            {captured
+            {captured || corresponded
               ? 'Nothing was written for this stage before the conversation.'
               : 'No notes for this stage yet.'}
           </p>
@@ -444,6 +526,93 @@ export function StageNotePane({
               tabIndex={0}
             />
           ) : null}
+          {/*
+            What was exchanged sits above what was said, which is the order the pane reads in
+            and so the order the find numbers them in. It shares the dock rather than taking
+            one of its own: nothing is appended to it while the panel is open, so there is
+            nothing here for a second resizable strip to be sized for.
+          */}
+          <div className="stage-note__dock-row">
+            <button
+              aria-expanded={isCorrespondenceOpen}
+              aria-label={`${isCorrespondenceOpen ? 'Hide' : 'Show'} ${CORRESPONDENCE_SECTION_IN_SENTENCE} in ${label}`}
+              className={[
+                'stage-note__dock-toggle',
+                isCorrespondenceOpen ? '' : 'stage-note__dock-toggle--collapsed',
+              ]
+                .filter(Boolean)
+                .join(' ')}
+              onClick={onToggleCorrespondence}
+              type="button"
+            >
+              <ChevronRight aria-hidden="true" size={14} />
+              {CORRESPONDENCE_SECTION}
+              {correspondenceCount > 0 ? (
+                <span className="stage-note__dock-count">{correspondenceCount}</span>
+              ) : null}
+            </button>
+            {/*
+              Swaps what the pane is showing rather than resizing the strip. A handle would
+              let you trade the note against the log by degrees; the thing a long email
+              actually wants is the whole column, and the thing you want back afterwards is
+              the note, whole. Two states say that; a drag says it vaguely.
+            */}
+            {isCorrespondenceOpen && messageFolds ? (
+              <button
+                aria-label={`${messageFolds.allFolded ? 'Expand' : 'Collapse'} all messages in ${label}`}
+                className="button button--quiet stage-note__dock-read"
+                onClick={messageFolds.toggle}
+                type="button"
+              >
+                {messageFolds.allFolded ? 'Expand all' : 'Collapse all'}
+              </button>
+            ) : null}
+            {correspondenceCount > 0 ? (
+              <button
+                aria-label={`Edit messages in ${label}`}
+                className="button button--quiet stage-note__dock-read"
+                onClick={onEditCorrespondence}
+                type="button"
+              >
+                <SquarePen aria-hidden="true" size={13} />
+                Edit messages
+              </button>
+            ) : null}
+            {correspondenceCount > 0 ? (
+              <button
+                aria-label={
+                  isCorrespondenceReading
+                    ? `Show the prep note in ${label}`
+                    : `Read ${CORRESPONDENCE_SECTION_IN_SENTENCE} in ${label}`
+                }
+                aria-pressed={isCorrespondenceReading}
+                className="button button--quiet stage-note__dock-read"
+                onClick={onToggleCorrespondenceReading}
+                type="button"
+              >
+                {isCorrespondenceReading ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
+                {isCorrespondenceReading ? 'Prep note' : 'Read'}
+              </button>
+            ) : null}
+          </div>
+
+          {isCorrespondenceOpen && corresponded ? (
+            // No `role="log"`, unlike the captures: nothing is added to this while it is on
+            // screen, so there is no live region for a reader to be told about.
+            <div className="stage-note__log stage-note__log--messages">
+              <MarkdownNotes
+                currentMatch={currentMatch}
+                foldAll={false}
+                label={`${label} correspondence`}
+                matchBase={correspondenceMatchBase}
+                onFoldControls={setMessageFolds}
+                query={query}
+                records="open"
+                source={corresponded}
+              />
+            </div>
+          ) : null}
+
           <button
             aria-expanded={isCaptureOpen}
             aria-label={`${isCaptureOpen ? 'Hide' : 'Show'} ${CAPTURE_SECTION_IN_SENTENCE} in ${label}`}

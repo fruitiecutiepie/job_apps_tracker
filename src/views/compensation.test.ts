@@ -59,6 +59,7 @@ function application(compensation: Compensation, company = 'Fixture'): Applicati
     completed_actions: [],
     stage_notes: [],
     state_events: [],
+    correspondence: [],
     attachments: [],
     ratings: [],
     compensation,

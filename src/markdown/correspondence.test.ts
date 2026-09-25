@@ -1,0 +1,239 @@
+import { describe, expect, it } from 'vitest'
+
+import { correspondenceMarkdown } from './correspondence'
+import { parseMarkdown } from './parseMarkdown'
+import { buildSections } from './sections'
+import { outlineTree } from './sections'
+
+// Deterministic formatters, so these tests read the same in any locale.
+const day = (at: string) => at.slice(0, 10)
+const time = (at: string) => at.slice(11, 16)
+
+function message(overrides: Partial<Parameters<typeof correspondenceMarkdown>[0][number]> = {}) {
+  return {
+    direction: 'received' as const,
+    subject: null as string | null,
+    channel: 'Email',
+    who: 'Dana Okafor',
+    body: 'Could you send me some windows?',
+    at: '2026-08-10T09:14:00.000Z',
+    ...overrides,
+  }
+}
+
+describe('correspondenceMarkdown', () => {
+  it('is empty for no messages', () => {
+    expect(correspondenceMarkdown([], day, time)).toBe('')
+  })
+
+  it('reads a message under the day it was sent, with who and how it arrived', () => {
+    expect(correspondenceMarkdown([message()], day, time)).toBe(
+      ['### 2026-08-10', '', '- `09:14` **Dana Okafor** · Email', '', '  Could you send me some windows?'].join('\n'),
+    )
+  })
+
+  it('names you as the sender of what you sent, rather than labelling the direction', () => {
+    const sent = correspondenceMarkdown([message({ direction: 'sent' })], day, time)
+
+    expect(sent).toContain('- `09:14` **You** · Email')
+    // The words the header used to carry on every row are gone from it entirely.
+    expect(sent).not.toContain('Sent —')
+    expect(correspondenceMarkdown([message()], day, time)).not.toContain('Received')
+  })
+
+  it('still reads a message as theirs when nobody was recorded on it', () => {
+    // Direction has to survive a missing correspondent, or a received message with no name
+    // on it would read exactly like one you sent.
+    const rendered = correspondenceMarkdown([message({ who: null })], day, time)
+
+    expect(rendered).toContain('- `09:14` **Them** · Email')
+  })
+
+  it('drops just the part that is missing', () => {
+    expect(correspondenceMarkdown([message({ channel: null })], day, time)).toContain(
+      '- `09:14` **Dana Okafor**\n',
+    )
+    expect(
+      correspondenceMarkdown([message({ channel: null, who: null, direction: 'sent' })], day, time),
+    ).toContain('- `09:14` **You**\n')
+  })
+
+  it('gives each day its own heading and puts them in send order', () => {
+    const rendered = correspondenceMarkdown(
+      [
+        message({ body: 'Third', at: '2026-08-11T22:00:00.000Z' }),
+        message({ body: 'First', at: '2026-08-10T09:14:00.000Z' }),
+        message({ body: 'Second', at: '2026-08-10T17:02:00.000Z' }),
+      ],
+      day,
+      time,
+    )
+
+    expect(outlineTree(buildSections(parseMarkdown(rendered))).map((node) => node.text)).toEqual([
+      '2026-08-10',
+      '2026-08-11',
+    ])
+    expect(rendered.indexOf('First')).toBeLessThan(rendered.indexOf('Second'))
+    expect(rendered.indexOf('Second')).toBeLessThan(rendered.indexOf('Third'))
+  })
+
+  it('orders a message sent with an offset against one sent in UTC', () => {
+    // 09:00 at +10:00 is 23:00Z the day before, so these two sort one way as strings and the
+    // other way as instants. Read in UTC so both fall on one day and only the order is at
+    // stake here.
+    const utcDay = (at: string) => new Date(at).toISOString().slice(0, 10)
+    const rendered = correspondenceMarkdown(
+      [
+        message({ body: 'Earlier', at: '2026-08-21T09:00:00+10:00' }),
+        message({ body: 'Later', at: '2026-08-20T23:30:00.000Z' }),
+      ],
+      utcDay,
+      time,
+    )
+
+    expect(rendered.indexOf('Earlier')).toBeLessThan(rendered.indexOf('Later'))
+  })
+
+  it('does not reorder the records it was given', () => {
+    const entries = [
+      message({ body: 'Second', at: '2026-08-11T09:00:00.000Z' }),
+      message({ body: 'First', at: '2026-08-10T09:00:00.000Z' }),
+    ]
+    correspondenceMarkdown(entries, day, time)
+
+    expect(entries.map((entry) => entry.body)).toEqual(['Second', 'First'])
+  })
+
+  it('keeps the paragraph breaks of a message someone else wrote', () => {
+    const rendered = correspondenceMarkdown(
+      [message({ body: 'Thanks for your time.\n\nThe panel will be Ravi and Sam.' })],
+      day,
+      time,
+    )
+    const [, list] = parseMarkdown(rendered)
+
+    // Both paragraphs live inside the one bullet, rather than the blank line ending the list.
+    expect(list!.type).toBe('list')
+    expect(list!.type === 'list' && list.items).toHaveLength(1)
+    expect(rendered).toContain('  Thanks for your time.\n\n  The panel will be Ravi and Sam.')
+  })
+
+  it('keeps a quoted reply quoted and a nested list nested', () => {
+    const rendered = correspondenceMarkdown(
+      [message({ body: '> On Tue, Dana wrote:\n> Are you free?\n\n- Wednesday\n- Thursday' })],
+      day,
+      time,
+    )
+    const blocks = parseMarkdown(rendered)
+
+    expect(blocks.map((block) => block.type)).toEqual(['heading', 'list'])
+    expect(rendered).toContain('  > On Tue, Dana wrote:')
+    expect(rendered).toContain('  - Wednesday')
+  })
+
+  it.each([
+    ['a heading', '### Subject line'],
+    ['a bullet', '- A point they made'],
+    ['a quote', '> Quoted back at me'],
+    ['a rule', '---'],
+  ])('cannot let %s in a message escape its bullet', (_name, line) => {
+    const rendered = correspondenceMarkdown(
+      [message({ body: `Some context.\n\n${line}\n\nAnd a close.` })],
+      day,
+      time,
+    )
+    const blocks = parseMarkdown(rendered)
+
+    expect(blocks.map((block) => block.type)).toEqual(['heading', 'list'])
+    expect(blocks[1]!.type === 'list' && blocks[1].items).toHaveLength(1)
+  })
+
+  it('keeps two messages on one day as two bullets', () => {
+    const rendered = correspondenceMarkdown(
+      [
+        message({ body: 'First\n\nwith a second paragraph' }),
+        message({ body: 'Second', at: '2026-08-10T17:02:00.000Z', direction: 'sent' }),
+      ],
+      day,
+      time,
+    )
+    const [, list] = parseMarkdown(rendered)
+
+    expect(list!.type === 'list' && list.items).toHaveLength(2)
+  })
+
+  it('trims the blank lines a pasted message arrives wrapped in', () => {
+    const rendered = correspondenceMarkdown(
+      [message({ body: '\n\nThe whole message.\n\n\n' })],
+      day,
+      time,
+    )
+
+    expect(rendered).toBe(
+      ['### 2026-08-10', '', '- `09:14` **Dana Okafor** · Email', '', '  The whole message.'].join('\n'),
+    )
+  })
+
+  it('puts one heading over a run of messages sharing a subject', () => {
+    const rendered = correspondenceMarkdown(
+      [
+        message({ subject: 'Next steps', body: 'First' }),
+        message({ subject: 'Next steps', body: 'Second', at: '2026-08-10T17:02:00.000Z' }),
+      ],
+      day,
+      time,
+    )
+
+    // One thread, one heading — not the subject restated on every row.
+    expect(rendered.match(/#### Next steps/g)).toHaveLength(1)
+    expect(rendered.indexOf('#### Next steps')).toBeLessThan(rendered.indexOf('First'))
+  })
+
+  it('opens a new heading when the subject changes, and closes one when it goes', () => {
+    const rendered = correspondenceMarkdown(
+      [
+        message({ subject: 'Scheduling', body: 'First' }),
+        message({ subject: 'Next steps', body: 'Second', at: '2026-08-10T11:00:00.000Z' }),
+        message({ subject: null, body: 'Third', at: '2026-08-10T12:00:00.000Z' }),
+      ],
+      day,
+      time,
+    )
+
+    expect(rendered).toContain('#### Scheduling')
+    expect(rendered).toContain('#### Next steps')
+    // A message with no subject has no thread to belong to and opens none of its own.
+    expect(rendered.match(/^#### /gm)).toHaveLength(2)
+    expect(rendered.indexOf('Third')).toBeGreaterThan(rendered.indexOf('#### Next steps'))
+  })
+
+  it('lets a subject come back rather than reordering the log to keep it together', () => {
+    const rendered = correspondenceMarkdown(
+      [
+        message({ subject: 'Scheduling', body: 'First' }),
+        message({ subject: 'Offer', body: 'Second', at: '2026-08-10T11:00:00.000Z' }),
+        message({ subject: 'Scheduling', body: 'Third', at: '2026-08-10T12:00:00.000Z' }),
+      ],
+      day,
+      time,
+    )
+
+    // Two threads answered in turn read as they happened. Grouping must not become a reason
+    // to move a message away from when it was sent.
+    expect(rendered.match(/#### Scheduling/g)).toHaveLength(2)
+    expect(rendered.indexOf('First')).toBeLessThan(rendered.indexOf('Second'))
+    expect(rendered.indexOf('Second')).toBeLessThan(rendered.indexOf('Third'))
+  })
+
+  it('folds a thread as one, since its heading is a fold of its own', () => {
+    const rendered = correspondenceMarkdown(
+      [message({ subject: 'Next steps' }), message({ subject: 'Next steps', at: '2026-08-10T17:02:00.000Z' })],
+      day,
+      time,
+    )
+    const outline = outlineTree(buildSections(parseMarkdown(rendered)))
+
+    expect(outline.map((node) => node.text)).toEqual(['2026-08-10'])
+    expect(outline[0]!.children.map((node) => node.text)).toEqual(['Next steps'])
+  })
+})

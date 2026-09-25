@@ -27,7 +27,7 @@ interface PrepNotesViewProps {
   onCapture: (applicationId: string, state: StateId, line: string) => Promise<void>;
   onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>;
   /** Opens the application editor for the application a note in the panel prepares for. */
-  onOpenApplication: (applicationId: string) => void;
+  onOpenApplication: (applicationId: string, messagesFor?: StateId) => void;
 }
 
 /**

@@ -3,7 +3,7 @@ import { COMPENSATION_CONFIG, SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain
 import type { Application, StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import { CompleteActionButton } from "./CompleteActionButton";
-import { InviteSummaries, inviteFilterText } from "./InviteSummaries";
+import { InviteSummaries } from "./InviteSummaries";
 import { RejectButton } from "./RejectButton";
 import { StageNotesButton } from "./StageNotesButton";
 import {
@@ -24,7 +24,12 @@ import {
   type BandPlacement,
   type UrgencyBandId,
 } from "./urgencyBands";
-import { formatShortDate, parseTimestamp, upcomingStateEvent } from "./viewUtils";
+import {
+  formatShortDate,
+  inviteFilterText,
+  parseTimestamp,
+  upcomingStateEvent,
+} from "./viewUtils";
 
 type SortField =
   | "company"

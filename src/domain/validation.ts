@@ -5,6 +5,7 @@ import {
   isCompensationAmount,
   isCurrencyCode,
 } from './compensation'
+import { isCorrespondenceDirection } from './correspondence'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
 import { isStateId, stateRank } from './states'
 import type {
@@ -13,6 +14,7 @@ import type {
   Compensation,
   CompensationBand,
   CompletedAction,
+  CorrespondenceEntry,
   HeardEntry,
   Rating,
   StageNote,
@@ -503,6 +505,96 @@ function stateEventsValue(value: unknown, path: string, errors: ValidationError[
   )
 }
 
+function correspondenceEntryValue(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+): CorrespondenceEntry | null {
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object')
+    return null
+  }
+  if (!nonBlank(value.id)) addError(errors, `${path}.id`, 'is required')
+  if (!isStateId(value.state)) addError(errors, `${path}.state`, 'is invalid')
+  if (!isCorrespondenceDirection(value.direction)) {
+    addError(errors, `${path}.direction`, 'is invalid')
+  }
+  // Required unconditionally, unlike a stage note's body: there is no second content field to
+  // fall back on, and a message with no text is not a message.
+  if (!nonBlank(value.body)) addError(errors, `${path}.body`, 'is required')
+  if (!validTimestamp(value.at)) {
+    addError(errors, `${path}.at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (!validTimestamp(value.created_at)) {
+    addError(errors, `${path}.created_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+  if (!validTimestamp(value.updated_at)) {
+    addError(errors, `${path}.updated_at`, 'must be a timezone-qualified ISO-8601 timestamp')
+  }
+
+  // There is deliberately no rule ordering `at` against `created_at`: logging on Friday what
+  // arrived on Tuesday is the ordinary case, and a scheduled send is the other way round.
+  // There is no future check on `at` either — nothing here is enforced against the clock.
+  if (
+    !nonBlank(value.id)
+    || !isStateId(value.state)
+    || !isCorrespondenceDirection(value.direction)
+    || !nonBlank(value.body)
+    || !validTimestamp(value.at)
+    || !validTimestamp(value.created_at)
+    || !validTimestamp(value.updated_at)
+  ) {
+    return null
+  }
+
+  return {
+    id: value.id.trim(),
+    state: value.state,
+    direction: value.direction,
+    subject: nullableText(value.subject, `${path}.subject`, errors),
+    channel: nullableText(value.channel, `${path}.channel`, errors),
+    who: nullableText(value.who, `${path}.who`, errors),
+    body: value.body.trim(),
+    at: value.at,
+    created_at: value.created_at,
+    updated_at: value.updated_at,
+  }
+}
+
+/**
+ * Messages, in the order they were sent. Absent is empty rather than an error: a document
+ * written before the log existed is a valid document with none, not a broken one.
+ *
+ * The sort must stay character-for-character the rule `sortedCorrespondence` uses in
+ * `mutations.ts`. This array is rebuilt in file order on every load, so a sort that disagreed
+ * with the mutation's would make a save-then-load round trip reorder the log.
+ */
+function correspondenceValue(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+): CorrespondenceEntry[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) {
+    addError(errors, path, 'must be an array')
+    return []
+  }
+
+  const entries = value
+    .map((entry, index) => correspondenceEntryValue(entry, `${path}[${index}]`, errors))
+    .filter((entry): entry is CorrespondenceEntry => entry !== null)
+
+  const seen = new Set<string>()
+  entries.forEach((entry, index) => {
+    if (seen.has(entry.id)) addError(errors, `${path}[${index}].id`, 'duplicates another message')
+    seen.add(entry.id)
+  })
+
+  return entries.sort(
+    (left, right) => Date.parse(left.at) - Date.parse(right.at) || left.id.localeCompare(right.id),
+  )
+}
+
 function attachmentValue(value: unknown, path: string, errors: ValidationError[]): Attachment | null {
   if (!isRecord(value)) {
     addError(errors, path, 'must be an object')
@@ -628,6 +720,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     ),
     stage_notes: stageNotesValue(value.stage_notes, `${path}.stage_notes`, errors),
     state_events: stateEventsValue(value.state_events, `${path}.state_events`, errors),
+    correspondence: correspondenceValue(value.correspondence, `${path}.correspondence`, errors),
     attachments: attachmentsValue(value.attachments, `${path}.attachments`, errors),
     ratings: ratingsValue(value.ratings, `${path}.ratings`, errors),
     // This validator runs on load, save, AND export, and it rebuilds the object from

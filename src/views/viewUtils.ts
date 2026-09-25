@@ -73,6 +73,22 @@ export function applicationAgeInDays(updatedAt: string, today: Date = new Date()
  * and anything earlier today still counts — the same browser-local day boundary
  * the overdue grouping uses.
  */
+/** Text a column filter can match against every invite on an application. */
+export function inviteFilterText(invites: StateEvent[]): string {
+  return invites
+    .map((invite) =>
+      [
+        invite.summary,
+        invite.location,
+        formatShortDate(invite.starts_at),
+        invite.cancelled ? "cancelled" : null,
+      ]
+        .filter(Boolean)
+        .join(" "),
+    )
+    .join(" ");
+}
+
 export function upcomingStateEvent(
   application: Application,
   today: Date = new Date(),

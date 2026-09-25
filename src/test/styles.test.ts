@@ -381,6 +381,118 @@ describe('prep notes view', () => {
   })
 })
 
+describe('correspondence rows', () => {
+  it('shows both directions as one control rather than a menu', () => {
+    const option = ruleBody('.correspondence-direction__option')
+
+    // As tall as the controls beside it, so the pair reads as a field and not as two loose
+    // checkboxes dropped into the row.
+    expect(option).toMatch(/min-height:\s*var\(--control-form\)/)
+    expect(ruleBody('.correspondence-direction__options')).toMatch(/display:\s*flex/)
+    expect(option).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(option.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
+    // The chosen one is marked by the accent rather than by weight alone.
+    expect(css).toMatch(/\.correspondence-direction__option:has\(input:checked\)\s*\{[^}]*--accent/)
+  })
+
+  it('marks a thread by weight alone, not by another box', () => {
+    const body = ruleBody('.correspondence-thread')
+
+    // It sits in the list rather than around it: a box would make each thread a card inside
+    // a section that is already a list of cards.
+    expect(body).toMatch(/font-weight:\s*500/)
+    expect(body).not.toMatch(/border/)
+    expect(body).not.toMatch(/background/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    // The subject reads first; the control for the thread is pushed past it.
+    expect(ruleBody('.correspondence-thread__add')).toMatch(/margin-left:\s*auto/)
+    expect(ruleBody('.correspondence-thread__add')).toMatch(/color:\s*var\(--ink-3\)/)
+  })
+
+  it('lets every box around a summary shrink, so the line truncates instead of the dialog growing', () => {
+    // A grid item's `min-width` is `auto`. Each of these holds a line that does not wrap, so
+    // each would otherwise keep the whole line as a floor and widen the dialog around it.
+    for (const selector of [
+      '.dialog',
+      '.correspondence-item__summary',
+      '.correspondence-item__summary span',
+      '.correspondence-thread',
+      '.correspondence-thread span',
+      '.correspondence-direction',
+    ]) {
+      expect(ruleBody(selector)).toMatch(/min-width:\s*0/)
+    }
+    // Fieldsets default to `min-width: min-content`, which no width can talk them out of.
+    expect(ruleBody('.correspondence-item')).toMatch(/min-width:\s*0/)
+    // And the overlay's column may not exceed the overlay.
+    expect(ruleBody('.dialog-backdrop')).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\)/)
+  })
+
+  it('reads a folded row as a line of record rather than as a button', () => {
+    const body = ruleBody('.correspondence-item__summary')
+
+    // No chrome of its own: it is the row's name, and the fields below are what the eye
+    // should go to once it is open.
+    expect(body).toMatch(/border:\s*0/)
+    expect(body).toMatch(/background:\s*none/)
+    expect(body).toMatch(/color:\s*var\(--ink-2\)/)
+    expect(ruleBody('.correspondence-item__summary span')).toMatch(/text-overflow:\s*ellipsis/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  })
+
+  it('borrows the invite frame rather than inventing one', () => {
+    // Grouped rules are looked up by their last selector, so the correspondence one goes
+    // last. Sharing the frame is deliberate; reusing `.invite-item` itself would mean a
+    // later change to invites silently restyled messages instead.
+    const body = ruleBody('.correspondence-item')
+
+    expect(body).toMatch(/border:\s*1px solid var\(--line\)/)
+    expect(body).toMatch(/border-radius:\s*var\(--r1\)/)
+    expect(body).toMatch(/padding:\s*var\(--s3\)/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    // The 1px hairline is the interface's own border convention; every other value is a token.
+    expect(body.replace(/1px solid/g, '')).not.toMatch(/\d+px/)
+  })
+
+  it('says what a folded row holds more quietly than the row itself', () => {
+    const body = ruleBody('.markdown__item-preview')
+
+    // The preview trails the header on the same line, so it has to read as the text
+    // underneath rather than as more header.
+    expect(body).toMatch(/color:\s*var\(--ink-3\)/)
+    expect(body).toMatch(/font-weight:\s*400/)
+    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+  })
+
+  it('gives the messages the column when they are being read, and hides the note', () => {
+    // Hidden rather than squeezed: a pane split between a prep note and a long email serves
+    // neither, and the note is one press away.
+    expect(ruleBody('.panel__notes .stage-note--reading > .stage-note__body'))
+      .toMatch(/display:\s*none/)
+    const dock = ruleBody('.panel__notes .stage-note--reading > .stage-note__dock')
+    expect(dock).toMatch(/max-height:\s*none/)
+    expect(dock).toMatch(/flex:\s*1/)
+    // Three classes each, so specificity ties and source order is what decides: the
+    // override has to come after the strip's cap or the dock stays at 70% of the pane.
+    expect(css.indexOf('.stage-note--reading > .stage-note__dock')).toBeGreaterThan(
+      css.indexOf('.panel__notes .stage-note > .stage-note__dock'),
+    )
+  })
+
+  it('caps the messages against the dock without a second handle', () => {
+    expect(ruleBody('.stage-note__log--messages')).toMatch(/max-height:\s*var\(--message-log\)/)
+    // Two logs in one capped dock: the dock's cap squeezes them because both can reach zero.
+    expect(ruleBody('.stage-note__log')).toMatch(/min-height:\s*0/)
+  })
+
+  it('collapses its two-column rows with the sections beside it', () => {
+    const narrow = css.slice(css.indexOf('@media (max-width: 760px)'))
+    const block = narrow.slice(0, narrow.indexOf('@media', 1))
+
+    expect(block).toMatch(/\.correspondence-item__grid/)
+  })
+})
+
 describe('stage pill in the title bar', () => {
   it('sizes to the stage it is showing rather than to its widest option', () => {
     const body = ruleBody('.panel__stage-select')

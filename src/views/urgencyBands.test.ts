@@ -31,6 +31,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
     ratings: [],
     stage_notes: [],
     state_events: [],
+    correspondence: [],
     completed_actions: [],
     attachments: [],
     created_at: at(-40),

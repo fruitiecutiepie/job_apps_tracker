@@ -24,6 +24,27 @@ refusing an amount with no currency are covered by the app integration tests.
 Importing a calendar invite through the editor, replacing a rescheduled one, and refusing an invite
 with no start time are covered by the app integration tests.
 
+Logging hiring correspondence through the editor — keeping the time a message was sent rather than
+the moment it was filed, correcting that time, removing a message, refusing one with no text or no
+time, a drafted message surviving nothing when the dialog is cancelled, and finding an application
+by a word only a message holds — is covered by the app integration tests. The record's own rules —
+`at` supplied and correctable, send order against a timestamp written with an offset, and import
+canonicalization — are covered by `src/domain/domain.test.ts`.
+
+Reading a stage's messages in the prep notes dock — the collapsed toggle and its count, the day
+heading, showing only what is filed against that stage, and the find numbering the written note,
+then the messages, then the captures as one list while opening the collapsed section it steps
+into — is covered by the app integration tests. Rendering the records as a note, including keeping
+the paragraph breaks and quoted lines of a pasted message inside its own bullet, is covered by
+`src/markdown/correspondence.test.ts` and `src/markdown/dayLog.test.ts`.
+
+Whether any of that survives as layout — a pasted email's paragraphs separated and indented under
+their own bullet, a message folding to one row that says what it holds, both dock sections
+scrolling inside their caps instead of pushing the prep note off the pane, and **Read** giving the
+messages the whole card rather than the 70% the strip is capped at — is covered in a real browser
+by `src/correspondenceDock.browser.test.tsx`, across all three engines. jsdom cannot answer any of
+it: it has no layout, and it drops a shorthand carrying a `var()`.
+
 Live first launch (empty `data/tracker.json`, no reset control) is covered by the
 app integration tests.
 
@@ -261,7 +282,27 @@ neither a finger nor any browser automation.
     and that searching its description finds the application. On Table, sort by **Invites** and
     confirm rows with nothing coming sink to the bottom. Tick **Cancelled**, save, and confirm the
     table cell reads as cancelled and the card no longer shows it.
-12. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
+12. In the application editor, confirm each logged message reads as one folded line — when,
+    who, how, and a line of what it says — and that the line tells you which message it is
+    without opening it. Then choose **Add message**. Paste a real
+    multi-paragraph email into **Message**, set **Date sent** to a date several days in the past, name
+    who it was from, give it the email's subject, and pick a channel from the suggestions —
+    confirming the box still accepts a word that is not on the list. Log a second message with
+    the same subject and confirm the two read as one thread under a single heading — in the
+    editor's list as well as in the prep notes log — and that a message with no subject sits on
+    its own in both. Save, reopen, and confirm the date you typed came back rather
+    than the moment you saved. The structure of the rendered message is covered by the browser
+    suite; what is left here is judgement. Open Prep notes for that stage, expand
+    **Messages**, and ask whether the hint makes the two dates distinct before you have to find
+    the difference out, and whether a thread reads well open — which is how the section now
+    arrives. Press **Collapse all** and ask the other half: whether a folded row, carrying the
+    time, who it was from, and a line of what it says, tells you enough to decide whether to
+    open it, and whether that line is cut at a useful length. Press **Edit messages** and confirm the form opens on that
+    stage's rows, already unfolded, rather than at the top. Press **Read** and confirm a
+    long email is comfortable to read
+    down the column, that the quoted chain stays out of the way until asked for, and that
+    **Prep note** brings the note back where you left it.
+13. In the application editor, set all four ratings, save, reopen, and confirm they persisted.
     Set one to **Don't know** and another back to **Not rated**, save, and confirm the Table
     Preference cell distinguishes the two. Confirm the demo's Lumen Pantry row reads
     `4.00 · People 1` while a fully even row reads a plain `4.00`, so an average cannot hide a
@@ -279,7 +320,7 @@ neither a finger nor any browser automation.
     Filter by a company you have not rated and confirm that table is replaced by a plain
     sentence rather than a grid of zeros. Filter to nothing at all and confirm the view
     offers an empty state rather than a page of dashes.
-13. In the application editor, pick a currency, set an **Advertised** band and an **Expected**
+14. In the application editor, pick a currency, set an **Advertised** band and an **Expected**
     single figure, save, reopen, and confirm the band reads back in both boxes while the
     single figure leaves its **to** box empty. With the cursor in an amount box, press the up
     and down arrows and confirm the figure moves by 5,000, by 10,000 with Shift, and gains
@@ -297,12 +338,12 @@ neither a finger nor any browser automation.
     confirm a **Min** alone reads as at least that figure rather than requiring an upper end.
     Clear column filters and confirm the picker returns to **Any stage** with both boxes
     empty.
-14. Open the demo's Saffron Systems application and confirm the **History** list reads down from
+15. Open the demo's Saffron Systems application and confirm the **History** list reads down from
     **Applied** to **Accepted**, each move showing its date and how long that state held, with the
     last one still running. Move it to another state, save, reopen, and confirm one entry was
     appended. Reopen and change nothing but the notes, save, and confirm the list is unchanged.
     Open **Add application** and confirm no History list appears.
-15. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+16. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
     and confirm it. Confirm the same 19 examples are restored in `data/demo/`, now including
     the demo invites, and that `data/tracker.json` is unchanged.
 

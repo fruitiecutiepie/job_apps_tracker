@@ -81,6 +81,16 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       ...application.state_events.map((event) =>
         [STATE_LABELS[event.state], event.summary, event.location].filter(Boolean).join(' '),
       ),
+      // A message is prose someone wrote, and until it had a field of its own it was being
+      // typed into prep notes, which are already matched here — leaving it out would make
+      // filing a recruiter's email properly a search regression. The correspondent goes in
+      // with it, because a name is what a reader searches by. The channel does not: it holds
+      // one of a handful of words on most records, so indexing it would make "email" match
+      // every application you have ever emailed. That is the test `source` passes — one value
+      // per application, so it partitions the collection — and the one ratings already fail.
+      ...application.correspondence.map((entry) =>
+        [STATE_LABELS[entry.state], entry.who, entry.subject, entry.body].filter(Boolean).join(' '),
+      ),
       ...application.attachments.map((attachment) => attachment.filename),
     ]
       .filter(Boolean)

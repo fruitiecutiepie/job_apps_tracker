@@ -51,6 +51,7 @@ import {
   updateApplicationStageCapture,
   updateApplicationStageNotes,
   updateApplicationRatings,
+  updateApplicationCorrespondence,
   updateApplicationStateEvents,
   uploadAttachmentFile,
   deleteAttachmentFile,
@@ -58,6 +59,7 @@ import {
   type ApplicationInput,
   type Attachment,
   type CompletedActionDraft,
+  type CorrespondenceDraft,
   type StateEventDraft,
   type StateFilter,
   type StateId,
@@ -65,7 +67,8 @@ import {
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
 import { backend, isBrowserBackend } from './backend'
-import { DemoBanner, StorageIntro, StorageStatus, useStorageConnection } from './StorageStatus'
+import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
+import { useStorageConnection } from './useStorageConnection'
 import { useFileImport } from './useFileImport'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
 import { RatingFields } from './RatingFields'
@@ -79,7 +82,14 @@ import {
 } from './compensation'
 import { clearedRatingDimensions, ratingDrafts, ratingValuesFor, type RatingValues } from './ratings'
 import { fromDateTimeInput, toDateTimeInput } from './dateInput'
+import { CorrespondenceFields } from './CorrespondenceFields'
 import { InviteFields } from './InviteFields'
+import {
+  correspondenceDrafts,
+  correspondenceRowsFor,
+  firstCorrespondenceProblem,
+  type CorrespondenceRow,
+} from './correspondence'
 import {
   firstInviteProblem,
   inviteDrafts,
@@ -258,6 +268,8 @@ interface AttachmentSavePlan {
 
 interface ApplicationEditorProps {
   application: Application | null
+  /** A stage whose messages open, and scroll to, when the dialog does. */
+  messagesFor?: StateId
   onClose: () => void
   onDelete?: () => void
   onOpenStageNotes?: (id: string) => void
@@ -266,10 +278,11 @@ interface ApplicationEditorProps {
     attachmentPlan: AttachmentSavePlan,
     invites: StateEventDraft[],
     completedActions: CompletedActionDraft[],
+    correspondence: CorrespondenceDraft[],
   ) => Promise<void>
 }
 
-function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, onSave }: ApplicationEditorProps) {
+function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpenStageNotes, onSave }: ApplicationEditorProps) {
   const isEditing = application !== null
   const dialogRef = useRef<HTMLElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -287,6 +300,9 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
     compensation: compensationValuesFor(application),
   }))
   const [invites, setInvites] = useState<InviteRow[]>(() => inviteRowsFor(application))
+  const [correspondence, setCorrespondence] = useState<CorrespondenceRow[]>(() =>
+    correspondenceRowsFor(application),
+  )
   const [completedActions, setCompletedActions] = useState<CompletedActionRow[]>(() =>
     (application?.completed_actions ?? []).map((entry) => ({
       key: entry.id,
@@ -379,6 +395,11 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
               setFormError(inviteProblem)
               return
             }
+            const correspondenceProblem = firstCorrespondenceProblem(correspondence)
+            if (correspondenceProblem) {
+              setFormError(correspondenceProblem)
+              return
+            }
             const compensationProblem = firstCompensationProblem(values.compensation)
             if (compensationProblem) {
               setFormError(compensationProblem)
@@ -395,6 +416,7 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
                 },
                 inviteDrafts(invites),
                 completedActions.map(({ id, action, at }) => ({ id, action, at })),
+                correspondenceDrafts(correspondence),
               )
             } catch (error) {
               setFormError(errorMessage(error))
@@ -407,7 +429,9 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
             <label className="field">
               <span>Company</span>
               <input
-                autoFocus
+                // Not when the dialog was opened at a message: that lands on the
+                // correspondence section, and this would take the focus straight back.
+                autoFocus={!messagesFor}
                 onChange={(event) => update('company', event.target.value)}
                 placeholder="e.g. Paper Kite"
                 required
@@ -525,6 +549,12 @@ function ApplicationEditor({ application, onClose, onDelete, onOpenStageNotes, o
               defaultState={values.state}
               onChange={setInvites}
               rows={invites}
+            />
+            <CorrespondenceFields
+              defaultState={values.state}
+              messagesFor={messagesFor}
+              onChange={setCorrespondence}
+              rows={correspondence}
             />
             <RatingFields
               onChange={(dimension, value) =>
@@ -652,7 +682,15 @@ export default function App() {
   const [idleFilter, setIdleFilter] = useState<IdleFilter>('all')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
-  const [editor, setEditor] = useState<{ mode: 'add' } | { mode: 'edit'; id: string } | null>(null)
+  /*
+   * `messagesFor` opens the dialog with one stage's messages already unfolded and the section
+   * scrolled to. Reading a message and wanting to fix it is the commonest way into this form
+   * from the panel, and landing at the top of a long form to hunt for the row you were just
+   * looking at is the whole of the annoyance.
+   */
+  const [editor, setEditor] = useState<
+    { mode: 'add' } | { mode: 'edit'; id: string; messagesFor?: StateId } | null
+  >(null)
   /**
    * The note a card or a row asked for, waiting to be opened into the prep notes view. The
    * nonce is what makes asking twice for the same note two requests: the second would
@@ -972,9 +1010,9 @@ export default function App() {
       ?? (activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null)
   }
 
-  const openApplication = (id: string) => {
+  const openApplication = (id: string, messagesFor?: StateId) => {
     rememberDialogOpener()
-    setEditor({ mode: 'edit', id })
+    setEditor({ mode: 'edit', id, messagesFor })
   }
 
   const openNewApplication = (opener: HTMLButtonElement) => {
@@ -1080,6 +1118,7 @@ export default function App() {
       applications: filteredApplications,
       onOpen: openApplication,
       onOpenStageNotes: openStageNotes,
+      onOpenMessages: openApplication,
       onCompleteAction: completeAction,
     }
     switch (activeView) {
@@ -1443,6 +1482,7 @@ export default function App() {
       {editor && (editor.mode === 'add' || editingApplication) && (
         <ApplicationEditor
           application={editor.mode === 'edit' ? editingApplication : null}
+          messagesFor={editor.mode === 'edit' ? editor.messagesFor : undefined}
           onClose={closeEditor}
           onDelete={editor.mode === 'edit' ? async () => {
             if (window.confirm(`Delete ${editingApplication?.company ?? 'this application'}?`)) {
@@ -1455,7 +1495,7 @@ export default function App() {
             closeEditor()
             openStageNotes(id)
           } : undefined}
-          onSave={async (values, attachmentPlan, invites, completedActions) => {
+          onSave={async (values, attachmentPlan, invites, completedActions, correspondence) => {
             const input: ApplicationInput = {
               company: values.company,
               role: values.role || null,
@@ -1481,6 +1521,7 @@ export default function App() {
                   next = updateApplication(next, id, { attachments }, now)
                 }
                 next = updateApplicationStateEvents(next, id, invites, now)
+                next = updateApplicationCorrespondence(next, id, correspondence, now)
                 next = updateApplicationCompletedActions(next, id, completedActions, now)
                 return updateApplicationRatings(next, id, ratingDrafts(values.ratings), now)
               }, 'Application added.')
@@ -1500,6 +1541,7 @@ export default function App() {
                   compensation: input.compensation,
                 }, now)
                 next = updateApplicationStateEvents(next, editor.id, invites, now)
+                next = updateApplicationCorrespondence(next, editor.id, correspondence, now)
                 next = updateApplicationCompletedActions(next, editor.id, completedActions, now)
                 next = updateApplicationRatings(next, editor.id, ratingDrafts(values.ratings), now)
                 // Drafts cannot express "back to never assessed", so blanked ones clear here.

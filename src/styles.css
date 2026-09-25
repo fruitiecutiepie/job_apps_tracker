@@ -99,6 +99,7 @@
      panel sets this from the height the reader dragged the dock to; this is the fallback
      for a render that has not been given one, and matches `DEFAULT_CAPTURE_LOG`. */
   --capture-log: 11rem;
+  --message-log: 11rem;
   /* And how much of a note the whole dock may take however far it is dragged. A share
      rather than a length, because what has to be left over is a readable note and that is
      a fraction of whatever the pane happens to be. */
@@ -1524,6 +1525,14 @@ tbody tr:hover {
   z-index: 50;
   inset: 0;
   display: grid;
+  /*
+    Bounded rather than implicit. An auto column grows to its content, so a dialog holding
+    anything that will not shrink pushes the column past the overlay and out through its own
+    padding — centred, so it clips at both sides at once. `minmax(0, 1fr)` is what says the
+    column may not exceed the box it is in, and `100%` inside the dialog then means what it
+    looks like it means.
+  */
+  grid-template-columns: minmax(0, 1fr);
   padding: var(--s5);
   overflow-y: auto;
   place-items: center;
@@ -1532,6 +1541,11 @@ tbody tr:hover {
 
 .dialog {
   width: min(42rem, 100%);
+  /* A grid item's `min-width` is `auto`, so one descendant that cannot shrink — a fieldset,
+     a `nowrap` line — sets a min-content floor and the dialog grows past the width it just
+     asked for, off the side of the screen. This is the backstop; the shrinking is fixed at
+     each of those descendants so the text truncates instead of being clipped away. */
+  min-width: 0;
   max-height: calc(100vh - 2rem);
   padding: var(--s5);
   overflow-x: hidden;
@@ -1746,7 +1760,8 @@ tbody tr:hover {
   font-weight: 600;
 }
 
-.invite-field {
+.invite-field,
+.correspondence-field {
   gap: var(--s3);
 }
 
@@ -1802,12 +1817,17 @@ tbody tr:hover {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.invite-list {
+.invite-list,
+.correspondence-list {
   display: grid;
   gap: var(--s3);
 }
 
-.invite-item {
+/* Fieldsets default to `min-width: min-content`, which no `1fr` or `100%` can talk them out
+   of: one long unbroken line inside makes the whole thing refuse to narrow. */
+.invite-item,
+.correspondence-item {
+  min-width: 0;
   display: grid;
   gap: var(--s3);
   margin: 0;
@@ -1817,13 +1837,121 @@ tbody tr:hover {
 }
 
 .invite-item__head,
-.invite-item__grid {
+.invite-item__grid,
+.correspondence-item__head,
+.correspondence-item__grid {
   display: grid;
   gap: var(--s3);
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.invite-item__foot {
+/* Programmatically focusable, so it must not draw a ring when it is merely clicked past. */
+.correspondence-field__name:focus {
+  outline: none;
+}
+
+.correspondence-field__name:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+/*
+  The subject over the messages of a thread. Sits in the list rather than around it, so it has
+  to read as a heading by weight alone — a box would make each thread a card inside a section
+  that is already a list of cards.
+*/
+/* A subject can be a sentence, so the line it heads has to be able to give. */
+.correspondence-thread span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.correspondence-thread {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+  margin: var(--s2) 0 0;
+  color: var(--ink);
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+/*
+  Pushed to the end of the line so the subject reads first. Quiet until the thread is what the
+  reader is looking at: a button per thread is several on screen at once, and the one at the
+  foot of the section is still the way to start a new conversation.
+*/
+.correspondence-thread__add {
+  gap: var(--s2);
+  min-height: 24px;
+  margin-left: auto;
+  padding: 0 var(--s2);
+  color: var(--ink-3);
+  font-size: var(--t2);
+  font-weight: 400;
+}
+
+.correspondence-thread__add:hover {
+  color: var(--ink);
+}
+
+.correspondence-thread:first-child {
+  margin-top: 0;
+}
+
+/*
+  The row while its fields are folded away: one line, the width of the item, reading as a
+  record rather than as a button. Quiet enough that the fields below it are what the eye goes
+  to once it is open.
+*/
+.correspondence-item__summary {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  width: 100%;
+  /* The row is a grid item, and a grid item's `min-width` is `auto`: the line inside it does
+     not wrap, so without this the button keeps the whole summary as a floor and widens the
+     dialog around it rather than truncating. The `min-width` on the span is not enough — this
+     is the box the grid is measuring. */
+  min-width: 0;
+  min-height: var(--control);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 400;
+  text-align: left;
+  cursor: pointer;
+}
+
+/* The `min-width` is what makes the ellipsis work: without it a `nowrap` flex child keeps
+   its full text as a floor and pushes its container wide rather than truncating. */
+.correspondence-item__summary span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.correspondence-item__summary svg {
+  flex: none;
+  transition: transform 120ms ease;
+}
+
+.correspondence-item__summary[aria-expanded='true'] svg {
+  transform: rotate(90deg);
+}
+
+.correspondence-item__summary:hover {
+  color: var(--ink);
+}
+
+.invite-item__foot,
+.correspondence-item__foot {
   display: flex;
   align-items: center;
   gap: var(--s3);
@@ -1845,14 +1973,79 @@ tbody tr:hover {
   accent-color: var(--accent);
 }
 
-.invite-field__actions {
+/*
+  A fieldset standing in for a labelled field, so it keeps the shape of the selects beside it
+  rather than drawing a box of its own.
+*/
+.correspondence-direction {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.correspondence-direction legend {
+  padding: 0;
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+/*
+  Both options on one row, each as tall as the controls beside them, so the pair reads as one
+  control rather than as two loose checkboxes.
+*/
+.correspondence-direction__options {
+  display: flex;
+  gap: var(--s2);
+  margin-top: var(--s2);
+}
+
+.correspondence-direction__option {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s2);
+  min-height: var(--control-form);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  background: var(--surface);
+  color: var(--ink);
+  font-size: var(--t3);
+  font-weight: 400;
+}
+
+.correspondence-direction__option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-weak);
+  font-weight: 500;
+}
+
+/* The token is a shadow rather than an outline, which is how the one other wrapper that
+   takes a ring for the control inside it spends it. */
+.correspondence-direction__option:has(input:focus-visible) {
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+
+.correspondence-direction__option input {
+  width: auto;
+  min-height: auto;
+  accent-color: var(--accent);
+}
+
+.invite-field__actions,
+.correspondence-field__actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2);
 }
 
 .invite-field__hint,
-.invite-field__notice {
+.invite-field__notice,
+.correspondence-field__hint {
   margin: 0;
   color: var(--ink-2);
   font-size: var(--t2);
@@ -1928,6 +2121,7 @@ tbody tr:hover {
 /* --------------------------------------------------------- stage notes --- */
 
 .stage-notes-button,
+.messages-button,
 .complete-action-button {
   gap: var(--s2);
   padding: 0 var(--s3);
@@ -1935,6 +2129,7 @@ tbody tr:hover {
 }
 
 .stage-notes-button--card,
+.messages-button--card,
 .complete-action-button--card {
   min-height: 30px;
   color: var(--ink-2);
@@ -2271,6 +2466,33 @@ tbody tr:hover {
   gap: var(--s2);
 }
 
+/* The section's own name and the control that swaps the pane over to it, on one line. */
+/*
+  Stretched rather than centred, so every control in the row is the height of the row. The
+  toggle sets that height and is taller than its own floor, because the count badge beside its
+  name carries padding of its own — which is why matching the floors did not match the boxes.
+*/
+.stage-note__dock-row {
+  display: flex;
+  align-items: stretch;
+  gap: var(--s2);
+}
+
+.stage-note__dock-row .stage-note__dock-toggle {
+  flex: 1;
+  min-width: 0;
+}
+
+.stage-note__dock-read {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--s2);
+  padding: 0 var(--s2);
+  color: var(--ink-2);
+  font-size: var(--t2);
+}
+
 /*
  * The dock's edge. Full width and one handle tall, like the handles between panes, and it
  * owns the pointer for the length of a drag — without that a touch drag scrolls the note
@@ -2343,6 +2565,27 @@ tbody tr:hover {
  * is never something to retype. Rows stay as dense as the log they replace, so correcting
  * a typo does not resize the dock under the note.
  */
+/*
+  A static cap rather than a second draggable height. The capture log earns its handle by
+  being appended to while you read; nothing is added to the messages while the panel is
+  open, so a second measurement to clamp and reconcile would buy nothing. Both logs sit in
+  the one dock the panel already caps, and both can shrink to nothing, so that cap squeezes
+  them and each scrolls on its own.
+*/
+/*
+  The line a folded record shows of what it is hiding. Quieter than the row it trails, so a
+  header still reads as the header and the preview as the text underneath it — the same
+  weighting a folded quote's summary already keeps.
+*/
+.markdown__item-preview {
+  color: var(--ink-3);
+  font-weight: 400;
+}
+
+.stage-note__log--messages {
+  max-height: var(--message-log);
+}
+
 .stage-note__lines {
   display: grid;
   gap: var(--s2);
@@ -3295,6 +3538,29 @@ tbody tr:hover {
 
 .panel__notes .stage-note--current > .stage-note__dock {
   background: var(--accent-weak);
+}
+
+/*
+  Reading the messages gives them the column instead of the strip. The note is hidden rather
+  than squeezed: a pane split between a prep note and a long email serves neither, and the
+  note is one press away. The dock stops being a sticky strip and becomes the pane's content,
+  so the log grows with it rather than against its own cap.
+*/
+.panel__notes .stage-note--reading > .stage-note__body {
+  display: none;
+}
+
+.panel__notes .stage-note--reading > .stage-note__dock {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  max-height: none;
+  min-height: 0;
+}
+
+.panel__notes .stage-note--reading .stage-note__log--messages {
+  flex: 1;
+  max-height: none;
 }
 
 /*
@@ -4340,6 +4606,8 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .invite-item__head,
   .invite-item__grid,
+  .correspondence-item__head,
+  .correspondence-item__grid,
   .rating-grid,
   .compensation-row,
   .next-action-field {
