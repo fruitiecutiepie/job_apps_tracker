@@ -174,6 +174,70 @@ export interface StateEventDraft {
   cancelled?: boolean
 }
 
+export type CorrespondenceDirection = 'received' | 'sent'
+
+/**
+ * One message exchanged with an employer, filed against one state: a recruiter's email, a
+ * LinkedIn message, a rejection note, and what you sent back. It is deliberately not a third
+ * mode of `stage_notes`. A prep note is what you wrote before a stage and a `HeardEntry` is a
+ * line typed mid-conversation; a message is neither, because someone else wrote it at a
+ * moment you are only recording after the fact.
+ *
+ * `at` is when the message was sent and it is **supplied rather than minted**: you log on
+ * Friday what arrived on Tuesday, so a timestamp taken off the clock at the moment of filing
+ * would be a claim about your typing rather than about the conversation. It may also be
+ * corrected, which is where this record and `HeardEntry` part company — a send time is a fact
+ * about the world you can simply have got wrong, while a captured line's `at` may not move
+ * because an edit there is a correction to what was written down. `created_at` is when you
+ * wrote the record and never moves. Both are stored because they answer different questions,
+ * which is also why `HeardEntry` and `CompletedAction` need only one timestamp each.
+ *
+ * `who` is the other person — the sender of a message received, the recipient of one sent.
+ * `HeardEntry` deliberately has no author and that is not a contradiction: a captured line
+ * comes from the room its stage note already names, while one application's log mixes a
+ * recruiter, a coordinator and a hiring manager and cannot be read without it.
+ */
+export interface CorrespondenceEntry {
+  id: string
+  state: StateId
+  direction: CorrespondenceDirection
+  /**
+   * What the message was about, when it came with one. Optional because a LinkedIn message
+   * or an SMS has none — and those are exactly the messages whose first line makes a good
+   * summary on its own. Where it is present it is also the thread: messages sharing a
+   * subject within a stage are the same conversation, which is why there is no separate
+   * thread id to keep in step with it.
+   */
+  subject: string | null
+  /** How it arrived. Free text, because the next one may come by SMS. */
+  channel: string | null
+  /** The other person: the sender when received, the recipient when sent. */
+  who: string | null
+  body: string
+  /** When the message was sent, as supplied. */
+  at: string
+  /** When this record was written down. */
+  created_at: string
+  updated_at: string
+}
+
+/**
+ * A message as edited in the UI, before an id and record timestamps are resolved. `at` is
+ * required here, unlike `CompletedActionDraft.at`: a draft with no send time is refused
+ * rather than stamped now, because stamping it now silently is exactly the dishonest
+ * timestamp this record exists to end.
+ */
+export interface CorrespondenceDraft {
+  id?: string
+  state: StateId
+  direction: CorrespondenceDirection
+  subject?: string | null
+  channel?: string | null
+  who?: string | null
+  body: string
+  at: string
+}
+
 export interface Attachment {
   id: string
   filename: string
@@ -220,6 +284,8 @@ export interface Application {
   completed_actions: CompletedAction[]
   stage_notes: StageNote[]
   state_events: StateEvent[]
+  /** Messages exchanged with the employer, oldest first by the time they were sent. */
+  correspondence: CorrespondenceEntry[]
   attachments: Attachment[]
   posting: Posting | null
   ratings: Rating[]
@@ -287,7 +353,7 @@ export type ApplicationEdits = Partial<
     | 'deadline_at'
     | 'notes'
     | 'attachments'
-    // Unlike `ratings`, `stage_notes`, and `state_events`, compensation carries no
+    // Unlike `ratings`, `stage_notes`, `state_events`, and `correspondence`, compensation carries no
     // per-record timestamps, so there is nothing a second write path could destroy: the
     // whole record is replaced at once, exactly the way `deadline_at` is.
     | 'compensation'

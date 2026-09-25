@@ -6,6 +6,7 @@ import { CompleteActionButton } from "./CompleteActionButton";
 import { describeIdle, idleStatusFor } from "./idle";
 import { describePreference, preferenceFor } from "./preference";
 import { PostingButton } from "./PostingButton";
+import { MessagesButton } from "./MessagesButton";
 import { StageNotesButton } from "./StageNotesButton";
 import type { MovableApplicationsViewProps } from "./types";
 import { formatShortDate, kanbanColumnGroups, upcomingStateEvent } from "./viewUtils";
@@ -15,6 +16,7 @@ export function KanbanView({
   onOpen,
   onOpenStageNotes,
   onOpenPosting,
+  onOpenMessages,
   onCompleteAction,
   onMove,
   visibleStates,
@@ -211,6 +213,10 @@ export function KanbanView({
                                   ))}
                                 </select>
                               </span>
+                              <MessagesButton
+                                application={application}
+                                onOpenMessages={onOpenMessages}
+                              />
                               <StageNotesButton
                                 application={application}
                                 onOpenStageNotes={onOpenStageNotes}

@@ -2,11 +2,13 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { ChevronRight } from 'lucide-react'
 import { inlineText, parseMarkdown, type BlockNode, type InlineNode, type ListBlock, type QuoteBlock, type TableBlock } from './parseMarkdown'
 import { tokenizeCode } from './highlightCode'
+import { preview } from './preview'
 import {
   blockKey,
   blockText,
   buildSections,
   cellKey,
+  collectEntryKeys,
   collectFoldableKeys,
   itemKey,
   sectionPath,
@@ -30,11 +32,6 @@ interface Marks {
 /** A running ordinal, shared by every inline node inside one text container. */
 interface Cursor {
   next: number
-}
-
-function preview(text: string, limit = 48): string {
-  const collapsed = text.replace(/\s+/g, ' ').trim()
-  return collapsed.length > limit ? `${collapsed.slice(0, limit).trimEnd()}…` : collapsed
 }
 
 /** Seeds a container's cursor from the ordinal the search assigned it. */
@@ -74,6 +71,19 @@ function highlight(text: string, marks: Marks, cursor: Cursor, keyPrefix: string
  * otherwise have to carry a prop it makes no use of.
  */
 const FollowSection = createContext<(slug: string) => void>(() => {})
+
+/**
+ * Whether a folded record summarises what it holds. On where the records start folded, off
+ * where they do not, and the distinction is the point: folding a point in a note you wrote is
+ * a deliberate act of putting it away, and a preview would undo the thing you just asked for.
+ * A log of messages you did not write starts folded, and a row reading only "9:14 am Priya
+ * Raman" says nothing about whether you want it open.
+ *
+ * Through context rather than as a prop for the same reason `FollowSection` is: a list can sit
+ * at any depth, and every container between here and there would otherwise carry a prop it
+ * makes no use of.
+ */
+const SummariseFolds = createContext(false)
 
 /**
  * A link into the note itself. It never navigates: the panel is a dialog over the
@@ -209,6 +219,7 @@ function FoldRow({
 
 function MarkdownList({ list, path, collapsed, onToggle, marks }: FoldProps & { list: ListBlock; path: string }) {
   const Tag = list.ordered ? 'ol' : 'ul'
+  const summarise = useContext(SummariseFolds)
   return (
     <Tag className="markdown__list">
       {list.items.map((item, index) => {
@@ -226,6 +237,18 @@ function MarkdownList({ list, path, collapsed, onToggle, marks }: FoldProps & { 
                 onToggle={() => onToggle(key)}
               >
                 {content}
+                {/*
+                  What is folded away, in a line, the way a folded quote already summarises
+                  itself. A row that says only "9:14 am Priya Raman" tells a reader which
+                  message this is and nothing about whether they want it open; a log of long
+                  messages is unreadable folded without this and unreadable unfolded without
+                  the fold.
+                */}
+                {isCollapsed && summarise ? (
+                  <span className="markdown__item-preview">
+                    {` ${preview(blockText(item.children))}`}
+                  </span>
+                ) : null}
               </FoldRow>
             ) : (
               <span className="markdown__item-line">
@@ -438,6 +461,28 @@ interface MarkdownNotesProps {
    */
   foldAll?: boolean
   /**
+   * Whether the records in this note start closed. `entries` folds every message and every
+   * quoted reply, which is what a log of long emails wants: each message reads as one row
+   * carrying its own preview, and the quoted chain under it — already in the row above, in a
+   * log that keeps both sides — stays out of the way until asked for. Headings are never
+   * folded by this, so the days themselves stay open.
+   *
+   * A note you wrote opens flat, because you wrote it and want to read it. Default `none`.
+   */
+  /**
+   * Set when this note is a **log of records** rather than something someone wrote, and to
+   * whether those records start open or folded.
+   *
+   * Being a log decides two things beyond that initial state, and they hold either way: a
+   * folded record summarises what it holds, and "all" means the records rather than every
+   * fold — folding a log's day headings away leaves dates with nothing under them.
+   *
+   * One prop rather than two because the two were never independent: "start folded" is about
+   * records, and there are no records to fold unless this is a log. Left out, the note reads
+   * as something someone wrote — flat, and folding a point in it puts that point away.
+   */
+  records?: 'open' | 'folded'
+  /**
    * Ancestor keys to force open, for a jump landing inside a section that is folded.
    * Left collapsed afterwards is not an option — the jump would have nothing to show.
    */
@@ -456,7 +501,19 @@ interface MarkdownNotesProps {
    * it scrolls away with what it folds, and the reader reaching for it has to scroll back
    * up to find it. Called with `null` when there is nothing foldable, and on unmount.
    */
-  onFoldControls?: (controls: { allFolded: boolean; toggle: () => void } | null) => void
+  onFoldControls?: (
+    controls: {
+      allFolded: boolean
+      toggle: () => void
+      /**
+       * Opens every record and every quoted chain inside them — the same reach the Expand
+       * all button has. Distinct from `toggle` only in being one-way: a surface switching
+       * itself over to reading opens what is there, and must not close it again if it was
+       * already open.
+       */
+      openEntries: () => void
+    } | null,
+  ) => void
 }
 
 export function MarkdownNotes({
@@ -466,13 +523,36 @@ export function MarkdownNotes({
   matchBase = 0,
   currentMatch = null,
   foldAll = true,
+  records,
   revealKeys,
   onJumpToSection,
   onFoldControls,
 }: MarkdownNotesProps) {
   const section = useMemo(() => buildSections(parseMarkdown(source)), [source])
   const keys = useMemo(() => collectFoldableKeys(section), [section])
-  const [collapsed, setCollapsed] = useState<Set<string>>(() => new Set())
+  const entryKeys = useMemo(
+    () => (records ? collectEntryKeys(section) : []),
+    [records, section],
+  )
+  const [collapsed, setCollapsed] = useState<Set<string>>(
+    () => new Set(records === 'folded' ? entryKeys : []),
+  )
+
+  /*
+   * A message logged while the panel is open arrives closed like the rest, without reopening
+   * what the reader has since opened. Only keys never seen before are added, so the fold
+   * state stays theirs: re-seeding the whole set on every change would slam shut everything
+   * they had just opened to read.
+   */
+  const seededKeys = useRef(new Set(entryKeys))
+  useEffect(() => {
+    const fresh = entryKeys.filter((key) => !seededKeys.current.has(key))
+    for (const key of entryKeys) seededKeys.current.add(key)
+    // Only where records start folded. Where they start open, one arriving open is the rule
+    // it should follow rather than an exception to it.
+    if (records !== 'folded' || fresh.length === 0) return
+    setCollapsed((current) => new Set([...current, ...fresh]))
+  }, [records, entryKeys])
 
   const search = useMemo(() => searchNote(section, query), [section, query])
   const slugs = useMemo(() => sectionSlugs(section), [section])
@@ -533,7 +613,14 @@ export function MarkdownNotes({
     })
   }
 
-  const allCollapsed = keys.length > 0 && keys.every((key) => collapsed.has(key))
+  /*
+   * What "all" means to the fold-all control. In a note it is every fold, which leaves a bare
+   * outline to work through. In a log of records it is the records: folding the day headings
+   * away leaves two dates and nothing else — neither readable nor scannable — so the same
+   * prop that says records are the unit here says it to this control too.
+   */
+  const foldAllKeys = records ? entryKeys : keys
+  const allCollapsed = foldAllKeys.length > 0 && foldAllKeys.every((key) => collapsed.has(key))
 
   /*
    * Stable across renders, so reporting it upward cannot become a loop: the keys it needs
@@ -544,8 +631,8 @@ export function MarkdownNotes({
   // button is pressed, never while drawing, and keeping it stable is what stops the
   // report upward from being a new value on every render — and so a loop.
   useEffect(() => {
-    keysRef.current = keys
-  }, [keys])
+    keysRef.current = foldAllKeys
+  }, [foldAllKeys])
   const toggleAll = useCallback(() => {
     setCollapsed((current) => {
       const every = keysRef.current.length > 0 && keysRef.current.every((key) => current.has(key))
@@ -553,31 +640,47 @@ export function MarkdownNotes({
     })
   }, [])
 
+  const entryKeysRef = useRef(entryKeys)
+  useEffect(() => {
+    entryKeysRef.current = entryKeys
+  }, [entryKeys])
+  const openEntries = useCallback(() => {
+    setCollapsed((current) => {
+      const next = new Set(current)
+      for (const key of entryKeysRef.current) next.delete(key)
+      return next
+    })
+  }, [])
+
   useEffect(() => {
     if (!onFoldControls) return
-    onFoldControls(keys.length > 0 ? { allFolded: allCollapsed, toggle: toggleAll } : null)
+    onFoldControls(
+      foldAllKeys.length > 0 ? { allFolded: allCollapsed, toggle: toggleAll, openEntries } : null,
+    )
     return () => onFoldControls(null)
-  }, [allCollapsed, keys.length, onFoldControls, toggleAll])
+  }, [allCollapsed, foldAllKeys.length, onFoldControls, openEntries, toggleAll])
 
   return (
     <div className="markdown" ref={root}>
-      {foldAll && keys.length > 0 ? (
+      {foldAll && foldAllKeys.length > 0 ? (
         <button
           aria-label={`${allCollapsed ? 'Expand' : 'Collapse'} all points in ${label}`}
           className="button button--quiet markdown__fold-all"
-          onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(keys))}
+          onClick={() => setCollapsed(allCollapsed ? new Set() : new Set(foldAllKeys))}
           type="button"
         >
           {allCollapsed ? 'Expand all' : 'Collapse all'}
         </button>
       ) : null}
       <FollowSection.Provider value={follow}>
+        <SummariseFolds.Provider value={Boolean(records)}>
         <MarkdownSection
           collapsed={effectiveCollapsed}
           marks={marks}
           onToggle={toggle}
           section={section}
         />
+        </SummariseFolds.Provider>
       </FollowSection.Provider>
     </div>
   )

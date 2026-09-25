@@ -6,6 +6,8 @@ export interface ApplicationsViewProps {
   onOpenStageNotes: (id: string) => void;
   /** Opens an application's captured job posting. Does nothing for one that has none. */
   onOpenPosting: (id: string) => void;
+  /** Opens the application's form on one stage's messages. */
+  onOpenMessages: (id: string, messagesFor: StateId) => void;
   /** Clears the next action and logs it in the notes. Views without a task row ignore it. */
   onCompleteAction: (id: string) => void;
 }

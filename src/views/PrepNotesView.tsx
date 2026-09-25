@@ -25,11 +25,9 @@ interface PrepNotesViewProps {
   onSaveDrafts: (batches: StageNoteDraftBatch[]) => Promise<boolean>;
   onExternalChange: (applicationId: string, state: StateId, body: string) => Promise<void>;
   onCapture: (applicationId: string, state: StateId, line: string) => Promise<void>;
-  /** Opens an application's editor, which is where a captured posting is changed. */
-  onEditApplication: (id: string) => void;
   onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>;
   /** Opens the application editor for the application a note in the panel prepares for. */
-  onOpenApplication: (applicationId: string) => void;
+  onOpenApplication: (applicationId: string, messagesFor?: StateId) => void;
 }
 
 /**
@@ -47,7 +45,6 @@ export function PrepNotesView({
   onSaveDrafts,
   onExternalChange,
   onCapture,
-  onEditApplication,
   onRevise,
   onOpenApplication,
 }: PrepNotesViewProps) {
@@ -127,7 +124,6 @@ export function PrepNotesView({
           initial={initial}
           onArrange={remember}
           onCapture={onCapture}
-          onEditApplication={onEditApplication}
           onEmpty={empty}
           onExternalChange={onExternalChange}
           onOpenApplication={onOpenApplication}

@@ -6,7 +6,10 @@ This file applies to the entire repository. Keep changes within the app's curren
 
 - `src/App.tsx` coordinates shared filters, dialogs, imports, exports, persistence, and the eight views.
 - `src/StageNotesPanel.tsx` is the stage prep notes panel and `src/StageNotePane.tsx` one stage's note inside it, with the ids tying a pane to its tab in `src/stageNoteIds.ts`. `src/views/PrepNotesView.tsx` is the view that hosts the panel, restores its arrangement and holds the empty state; `src/notesArrangement.ts` is what it restores from. `src/StageNoteEditor.tsx` is the Markdown editor, `src/FindWidget.tsx` the find bar, and `src/QuickOpen.tsx` the stage picker with its matching in `src/quickOpenMatch.ts`; `src/useDialogKeyboard.ts` holds the Escape and focus-trap behavior of the application dialog, which the prep notes panel no longer shares — it is a view, and a view is not dismissable.
-- `src/markdown/` parses the supported Markdown subset into an AST and renders it as a foldable outline. `sections.ts` holds the section tree, the fold-key scheme, and the heading walks the outline and breadcrumbs read; `searchNote.ts` finds text in it.
+- `src/markdown/` parses the supported Markdown subset into an AST and renders it as a foldable outline. `sections.ts` holds the section tree, the fold-key scheme, and the heading walks the outline and breadcrumbs read; `searchNote.ts` finds text in it. `capture.ts` and `correspondence.ts` derive a Markdown note from stored records so the renderer, the outline and the find work on them unchanged; `dayLog.ts` holds the day grouping they share, which is the only part of the two that must not drift.
+- `src/correspondence.ts` turns stored messages into editor rows and mutation drafts, and
+  `src/CorrespondenceFields.tsx` is the editor's correspondence section; `src/domain/correspondence.ts` is
+  the direction configuration and the channel suggestions.
 - `src/calendar/` reads the iCalendar subset that recruiter invites arrive in; `src/invites.ts` turns those
   events into editor rows and mutation drafts, and `src/InviteFields.tsx` is the editor's invite section.
 - `src/PostingPane.tsx` reads one application's captured job posting in a pane, beside the prep notes; `src/PostingField.tsx` is where it is pasted in, in the application editor, with the pure half in `src/posting.ts`.
@@ -26,6 +29,9 @@ This file applies to the entire repository. Keep changes within the app's curren
   depends on: touch target sizes are the device's business and stay in `@media`, while how the prep
   notes panel lays itself out is its own width and belongs in `@container panel`.
 - `SMOKE_TEST.md` records the automated smoke coverage and optional browser-only checks.
+- `src/test/panelHarness.tsx` mounts the prep notes panel for the browser suite. Shared because the
+  mount is not incidental: the panel's height comes from the shell column above it, so a bare mount
+  would size itself correctly whatever the chain above it did, and prove nothing.
 
 Use pnpm for dependency and script commands. Do not introduce a second package manager or regenerate the lockfile with another tool.
 
@@ -82,6 +88,125 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   that UID instead of appending beside it, keeps the `state` that invite was filed under, and ignores an
   invite whose `sequence` is behind the stored one. Two invites on one application may not share a UID.
 - An invite must have a summary and a start; `ends_at` may be absent but may not precede `starts_at`.
+- Hiring correspondence hangs off an application as `correspondence`, each message filed against one
+  `StateId`, stored oldest first by the time it was sent. It is what was exchanged with the employer — a
+  recruiter's email, a LinkedIn message, a rejection note, and what you sent back — and it is deliberately
+  not a third mode of `stage_notes`. A prep note is what you wrote before a stage and `heard` is a line
+  typed mid-conversation; a message is neither, because someone else wrote it at a moment you are only
+  recording after the fact. A message may be filed against a state the application has not reached, and
+  nothing about the message decides which stage it belongs to. The field is a mass noun and stays
+  singular; there is no such word as `correspondences`.
+- `at` is when the message was sent, and it is **supplied rather than minted** — you log on Friday what
+  arrived on Tuesday, so a timestamp taken off the clock at the moment of filing would be a claim about
+  your typing rather than about the conversation. It is the one required timestamp on a draft: a blank one
+  is refused rather than stamped now, because stamping it now silently is exactly the dishonesty this
+  record exists to end. It may also be **corrected**, which is where correspondence and `heard` part
+  company: `HeardEntry.at` may not move because an edit there is a correction to what was written down,
+  while a send time is a fact about the world you can simply have got wrong. `created_at` is when you wrote
+  the record and never moves. Both are stored because they answer different questions, which is also why
+  `HeardEntry` and `CompletedAction` need only one timestamp each.
+- `direction` is `received` or `sent` and has no third value. Half of hiring correspondence is what you
+  sent, and a log holding one side reads as a mystery; anything that is neither — a thought about the
+  process, a reminder — is `notes` or a prep note, and a third direction would reopen the misuse this
+  record was added to end. `CORRESPONDENCE_CONFIG` in `src/domain/correspondence.ts` is the only source of
+  the two ids, their labels and their order, the way `RATING_CONFIG` is for dimensions.
+- `who` is the other person — the sender of a message received, the recipient of one sent — and may be
+  absent. `HeardEntry` deliberately has no author and that is not a contradiction: a captured line comes
+  from the room its stage note already names, and asking who was speaking is a question to answer
+  mid-interview. A message has exactly one correspondent, it is in the header you are copying from, and a
+  log mixing a recruiter, a coordinator and a hiring manager cannot be read without it.
+- `subject` is what the message was about, and may be absent: a LinkedIn note or an SMS has
+  none, and those are exactly the messages whose first line is its own summary. Where it is
+  present it is **also the thread** — messages sharing a subject within a stage are the same
+  conversation — which is why there is no separate thread id to keep in step with it. It goes
+  in `search_text`: it is the most searchable thing about a message.
+- The log puts one `####` heading over a **run** of messages sharing a subject, rather than
+  restating it on every row. Grouping, never reordering: the log stays in send order, so two
+  threads answered in turn read as they happened and a subject simply comes back when the
+  conversation does. A message with no subject ends a run and opens none of its own. Because
+  the heading is a fold, a thread folds as one.
+- The day grouping stays the outer spine, so a thread spanning days shows its heading under
+  each day it has messages in. That is the cost of keeping the log chronological, and it is
+  the right way round for a log: each day reads on its own. Making the subject the spine
+  instead would read as a mailbox rather than as what happened when.
+- The editor groups its rows the same way and on the same rule, through `opensThread`: one
+  line over a run of rows sharing a subject inside a stage. The line goes **between** the rows
+  rather than wrapped around them, so the list stays flat — a message's number is its position
+  in it, and a name must not move because the message above it was given a subject.
+- With the subject on that line, a row summarises itself by its **body**, which is the split
+  the log already makes. Three rows each reading "Next steps" under a heading reading "Next
+  steps" would say nothing about which is which.
+- `channel` is free text with `CHANNEL_SUGGESTIONS` behind the editor's picker, the arrangement `source`
+  already keeps: the picker curates the vocabulary and widening it must never narrow what import accepts. A
+  closed union would be wrong the first time a message arrives by SMS, and there are no migrations here
+  that could widen one later. Unlike a currency it is not case-folded — `LinkedIn` is a name, not a code —
+  so `email` and `Email` are two values, exactly as they already are for `source`.
+- A message's row in the editor is **folded to one line** until it is the one being worked on.
+  A message is six controls and an email; five of them came to four screens of a dialog whose
+  job is the application, not the thread. The line is `correspondenceRowSummary` — when, who,
+  how, and a line of what it says — and it is the row's accessible name, because the summary
+  is what tells two messages apart while a number says only where in the list you are. A row
+  just added arrives open, since it is the one you are about to fill in.
+- That line is cut by the same `preview` the log's folded row uses, and names its sender
+  through the same `correspondenceSender`. A row that summarised a message one way in the
+  editor and another way in the panel would read as two different messages. `preview` lives in
+  `src/markdown/preview.ts` rather than inside the renderer for that reason — and because a
+  component file exporting it costs the whole file its Fast Refresh.
+- Correspondence stays in the application editor rather than moving to a view of its own, and
+  the prep notes precedent does not transfer. A note is a document you compose over time, typed
+  mid-interview, which is why the panel autosaves and has no Save at all. A message is entered
+  once, complete, from a paste, at a keyboard — a record with fields and a date filed against a
+  stage, which is what `InviteFields` already is. What made it feel wrong in the editor was one
+  enormous field, and that is a rendering problem rather than a home. A view would earn its
+  place by showing correspondence **across** applications, which neither the editor nor the
+  dock does; that is a feature with its own argument, not a consequence of a tall form.
+- Each thread carries its own **Add**, beside its subject, through `newThreadRow`. It takes
+  everything that makes a message part of that conversation — the subject, the correspondent,
+  the channel, and the **thread's** stage rather than the application's current one, since a
+  shared subject in another stage is a different thread by the rule the grouping keeps — and
+  leaves the two things you are there to write. The row lands inside the run rather than at
+  the top of the list: anywhere else it would open a second heading saying the same words. Its
+  visible label is just "Add", with the subject in its accessible name, because a subject can
+  be a sentence and every thread carries one of these.
+- **Add message** at the foot of the section stays the way to start a conversation, and seeds
+  the new row's correspondent and channel from the newest row that has
+  either, through `newCorrespondenceRow`. A hiring conversation is one recruiter on one
+  channel far more often than not, so re-typing both for every message asks the reader to
+  restate what the row above already says; both stay editable, so a thread that does change
+  hands costs one correction. Nothing else carries forward — not the text, not the time, and
+  not the direction, because a reply follows a message rather than another reply. Read off
+  the rows rather than the stored log, since a message just typed is the likeliest thing the
+  next one follows.
+- Direction is two radios rather than a select: a menu costs two interactions to choose
+  between two things, and both are worth seeing without opening anything. Radios rather than
+  buttons carrying `aria-pressed`, because this is a choice between options and the platform
+  already has a control that says so, arrow keys included. The group is named per row, or two
+  messages on screen share one group. The date field is **Date sent**, not "Sent", which is
+  one of the two directions a line above it.
+- Route correspondence changes through `applyCorrespondence` or `updateApplicationCorrespondence`. A draft
+  carrying an existing id keeps that record's `created_at` while its `at`, direction, channel,
+  correspondent and text are all rewritten from the draft; a blank body drops the message, which is how the
+  editor removes a row; an unchanged list returns the same object. Correspondence never appends state
+  history, and like `ratings`, `stage_notes` and `state_events` it is absent from `ApplicationEdits`. There
+  is deliberately no append-one mutation: unlike a capture it is composed after the fact with a date and a
+  direction to choose, so it is a form with a Save, and unlike an invite it has no calendar UID forcing a
+  replace-or-append decision. Add one only alongside a control that logs a message from outside the editor,
+  since that caller has no draft list to extend.
+- Correspondence is stored in send order — `at`, then id — rather than in configured state order the way
+  invites are. Invites are read one stage at a time and their times and stages agree by construction; a log
+  is read as a timeline, and the stage a message is filed under does not predict when it was sent, since a
+  coordinator apologising for the delay on Interview 1 arrives after the Interview 2 invite.
+  `sortedCorrespondence` in `mutations.ts` and `correspondenceValue` in `validation.ts` must sort by the
+  same rule and both must fall back to the id: the validator rebuilds the array in file order, so without
+  the tiebreak a document comes back in an order it was not written in and every no-op-by-identity check
+  downstream reports a change that did not happen. Compare by parsed instant rather than by string, because
+  this is the first `at` a person supplies and one written with an offset does not sort lexically.
+- Logging a message refreshes the application's `updated_at`, which is the honest answer — you did touch
+  it. It appends no `state_history`, so the silence `daysSinceLastMove` measures is untouched and neither
+  the urgency term nor Idle moves: writing down an email that arrived last week is not the employer
+  answering you. It never enters `urgencyFor`, the score, or band placement, the same fence Idle and
+  preference sit behind. A message is something that already happened, and the ranking carries what is
+  still owed.
 - A next action may have no date. A date may not survive without a non-blank action.
 - A next action is resolved through `completeNextAction`, not by hand-clearing the field: it nulls `next_action` and `next_action_at` and appends the task to `completed_actions`. A blank action returns the same object, `deadline_at` is untouched because an external closing date is not the task, and completing an action never appends state history.
 - `completed_actions` holds carried-out next actions as records, oldest first, and is deliberately **not** appended to `notes`. The two are written differently — `notes` is prose you compose and revise, a completed action is one line the app writes the instant Done is pressed — so mixing them means neither can be edited without disturbing the other, the date has to be parsed back out of prose, and a Done pressed by mistake cannot be removed cleanly. This is the same argument `HeardEntry` already makes for captured lines.
@@ -130,6 +255,12 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   timestamps, an end before the start, a non-http(s) link, a negative sequence, duplicate ids, and duplicate
   calendar UIDs within one application.
 - Missing or null `posting` on import canonicalizes to `null`, so every document written before postings existed stays valid. Reject a blank body, a malformed `captured_at`, a non-http(s) `source_url`, and a value that is not an object.
+- Missing `correspondence` on import canonicalizes to `[]` — a document written before the log existed is
+  valid, not broken. Reject a blank body, an invalid state, an unknown direction, a malformed `at`,
+  `created_at` or `updated_at`, and duplicate ids within one application. A blank channel or correspondent
+  is dropped to `null` rather than rejected. There is deliberately no rule ordering `at` against
+  `created_at`, and none rejecting a future `at`: a message logged days after it arrived is the ordinary
+  case, and a rule enforced against the clock would be wrong in another timezone.
 - Application attachments store metadata on each application and file bytes under `{dataDir}/attachments/{applicationId}/{attachmentId}` (`data/attachments/` live, `data/demo/attachments/` demo). Missing `attachments` on import canonicalizes to `[]`. Add and remove attachments through mutations; cap each file at 25 MiB.
 - Keep view-only values derived. Never persist Kanban columns, idle status, date groups, stage durations, statistics, or filters. Do not persist overdue/upcoming buckets or band membership because they depend on browser-local "today". Idle is named here explicitly because it reads like a status worth storing and is not: it is a function of today, so a stored flag would be wrong on the next day, in another timezone, or on a machine whose clock differs.
 - On first launch after upgrading from browser storage, migrate a valid legacy `localStorage` document into `data/tracker.json` once (live profile only), then stop using `localStorage` for the document. The static build skips the migration entirely: the legacy key is not its storage, and it must not adopt a document it never wrote. `localStorage` still holds per-machine interface state and only that: the theme, and the prep notes arrangement in `src/notesArrangement.ts`. Neither is the reader's data, neither belongs in an export, and the arrangement in particular would rewrite the shared file on every tab click if it were stored there. Its key carries the tracker profile, so a demo session cannot hand its refs to a live one.
@@ -143,7 +274,26 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 ### Demo data
 
 - `pnpm dev:demo` and `pnpm start:demo` first launch, plus confirmed demo reset, must produce the same 19 deterministic fictional records, exactly one ending in each configured state. Demo reset is unavailable on the live profile and must not write demo records into `data/tracker.json`.
-- The examples intentionally include prior history, dated and undated actions, overdue work, past and future deadlines, notes, stage prep notes, calendar invites (including one cancelled), ratings in all three states (including one whose 4.00 mean hides a 1), compensation in every comparison shape, and silent timestamps so every view has useful content.
+- The examples intentionally include prior history, dated and undated actions, overdue work, past and future deadlines, notes, stage prep notes, calendar invites (including one cancelled), hiring correspondence, ratings in all three states (including one whose 4.00 mean hides a 1), compensation in every comparison shape, and silent timestamps so every view has useful content.
+- The demo seeds correspondence in both directions across several applications, including one message with
+  no correspondent named, one with no channel, one with no subject, one filed against a rejected state, and
+  one whose `at` precedes the record's `created_at`, so the log written after the fact is exercised.
+- Threads are seeded as threads: more than one conversation on an application, more than one correspondent
+  within an application, a loose note sitting beside a threaded conversation, and an offer negotiation —
+  which is the message anyone rereads most and so the one the reading surfaces most need to carry well.
+- One seed carries a **real email** — several paragraphs, a list, a signature, and the thread quoted
+  underneath — and one application carries a **thread** of four or more with two of them on the same day.
+  Both are load-bearing rather than decorative: a log of one-liners exercises neither the folded row nor
+  Read, which is most of what the reading side is. First lines sit either side of the preview's 48
+  characters, so the row that truncates and the row that does not are both on screen. A test in
+  `src/domain/domain.test.ts` asserts the lot; if you retune these seeds, check none of it stops appearing.
+  The long bodies are named constants above `DEMO_SEEDS`, because inline they would make an already wide
+  seed line unreadable.
+- Each record family mints its demo ids from a fixed pattern, and the four variant nibbles a UUIDv7 may
+  carry — `8`, `9`, `a` and `b`, forced by `createUuidV7` — are spent between applications, invites,
+  captures and completed actions. A new family varies the version group's spare bits instead of the
+  variant. Validation only checks that an id is non-blank, so nothing else would catch a non-UUID; a test
+  asserts every demo id is UUIDv7-shaped, which pins the older four as well.
 - The demo populates every table band, so no heading goes unexercised. If you retune a seed's dates, check that no band empties out.
 - The compensation seeds cover every gap verdict (above, within, below, none), a target with nothing quoted against it, a quote with no target, bands and point values, and more than one currency. A test in `src/views/compensation.test.ts` asserts it; if you retune a seed's amounts, check that no cell shape stops appearing.
 - One example (`Northstar Labs`) sets `editedDaysAgo`, so its `updated_at` is newer than its last `state_history` entry. That is the only seed where silence and last-touched disagree: the urgency reason reads it as no stage change while the Kanban card and Activity column read it as Idle. Keep a seed with that shape, or the difference between the two measures goes untested in the demo. Its stage move sits past `IDLE_THRESHOLD_DAYS` on purpose — it is also the only seed that is Idle, so shortening that silence leaves the pill, the Activity column and the activity filter with nothing to show.
@@ -185,6 +335,126 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Each entry shows how long that state held — the gap to the next move, or to now for the last one. Spans are derived on render in `stateTimeline`, never persisted, and counted in browser-local days like staleness, so two moves on one day read as `Same day` rather than a rounded fraction.
 - The board and the table each reach a posting directly, through `PostingButton`, which renders nothing for an application that captured none — a control opening an empty pane offers something that is not there, and a row of them greyed out across a board says only that most applications predate the field. In the table it shares the **Prep** column with the prep-notes button, stacked: the column is the way into Prep and Prep holds more than notes, so it is not headed as notes.
 - The view is called **Prep**, not Prep notes: it holds an application's job posting as well as the notes written against it, and a posting is not a note anybody wrote. The adjective is what survives — you read the posting in order to prepare — while the notes themselves are still prep notes and still say so, in the sidebar section and in `stage_notes`. It is a top-level view, reached from the tab strip or from the Kanban card and the table row — which navigate to it rather than opening a dialog over it. What is open, how it is split, how wide the panes are and which tab is showing survive the app being closed, because the workspace is the point of a panel holding several applications at once. Arriving from a card opens only the note asked for; the fan of an application's posting, its current stage and its other noted stages (`openingLayout`) applies when there is no arrangement to restore, or every visit would pile that application's stages back up. The posting leads that fan and the stage is still what you land on: one strip holding everything written for one application is where this app says those belong together, since the notes tree is grouped by stage on purpose and a posting has no home there that reads as its application's. It is context for the note being written, not the errand you came on. The panel holds notes from **any application, not just the one it was opened from**: a tab is a `NoteRef` — an application, and either a state or its job posting — and `Ctrl+P` reaches every application's notes. It opens on the application it was invoked for, that application's current stage first and then its other noted stages, so the stage you are interviewing for is the one you land on. Global search matches stage note text through `search_text`. A captured job posting opens as a pane too, read and written like a note and on the same drafts, `editing` and autosave: a pasted posting arrives mangled often enough — a run of blank lines, a nav menu, one long paragraph — that being unable to tidy it where it is read is the wrong trade. A posting rides its application's `StageNoteDraftBatch` rather than a channel of its own, so an application whose note and posting both changed is still one write. What it has no part of is the external editor, whose scratch-file route is keyed by application and state; the pane's link to the application editor is for the posting's `source_url` and the way to forget it, neither of which belongs in a pane showing text. Its pane carries no capture dock, because nobody said a posting to you, and no stage control, because it prepares for none. It is counted by the panel-wide find like any other pane; a pane left out of that numbering is one the find steps past while the words are on screen in it. In the sidebar it has a **section of its own**, above **All prep notes** and never inside it: a posting is the one thing in the panel nobody wrote, and a heading may not misdescribe what is under it. `buildNotesTree` is stage groups only; `buildPostingsTree` is the flat list, flat because a posting belongs to no stage to be grouped under. The section hugs its content under a cap rather than taking a draggable share of the column, the same argument the outline's cap makes: there is at most one posting per application, so a band sized for twenty rows would reserve dead space the column can least afford. One search box heads both lists and filters both, held by the panel — a box inside one section that filtered the other would be a control acting somewhere it does not appear. A prep note's own header carries the way to it — beside the note rather than over it, since reading the two together is the point — and offers nothing when that application captured no posting. A posting already a tab of that same pane, which is how the fan opens, is split out rather than shown in place: activating it there would cover the note it exists to be read against, which is the one thing the control is for. One already on screen is focused there rather than opened twice, the rule `showRef` follows: two copies would give one match two ids and the find would step onto whichever the DOM returned first.
+- A message's header line names its **sender**, not its direction: `You` for one you sent, the
+  correspondent for one you received, and `Them` when none was recorded — because a received
+  message with no name on it must still not read as yours. A log holding both sides has no use
+  for the word "Sent" on every other row, and naming the sender says the same thing in space a
+  name was taking anyway. This is what every mail client does with "me".
+- The messages in the dock read **open**. You went to the section to read them, and a press per
+  message before any reading starts is a toll on the common case. **Collapse all** is one press
+  the other way, and the strip's cap means a long thread scrolls rather than swallowing the
+  prep note above it — **Read** is the answer when it needs the column.
+- `records` on `MarkdownNotes` says a note is a **log** rather than something someone wrote,
+  and whether its records start `open` or `folded`. Being a log holds either way: a folded
+  record summarises what it holds, and "all" means the records rather than every fold, since
+  folding a log's day headings away leaves dates with nothing under them. One prop rather than
+  two because the two were never independent — "start folded" is about records, and there are
+  no records to fold unless this is a log. Left out, the note reads as something someone wrote. Folding a point in a note **you wrote** is a deliberate act of
+  putting it away, and previewing it would undo the thing you just asked for; you know what is
+  under there. Do not extend the preview to notes.
+- **Read** gives the messages the pane instead of the strip at the bottom of it, and swaps
+  back to the prep note. Folding made the log scannable, which is what a strip is for; it did
+  nothing for the message you then open, which is a whole email read through an 11rem window.
+  The note is hidden rather than squeezed — a pane split between a prep note and a long email
+  serves neither, and the note is one press away with its scroll intact. This is deliberately
+  two states rather than a drag handle: a handle trades the two by degrees, and what a long
+  email wants is the column, while what you want back afterwards is the note, whole.
+- The two dock selectors — `.panel__notes .stage-note > .stage-note__dock` and its
+  `--reading` counterpart — carry **the same specificity**, three classes each, so source
+  order is the only thing deciding between them. The override must stay after the cap it
+  undoes or the dock silently keeps its 70%, which looks close enough to working to survive a
+  screenshot. A test in `src/test/styles.test.ts` pins the order and one in
+  `src/correspondenceDock.browser.test.tsx` measures the result.
+- The written note is hidden while the messages hold the pane, so the find hands the pane back
+  when it steps onto a match in the note — the same rule, and the same reason, as a match
+  inside a collapsed section, and from the step handler rather than an effect.
+- **Read** opens the messages on the way in, because pressing it is saying "I am reading this
+  now" and a press per message would make that a second job. It waits for the log's fold
+  controls rather than firing on the press — Read opens the section too, so the log is not
+  mounted in the render that starts it — and latches, since the controls arrive new whenever
+  anything folds.
+- A **bulk open reaches everything**, quoted chains included: Read opens exactly as far as
+  Expand all, so there is one rule for what opening the lot means rather than two. A chevron
+  opens the thing it is on and nothing inside it, which is what keeps a quoted chain shut
+  when you open the one message you wanted — the distinction is between opening everything
+  and opening one thing, not between kinds of fold.
+- The section has its own **Collapse all**, the way the prep note does, handed up through
+  `onFoldControls` and drawn in the row that names the section rather than inside the column
+  it would scroll away with. It is kept apart from the note's controls: two logs on screen and
+  a button that folded whichever reported last is a button nobody can predict. The note's own
+  fold control is withdrawn while the messages have the pane — the note is hidden then, so
+  folding it would appear to do nothing, and two buttons reading "Collapse all" at once are
+  told apart only by their accessible names.
+- What "all" means to that control follows `summariseFolds`. In a note it is every fold,
+  which leaves the bare outline that is the whole use of it there. In a log it is the records
+  only: folding the day headings away leaves two dates and nothing under them, neither
+  readable nor scannable.
+- A quoted reply starts shut and stays shut when its own message is opened by its chevron. In
+  a log that keeps both sides, the quoted chain is the message above quoted back — duplicate
+  by construction — so a log that arrived with every one of them unrolled would be unreadable.
+  Opening the lot deliberately is another matter, and reaches them.
+- The section a reader sees is called **Messages**, through `CORRESPONDENCE_SECTION`. The stored
+  field stays `correspondence`: renaming it would be a migration, and this document runs none —
+  so the code says correspondence and the interface says messages, deliberately.
+- Every control in the dock's section row is one height, through `align-items: stretch` on
+  `.stage-note__dock-row`. Matching their `min-height` floors does not do it: the toggle carries
+  a count badge with padding of its own, so the row's height comes from content rather than from
+  the floor either of them declares.
+- A pane's dock holds two collapsible sections, both collapsed by default: **Messages** above, then
+  **What they said**. They read in that order down the pane, and the find numbers them in that order after
+  the written note — `matchBase`, then `correspondenceMatchBase`, then `heardMatchBase`. Only the captures
+  have a carve-out (lines open for correcting sit out, each being in a box with no highlight to step onto);
+  correspondence cannot be written from the panel at all, so no mode of it leaves one of its matches with
+  nowhere to send a caret. Both sections are counted whether or not they are open, so stepping onto a match
+  opens the section holding it — from the step handler, never from an effect on the cursor, which moves on
+  every keystroke in the find box.
+- A Kanban card carries a **Messages** button beside its prep notes one, through
+  `MessagesButton`, showing how many the application holds. It opens the **form**, not the
+  panel — the button beside it already reaches the panel, a card is one application, and the
+  panel reads one stage at a time, so the form is the surface holding the whole log and the
+  only one that can write it. It lands on the card's own stage, which is the conversation most
+  likely to be live, reusing the `messagesFor` the dock's Edit messages already passes.
+- The panel **reads** correspondence and does not write it. A message carries a send time you
+  supply and a stage you file it under, and `dateInput.ts` is deliberately the only place wall
+  time becomes a timestamp — a conversion that belongs in a form. What the dock offers instead
+  is **Edit messages**, which opens the application's form with that stage's rows already
+  unfolded and scrolled to, through `messagesFor` on the editor. Landing at the top of a long
+  form to hunt for the row you were just reading was the whole of the annoyance; the form was
+  never the wrong place to write in.
+- A dialog may not grow past the overlay it is centred in, and nothing in it may set a floor
+  that makes it. A grid item's `min-width` is `auto`, so one box holding a line that does not
+  wrap keeps that whole line as a minimum and widens everything around it — centred, so it
+  clips at both edges at once and the right-hand side simply is not there. Every box between a
+  truncating line and the dialog carries `min-width: 0`, fieldsets included, because those
+  default to `min-width: min-content` and no width talks them out of it. The overlay's column
+  is `minmax(0, 1fr)` so `100%` inside the dialog means what it looks like it means.
+  `src/dialogScroll.browser.test.tsx` asserts no box inside the dialog is wider than the
+  dialog, which is the assertion that catches this — the dialog's own `scrollWidth` does not,
+  because a truncated line legitimately scrolls wider than it renders.
+- That arrival scrolls **the dialog's own box and nothing above it**. `scrollIntoView` walks
+  every scrollable ancestor, and `.dialog-backdrop` is one: `position: fixed`, `overflow-y:
+  auto`, `place-items: center`. Scrolling it shifts the whole centred dialog inside a fixed
+  overlay and clips it at the edges. `src/dialogScroll.browser.test.tsx` asserts the backdrop
+  never moves; jsdom cannot see it, because it has no scrolling either.
+- Arriving that way **focuses the section's own name**, not the form's first field. The dialog
+  autofocuses that field otherwise, and focusing an element scrolls it into view — so a scroll
+  on its own is undone a frame later, which is what made the first attempt at this look like it
+  had done nothing. Landing on the name also gives a screen reader somewhere that says where it
+  is, rather than dropping it into a textarea mid-form. The name is focusable programmatically
+  only: nobody tabbing through the form should stop on a label.
+- `messagesFor` unfolds once, on the way in. Re-running it would drag the reader back to the
+  section every time the rows changed — and they change because the reader is typing into them.
+  Opening the application from the subject line passes none, so the rows stay folded: that is
+  the form, not a way back to one row of it.
+- The button is named **Edit messages in {stage}**, which contains its visible label so voice
+  control can reach it. That collides with a loose `/^Edit /` in the tests, which is the tests'
+  problem: those queries were written when the note's own Edit was the only one, and they name
+  it exactly now.
+- The pane shows only the messages filed against **that stage**, because filing is a judgement the reader
+  made and the panel honours it. The application editor is therefore the only place the whole log reads in
+  order, and the only place it can be written. Correspondence is also invisible to `src/notesTree.ts`, which
+  is built from `stage_notes`: a stage holding messages and no prep note is reachable by `Ctrl+P` but is not
+  in the tree. That is a known gap, not an oversight — the tree is a list of notes to go back to.
 - The notes area is a tree of panes, held in `src/notesLayout.ts` — a pure module with no React in it, so the arrangement can be reasoned about and tested without rendering. Splits nest to any depth, and a split inserted along an axis its parent already runs on joins that parent as a sibling rather than nesting, which is what keeps three panes in a row one level deep instead of three. Each pane scrolls on its own so a long note does not drag the note beside it along. A pane shows one of two things, and `NoteRef` is a discriminated union saying which: a stage's prep note (`kind: 'stage'`, an application and a state) or an application's captured job posting (`kind: 'posting'`, which prepares for no stage and so carries none). A sentinel state would have been cheaper at the construction sites and is wrong: `StateId` is a closed union of exactly 19 states, and a ref carrying a twentieth would let the autosave file a prep note under a stage that does not exist. A stage note's key is byte-identical to what it was before postings existed — `applicationId::state` — which is why `ARRANGEMENT_VERSION` did not have to move; a posting's is `applicationId::posting`, unambiguous only because no state is called `posting`, which `src/notesLayout.test.ts` asserts. Downgrading drops posting tabs and any pane left holding nothing but one: that loses interface state, never the reader's data. A note may be open in several panes but at most once in each, so a tab is identified by the pane **and** the note — `tabId` — while the note's own key still identifies its text. Reading one note beside another part of itself is what a split is for; two tabs in one strip showing the same note would be two ways to the same place. Everything numbering or addressing what is on screen keys off the tab: the element ids in `src/stageNoteIds.ts`, the find's `perTab` and its `data-match-id` ordinals. Everything about a note's content keys off the note: `drafts`, `editing`, `captureOpen`, the captures. That is why typing into one copy shows in the other, and why each copy still has ids of its own.
 - The focused pane is the one the outline, breadcrumbs, status bar, and find act on, and it is the only one whose editor may take the caret. Clicking or focusing anywhere in a pane focuses it.
 - The slot a drag is aimed at tints the tab as well as the slot. An open tab paints its own opaque `--surface`, which sits over the slot behind it, so marking the slot alone showed the drop everywhere except on the tab a pane was showing — and never at all in a pane holding one tab, since that tab is always the open one. The rule answering it carries the same specificity, so it has to stay below `.panel__tab--open` in the file; a `styles.test.ts` assertion pins that order. The active tab keeps its underline through the tint, so which pane is focused is still legible mid-drag.
@@ -302,6 +572,13 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - `describePreference` is the only place preference phrasing is built, the way `describeDue` is the only place date phrasing is built. The table column and the Kanban card both read it, so two views cannot describe the same ratings differently, and the table's column filter still matches its own rendered text.
 - Preference is never multiplied or added into the urgency score and never affects band placement. Urgency already carries a stage factor, so a second factor compounds and a deadline today on a poorly rated application loses to one ten days out that happens to be rated well. Regression tests assert `urgencyFor`, `rankByUrgency` and `urgencyBandFor` are unchanged by ratings. Order within a band and display are the only things preference is allowed to touch.
 - Completed actions **are** in `search_text`: they are prose you wrote, and before Done had a field of its own they lived in `notes` and were already matched. Every save rebuilds the indexes unconditionally through `refreshTrackerDatabase`, so the addition takes effect on first save; only a document that is loaded and never saved keeps the older text.
+- Correspondence **is** in `search_text`, like completed actions and for the same reason: it is prose, and
+  until it had a field of its own it was being typed into prep notes, which are already indexed — leaving
+  it out would make filing a recruiter's email properly a search regression. The correspondent's name goes
+  in with the text, because a name is what a reader searches by. The channel does not: it holds one of a
+  handful of words on most records, so indexing it would make `email` match every application you have ever
+  emailed. That is the test `source` passes — one value per application, so it partitions the collection —
+  and the one ratings and compensation fail.
 - Ratings are deliberately absent from `search_text`. They are numbers, not prose: indexing them would make a search for `work` match every rated application and `4` match anything holding a 4. `indexesAreStale` cannot detect `search_text` content drift either, so existing documents would under-match forever. The Preference column filters its own rendered text instead.
 - Only live applications are ranked. `classifyLifecycle` treats every `rejectedStateFor` counterpart as rejected and `accepted`/`no_openings` as closed; both are omitted from the ranking rather than scored low. This is view grouping only and must not restrict moves.
 - Stage weight comes from position among the live states, not the raw `STATE_CONFIG` index, because the configured order interleaves live and rejected states.
@@ -383,13 +660,27 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 1. Read the relevant domain function and its tests before changing a view that depends on it.
 2. Add or update focused tests for domain behavior, derived view behavior, and user-visible integration flows as appropriate.
 3. For a meaningful UI flow change, update the smoke test or `SMOKE_TEST.md` checklist.
-4. Before handing off, run:
+4. Fixing a reported symptom is not the same as fixing a cause you inferred. Write the test
+   against **the symptom as it was reported**, and prefer an assertion that is false for any
+   cause of it — "no box inside the dialog is wider than the dialog" rather than "this one
+   property holds this one value". An assertion about the mechanism you have in mind can go
+   green while the thing complained about is still on screen, which is how the correspondence
+   dialog shipped broken twice. Check the assertion is even the right invariant before
+   trusting it: `scrollWidth <= clientWidth` is one a truncated line can never satisfy.
+5. For anything visual, **look at it before saying it works**. `pnpm test:browser` runs real
+   Chromium, Firefox and WebKit and writes a PNG under `src/__screenshots__/` for every failing
+   test, so a scratch test ending in `expect(true).toBe(false)` renders any component — or the
+   whole panel, through `src/test/panelHarness.tsx` — and hands back a screenshot to read.
+   Delete the scratch test and the screenshots afterwards. When a layout number is wrong,
+   print the boxes rather than reasoning about which rule is responsible: `getBoundingClientRect`,
+   `scrollWidth` and `getComputedStyle` name the culprit in one run, and a plausible-sounding
+   cause that is off by a few pixels costs several.
+6. Before handing off, run:
 
 ```sh
-pnpm typecheck
-pnpm lint
-pnpm test
-pnpm build
+pnpm verify
 ```
 
-Run `pnpm test:smoke` explicitly when changing first launch, navigation, application editing, state movement, persistence, or reset behavior.
+which is `typecheck`, `lint`, `test` and `build` in that order, stopping at the first failure — cheapest signal first, so a type error does not cost you a test run. `pnpm test` already includes the smoke test; `pnpm test:smoke` runs it alone, which is worth doing while iterating on first launch, navigation, application editing, state movement, persistence, or reset behavior.
+
+`pnpm verify:all` adds the browser suite on the end. Run it when a change touches layout, the stylesheet, or anything the panel measures, and before handing off a branch. It is separate because it is the expensive one: three engines, a machine-wide lock, and a budget sized for a loaded laptop rather than for the code. A red browser suite on this machine is as likely to be contention as a regression — re-run a failure before believing it.

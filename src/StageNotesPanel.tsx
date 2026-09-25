@@ -9,6 +9,7 @@ import {
   stateLabel,
   stateRank,
   type Application,
+  type CorrespondenceEntry,
   type Posting,
   type StageNote,
   type StageNoteDraft,
@@ -22,6 +23,7 @@ import { PANEL_SHORTCUTS, shortcutKeys, shortcutLabel } from './shortcuts'
 import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
 import {
   capturedMarkdown,
+  correspondenceMarkdown,
   buildSections,
   matchOffsets,
   outlineTree,
@@ -193,8 +195,6 @@ interface StageNotesPanelProps {
    * are likelier than a lull the autosave could ride on.
    */
   onCapture: (applicationId: string, state: StateId, line: string) => Promise<void>
-  /** Opens an application's editor: the only place a captured posting can be changed. */
-  onEditApplication: (id: string) => void
   /**
    * Stores a rewritten captured line, or removes it when the text is blank. Like a
    * capture and unlike a draft, it is stored as it is entered: a correction to something
@@ -206,7 +206,8 @@ interface StageNotesPanelProps {
    * notes from several applications at once, so the id travels with the request rather
    * than being the one the panel was opened on.
    */
-  onOpenApplication: (applicationId: string) => void
+  /** The stage, when the caller is a message rather than the application itself. */
+  onOpenApplication: (applicationId: string, messagesFor?: StateId) => void
 }
 
 function errorMessage(error: unknown): string {
@@ -553,7 +554,6 @@ export function StageNotesPanel({
   onSaveDrafts,
   onExternalChange,
   onCapture,
-  onEditApplication,
   onRevise,
   onOpenApplication,
 }: StageNotesPanelProps) {
@@ -650,6 +650,19 @@ export function StageNotesPanel({
    * — the pane for the tab left behind unmounts, but this does not.
    */
   const [captureOpen, setCaptureOpen] = useState<string[]>([])
+  /**
+   * Notes whose correspondence section is open, held here for the same reason `captureOpen`
+   * is. Collapsed by default: what was exchanged is not what you are looking at most of the
+   * time you have a note open.
+   */
+  const [correspondenceOpen, setCorrespondenceOpen] = useState<string[]>([])
+  /**
+   * Notes whose messages have the pane rather than the strip at the bottom of it. Held here
+   * with the rest of the dock's state so it survives a pane unmounting, and separate from
+   * `correspondenceOpen` because they answer different questions: whether the log is on
+   * screen at all, and whether it is what the pane is for right now.
+   */
+  const [correspondenceReading, setCorrespondenceReading] = useState<string[]>([])
   /**
    * Set by the "K" shortcut when it has to open a collapsed dock before it can focus the
    * box inside it: the box does not exist yet in the render that opens it, so focusing it
@@ -1108,6 +1121,35 @@ export function StageNotesPanel({
     return new Map(entries)
   }, [noteByKey])
 
+  /**
+   * Each stage's messages, read as one note. Built from `applications` rather than from
+   * `noteByKey`, which is the difference that matters: `heard` hangs off a stage note, but
+   * correspondence hangs off the application and exists whether or not that stage was ever
+   * prepared for. Keyed off the notes would silently hide every message filed against a stage
+   * with nothing written for it.
+   */
+  const correspondenceByKey = useMemo(() => {
+    const byKey = new Map<string, CorrespondenceEntry[]>()
+    for (const application of applications) {
+      for (const entry of application.correspondence) {
+        const key = noteRefKey(stageRef(application.id, entry.state))
+        const filed = byKey.get(key)
+        if (filed) filed.push(entry)
+        else byKey.set(key, [entry])
+      }
+    }
+    return byKey
+  }, [applications])
+
+  /** The same messages rendered, which is what the dock reads and the find counts. */
+  const correspondedByKey = useMemo(() => {
+    const entries: [string, string][] = []
+    for (const [key, filed] of correspondenceByKey) {
+      entries.push([key, correspondenceMarkdown(filed, formatShortDate, formatTimeOfDay)])
+    }
+    return new Map(entries)
+  }, [correspondenceByKey])
+
   /** The same lines as records, with their stamps read, for correcting one at a time. */
   const linesByKey = useMemo(() => {
     const entries: [string, { id: string; body: string; stamp: string }[]][] = []
@@ -1177,7 +1219,15 @@ export function StageNotesPanel({
     (value: string, tabs: { groupId: string; ref: NoteRef }[] = openTabs) => {
       const perTab = new Map<
         string,
-        { base: number; count: number; written: number; inEditor: boolean; key: string }
+        {
+          base: number
+          count: number
+          written: number
+          /** How many of this tab's matches are in its messages, after the written note. */
+          wrote: number
+          inEditor: boolean
+          key: string
+        }
       >()
       const order: string[] = []
       let total = 0
@@ -1203,21 +1253,27 @@ export function StageNotesPanel({
         // so those matches are stepped onto by selecting them in the box instead — but
         // they are counted here with the rest, so one list runs through the whole panel.
         const written = inEditor ? matchOffsets(source, value).length : countIn(source)
+        // Messages come between the note and the captures, which is the order they read in
+        // down the pane. There is no carve-out for them: correspondence cannot be written
+        // from here at all, so no mode of this panel leaves one of its matches with nowhere
+        // to send a caret.
+        const wrote = countIn(correspondedByKey.get(key) ?? '')
         // Lines open for correcting still sit out: each is in a box of its own, and there
         // is no one place to send a caret that stands for all of them.
-        // Nobody said a posting to you, so it has no captured lines under it.
+        // Nobody said a posting to you, and nobody wrote to you in one either: it has no
+        // captured lines under it and no correspondence, so only its own text counts.
         const said = ref.kind === 'posting' || editingLines.includes(key)
           ? 0
           : countIn(capturedByKey.get(key) ?? '')
-        const count = written + said
+        const count = written + wrote + said
         if (count === 0) continue
-        perTab.set(id, { base: total, count, written, inEditor, key })
+        perTab.set(id, { base: total, count, written, wrote, inEditor, key })
         order.push(id)
         total += count
       }
       return { perTab, order, total }
     },
-    [capturedByKey, drafts, editing, editingLines, openTabs, sessions],
+    [capturedByKey, correspondedByKey, drafts, editing, editingLines, openTabs, sessions],
   )
 
   const matches = useMemo(() => findMatches(query), [findMatches, query])
@@ -1447,7 +1503,8 @@ export function StageNotesPanel({
     if (!id || !found?.inEditor) return
     const key = found.key
     const index = position - found.base
-    // Past the written note is the captured log, which renders marks like any note.
+    // Past the written note are the messages and the captured log, both of which render
+    // marks like any note.
     if (index >= found.written) return
     const at = matchOffsets(drafts[key] ?? '', query)[index]
     if (at === undefined) return
@@ -1471,6 +1528,39 @@ export function StageNotesPanel({
     })
   }
 
+  /**
+   * Opens whichever collapsed dock section a match has landed in. The dock's two sections
+   * are counted whether or not they are open, so without this a step past the written note
+   * moves the count and scrolls to nothing.
+   *
+   * Done from the step rather than from an effect on the cursor, which is the same line the
+   * scroll already holds: the cursor moves on every keystroke in the find box, and a dock
+   * unfolding under someone still deciding what to search for is the mistake that rule
+   * exists to prevent. Stepping is a deliberate act, so it may move the furniture.
+   */
+  const revealMatchSection = (id: string | undefined, position: number) => {
+    const found = id ? matches.perTab.get(id) : undefined
+    if (!found) return
+    const index = position - found.base
+    if (index < found.written) return
+
+    const open = (current: string[]) =>
+      current.includes(found.key) ? current : [...current, found.key]
+    if (index < found.written + found.wrote) setCorrespondenceOpen(open)
+    else setCaptureOpen(open)
+  }
+
+  /**
+   * The written note is hidden while the messages have the pane, so a match stepped onto in
+   * it has nowhere to land. Same bug as a match inside a collapsed section, same fix, and
+   * from the step rather than an effect for the same reason.
+   */
+  const leaveReadingFor = (id: string | undefined, position: number) => {
+    const found = id ? matches.perTab.get(id) : undefined
+    if (!found || position - found.base >= found.written) return
+    setCorrespondenceReading((current) => current.filter((entry) => entry !== found.key))
+  }
+
   /** Steps the find, following it into whichever note the next match lives in. */
   const stepMatch = (delta: number) => {
     if (matches.total === 0) return
@@ -1479,6 +1569,8 @@ export function StageNotesPanel({
     const landing = ((next % matches.total) + matches.total) % matches.total
     const id = noteOfMatch(landing)
     if (id) showTab(id)
+    revealMatchSection(id, landing)
+    leaveReadingFor(id, landing)
     revealInSource(id, landing)
   }
 
@@ -2345,7 +2437,7 @@ export function StageNotesPanel({
           onChange={(value) => editDraft(shownKey, value)}
           onClose={isSplit ? () => applyLayout(closeGroup(layoutRef.current, group.id)) : null}
           onFocus={() => setFocusedGroupId(group.id)}
-          onOpenApplication={() => onEditApplication(shown.applicationId)}
+          onOpenApplication={() => onOpenApplication(shown.applicationId)}
           onToggleEditing={() => toggleEditing(shown)}
           onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
           paneRef={(node) => {
@@ -2361,10 +2453,16 @@ export function StageNotesPanel({
           body={drafts[shownKey] ?? ''}
           captured={capturedByKey.get(shownKey) ?? ''}
           company={shownApplication?.company ?? ''}
+          corresponded={correspondedByKey.get(shownKey) ?? ''}
+          correspondenceCount={correspondenceByKey.get(shownKey)?.length ?? 0}
+          correspondenceMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
           currentMatch={currentMatch}
           formatDate={formatShortDate}
           groupId={group.id}
-          heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0)}
+          heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0) + (found?.wrote ?? 0)}
+          isCorrespondenceOpen={correspondenceOpen.includes(shownKey)}
+          isCorrespondenceReading={correspondenceReading.includes(shownKey)}
+          onEditCorrespondence={() => onOpenApplication(shown.applicationId, shown.state)}
           isCurrentState={shownApplication?.state === shown.state}
           captureHeight={captureHeight}
           isCaptureOpen={captureOpen.includes(shownKey)}
@@ -2400,6 +2498,24 @@ export function StageNotesPanel({
                 ? current.filter((entry) => entry !== shownKey)
                 : [...current, shownKey],
             )}
+          onToggleCorrespondence={() =>
+            setCorrespondenceOpen((current) =>
+              current.includes(shownKey)
+                ? current.filter((entry) => entry !== shownKey)
+                : [...current, shownKey],
+            )}
+          onToggleCorrespondenceReading={() => {
+            // Reading it means seeing it, so this opens the section as well as filling the
+            // pane — a reader who asked for the messages should not have to ask twice.
+            setCorrespondenceOpen((current) =>
+              current.includes(shownKey) ? current : [...current, shownKey],
+            )
+            setCorrespondenceReading((current) =>
+              current.includes(shownKey)
+                ? current.filter((entry) => entry !== shownKey)
+                : [...current, shownKey],
+            )
+          }}
           onToggleEditLines={() =>
             setEditingLines((current) =>
               current.includes(shownKey)

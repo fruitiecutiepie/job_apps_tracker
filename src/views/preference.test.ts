@@ -41,6 +41,7 @@ function application(scores: Scores): Application {
     completed_actions: [],
     stage_notes: [],
     state_events: [],
+    correspondence: [],
     attachments: [],
     posting: null,
     ratings: ratings(scores),
