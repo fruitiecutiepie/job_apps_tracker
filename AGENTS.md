@@ -654,7 +654,22 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 1. Read the relevant domain function and its tests before changing a view that depends on it.
 2. Add or update focused tests for domain behavior, derived view behavior, and user-visible integration flows as appropriate.
 3. For a meaningful UI flow change, update the smoke test or `SMOKE_TEST.md` checklist.
-4. Before handing off, run:
+4. Fixing a reported symptom is not the same as fixing a cause you inferred. Write the test
+   against **the symptom as it was reported**, and prefer an assertion that is false for any
+   cause of it — "no box inside the dialog is wider than the dialog" rather than "this one
+   property holds this one value". An assertion about the mechanism you have in mind can go
+   green while the thing complained about is still on screen, which is how the correspondence
+   dialog shipped broken twice. Check the assertion is even the right invariant before
+   trusting it: `scrollWidth <= clientWidth` is one a truncated line can never satisfy.
+5. For anything visual, **look at it before saying it works**. `pnpm test:browser` runs real
+   Chromium, Firefox and WebKit and writes a PNG under `src/__screenshots__/` for every failing
+   test, so a scratch test ending in `expect(true).toBe(false)` renders any component — or the
+   whole panel, through `src/test/panelHarness.tsx` — and hands back a screenshot to read.
+   Delete the scratch test and the screenshots afterwards. When a layout number is wrong,
+   print the boxes rather than reasoning about which rule is responsible: `getBoundingClientRect`,
+   `scrollWidth` and `getComputedStyle` name the culprit in one run, and a plausible-sounding
+   cause that is off by a few pixels costs several.
+6. Before handing off, run:
 
 ```sh
 pnpm verify
