@@ -12,6 +12,21 @@ import {
 
 const CHANNEL_LIST_ID = 'correspondence-channels'
 
+/**
+ * The box this element scrolls inside — the first ancestor that scrolls at all, and no further.
+ *
+ * `scrollIntoView` walks **every** scrollable ancestor, and the dialog's backdrop is one of
+ * them: `position: fixed`, `overflow-y: auto`, `place-items: center`. Scrolling that shifts the
+ * whole centred dialog inside a fixed overlay and clips it at the edges, which is what it did.
+ */
+function scrollBox(node: HTMLElement): HTMLElement | null {
+  for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+    const overflow = getComputedStyle(parent).overflowY
+    if (overflow === 'auto' || overflow === 'scroll') return parent
+  }
+  return null
+}
+
 interface CorrespondenceFieldsProps {
   rows: CorrespondenceRow[]
   defaultState: StateId
@@ -55,8 +70,12 @@ export function CorrespondenceFields({
   const heading = useRef<HTMLSpanElement>(null)
   useEffect(() => {
     if (!messagesFor) return
-    heading.current?.focus({ preventScroll: true })
-    heading.current?.scrollIntoView?.({ block: 'start' })
+    const box = heading.current
+    if (!box) return
+    box.focus({ preventScroll: true })
+    const scroller = scrollBox(box)
+    if (!scroller) return
+    scroller.scrollTop += box.getBoundingClientRect().top - scroller.getBoundingClientRect().top
   }, [messagesFor])
 
   /** Puts a row into the list at `index`, open, since it is the one about to be filled in. */

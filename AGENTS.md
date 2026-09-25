@@ -338,13 +338,12 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   message before any reading starts is a toll on the common case. **Collapse all** is one press
   the other way, and the strip's cap means a long thread scrolls rather than swallowing the
   prep note above it — **Read** is the answer when it needs the column.
-- Whether a record starts folded and whether a log **summarises** its folded records are two
-  props, not one: `collapseInitially` and `summariseFolds`. They were one while the messages
-  started folded, and separating them is what let the default flip without quietly losing the
-  summary the moment a reader pressed Collapse all.
-- `summariseFolds` also decides what "all" means to the fold-all control — the records, not
-  every fold, since folding a log's day headings away leaves dates with nothing under them.
-  It is off for notes on purpose. Folding a point in a note **you wrote** is a deliberate act of
+- `records` on `MarkdownNotes` says a note is a **log** rather than something someone wrote,
+  and whether its records start `open` or `folded`. Being a log holds either way: a folded
+  record summarises what it holds, and "all" means the records rather than every fold, since
+  folding a log's day headings away leaves dates with nothing under them. One prop rather than
+  two because the two were never independent — "start folded" is about records, and there are
+  no records to fold unless this is a log. Left out, the note reads as something someone wrote. Folding a point in a note **you wrote** is a deliberate act of
   putting it away, and previewing it would undo the thing you just asked for; you know what is
   under there. Do not extend the preview to notes.
 - **Read** gives the messages the pane instead of the strip at the bottom of it, and swaps
@@ -416,6 +415,11 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   unfolded and scrolled to, through `messagesFor` on the editor. Landing at the top of a long
   form to hunt for the row you were just reading was the whole of the annoyance; the form was
   never the wrong place to write in.
+- That arrival scrolls **the dialog's own box and nothing above it**. `scrollIntoView` walks
+  every scrollable ancestor, and `.dialog-backdrop` is one: `position: fixed`, `overflow-y:
+  auto`, `place-items: center`. Scrolling it shifts the whole centred dialog inside a fixed
+  overlay and clips it at the edges. `src/dialogScroll.browser.test.tsx` asserts the backdrop
+  never moves; jsdom cannot see it, because it has no scrolling either.
 - Arriving that way **focuses the section's own name**, not the form's first field. The dialog
   autofocuses that field otherwise, and focusing an element scrolls it into view — so a scroll
   on its own is undone a frame later, which is what made the first attempt at this look like it

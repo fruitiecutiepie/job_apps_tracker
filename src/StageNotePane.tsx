@@ -607,8 +607,8 @@ export function StageNotePane({
                 matchBase={correspondenceMatchBase}
                 onFoldControls={setMessageFolds}
                 query={query}
+                records="open"
                 source={corresponded}
-                summariseFolds
               />
             </div>
           ) : null}

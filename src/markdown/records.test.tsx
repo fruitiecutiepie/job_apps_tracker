@@ -1,7 +1,8 @@
 /**
- * A log of long emails is unreadable open and useless folded, unless a folded row says what
- * it is hiding. `collapseInitially` closes the records and the preview on each row is what
- * makes that readable rather than merely short.
+ * `records` is what says a note is a log rather than something someone wrote, and whether its
+ * records start open or folded. Being a log is what makes a folded row summarise what it holds
+ * and what makes "all" mean the records rather than every fold — a log folded to bare headers
+ * is useless, and one with its days folded away is nothing at all.
  */
 
 import { render, screen, within } from '@testing-library/react'
@@ -34,9 +35,9 @@ const message = (overrides: Record<string, unknown> = {}) => ({
 
 const source = (entries = [message()]) => correspondenceMarkdown(entries, day, time)
 
-describe('a log that starts folded', () => {
+describe('a log of records', () => {
   it('shows each message as one row, with a line of what it holds', () => {
-    render(<MarkdownNotes collapseInitially="entries" label="Log" source={source()} />)
+    render(<MarkdownNotes records="folded" label="Log" source={source()} />)
 
     // The header is there, and so is the opening of the message — but not the whole thing.
     expect(screen.getByText(/Priya Raman/)).toBeInTheDocument()
@@ -45,7 +46,7 @@ describe('a log that starts folded', () => {
   })
 
   it('leaves the day heading open, so the rows under it are reachable', () => {
-    render(<MarkdownNotes collapseInitially="entries" label="Log" source={source()} />)
+    render(<MarkdownNotes records="folded" label="Log" source={source()} />)
 
     expect(screen.getByRole('heading', { name: '2026-08-10' })).toBeInTheDocument()
     expect(screen.getByText(/Priya Raman/)).toBeInTheDocument()
@@ -53,7 +54,7 @@ describe('a log that starts folded', () => {
 
   it('opens one message and only that message, leaving its quoted chain shut', async () => {
     const user = userEvent.setup()
-    render(<MarkdownNotes collapseInitially="entries" label="Log" source={source()} />)
+    render(<MarkdownNotes records="folded" label="Log" source={source()} />)
 
     await user.click(screen.getAllByRole('button', { name: /sub-points$/ })[0]!)
 
@@ -69,7 +70,7 @@ describe('a log that starts folded', () => {
 
   it('reaches the quoted chains too when everything is opened at once', async () => {
     const user = userEvent.setup()
-    render(<MarkdownNotes collapseInitially="entries" label="Log" source={source()} />)
+    render(<MarkdownNotes records="folded" label="Log" source={source()} />)
 
     await user.click(screen.getByRole('button', { name: 'Expand all points in Log' }))
 
@@ -88,7 +89,7 @@ describe('a log that starts folded', () => {
     const user = userEvent.setup()
     const first = message({ body: 'The first message.\n\nWith a second paragraph.' })
     const { rerender } = render(
-      <MarkdownNotes collapseInitially="entries" label="Log" source={source([first])} />,
+      <MarkdownNotes records="folded" label="Log" source={source([first])} />,
     )
 
     await user.click(screen.getAllByRole('button', { expanded: false })[0]!)
@@ -98,7 +99,7 @@ describe('a log that starts folded', () => {
     // must itself arrive closed like the rest.
     const second = message({ at: '2026-08-10T17:02:00.000Z', body: 'A later message.\n\nAnd more.' })
     rerender(
-      <MarkdownNotes collapseInitially="entries" label="Log" source={source([first, second])} />,
+      <MarkdownNotes records="folded" label="Log" source={source([first, second])} />,
     )
 
     expect(screen.getByText(/With a second paragraph/)).toBeInTheDocument()
@@ -111,7 +112,7 @@ describe('a log that starts folded', () => {
 
   it('previews a folded row without repeating it when the row is open', async () => {
     const user = userEvent.setup()
-    render(<MarkdownNotes collapseInitially="entries" label="Log" source={source()} />)
+    render(<MarkdownNotes records="folded" label="Log" source={source()} />)
 
     const row = screen.getAllByRole('button', { expanded: false })[0]!.closest('li')!
     expect(within(row).getAllByText(/Apologies for the short notice/)).toHaveLength(1)
@@ -122,7 +123,7 @@ describe('a log that starts folded', () => {
 
   it('folds the records when told to fold all, and leaves the days standing', async () => {
     const user = userEvent.setup()
-    render(<MarkdownNotes collapseInitially="entries" label="Log" source={source()} />)
+    render(<MarkdownNotes records="folded" label="Log" source={source()} />)
 
     await user.click(screen.getByRole('button', { name: 'Expand all points in Log' }))
     expect(screen.getByText(/Ravi is still joining/)).toBeInTheDocument()

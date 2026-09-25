@@ -79,23 +79,24 @@ describe('a message in the dock, in a real browser', () => {
     await page.viewport(WIDE.width, WIDE.height)
   })
 
-  it('starts as one folded row saying what it holds, and opens to the whole message', async () => {
+  it('reads open, and folds to a row that still says what it holds', async () => {
     renderPanel(withMessages([message()]))
     await openCorrespondence()
 
     const item = messagesLog().querySelector('li')!
-    const folded = box(item).height
+    const open = box(item).height
 
-    // Folded, the row carries the header and a line of the message — enough to decide
-    // whether to open it, which a bare "9:14 am Priya Raman" would not be.
+    // You went to the section to read them, so they read.
     expect(within(item).getByText(/Priya Raman/)).toBeInTheDocument()
-    expect(within(item).getByText(/Thanks for making the time/)).toBeInTheDocument()
-    expect(within(item).queryByText(/stay in touch/)).not.toBeInTheDocument()
+    expect(within(item).getByText(/stay in touch/)).toBeInTheDocument()
 
     await userEvent.click(within(item).getAllByRole('button')[0]!)
 
-    expect(box(item).height).toBeGreaterThan(folded * 2)
-    expect(within(item).getByText(/stay in touch/)).toBeInTheDocument()
+    // Folded, the row keeps its header and a line of the message — enough to decide whether
+    // to open it again, which a bare "9:14 am Priya Raman" would not be.
+    expect(box(item).height).toBeLessThan(open / 2)
+    expect(within(item).getByText(/Thanks for making the time/)).toBeInTheDocument()
+    expect(within(item).queryByText(/stay in touch/)).not.toBeInTheDocument()
   })
 
   it('keeps a pasted email as separate paragraphs, indented under its own bullet', async () => {
@@ -104,7 +105,6 @@ describe('a message in the dock, in a real browser', () => {
 
     const log = messagesLog()
     const item = log.querySelector('li')!
-    await userEvent.click(within(item).getAllByRole('button')[0]!)
     const paragraphs = [...item.querySelectorAll('p')]
 
     // Three paragraphs and a signature, not one run-on block: the blank lines a person
@@ -151,8 +151,8 @@ describe('a message in the dock, in a real browser', () => {
     expect(dock.height).toBeGreaterThan(card.height * 0.8)
     expect(dock.bottom).toBeLessThanOrEqual(card.bottom + 1)
 
-    // Reading them opens them, so a whole email reads down the column straight away rather
-    // than through a window, and without a second press per message.
+    // The section reads open, so a whole email reads down the column straight away rather
+    // than through a window, and without a press per message.
     const item = messagesLog().querySelector('li')!
     expect(box(item).height).toBeLessThanOrEqual(box(messagesLog()).height + 1)
     expect(within(item).getByText(/stay in touch/)).toBeInTheDocument()
@@ -180,18 +180,20 @@ describe('a message in the dock, in a real browser', () => {
     ).not.toBeInTheDocument()
   })
 
-  it('leaves the quoted chain shut when one message is opened by its own chevron', async () => {
+  it('shuts a quoted chain on its own chevron, without folding the message around it', async () => {
     renderPanel(withMessages([message()]))
     await openCorrespondence()
 
     const item = messagesLog().querySelector('li')!
-    await userEvent.click(within(item).getAllByRole('button')[0]!)
-
-    // In a log that keeps both sides, the quoted chain is the message above, quoted back —
-    // so opening a message must not unroll the whole thread underneath it.
     const quote = within(item).getByRole('button', { name: /^Quote:/ })
+
+    // Open with the rest of it: the section reads open, and nothing carves the quotes out.
+    expect(quote).toHaveAttribute('aria-expanded', 'true')
+
+    await userEvent.click(quote)
     expect(quote).toHaveAttribute('aria-expanded', 'false')
-    expect(within(item).queryByText(/It would have been two more conversations/)).not.toBeInTheDocument()
+    // Its own chevron, its own fold: the message it sits in is still open.
+    expect(within(item).getByText(/stay in touch/)).toBeInTheDocument()
   })
 
   it('scrolls inside its own cap rather than pushing the note off the pane', async () => {

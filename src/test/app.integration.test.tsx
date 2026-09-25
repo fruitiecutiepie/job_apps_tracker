@@ -1813,13 +1813,15 @@ describe('job applications tracker', () => {
     expect(log.getByText(/LinkedIn/)).toBeInTheDocument()
     expect(log.getByRole('heading', { name: formatShortDate('2026-08-12T08:00') })).toBeInTheDocument()
     expect(log.getByText(/Moving the leadership interview/)).toBeInTheDocument()
-    // The rest of it is behind the fold rather than on screen.
-    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+    // Open, because you came to the section to read them.
+    expect(log.getByText(/short notice/)).toBeInTheDocument()
 
-    // The loose note is the last row of the log — the stage's thread comes before it.
+    // Folded by hand, the row still says what it holds — the loose note is the last row of
+    // the log, the stage's thread coming before it.
     const rows = log.getAllByRole('button', { name: /sub-points$/ })
     await user.click(rows[rows.length - 1]!)
-    expect(log.getByText(/short notice/)).toBeInTheDocument()
+    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+    expect(log.getByText(/Moving the leadership interview/)).toBeInTheDocument()
   })
 
   it('opens the messages when reading starts, and folds them back on request', async () => {
@@ -1830,11 +1832,11 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
     const label = 'Halcyon Maps · Interview 2'
 
-    // Folded in the strip: the row says what it holds and the rest is behind the chevron.
+    // Open in the strip: you came to the section to read them, so they read.
     await user.click(within(dialog).getByRole('button', { name: `Show the messages in ${label}` }))
-    expect(within(dialog).queryByText(/short notice/)).not.toBeInTheDocument()
+    expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
 
-    // Reading them opens them, so it is not a press per message to start reading.
+    // And still open when they take the pane.
     await user.click(within(dialog).getByRole('button', { name: `Read the messages in ${label}` }))
     expect(within(dialog).getByText(/short notice/)).toBeInTheDocument()
 
@@ -1938,7 +1940,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
     const read = () =>
       within(dialog).getByRole('button', {
-        name: /(Read the correspondence|Show the prep note) in Halcyon Maps · Interview 2/,
+        name: /(Read the messages|Show the prep note) in Halcyon Maps · Interview 2/,
       })
 
     // What the reading mode does to the layout is the browser suite's business — this

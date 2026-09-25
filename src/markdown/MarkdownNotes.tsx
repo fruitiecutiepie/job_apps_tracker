@@ -469,17 +469,19 @@ interface MarkdownNotesProps {
    *
    * A note you wrote opens flat, because you wrote it and want to read it. Default `none`.
    */
-  collapseInitially?: 'none' | 'entries'
   /**
-   * Whether this note is a **log of records** rather than something someone wrote. It decides
-   * two things that go together: a folded record summarises what it holds, and "all" means the
-   * records rather than every fold — folding the day headings of a log away leaves dates with
-   * nothing under them.
+   * Set when this note is a **log of records** rather than something someone wrote, and to
+   * whether those records start open or folded.
    *
-   * Separate from `collapseInitially` because they are separate questions. A log can start
-   * open and still want both of those the moment a reader folds it by hand.
+   * Being a log decides two things beyond that initial state, and they hold either way: a
+   * folded record summarises what it holds, and "all" means the records rather than every
+   * fold — folding a log's day headings away leaves dates with nothing under them.
+   *
+   * One prop rather than two because the two were never independent: "start folded" is about
+   * records, and there are no records to fold unless this is a log. Left out, the note reads
+   * as something someone wrote — flat, and folding a point in it puts that point away.
    */
-  summariseFolds?: boolean
+  records?: 'open' | 'folded'
   /**
    * Ancestor keys to force open, for a jump landing inside a section that is folded.
    * Left collapsed afterwards is not an option — the jump would have nothing to show.
@@ -521,8 +523,7 @@ export function MarkdownNotes({
   matchBase = 0,
   currentMatch = null,
   foldAll = true,
-  collapseInitially = 'none',
-  summariseFolds = false,
+  records,
   revealKeys,
   onJumpToSection,
   onFoldControls,
@@ -530,11 +531,11 @@ export function MarkdownNotes({
   const section = useMemo(() => buildSections(parseMarkdown(source)), [source])
   const keys = useMemo(() => collectFoldableKeys(section), [section])
   const entryKeys = useMemo(
-    () => (summariseFolds ? collectEntryKeys(section) : []),
-    [summariseFolds, section],
+    () => (records ? collectEntryKeys(section) : []),
+    [records, section],
   )
   const [collapsed, setCollapsed] = useState<Set<string>>(
-    () => new Set(collapseInitially === 'entries' ? entryKeys : []),
+    () => new Set(records === 'folded' ? entryKeys : []),
   )
 
   /*
@@ -549,9 +550,9 @@ export function MarkdownNotes({
     for (const key of entryKeys) seededKeys.current.add(key)
     // Only where records start folded. Where they start open, one arriving open is the rule
     // it should follow rather than an exception to it.
-    if (collapseInitially !== 'entries' || fresh.length === 0) return
+    if (records !== 'folded' || fresh.length === 0) return
     setCollapsed((current) => new Set([...current, ...fresh]))
-  }, [collapseInitially, entryKeys])
+  }, [records, entryKeys])
 
   const search = useMemo(() => searchNote(section, query), [section, query])
   const slugs = useMemo(() => sectionSlugs(section), [section])
@@ -618,7 +619,7 @@ export function MarkdownNotes({
    * away leaves two dates and nothing else — neither readable nor scannable — so the same
    * prop that says records are the unit here says it to this control too.
    */
-  const foldAllKeys = summariseFolds ? entryKeys : keys
+  const foldAllKeys = records ? entryKeys : keys
   const allCollapsed = foldAllKeys.length > 0 && foldAllKeys.every((key) => collapsed.has(key))
 
   /*
@@ -672,7 +673,7 @@ export function MarkdownNotes({
         </button>
       ) : null}
       <FollowSection.Provider value={follow}>
-        <SummariseFolds.Provider value={summariseFolds}>
+        <SummariseFolds.Provider value={Boolean(records)}>
         <MarkdownSection
           collapsed={effectiveCollapsed}
           marks={marks}
