@@ -1,8 +1,9 @@
 # Every pull request, checked before it can be merged.
 #
-# Runs on the self-hosted pool rather than a GitHub runner, so it needs to leave the machine
-# as it found it: the checkout is clean per run, but the toolchain and the pnpm store are the
-# machine's own and are deliberately not touched.
+# On a GitHub runner rather than the self-hosted pool, which is one shared machine: a gate
+# that goes red because something else on that machine is busy is a gate people learn to
+# wave through, and this one did exactly that twice before moving here. The repo is public,
+# so the minutes cost nothing.
 #
 # The browser suite is not here. It wants three browser downloads per run and answers a
 # different question — where things end up on screen — which is worth a local run when the
@@ -14,29 +15,34 @@ on:
   push:
     branches: [master]
 
-# A second push supersedes the first. The pool is one machine shared with everything else on
-# it, so a queue of runs nobody is waiting for is the expensive kind of waste.
+# A second push supersedes the first: nobody is waiting on the answer to a commit that has
+# already been replaced.
 concurrency:
   group: test-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   test:
-    # Both runners in the pool carry this label, so either may take the job. `self-hosted`
-    # alongside it is what keeps a GitHub-hosted runner from matching.
-    runs-on: [self-hosted, local-mac-pool]
+    runs-on: ubuntu-latest
     timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
 
-      # The machine's own pnpm is older than the lockfile format. `packageManager` in
-      # package.json pins the version this repo is built with, and corepack is what honours
-      # it — without this the install silently re-resolves every `latest` dependency.
+      # Before `setup-node`, so the pnpm it caches for is the one `packageManager` pins.
+      # Without corepack the install silently re-resolves every `latest` dependency against
+      # whatever pnpm the runner happens to carry.
       - name: Use the pinned pnpm
         run: |
           corepack enable
           corepack pnpm --version
+
+      # Pinned rather than whatever the image ships, so the gate does not change its mind
+      # when the runner image updates.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
 
       # Frozen, so a run can only ever build the tree the lockfile describes. A drifted
       # specifier fails here rather than quietly resolving to something else.
@@ -49,11 +55,8 @@ jobs:
       - name: Lint
         run: corepack pnpm lint
 
-      # Two workers, not one per core. The pool is a shared machine that also carries the
-      # other runners and whatever else is on it, so a suite that forks ten workers spends
-      # its time competing with itself: every failure seen here has been a timeout rather
-      # than an assertion, and the set of tests that time out moves between runs. Fewer
-      # workers is the honest lever — `testTimeout` is a floor for how slow a passing test
-      # may be, and raising it to fit a loaded machine would only hide the next real one.
+      # No worker cap. The one this had was for a machine shared with two other runners and
+      # everything else on it; a dedicated runner has nothing to compete with, and capping
+      # it there would only make the gate slower for a reason that no longer holds.
       - name: Test
-        run: corepack pnpm test --maxWorkers=2
+        run: corepack pnpm test
