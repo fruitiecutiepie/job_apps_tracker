@@ -409,6 +409,25 @@ describe('correspondence rows', () => {
     expect(ruleBody('.correspondence-thread__add')).toMatch(/color:\s*var\(--ink-3\)/)
   })
 
+  it('lets every box around a summary shrink, so the line truncates instead of the dialog growing', () => {
+    // A grid item's `min-width` is `auto`. Each of these holds a line that does not wrap, so
+    // each would otherwise keep the whole line as a floor and widen the dialog around it.
+    for (const selector of [
+      '.dialog',
+      '.correspondence-item__summary',
+      '.correspondence-item__summary span',
+      '.correspondence-thread',
+      '.correspondence-thread span',
+      '.correspondence-direction',
+    ]) {
+      expect(ruleBody(selector)).toMatch(/min-width:\s*0/)
+    }
+    // Fieldsets default to `min-width: min-content`, which no width can talk them out of.
+    expect(ruleBody('.correspondence-item')).toMatch(/min-width:\s*0/)
+    // And the overlay's column may not exceed the overlay.
+    expect(ruleBody('.dialog-backdrop')).toMatch(/grid-template-columns:\s*minmax\(0, 1fr\)/)
+  })
+
   it('reads a folded row as a line of record rather than as a button', () => {
     const body = ruleBody('.correspondence-item__summary')
 

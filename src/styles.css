@@ -1525,6 +1525,14 @@ tbody tr:hover {
   z-index: 50;
   inset: 0;
   display: grid;
+  /*
+    Bounded rather than implicit. An auto column grows to its content, so a dialog holding
+    anything that will not shrink pushes the column past the overlay and out through its own
+    padding — centred, so it clips at both sides at once. `minmax(0, 1fr)` is what says the
+    column may not exceed the box it is in, and `100%` inside the dialog then means what it
+    looks like it means.
+  */
+  grid-template-columns: minmax(0, 1fr);
   padding: var(--s5);
   overflow-y: auto;
   place-items: center;
@@ -1533,6 +1541,11 @@ tbody tr:hover {
 
 .dialog {
   width: min(42rem, 100%);
+  /* A grid item's `min-width` is `auto`, so one descendant that cannot shrink — a fieldset,
+     a `nowrap` line — sets a min-content floor and the dialog grows past the width it just
+     asked for, off the side of the screen. This is the backstop; the shrinking is fixed at
+     each of those descendants so the text truncates instead of being clipped away. */
+  min-width: 0;
   max-height: calc(100vh - 2rem);
   padding: var(--s5);
   overflow-x: hidden;
@@ -1810,8 +1823,11 @@ tbody tr:hover {
   gap: var(--s3);
 }
 
+/* Fieldsets default to `min-width: min-content`, which no `1fr` or `100%` can talk them out
+   of: one long unbroken line inside makes the whole thing refuse to narrow. */
 .invite-item,
 .correspondence-item {
+  min-width: 0;
   display: grid;
   gap: var(--s3);
   margin: 0;
@@ -1844,10 +1860,19 @@ tbody tr:hover {
   to read as a heading by weight alone — a box would make each thread a card inside a section
   that is already a list of cards.
 */
+/* A subject can be a sentence, so the line it heads has to be able to give. */
+.correspondence-thread span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .correspondence-thread {
   display: flex;
   align-items: center;
   gap: var(--s3);
+  min-width: 0;
   margin: var(--s2) 0 0;
   color: var(--ink);
   font-size: var(--t2);
@@ -1887,6 +1912,11 @@ tbody tr:hover {
   align-items: center;
   gap: var(--s2);
   width: 100%;
+  /* The row is a grid item, and a grid item's `min-width` is `auto`: the line inside it does
+     not wrap, so without this the button keeps the whole summary as a floor and widens the
+     dialog around it rather than truncating. The `min-width` on the span is not enough — this
+     is the box the grid is measuring. */
+  min-width: 0;
   min-height: var(--control);
   padding: 0;
   border: 0;
@@ -1898,7 +1928,10 @@ tbody tr:hover {
   cursor: pointer;
 }
 
+/* The `min-width` is what makes the ellipsis work: without it a `nowrap` flex child keeps
+   its full text as a floor and pushes its container wide rather than truncating. */
 .correspondence-item__summary span {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1945,6 +1978,7 @@ tbody tr:hover {
   rather than drawing a box of its own.
 */
 .correspondence-direction {
+  min-width: 0;
   margin: 0;
   padding: 0;
   border: 0;

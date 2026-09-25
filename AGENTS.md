@@ -415,6 +415,16 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   unfolded and scrolled to, through `messagesFor` on the editor. Landing at the top of a long
   form to hunt for the row you were just reading was the whole of the annoyance; the form was
   never the wrong place to write in.
+- A dialog may not grow past the overlay it is centred in, and nothing in it may set a floor
+  that makes it. A grid item's `min-width` is `auto`, so one box holding a line that does not
+  wrap keeps that whole line as a minimum and widens everything around it — centred, so it
+  clips at both edges at once and the right-hand side simply is not there. Every box between a
+  truncating line and the dialog carries `min-width: 0`, fieldsets included, because those
+  default to `min-width: min-content` and no width talks them out of it. The overlay's column
+  is `minmax(0, 1fr)` so `100%` inside the dialog means what it looks like it means.
+  `src/dialogScroll.browser.test.tsx` asserts no box inside the dialog is wider than the
+  dialog, which is the assertion that catches this — the dialog's own `scrollWidth` does not,
+  because a truncated line legitimately scrolls wider than it renders.
 - That arrival scrolls **the dialog's own box and nothing above it**. `scrollIntoView` walks
   every scrollable ancestor, and `.dialog-backdrop` is one: `position: fixed`, `overflow-y:
   auto`, `place-items: center`. Scrolling it shifts the whole centred dialog inside a fixed
