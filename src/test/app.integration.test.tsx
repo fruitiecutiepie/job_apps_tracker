@@ -4873,6 +4873,61 @@ describe('job applications tracker', () => {
     ).toBeNull()
   })
 
+  it('flips a pane between the prep note and the posting, and back where it was', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Prep' })
+    const panes = () => within(dialog).getAllByRole('tabpanel')
+
+    expect(panes()).toHaveLength(1)
+    expect(panes()[0]).toHaveAccessibleName(/Applied/)
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Show the Marble & Finch job posting in Marble & Finch · Applied' }),
+    )
+
+    // The same pane, not a new one: this is a flip, not a split.
+    expect(panes()).toHaveLength(1)
+    expect(panes()[0]).toHaveTextContent('independent booksellers')
+
+    await user.click(
+      within(dialog).getByRole('button', { name: /^Show the prep note in/ }),
+    )
+
+    expect(panes()).toHaveLength(1)
+    expect(panes()[0]).toHaveAccessibleName(/Applied/)
+  })
+
+  it('offers no posting flip on a note whose application captured none', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Echo Robotics is seeded without one, so there is nothing to flip to.
+    await user.click(screen.getByRole('button', { name: /prep notes for Echo Robotics/i }))
+    const dialog = screen.getByRole('region', { name: 'Prep' })
+
+    expect(within(dialog).queryByRole('button', { name: /job posting in/ })).toBeNull()
+  })
+
+  it('comes back to a prep note from a posting that was opened directly', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Prep' })
+
+    // Straight to the posting from the sidebar, so the pane was never flipped from anywhere.
+    const postings = within(dialog).getByRole('region', { name: 'Job postings' })
+    await user.click(within(postings).getByRole('button', { name: /^Marble & Finch/ }))
+    expect(within(dialog).getByRole('tabpanel')).toHaveTextContent('independent booksellers')
+
+    // It falls back to this pane's own prep note rather than stranding the reader.
+    await user.click(within(dialog).getByRole('button', { name: /^Show the prep note in/ }))
+    expect(within(dialog).getByRole('tabpanel')).toHaveAccessibleName(/Applied/)
+  })
+
   it('opens a posting in the same strip as the application’s stages, first', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

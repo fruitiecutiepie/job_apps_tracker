@@ -126,7 +126,11 @@ interface StageNotePaneProps {
    * Opens this application's captured job posting in a pane beside this one. Null when it
    * has captured none, since there would be nothing to show.
    */
-  onOpenPosting: (() => void) | null
+  /**
+   * Flips this pane to the application's posting, and is pressed again there to come back.
+   * Null when the application captured none.
+   */
+  onFlipPosting: (() => void) | null
   onStopExternal: () => void
   paneRef: RefCallback<HTMLDivElement>
   formatDate: (iso: string) => string
@@ -181,7 +185,7 @@ export function StageNotePane({
   onCapture,
   onToggleEditing,
   onOpenInEditor,
-  onOpenPosting,
+  onFlipPosting,
   onStopExternal,
   paneRef,
   formatDate,
@@ -387,11 +391,12 @@ export function StageNotePane({
             </span>
           ) : null}
           <span className="stage-note__actions">
-            {onOpenPosting ? (
+            {onFlipPosting ? (
               <button
-                aria-label={`Read the ${company} job posting beside ${label}`}
+                aria-label={`Show the ${company} job posting in ${label}`}
+                aria-pressed={false}
                 className="button button--quiet stage-note__mode"
-                onClick={onOpenPosting}
+                onClick={onFlipPosting}
                 type="button"
               >
                 <FileText aria-hidden="true" size={14} />

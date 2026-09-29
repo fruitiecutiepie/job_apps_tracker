@@ -25,7 +25,7 @@ Importing a calendar invite through the editor, replacing a rescheduled one, and
 with no start time are covered by the app integration tests.
 
 Pasting a job posting into the editor and reading it back, refusing one that is only a link,
-clearing one, opening a posting in a pane beside the prep note written against it, editing it there
+clearing one, flipping a pane between a prep note and the posting and back, editing it there
 and having it write itself without recapturing, and counting a hit inside it in the panel-wide find
 are covered by the app integration tests.
 Logging hiring correspondence through the editor — keeping the time a message was sent rather than

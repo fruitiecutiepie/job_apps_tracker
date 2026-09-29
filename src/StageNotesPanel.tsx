@@ -1331,27 +1331,42 @@ export function StageNotesPanel({
    * rule `showRef` follows, and for the same reason: two copies would give one match two
    * ids and the find would step onto whichever the DOM returned first.
    */
-  const openPostingBeside = useCallback(
-    (groupId: string, applicationId: string) => {
-      const ref = postingRef(applicationId)
-      const key = noteRefKey(ref)
-      const holding = groupHolding(layoutRef.current, key)
-      // Already in a pane of its own: that is the answer, so focus it there.
-      if (holding && holding.id !== groupId) {
-        applyLayout(activateTab(layoutRef.current, holding.id, key), holding.id)
+  /**
+   * The tab a pane was showing before it was flipped to the posting, so pressing the control
+   * again puts that pane back where it was. Per pane, because two panes flip independently,
+   * and display state like the folds and the pane widths: what a pane is showing now is the
+   * arrangement's business, where it was a moment ago is nobody's after a reload.
+   */
+  const [flippedFrom, setFlippedFrom] = useState<Record<string, string>>({})
+
+  /**
+   * Swaps a pane between a stage's prep note and the application's posting, and back to the
+   * tab it left. The posting is already a tab of the fan, so this activates it rather than
+   * overlaying it the way the messages borrow the pane: an overlay would put the same thing
+   * on screen two ways and leave the tab strip naming the wrong one.
+   */
+  const flipPosting = useCallback(
+    (groupId: string, ref: NoteRef) => {
+      if (ref.kind === 'posting') {
+        const back = flippedFrom[groupId]
+        const group = groupsOf(layoutRef.current).find((entry) => entry.id === groupId)
+        // Where it came from, or failing that this pane's first prep note — a posting opened
+        // from the tree was never flipped from anywhere, and inventing a stage to land on
+        // would open a note nobody asked for.
+        const target = back && group?.tabs.some((tab) => noteRefKey(tab) === back)
+          ? back
+          : group?.tabs.map(noteRefKey).find((key) => key !== noteRefKey(ref))
+        if (!target) return
+        applyLayout(activateTab(layoutRef.current, groupId, target), groupId)
         return
       }
-      /*
-       * Beside the note rather than over it. A posting open as a tab of this very pane —
-       * which is how an application's fan opens — is the case that makes this a split and
-       * not an activate: showing it here would cover the note it is meant to be read
-       * against, which is the one thing the control is for. `detachFrom` takes that tab out
-       * of this pane on the way, the same as dragging it to the edge.
-       */
-      const next = splitWith(layoutRef.current, groupId, 'right', ref, newId, holding ? groupId : null)
-      applyLayout(next, groupHolding(next, key)?.id ?? groupId)
+
+      const posting = postingRef(ref.applicationId)
+      setFlippedFrom((current) => ({ ...current, [groupId]: noteRefKey(ref) }))
+      // Into this pane, whatever another pane is showing: the same rule `showRef` keeps.
+      applyLayout(openInGroup(layoutRef.current, groupId, posting), groupId)
     },
-    [applyLayout, newId],
+    [applyLayout, flippedFrom],
   )
 
   /**
@@ -2437,6 +2452,7 @@ export function StageNotesPanel({
           onChange={(value) => editDraft(shownKey, value)}
           onClose={isSplit ? () => applyLayout(closeGroup(layoutRef.current, group.id)) : null}
           onFocus={() => setFocusedGroupId(group.id)}
+          onFlipPosting={() => flipPosting(group.id, shown)}
           onOpenApplication={() => onOpenApplication(shown.applicationId)}
           onToggleEditing={() => toggleEditing(shown)}
           onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
@@ -2482,11 +2498,11 @@ export function StageNotesPanel({
           // another pane focuses it first, so this is that pane by the time it lands.
           onJumpToSection={isFocusedGroup ? jumpToSection : undefined}
           onOpenInEditor={supportsExternalEditor() ? () => openInEditor(shown) : undefined}
-          // Absent when the application has captured no posting: a control that opened an
-          // empty pane would be offering something that is not there.
-          onOpenPosting={
+          // Absent when the application has captured no posting: a control that flipped the
+          // pane to an empty one would be offering something that is not there.
+          onFlipPosting={
             postingByKey.has(noteRefKey(postingRef(shown.applicationId)))
-              ? () => openPostingBeside(group.id, shown.applicationId)
+              ? () => flipPosting(group.id, shown)
               : null
           }
           onRevise={(entryId, revised) =>

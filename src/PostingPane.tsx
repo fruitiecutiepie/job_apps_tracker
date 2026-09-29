@@ -12,7 +12,7 @@
  */
 
 import { useRef, useState } from 'react'
-import { ExternalLink, X } from 'lucide-react'
+import { ExternalLink, FileText, X } from 'lucide-react'
 import type { RefCallback } from 'react'
 import { MarkdownNotes } from './markdown'
 import { StageNoteEditor } from './StageNoteEditor'
@@ -44,6 +44,8 @@ interface PostingPaneProps {
    * it live — neither belongs in a pane that shows its text.
    */
   onOpenApplication: () => void
+  /** Flips this pane back to the prep note it was shown from. */
+  onFlipPosting: () => void
   query: string
   matchBase: number
   currentMatch: number | null
@@ -65,6 +67,7 @@ export function PostingPane({
   isEditing,
   onToggleEditing,
   onOpenApplication,
+  onFlipPosting,
   isFocused,
   onFocus,
   onClose,
@@ -143,6 +146,18 @@ export function PostingPane({
             </span>
           ) : null}
           <span className="stage-note__actions">
+            {/* The other half of the control on a prep note's header, pressed: the pane goes
+                back to the note it was flipped from. */}
+            <button
+              aria-label={`Show the prep note in ${label}`}
+              aria-pressed={true}
+              className="button button--quiet stage-note__mode"
+              onClick={onFlipPosting}
+              type="button"
+            >
+              <FileText aria-hidden="true" size={14} />
+              Prep note
+            </button>
             {posting?.source_url ? (
               <a
                 aria-label={`Open the original ${company} posting`}
