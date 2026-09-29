@@ -302,6 +302,14 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   already shows it, so no view repeats it as a visible heading. Table and Statistics keep
   their `h2` as `sr-only`. Statistics' visible **Stages**, **Sources** and **Ratings** `h3`s are section headings inside the view, not the view's name,
   so it does not break that rule.
+- The theme is a preference with three values — **System**, **Light**, **Dark** — chosen from the
+  topbar's theme disclosure (`src/ThemeMenu.tsx`, over `src/theme.ts`). System is the default and is
+  the *absence* of a choice: no `theme` key in `localStorage` and no `data-theme` on `<html>`, so the
+  stylesheet's `prefers-color-scheme` block answers the OS and goes on answering it when the OS
+  switches. Never write the detected theme back to storage — that is what pinned a first visit's OS
+  setting for good. The options are radios in a fieldset, and the panel stays open on a pick, because
+  the arrow keys move a radio group by clicking it. The trigger's icon shows the preference (a monitor
+  for System), not the colour it resolves to.
 - Import, export, and demo reset live behind the topbar's **More actions** disclosure. It is a
   disclosure holding plain buttons, not an ARIA menu, so Tab alone reaches the items; keep Escape,
   outside-click dismissal, and focus return to the trigger. The import file input must stay mounted

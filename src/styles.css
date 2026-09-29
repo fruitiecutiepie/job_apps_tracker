@@ -670,6 +670,47 @@ p {
   color: var(--ink-3);
 }
 
+/*
+ * The theme picker borrows the actions panel and its rows. It is a fieldset,
+ * so the browser's own border, padding and margin go, and the legend sits in
+ * the panel's padding as a small caption rather than cutting its border.
+ */
+.theme-menu {
+  margin: 0;
+  min-width: 10rem;
+}
+
+.theme-menu__legend {
+  float: left;
+  width: 100%;
+  padding: var(--s1) var(--s3) var(--s2);
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+.theme-menu__option {
+  cursor: pointer;
+}
+
+.theme-menu__option:has(:checked) {
+  color: var(--accent-strong);
+  background: var(--accent-weak);
+}
+
+.theme-menu__option:has(:checked) svg {
+  color: currentColor;
+}
+
+.theme-menu__option:has(:focus-visible) {
+  box-shadow: var(--focus);
+}
+
+.theme-menu__hint {
+  margin-left: auto;
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
 /* ---------------------------------------------------------- context bar --- */
 
 /*
