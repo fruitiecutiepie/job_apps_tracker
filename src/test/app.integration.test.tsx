@@ -4911,6 +4911,51 @@ describe('job applications tracker', () => {
     expect(within(dialog).queryByRole('button', { name: /job posting in/ })).toBeNull()
   })
 
+  it('comes back to the posting’s own current stage, not another company’s note', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // A pane holding another application's notes first, which is the ordinary case: the
+    // panel exists to hold several applications at once.
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    const dialog = screen.getByRole('region', { name: 'Prep' })
+    expect(within(dialog).getAllByRole('tab')).toHaveLength(3)
+
+    const postings = within(dialog).getByRole('region', { name: 'Job postings' })
+    await user.click(within(postings).getByRole('button', { name: /^Marble & Finch/ }))
+    expect(within(dialog).getByRole('tabpanel')).toHaveTextContent('independent booksellers')
+
+    /*
+     * Marble's own current stage, not whichever Halcyon tab happens to sit first in the
+     * strip. A pane's other tabs say nothing about the application whose posting is showing.
+     */
+    await user.click(within(dialog).getByRole('button', { name: /^Show the prep note in/ }))
+    expect(within(dialog).getByRole('tabpanel')).toHaveAccessibleName('Marble & Finch · Applied')
+  })
+
+  it('remembers where each posting was flipped from, not one per pane', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Prep' })
+
+    // Flipped from Marble's note, so this pane remembers that for Marble's posting.
+    await user.click(
+      within(dialog).getByRole('button', { name: /^Show the Marble & Finch job posting/ }),
+    )
+    expect(within(dialog).getByRole('tabpanel')).toHaveTextContent('independent booksellers')
+
+    // A second application's posting into the same pane. One slot per pane would hand this
+    // one Marble's note on the way back.
+    const postings = within(dialog).getByRole('region', { name: 'Job postings' })
+    await user.click(within(postings).getByRole('button', { name: /^Paper Kite/ }))
+    await user.click(within(dialog).getByRole('button', { name: /^Show the prep note in/ }))
+
+    expect(within(dialog).getByRole('tabpanel'))
+      .toHaveAccessibleName('Paper Kite · Recruiter messaged')
+  })
+
   it('comes back to a prep note from a posting that was opened directly', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

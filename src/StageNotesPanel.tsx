@@ -1348,25 +1348,36 @@ export function StageNotesPanel({
   const flipPosting = useCallback(
     (groupId: string, ref: NoteRef) => {
       if (ref.kind === 'posting') {
-        const back = flippedFrom[groupId]
         const group = groupsOf(layoutRef.current).find((entry) => entry.id === groupId)
-        // Where it came from, or failing that this pane's first prep note — a posting opened
-        // from the tree was never flipped from anywhere, and inventing a stage to land on
-        // would open a note nobody asked for.
-        const target = back && group?.tabs.some((tab) => noteRefKey(tab) === back)
-          ? back
-          : group?.tabs.map(noteRefKey).find((key) => key !== noteRefKey(ref))
-        if (!target) return
-        applyLayout(activateTab(layoutRef.current, groupId, target), groupId)
+        const remembered = flippedFrom[tabId(groupId, ref)]
+        /*
+         * Where this pane was flipped from, when that note is still in it. Failing that the
+         * application's **current stage**, which is where every other way into its notes
+         * lands — `openingLayout`, the card and the table row all do. The pane's first other
+         * tab is not an answer: a pane holds notes from any application, so that tab is as
+         * likely to be another company's, and landing on it would read as the control
+         * jumping somewhere at random.
+         */
+        const application = applicationsById.get(ref.applicationId)
+        const back = remembered && group?.tabs.some((tab) => noteRefKey(tab) === remembered)
+          ? parseNoteRefKey(remembered)
+          : application
+            ? stageRef(ref.applicationId, application.state)
+            : null
+        if (!back) return
+        applyLayout(openInGroup(layoutRef.current, groupId, back), groupId)
         return
       }
 
       const posting = postingRef(ref.applicationId)
-      setFlippedFrom((current) => ({ ...current, [groupId]: noteRefKey(ref) }))
+      // Keyed by this pane's copy of this posting, not by the pane: a pane may hold two
+      // applications' postings, and one slot between them sends the second one back to the
+      // first one's note.
+      setFlippedFrom((current) => ({ ...current, [tabId(groupId, posting)]: noteRefKey(ref) }))
       // Into this pane, whatever another pane is showing: the same rule `showRef` keeps.
       applyLayout(openInGroup(layoutRef.current, groupId, posting), groupId)
     },
-    [applyLayout, flippedFrom],
+    [applyLayout, applicationsById, flippedFrom],
   )
 
   /**
