@@ -85,7 +85,10 @@ describe('the static build', () => {
   it('explains where the data goes before there is any', async () => {
     await renderStaticApp()
     expect(screen.getByRole('heading', { name: 'Track your job applications' })).toBeInTheDocument()
-    expect(screen.getByText(/Everything stays on your computer/)).toBeInTheDocument()
+    // The reason a copy matters is said before anyone is asked to make one.
+    expect(
+      screen.getByText(/Clearing your browsing data or closing a private window deletes them/),
+    ).toHaveTextContent(/so export a backup now and then/)
     expect(screen.getByRole('button', { name: /Import a file/ })).toBeInTheDocument()
   })
 
@@ -258,6 +261,7 @@ describe('the static build, in a browser that can write a folder', () => {
     const actions = within(intro).getAllByRole('button').map((button) => button.textContent?.trim())
     expect(actions).toEqual(['Add your first application', 'Import a file', 'Save to a folder'])
     expect(within(intro).getByRole('button', { name: 'Add your first application' })).toHaveClass('button--primary')
+    expect(intro).toHaveTextContent(/deletes them, so save to a folder to keep a copy on your computer\./)
   })
 
   it('says nothing when the folder picker is dismissed', async () => {
@@ -279,7 +283,10 @@ describe('the static build, in a browser that can write a folder', () => {
     await addApplication(user, 'Northwind')
     const pill = await within(topbar()).findByRole('button', { name: 'Save to a folder' })
     expect(pill).toHaveClass('storage-status--attention')
-    expect(pill).toHaveAttribute('title', expect.stringMatching(/^Changes since .+ are only in this browser/))
+    expect(pill).toHaveAttribute(
+      'title',
+      expect.stringMatching(/^Changes since .+ are only in this browser, and clearing your browsing data would delete them\./),
+    )
   })
 })
 

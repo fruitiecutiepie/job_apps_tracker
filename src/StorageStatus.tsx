@@ -20,7 +20,7 @@ function describe({ connection, unbackedSince }: StorageState): string {
 function explain({ connection, unbackedSince }: StorageState): string {
   const backlog = unbackedSince === null
     ? null
-    : `Changes since ${formatShortDate(unbackedSince)} are only in this browser.`
+    : `Changes since ${formatShortDate(unbackedSince)} are only in this browser, and clearing your browsing data would delete them.`
   switch (connection.kind) {
     case 'connected':
       return `Every change is saved to ${connection.name}. Click to pick a different folder.`
@@ -124,9 +124,10 @@ export interface StorageIntroProps {
 
 /**
  * The empty tracker's first screen. Someone arriving here came to track job applications,
- * so that is the one thing it offers up front; where the data goes is answered in a line
- * and otherwise left to the topbar, which speaks up once there is something to lose.
- * A folder is an option where the browser can write one, never the price of starting.
+ * so that is the one thing it offers up front. A folder is an option where the browser
+ * can write one, never the price of starting — but an option is only worth taking if the
+ * reason for it is on screen, so the one way this data can be lost is said in a line of
+ * its own before anything is asked.
  *
  * It has no dismiss: it is what an empty tracker looks like, and it goes when the first
  * application arrives.
@@ -143,7 +144,11 @@ export function StorageIntro({
     <section aria-labelledby="storage-intro-heading" className="storage-intro">
       <h2 id="storage-intro-heading">Track your job applications</h2>
       <p>
-        Everything stays on your computer. Nothing is uploaded, and there is no account.
+        Nothing is uploaded and there is no account: your applications are saved in this
+        browser. Clearing your browsing data or closing a private window deletes them,{' '}
+        {canConnect
+          ? 'so save to a folder to keep a copy on your computer.'
+          : 'so export a backup now and then — the top bar will remind you.'}
       </p>
       <div className="storage-intro__actions">
         <button
