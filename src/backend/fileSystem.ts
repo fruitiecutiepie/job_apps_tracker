@@ -23,6 +23,8 @@ export interface DirectoryHandleLike {
   getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<DirectoryHandleLike>
   removeEntry(name: string, options?: { recursive?: boolean }): Promise<void>
   keys(): AsyncIterableIterator<string>
+  /** Whether two handles are the same folder on disk, however each was obtained. */
+  isSameEntry?(other: DirectoryHandleLike): Promise<boolean>
   queryPermission?(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
   requestPermission?(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
 }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   CircleCheck,
   ChartNoAxesColumnIncreasing,
@@ -10,7 +10,6 @@ import {
   NotebookPen,
   Plus,
   RotateCcw,
-  FilePlus2,
   Search,
   Table2,
   Upload,
@@ -36,7 +35,6 @@ import {
   importTrackerArchive,
   describeImportErrors,
   readTrackerImport,
-  createEmptyDocument,
   type TrackerImportSuccess,
   loadTrackerDatabase,
   MAX_ATTACHMENT_BYTES,
@@ -74,6 +72,8 @@ import { backend, isBrowserBackend, type StorageConnection } from './backend'
 import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
 import { ReplaceTrackerDialog, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
 import { useStorageState } from './useStorageState'
+import { TrackerSwitcher } from './TrackerSwitcher'
+import { navigation, NEW_TRACKER, trackerHref } from './backend/trackerAddress'
 import { useFileImport } from './useFileImport'
 import { ThemeMenu } from './ThemeMenu'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
@@ -711,6 +711,21 @@ export default function App() {
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const storageState = useStorageState()
+  const listTrackers = useCallback(() => backend.storage!.listTrackers(), [])
+
+  /*
+   * The tab says which tracker it holds, so several open at once can be told apart in the
+   * tab strip — the whole point of holding more than one.
+   */
+  const trackerName = storageState?.tracker?.name ?? null
+  useEffect(() => {
+    if (trackerName === null) return
+    const previous = document.title
+    document.title = `${trackerName} — Job applications`
+    return () => {
+      document.title = previous
+    }
+  }, [trackerName])
   /*
    * A replacement waiting on its question: what the dialog asks about, and what runs if the
    * viewer goes ahead. An import and starting fresh are one gate, so neither can grow a
@@ -846,7 +861,7 @@ export default function App() {
       // An empty tracker has nothing to replace, so there is nothing to ask.
       const current = trackerRef.current?.applications.length ?? 0
       if (current === 0) {
-        await applyImport(result.document, result.files)
+        await applyImport(result.document, result.files, file.name)
         return
       }
 
@@ -863,7 +878,7 @@ export default function App() {
             && storageState?.unbackedSince === null,
           folder: connection?.kind === 'connected' ? connection.name : null,
         },
-        proceed: () => applyImport(result.document, result.files),
+        proceed: () => applyImport(result.document, result.files, file.name),
       })
     } catch (error) {
       setNotice(`Import failed: ${errorMessage(error)}`)
@@ -873,11 +888,13 @@ export default function App() {
   const applyImport = async (
     document: TrackerImportSuccess['document'],
     files: TrackerImportSuccess['files'],
+    filename: string,
   ) => {
     try {
       const saved = await importTrackerArchive(document, files)
-      // What was just imported is a file the viewer already holds.
+      // What was just imported is a file the viewer already holds, and names the tracker.
       await backend.storage?.markBackedUp()
+      await backend.storage?.nameAfterFile(filename)
       trackerRef.current = saved
       setTracker(saved)
       setNotice(`Imported ${saved.applications.length} applications.`)
@@ -887,49 +904,39 @@ export default function App() {
   }
 
   /*
-   * Starting fresh with a folder connected stops writing to it rather than emptying it:
-   * the file there is the viewer's, and leaving it is what makes it the copy. So the
-   * folder is let go of first — attachments are wiped next, and wiping while still
-   * connected would delete the folder's as well.
+   * Removes this tab's tracker from browser storage and opens the next one. A connected
+   * folder's files are never touched — they are the viewer's — which is why a folder
+   * counts as the copy here when it does not for an import, which writes into it.
    */
-  const startFresh = async () => {
-    const folder = storageState?.connection.kind === 'connected' ? storageState.connection.name : null
+  const removeTracker = async () => {
     try {
-      if (folder) await backend.storage?.disconnect()
-      const saved = await importTrackerArchive(createEmptyDocument(), [])
-      // Nothing is left to lose, so nothing is waiting on a backup.
-      await backend.storage?.markBackedUp()
-      trackerRef.current = saved
-      setTracker(saved)
-      setSearch('')
-      setStateFilter('all')
-      setCompanyFilter('all')
-      setSourceFilter('all')
-      setNotice(
-        folder
-          ? `Started a fresh tracker. Your ${folder} folder still has the old one.`
-          : 'Started a fresh tracker.',
-      )
+      const next = await backend.storage!.removeTracker()
+      navigation.open(trackerHref(next?.id ?? NEW_TRACKER))
     } catch (error) {
-      setNotice(`Could not start fresh: ${errorMessage(error)}`)
+      setNotice(`Could not remove the tracker: ${errorMessage(error)}`)
     }
   }
 
-  const askToStartFresh = () => {
+  const askToRemoveTracker = () => {
     const current = trackerRef.current?.applications.length ?? 0
-    if (current === 0) return
     const connection = storageState?.connection ?? null
     const folder = connection?.kind === 'connected' ? connection.name : null
+    // An empty tracker has nothing to lose, so there is nothing to ask.
+    if (current === 0) {
+      void removeTracker()
+      return
+    }
     setPendingReplace({
       replacement: {
-        kind: 'clear',
+        kind: 'remove',
+        name: storageState?.tracker?.name ?? 'this tracker',
         current,
         backedUp:
           folder !== null
           || (connection !== null && storageState?.unbackedSince === null),
         folder,
       },
-      proceed: startFresh,
+      proceed: removeTracker,
     })
   }
 
@@ -1192,8 +1199,20 @@ export default function App() {
     }
   }
 
+  /*
+   * A folder another tracker in this browser already writes to is opened as that tracker
+   * rather than connected a second time: two trackers writing whole documents into one
+   * file would each undo the other. Picking the folder says "open this", so this does.
+   */
   const connectStorage = () => {
-    void reloadAfter(() => backend.storage!.connect(), 'Changes are now saved to that folder too.')
+    void reloadAfter(async () => {
+      const result = await backend.storage!.connect()
+      if (result.outcome === 'already-open') {
+        navigation.open(trackerHref(result.tracker.id))
+        return null
+      }
+      return result.outcome === 'connected' ? result.connection : null
+    }, 'Changes are now saved to that folder too.')
   }
 
   const reconnectStorage = () => {
@@ -1294,13 +1313,22 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#main" aria-label="Job applications tracker home">
-          <span className="brand__mark" aria-hidden="true">J</span>
-          <span>
-            <strong>Job applications</strong>
-            <small>Local tracker</small>
-          </span>
-        </a>
+        <div className="topbar__identity">
+          <a className="brand" href="#main" aria-label="Job applications tracker home">
+            <span className="brand__mark" aria-hidden="true">J</span>
+            <span>
+              <strong>Job applications</strong>
+              {!storageState?.tracker && <small>Local tracker</small>}
+            </span>
+          </a>
+          {storageState?.tracker && (
+            <TrackerSwitcher
+              current={storageState.tracker}
+              listTrackers={listTrackers}
+              onRemove={askToRemoveTracker}
+            />
+          )}
+        </div>
 
         {/*
           * Where you are, in one cell: the seven views of the collection, and the prep
@@ -1396,11 +1424,7 @@ export default function App() {
             >
               <Download aria-hidden="true" size={16} /> Export
             </button>
-            {tracker.applications.length > 0 && (
-              <button className="actions-menu__item" onClick={askToStartFresh} type="button">
-                <FilePlus2 aria-hidden="true" size={16} /> Start fresh
-              </button>
-            )}
+
             {isDemoTrackerProfile() && (
               <button
                 className="actions-menu__item"

@@ -1,6 +1,7 @@
 import { isSafeAttachmentId, MAX_ATTACHMENT_BYTES } from '../domain/attachmentPaths'
 import { createEmptyDocument, ensureFreshIndexes, refreshTrackerDatabase } from '../domain/database'
 import { createDemoDocument } from '../domain/demo'
+import { createUuidV7 } from '../domain/id'
 import { isDemoTrackerProfile } from '../domain/trackerProfile'
 import type { TrackerDatabase } from '../domain/types'
 import { assertTrackerDocument, parseTrackerDocument } from '../domain/validation'
@@ -15,15 +16,36 @@ import {
   type DirectoryHandleLike,
 } from './fileSystem'
 import { indexedDbStore, memoryStore, type KeyValueStore } from './idb'
-import type { ConnectableStorage, StorageConnection, StorageState, TrackerBackend } from './types'
+import { locationAddress, NEW_TRACKER, type TrackerAddress } from './trackerAddress'
+import type {
+  ConnectableStorage,
+  ConnectResult,
+  StorageConnection,
+  StorageState,
+  TrackerBackend,
+  TrackerSummary,
+} from './types'
 
 /** Mirrors the layout the dev server writes, so the same folder opens in either build. */
 export const TRACKER_FILENAME = 'tracker.json'
 export const ATTACHMENTS_DIRNAME = 'attachments'
 
-const DOCUMENT_KEY = 'document'
-const DIRECTORY_KEY = 'directoryHandle'
-const BACKLOG_KEY = 'unbackedSince'
+/*
+ * Every tracker this browser holds lives under keys carrying its id, so two tabs holding
+ * two trackers never read or write each other's. The keys below are the layout from
+ * before there could be more than one; `migrateSingleTracker` moves them under an id.
+ */
+const LEGACY_DOCUMENT_KEY = 'document'
+const LEGACY_DIRECTORY_KEY = 'directoryHandle'
+const LEGACY_BACKLOG_KEY = 'unbackedSince'
+
+const META_PREFIX = 'meta:'
+const documentKey = (id: string) => `document:${id}`
+const directoryKey = (id: string) => `directory:${id}`
+const backlogKey = (id: string) => `backlog:${id}`
+const metaKey = (id: string) => `${META_PREFIX}${id}`
+
+export const UNTITLED_TRACKER = 'Untitled tracker'
 
 export interface BrowserBackendOptions {
   store?: KeyValueStore
@@ -33,14 +55,39 @@ export interface BrowserBackendOptions {
   /** Asks the browser not to evict this origin's storage. Injected so tests can see it. */
   persist?: () => Promise<boolean>
   now?: () => Date
-}
-
-function attachmentKey(applicationId: string, attachmentId: string): string {
-  return `${applicationId}/${attachmentId}`
+  /** Which tracker this tab holds. The page's URL unless a test says otherwise. */
+  address?: TrackerAddress
 }
 
 function serialize(document: TrackerDatabase): string {
   return `${JSON.stringify(assertTrackerDocument(document), null, 2)}\n`
+}
+
+/** `job-search.json` names a tracker `job-search`; an export's zip the same way. */
+export function trackerNameFromFile(filename: string): string {
+  const base = filename.replace(/\.(json|zip)$/i, '').trim()
+  return base || UNTITLED_TRACKER
+}
+
+/*
+ * A tracker started from nothing has no file to be named after, and two of them both
+ * called "Untitled tracker" could not be told apart in the switcher or the tab strip —
+ * which is the one thing a name here is for. So each new one takes the next number.
+ */
+export function untitledName(taken: string[]): string {
+  if (!taken.includes(UNTITLED_TRACKER)) return UNTITLED_TRACKER
+  let n = 2
+  while (taken.includes(`${UNTITLED_TRACKER} ${n}`)) n += 1
+  return `${UNTITLED_TRACKER} ${n}`
+}
+
+function countApplications(text: string): number {
+  try {
+    const parsed = JSON.parse(text) as { applications?: unknown }
+    return Array.isArray(parsed.applications) ? parsed.applications.length : 0
+  } catch {
+    return 0
+  }
 }
 
 /**
@@ -51,6 +98,9 @@ function serialize(document: TrackerDatabase): string {
  * the IndexedDB copy is what stops a revoked folder permission — which the browser can do
  * without asking, and which cannot be renewed outside a user gesture — from also taking
  * the data with it.
+ *
+ * A browser can hold several trackers, each with its own document, folder, backlog and
+ * attachments; a backend instance serves the one its tab's URL names.
  */
 export function browserBackend(options: BrowserBackendOptions = {}): TrackerBackend {
   const store = options.store ?? defaultStore()
@@ -58,6 +108,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
   const pick = options.pick ?? pickDirectory
   const persist = options.persist ?? requestPersistence
   const now = options.now ?? (() => new Date())
+  const address = options.address ?? locationAddress()
 
   let directory: DirectoryHandleLike | null = null
   let connection: StorageConnection = canConnect ? { kind: 'disconnected' } : { kind: 'unsupported' }
@@ -65,8 +116,23 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
   let restored: Promise<void> | null = null
   const listeners = new Set<(state: StorageState) => void>()
 
+  /*
+   * Which tracker this is. `meta` is null until it has been written, which for a new
+   * tracker is its first save: opening an empty tracker writes nothing, so a tab opened
+   * and closed without typing leaves nothing behind to list.
+   */
+  let trackerId: string | null = null
+  let trackerName = UNTITLED_TRACKER
+  let meta: TrackerSummary | null = null
+  /* No tracker existed anywhere when this one was opened: the demo seeds only then. */
+  let firstEver = false
+
   function state(): StorageState {
-    return { connection, unbackedSince }
+    return {
+      connection,
+      unbackedSince,
+      tracker: trackerId === null ? null : { id: trackerId, name: trackerName },
+    }
   }
 
   function announce(next: StorageConnection = connection): StorageConnection {
@@ -74,6 +140,93 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     const current = state()
     for (const listener of listeners) listener(current)
     return next
+  }
+
+  function id(): string {
+    if (trackerId === null) throw new Error('No tracker is open yet')
+    return trackerId
+  }
+
+  async function listMetas(): Promise<TrackerSummary[]> {
+    const metas: TrackerSummary[] = []
+    for (const key of await store.keys('state')) {
+      if (!key.startsWith(META_PREFIX)) continue
+      const value = (await store.get('state', key)) as TrackerSummary | null
+      if (value) metas.push(value)
+    }
+    return metas.sort((left, right) => right.openedAt.localeCompare(left.openedAt))
+  }
+
+  async function writeMeta(applications: number): Promise<void> {
+    meta = {
+      id: id(),
+      name: trackerName,
+      applications,
+      openedAt: meta?.openedAt ?? now().toISOString(),
+    }
+    await store.put('state', metaKey(meta.id), meta)
+  }
+
+  /*
+   * The layout from before a browser could hold more than one tracker: one document, one
+   * folder handle, one backlog, and attachments keyed without a tracker. Moved under an id
+   * of its own so an existing visitor's data becomes their first tracker rather than
+   * vanishing behind keys nothing reads any more.
+   */
+  async function migrateSingleTracker(): Promise<void> {
+    const document = (await store.get('state', LEGACY_DOCUMENT_KEY)) as string | null
+    const handle = (await store.get('state', LEGACY_DIRECTORY_KEY)) as DirectoryHandleLike | null
+    const backlog = (await store.get('state', LEGACY_BACKLOG_KEY)) as string | null
+    if (document === null && handle === null) return
+
+    const migrated = createUuidV7(now())
+    if (document !== null) await store.put('state', documentKey(migrated), document)
+    if (handle !== null) await store.put('state', directoryKey(migrated), handle)
+    if (backlog !== null) await store.put('state', backlogKey(migrated), backlog)
+    for (const key of await store.keys('attachments')) {
+      if (key.split('/').length !== 2) continue
+      await store.put('attachments', `${migrated}/${key}`, await store.get('attachments', key))
+      await store.delete('attachments', key)
+    }
+    const summary: TrackerSummary = {
+      id: migrated,
+      name: handle?.name ?? UNTITLED_TRACKER,
+      applications: document === null ? 0 : countApplications(document),
+      openedAt: now().toISOString(),
+    }
+    await store.put('state', metaKey(migrated), summary)
+    await store.delete('state', LEGACY_DOCUMENT_KEY)
+    await store.delete('state', LEGACY_DIRECTORY_KEY)
+    await store.delete('state', LEGACY_BACKLOG_KEY)
+  }
+
+  /*
+   * The tracker the URL names, if this browser holds it; else, when the URL names none,
+   * the one opened most recently; else a new one. An id nobody holds — a tracker removed
+   * in another tab, a link from another browser — opens a new tracker rather than an
+   * error, because there is nothing to show for it and an empty tracker is harmless.
+   */
+  async function resolveTracker(): Promise<void> {
+    await migrateSingleTracker()
+    const metas = await listMetas()
+    const requested = address.requested()
+    const found = requested === null
+      ? metas[0]
+      : requested === NEW_TRACKER ? undefined : metas.find((candidate) => candidate.id === requested)
+    firstEver = metas.length === 0 && requested !== NEW_TRACKER
+    if (found) {
+      trackerId = found.id
+      trackerName = found.name
+      meta = { ...found, openedAt: now().toISOString() }
+      await store.put('state', metaKey(found.id), meta)
+    } else {
+      trackerId = createUuidV7(now())
+      trackerName = isDemoTrackerProfile() && firstEver
+        ? 'Demo'
+        : untitledName(metas.map((candidate) => candidate.name))
+      meta = null
+    }
+    address.show(trackerId)
   }
 
   /*
@@ -85,7 +238,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
   async function noteUnbacked(): Promise<void> {
     if (unbackedSince !== null || isDemoTrackerProfile()) return
     unbackedSince = now().toISOString()
-    await store.put('state', BACKLOG_KEY, unbackedSince)
+    await store.put('state', backlogKey(id()), unbackedSince)
     announce()
     /*
      * This is the moment the browser copy became the only copy, so it is the moment to
@@ -99,7 +252,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
   async function clearBacklog(): Promise<void> {
     if (unbackedSince === null) return
     unbackedSince = null
-    await store.delete('state', BACKLOG_KEY)
+    await store.delete('state', backlogKey(id()))
   }
 
   /*
@@ -108,13 +261,12 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
    * the honest answer, and the UI turns it into a button the viewer can press.
    */
   async function restore(): Promise<void> {
-    const backlog = (await store.get('state', BACKLOG_KEY)) as string | null
-    if (backlog !== null && !isDemoTrackerProfile()) {
-      unbackedSince = backlog
-      announce()
-    }
+    await resolveTracker()
+    const backlog = (await store.get('state', backlogKey(id()))) as string | null
+    if (backlog !== null && !isDemoTrackerProfile()) unbackedSince = backlog
+    announce()
     if (!canConnect) return
-    const stored = (await store.get('state', DIRECTORY_KEY)) as DirectoryHandleLike | null
+    const stored = (await store.get('state', directoryKey(id()))) as DirectoryHandleLike | null
     if (!stored) return
     const permission = await permissionFor(stored, false)
     if (permission === 'granted') {
@@ -126,7 +278,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       announce({ kind: 'needs-permission', name: stored.name })
       return
     }
-    await store.delete('state', DIRECTORY_KEY)
+    await store.delete('state', directoryKey(id()))
   }
 
   function ready(): Promise<void> {
@@ -143,6 +295,16 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     const done = queue.then(run)
     queue = done.catch(() => undefined)
     return done
+  }
+
+  const attachmentPrefix = () => `${id()}/`
+  const attachmentKey = (applicationId: string, attachmentId: string) =>
+    `${attachmentPrefix()}${applicationId}/${attachmentId}`
+
+  async function deleteAttachmentsWithPrefix(prefix: string): Promise<void> {
+    for (const key of await store.keys('attachments')) {
+      if (key.startsWith(prefix)) await store.delete('attachments', key)
+    }
   }
 
   async function attachmentsDirectory(create: boolean): Promise<DirectoryHandleLike | null> {
@@ -174,11 +336,13 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
    */
   async function flushToFolder(): Promise<void> {
     if (!directory) return
-    const cached = (await store.get('state', DOCUMENT_KEY)) as string | null
+    const cached = (await store.get('state', documentKey(id()))) as string | null
     if (cached !== null) await writeFileIn(directory, TRACKER_FILENAME, cached)
 
+    const prefix = attachmentPrefix()
     for (const key of await store.keys('attachments')) {
-      const [applicationId, attachmentId] = key.split('/')
+      if (!key.startsWith(prefix)) continue
+      const [applicationId, attachmentId] = key.slice(prefix.length).split('/')
       if (!applicationId || !attachmentId) continue
       const bytes = (await store.get('attachments', key)) as ArrayBuffer | null
       if (!bytes) continue
@@ -187,22 +351,44 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     }
   }
 
+  /** Browser storage only, with the tracker's entry in the list kept in step. */
+  async function cacheDocument(text: string, applications: number): Promise<void> {
+    await store.put('state', documentKey(id()), text)
+    await writeMeta(applications)
+  }
+
   async function writeDocument(document: TrackerDatabase): Promise<void> {
     const text = serialize(document)
-    await store.put('state', DOCUMENT_KEY, text)
+    await cacheDocument(text, document.applications.length)
     if (directory) await writeFileIn(directory, TRACKER_FILENAME, text)
     else await noteUnbacked()
+  }
+
+  /* Another tracker in this browser already writing to the folder just picked, if any. */
+  async function trackerHolding(picked: DirectoryHandleLike): Promise<TrackerSummary | null> {
+    if (!picked.isSameEntry) return null
+    for (const other of await listMetas()) {
+      if (other.id === trackerId) continue
+      const handle = (await store.get('state', directoryKey(other.id))) as DirectoryHandleLike | null
+      if (handle && (await picked.isSameEntry(handle))) return other
+    }
+    return null
   }
 
   const storage: ConnectableStorage = {
     connection: () => connection,
     state,
 
-    async connect(): Promise<StorageConnection | null> {
+    async connect(): Promise<ConnectResult> {
+      await ready()
       const picked = await pick()
-      if (!picked) return null
+      if (!picked) return { outcome: 'dismissed' }
+      const holder = await trackerHolding(picked)
+      if (holder) return { outcome: 'already-open', tracker: holder }
+
       directory = picked
-      await store.put('state', DIRECTORY_KEY, picked)
+      trackerName = picked.name
+      await store.put('state', directoryKey(id()), picked)
       /*
        * Connecting a folder adopts whatever is already in it. Someone pointing the site
        * at the folder they exported last week means to open that data, not to overwrite
@@ -211,17 +397,23 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       const existing = await readFileIn(picked, TRACKER_FILENAME)
       if (existing) {
         const parsed = ensureFreshIndexes(parseTrackerDocument(await existing.text()))
-        await store.put('state', DOCUMENT_KEY, serialize(parsed))
+        await cacheDocument(serialize(parsed), parsed.applications.length)
       } else {
-        const cached = (await store.get('state', DOCUMENT_KEY)) as string | null
-        await writeFileIn(picked, TRACKER_FILENAME, cached ?? serialize(createEmptyDocument()))
+        const cached = (await store.get('state', documentKey(id()))) as string | null
+        const text = cached ?? serialize(createEmptyDocument())
+        await writeFileIn(picked, TRACKER_FILENAME, text)
+        await cacheDocument(text, countApplications(text))
       }
       await clearBacklog()
-      return announce({ kind: 'connected', name: picked.name })
+      return {
+        outcome: 'connected',
+        connection: announce({ kind: 'connected', name: picked.name }),
+      }
     },
 
     async reconnect(): Promise<StorageConnection> {
-      const stored = (await store.get('state', DIRECTORY_KEY)) as DirectoryHandleLike | null
+      await ready()
+      const stored = (await store.get('state', directoryKey(id()))) as DirectoryHandleLike | null
       if (!stored) return announce({ kind: 'disconnected' })
       const permission = await permissionFor(stored, true)
       if (permission !== 'granted') {
@@ -234,8 +426,9 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     },
 
     async disconnect(): Promise<StorageConnection> {
+      await ready()
       directory = null
-      await store.delete('state', DIRECTORY_KEY)
+      await store.delete('state', directoryKey(id()))
       return announce(canConnect ? { kind: 'disconnected' } : { kind: 'unsupported' })
     },
 
@@ -250,6 +443,37 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
         if (unbackedSince === null) return
         await clearBacklog()
         announce()
+      })
+    },
+
+    async nameAfterFile(filename: string): Promise<void> {
+      await ready()
+      return serialized(async () => {
+        if (directory) return
+        trackerName = trackerNameFromFile(filename)
+        if (meta) await writeMeta(meta.applications)
+        announce()
+      })
+    },
+
+    async listTrackers(): Promise<TrackerSummary[]> {
+      await ready()
+      return listMetas()
+    },
+
+    async removeTracker(): Promise<TrackerSummary | null> {
+      await ready()
+      return serialized(async () => {
+        const removing = id()
+        await deleteAttachmentsWithPrefix(`${removing}/`)
+        await store.delete('state', documentKey(removing))
+        await store.delete('state', directoryKey(removing))
+        await store.delete('state', backlogKey(removing))
+        await store.delete('state', metaKey(removing))
+        directory = null
+        meta = null
+        unbackedSince = null
+        return (await listMetas())[0] ?? null
       })
     },
 
@@ -271,12 +495,12 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
           const file = await readFileIn(directory, TRACKER_FILENAME)
           if (file) {
             const parsed = ensureFreshIndexes(parseTrackerDocument(await file.text()))
-            await store.put('state', DOCUMENT_KEY, serialize(parsed))
+            await cacheDocument(serialize(parsed), parsed.applications.length)
             return parsed
           }
         }
 
-        const cached = (await store.get('state', DOCUMENT_KEY)) as string | null
+        const cached = (await store.get('state', documentKey(id()))) as string | null
         if (cached === null) {
           /*
            * Nothing stored yet. The demo profile seeds its nineteen examples and writes
@@ -285,9 +509,11 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
            *
            * The seed is written rather than only returned, which is what makes it a first
            * visit rather than every visit: someone who deletes every demo row gets an
-           * empty demo back on reload, not the nineteen they just cleared.
+           * empty demo back on reload, not the nineteen they just cleared. It is the first
+           * visit to the demo, not to each tracker in it: a new tracker there is empty,
+           * because that is what New tracker asked for.
            */
-          if (!isDemoTrackerProfile()) return createEmptyDocument()
+          if (!isDemoTrackerProfile() || !firstEver) return createEmptyDocument()
           const demo = refreshTrackerDatabase(createDemoDocument())
           await writeDocument(demo)
           return demo
@@ -313,7 +539,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       }
       await ready()
       return serialized(async () => {
-        await store.clear('attachments')
+        await deleteAttachmentsWithPrefix(attachmentPrefix())
         const attachments = await attachmentsDirectory(false)
         if (attachments && directory) await removeEntryIn(directory, ATTACHMENTS_DIRNAME, true)
         const demo = refreshTrackerDatabase(createDemoDocument())
@@ -368,10 +594,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     async deleteApplicationAttachments(applicationId: string): Promise<void> {
       await ready()
       await serialized(async () => {
-        const prefix = `${applicationId}/`
-        for (const key of await store.keys('attachments')) {
-          if (key.startsWith(prefix)) await store.delete('attachments', key)
-        }
+        await deleteAttachmentsWithPrefix(`${attachmentPrefix()}${applicationId}/`)
         const attachments = await attachmentsDirectory(false)
         if (attachments) await removeEntryIn(attachments, applicationId, true)
       })
@@ -380,7 +603,8 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     async wipeAttachments(): Promise<void> {
       await ready()
       await serialized(async () => {
-        await store.clear('attachments')
+        // This tracker's only: the others in this browser keep theirs.
+        await deleteAttachmentsWithPrefix(attachmentPrefix())
         if (directory) await removeEntryIn(directory, ATTACHMENTS_DIRNAME, true)
       })
     },

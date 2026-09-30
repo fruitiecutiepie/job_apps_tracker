@@ -53,6 +53,20 @@ export type StorageConnection =
   | { kind: 'connected'; name: string }
 
 /**
+ * One tracker among the several a browser can hold. The static build keeps each under an
+ * id of its own, so two tabs can have two different trackers open — a folder in one, an
+ * imported file in the other — without either writing over the other.
+ */
+export interface TrackerSummary {
+  id: string
+  /** The connected folder's name, else the imported file's, else a placeholder. */
+  name: string
+  applications: number
+  /** When a tab last opened it: a new tab opens the most recent. */
+  openedAt: string
+}
+
+/**
  * Where the data is going, and whether any of it exists only in this browser.
  *
  * `unbackedSince` is when the first change not yet in a file the viewer holds was made:
@@ -61,21 +75,31 @@ export type StorageConnection =
  * visits — a reminder that reset on every reload would say "nothing to worry about" to
  * someone who has been typing into one browser for a month. Always null while connected,
  * where every write reaches the folder, and on the demo, whose data is fictional.
+ *
+ * `tracker` is null only until the backend has worked out which tracker this tab holds.
  */
 export interface StorageState {
   connection: StorageConnection
   unbackedSince: string | null
+  tracker: { id: string; name: string } | null
 }
+
+export type ConnectResult =
+  | { outcome: 'connected'; connection: StorageConnection }
+  /** The viewer dismissed the picker. Nothing changed, so there is nothing to report. */
+  | { outcome: 'dismissed' }
+  /**
+   * The folder picked is already another tracker's. Connecting it here too would leave
+   * two trackers writing whole documents into one file, each undoing the other, so the
+   * caller should open that tracker instead.
+   */
+  | { outcome: 'already-open'; tracker: TrackerSummary }
 
 export interface ConnectableStorage {
   connection(): StorageConnection
   state(): StorageState
-  /**
-   * Opens the picker. Must be called from a user gesture. Null when the viewer dismissed
-   * it, which is a decision rather than a result: nothing changed, and a caller that read
-   * the unchanged connection as an answer would report a folder nobody picked.
-   */
-  connect(): Promise<StorageConnection | null>
+  /** Opens the picker. Must be called from a user gesture. */
+  connect(): Promise<ConnectResult>
   /** Re-asks for permission on the folder already stored. Must be called from a gesture. */
   reconnect(): Promise<StorageConnection>
   disconnect(): Promise<StorageConnection>
@@ -86,6 +110,18 @@ export interface ConnectableStorage {
    * cleared it.
    */
   markBackedUp(): Promise<void>
-  /** Fires whenever the connection or the backlog changes, so the UI can follow it. */
+  /**
+   * Names this tracker after the file it was imported from. Ignored while a folder is
+   * connected, whose name is the one that says where the data is.
+   */
+  nameAfterFile(filename: string): Promise<void>
+  /** Every tracker this browser holds, most recently opened first. */
+  listTrackers(): Promise<TrackerSummary[]>
+  /**
+   * Deletes this tab's tracker from browser storage — never a connected folder's files,
+   * which are the viewer's — and returns the tracker to open next, or null for none.
+   */
+  removeTracker(): Promise<TrackerSummary | null>
+  /** Fires whenever the connection, the backlog or the tracker changes. */
   subscribe(listener: (state: StorageState) => void): () => void
 }

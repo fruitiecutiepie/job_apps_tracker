@@ -348,7 +348,7 @@ The global search, state, activity, company, and source filters apply across vie
 ### Back up or replace data
 
 - **Export** downloads a zip archive with `tracker.json` and any attachment files. This is a complete copy: it is what you import into another browser, another machine, or a fresh checkout.
-- **Start fresh** empties the tracker, after the same question an import asks. With a folder connected it stops saving to that folder and leaves its `tracker.json` as it was, so the old tracker is still there to import or reconnect to.
+
 - **Import** accepts zip archives or legacy JSON. You can also **drop a file anywhere on the window**, or paste one you have copied — the button, the drop and the paste are the same import. On the hosted app, importing is also offered on the first visit, before there is anything to look at.
 
   Whichever way the file arrives it is parsed into the domain model and checked against the schema and its invariants *before* you are asked to replace anything, so a hand-edited export that no longer holds together names the field that broke rather than half-replacing your data. A file that is not a tracker export is refused with what it is you can drop. Dragging a Kanban card or a notes tab is untouched: only a drag carrying files from outside the page is an import.
@@ -370,6 +370,8 @@ There are two builds, and they differ in one thing: who writes the file.
 On first launch after upgrading from the browser-storage era, a valid legacy `localStorage` document from the same browser origin is copied into `data/tracker.json` once, then browser storage is cleared.
 
 **The hosted app** has no server to write that file, so the browser does it. Every change goes into the browser's own storage immediately, and into your connected folder as well when there is one. Those are not alternatives: the folder is the copy that outlives the browser profile, and the browser copy is what survives a folder permission the browser decided to withdraw.
+
+**Several trackers, one per tab.** The hosted app can hold more than one tracker in the same browser — a folder in one tab, an imported file in another. Each is named after its folder, or the file it was imported from, and that name is the browser tab's title and the switcher beside the logo. The switcher lists them all: click one to open it, or Cmd/Ctrl-click to open it in a new tab. **New tracker** starts an empty one and leaves the one you were in exactly as it was. **Remove this tracker** deletes it from the browser — after offering to save a copy if nothing else holds it — and never touches a connected folder's files. A folder can belong to one tracker at a time: pick one that another tracker already uses and that tracker opens instead.
 
 A connected folder gets the same layout the dev server writes — `tracker.json` at the top, attachments under `attachments/{applicationId}/{attachmentId}` — so one folder opens in either build. Point the hosted app at your checkout's `data/` directory and both are looking at the same file.
 

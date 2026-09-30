@@ -337,6 +337,96 @@ p {
   font-weight: 600;
 }
 
+/*
+ * The brand and which tracker this tab holds share the first cell. The name is capped so a
+ * long folder name truncates rather than pushing the views off the bar; the whole name is
+ * the trigger's title, and the tab's.
+ */
+.topbar__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.tracker-switcher__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  max-width: 14rem;
+  height: var(--control);
+  padding: 0 var(--s2) 0 var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r1);
+  color: var(--ink-2);
+  background: transparent;
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+.tracker-switcher__trigger:hover,
+.tracker-switcher__trigger[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.tracker-switcher__trigger svg {
+  flex-shrink: 0;
+}
+
+.tracker-switcher__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Opens under the trigger at the left of the bar, where More actions opens at the right. */
+.actions-menu__panel.tracker-switcher__panel {
+  right: auto;
+  left: 0;
+  width: 18rem;
+}
+
+.tracker-switcher__caption {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+.tracker-switcher__list {
+  display: grid;
+  margin: 0 0 var(--s2);
+  padding: 0 0 var(--s2);
+  border-bottom: 1px solid var(--line);
+  list-style: none;
+}
+
+.tracker-switcher__item {
+  min-height: var(--control-form);
+  text-decoration: none;
+}
+
+.tracker-switcher__item[aria-current='page'] svg {
+  color: var(--accent);
+}
+
+.tracker-switcher__label {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+.tracker-switcher__label small {
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
+.tracker-switcher__spacer {
+  flex-shrink: 0;
+  width: 16px;
+}
+
 /* Where you are: the strip of views, and the prep notes toggle that lays a workspace over
    whichever of them you were reading. One cell, because both answer the same question —
    the actions on the other side answer what you can do to the collection. */
@@ -664,6 +754,10 @@ p {
   background: transparent;
   font-size: var(--t3);
   text-align: left;
+}
+
+a.actions-menu__item {
+  text-decoration: none;
 }
 
 .actions-menu__item:hover {

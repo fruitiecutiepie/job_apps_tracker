@@ -17,6 +17,8 @@ import { FakeDirectory } from '../backend/fakeDirectory'
  */
 async function renderStaticApp(profile: 'live' | 'demo' = 'live'): Promise<void> {
   vi.resetModules()
+  // Which tracker opens comes from the URL, so each render starts on a bare one.
+  window.history.replaceState(null, '', '/')
   vi.stubEnv('VITE_TRACKER_BACKEND', 'browser')
   /*
    * The suite runs under the demo profile by default, so the tracker build has to say so
@@ -81,6 +83,7 @@ describe('the static build', () => {
   it('opens on an empty tracker, not on the demo data', async () => {
     await renderStaticApp()
     expect(screen.getByText('0 of 0 applications shown')).toBeInTheDocument()
+    expect(document.title).toBe('Untitled tracker — Job applications')
   })
 
   it('explains where the data goes before there is any', async () => {
@@ -177,6 +180,26 @@ describe('the static build', () => {
     expect(within(question).getByRole('button', { name: 'Discard and import' })).toBeInTheDocument()
   })
 
+  /*
+   * A browser can hold several trackers, a tab holds one, and the tab says which: the
+   * switcher's name and the tab's title are both the imported file's.
+   */
+  it('names the tab and the switcher after the file it was imported from', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await user.upload(input, trackerFile('job-search-2026'))
+
+    await waitFor(() => expect(document.title).toBe('job-search-2026 — Job applications'))
+    const trigger = within(topbar()).getByRole('button', { name: /^Tracker: job-search-2026/ })
+    await user.click(trigger)
+    const list = screen.getByRole('list', { name: /Trackers in this browser/ })
+    const current = within(list).getByRole('link', { name: /job-search-2026/ })
+    expect(current).toHaveAttribute('aria-current', 'page')
+    expect(current).toHaveTextContent('1 application')
+    expect(screen.getByRole('link', { name: 'New tracker' })).toHaveAttribute('href', '?tracker=new')
+  })
+
   it('keeps reminding after a reload, since forgetting happens between visits', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
@@ -266,31 +289,52 @@ describe('the static build, in a browser that can write a folder', () => {
   })
 
   /*
-   * Starting fresh with a folder connected lets go of the folder rather than emptying it.
-   * The file there is the viewer's, so it is the copy, and the question is a plain one.
+   * Removing a tracker deletes it from this browser and never touches a connected
+   * folder's files, so the folder is the copy and the question is a plain one.
    */
-  it('starts fresh by leaving the connected folder its file', async () => {
+  it('removes a tracker from the browser, leaving its folder its file', async () => {
     const user = userEvent.setup()
     const folder = new FakeDirectory('job-apps')
     Object.assign(window, { showDirectoryPicker: vi.fn(async () => folder) })
     await renderStaticApp()
+    const { navigation } = await import('../backend/trackerAddress')
+    const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
 
     await user.click(screen.getByRole('button', { name: /Save to a folder/ }))
     await within(topbar()).findByRole('button', { name: 'Saving to job-apps' })
     await addApplication(user, 'Northwind')
     await waitFor(() => expect(folder.readText('tracker.json')).toContain('Northwind'))
 
-    await user.click(screen.getByRole('button', { name: 'More actions' }))
-    await user.click(screen.getByRole('button', { name: 'Start fresh' }))
-    const question = await screen.findByRole('alertdialog', { name: 'Start a fresh tracker?' })
-    expect(question).toHaveTextContent('Your job-apps folder keeps its copy')
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker: job-apps/ }))
+    await user.click(screen.getByRole('button', { name: 'Remove this tracker' }))
+    const question = await screen.findByRole('alertdialog', { name: 'Remove job-apps from this browser?' })
+    expect(question).toHaveTextContent('Your job-apps folder keeps its file.')
     expect(within(question).queryByRole('button', { name: /Discard/ })).not.toBeInTheDocument()
-    await user.click(within(question).getByRole('button', { name: 'Start fresh' }))
+    await user.click(within(question).getByRole('button', { name: 'Remove' }))
 
-    await waitFor(() => expect(screen.getByText('0 of 0 applications shown')).toBeInTheDocument())
+    await waitFor(() => expect(open).toHaveBeenCalledWith('?tracker=new'))
     expect(folder.readText('tracker.json')).toContain('Northwind')
-    expect(within(topbar()).getByRole('button', { name: 'Saved in this browser' })).toBeInTheDocument()
-    expect(screen.getByRole('status')).toHaveTextContent('Your job-apps folder still has the old one.')
+  })
+
+  /*
+   * A folder another tracker already writes to is opened as that tracker, not connected a
+   * second time; two trackers writing one file would each undo the other.
+   */
+  it('opens the tracker a picked folder already belongs to', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    // Which tracker holds a folder is the backend's to find out, and its tests do.
+    const { backend } = await import('../backend')
+    const { navigation } = await import('../backend/trackerAddress')
+    vi.spyOn(backend.storage!, 'connect').mockResolvedValue({
+      outcome: 'already-open',
+      tracker: { id: 'holder', name: 'job-apps', applications: 3, openedAt: '' },
+    })
+    const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
+
+    await user.click(screen.getByRole('button', { name: /Save to a folder/ }))
+    await waitFor(() => expect(open).toHaveBeenCalledWith('?tracker=holder'))
+    expect(screen.queryByText(/now saved to that folder/)).not.toBeInTheDocument()
   })
 
   it('says nothing when the folder picker is dismissed', async () => {

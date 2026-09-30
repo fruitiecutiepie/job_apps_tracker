@@ -21,7 +21,12 @@ describe('the IndexedDB store', () => {
   })
 
   it('opens a first visit on an empty tracker rather than failing to load', async () => {
-    const backend = browserBackend({ store: indexedDbStore('live'), supportsFolders: false })
+    const backend = browserBackend({
+      store: indexedDbStore('live'),
+      supportsFolders: false,
+      // The runner's own page is not a tracker tab, so its URL is left alone.
+      address: { requested: () => null, show: () => {} },
+    })
     const loaded = await backend.loadDocument()
     expect(loaded.applications).toEqual([])
     expect(backend.storage!.state().unbackedSince).toBeNull()

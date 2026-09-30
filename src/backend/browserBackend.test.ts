@@ -4,7 +4,9 @@ import { createApplication } from '../domain/mutations'
 import { prepareTrackerDatabase } from '../domain/database'
 import { MAX_ATTACHMENT_BYTES } from '../domain/attachmentPaths'
 import type { TrackerDatabase } from '../domain/types'
-import { browserBackend, TRACKER_FILENAME } from './browserBackend'
+import type { TrackerBackend } from './types'
+import { browserBackend, TRACKER_FILENAME, type BrowserBackendOptions } from './browserBackend'
+import { NEW_TRACKER } from './trackerAddress'
 import { FakeDirectory } from './fakeDirectory'
 import { idbName, memoryStore, type KeyValueStore } from './idb'
 import type { DirectoryHandleLike } from './fileSystem'
@@ -28,6 +30,15 @@ function withApplication(company = 'Northwind'): TrackerDatabase {
   ])
 }
 
+/** What a subscriber saw, with repeats of one value collapsed: announcements may repeat. */
+function changes<T>(seen: T[]): T[] {
+  return seen.filter((value, index) => index === 0 || value !== seen[index - 1])
+}
+
+async function cachedDocument(store: KeyValueStore, backend: TrackerBackend): Promise<unknown> {
+  return store.get('state', `document:${backend.storage!.state().tracker!.id}`)
+}
+
 function connected(store: KeyValueStore, folder: DirectoryHandleLike) {
   return browserBackend({ store, supportsFolders: true, pick: async () => folder })
 }
@@ -49,6 +60,8 @@ describe('storage namespacing', () => {
  */
 beforeEach(() => {
   vi.stubEnv('VITE_TRACKER_PROFILE', 'live')
+  // Which tracker a backend opens comes from the URL, so each test starts on a bare one.
+  window.history.replaceState(null, '', '/')
 })
 
 afterEach(() => {
@@ -71,7 +84,7 @@ describe('browser backend, with no folder connected', () => {
 
   it('writes nothing until there is something to write', async () => {
     await browserBackend({ store, supportsFolders: false }).loadDocument()
-    expect(await store.get('state', 'document')).toBeNull()
+    expect(await store.keys('state')).toEqual([])
   })
 
   it('seeds the demo profile instead, and only once', async () => {
@@ -156,13 +169,16 @@ describe('browser backend, with a folder connected', () => {
 
   it('writes tracker.json into the folder and keeps a copy in browser storage', async () => {
     const backend = connected(store, folder)
-    expect(await backend.storage!.connect()).toEqual({ kind: 'connected', name: 'job-applications' })
+    expect(await backend.storage!.connect()).toEqual({
+      outcome: 'connected',
+      connection: { kind: 'connected', name: 'job-applications' },
+    })
 
     await backend.saveDocument(withApplication())
 
     const onDisk = folder.readText(TRACKER_FILENAME)
     expect(onDisk).toContain('Northwind')
-    expect(await store.get('state', 'document')).toBe(onDisk)
+    expect(await cachedDocument(store, backend)).toBe(onDisk)
   })
 
   it('mirrors attachments into attachments/<application>/<attachment>', async () => {
@@ -220,12 +236,12 @@ describe('browser backend, with a folder connected', () => {
 
     await backend.storage!.connect()
     await backend.storage!.disconnect()
-    expect(seen).toEqual(['disconnected', 'connected', 'disconnected'])
+    expect(changes(seen)).toEqual(['disconnected', 'connected', 'disconnected'])
   })
 
   it('treats a dismissed picker as no change, and says it was dismissed', async () => {
     const backend = browserBackend({ store, supportsFolders: true, pick: async () => null })
-    expect(await backend.storage!.connect()).toBeNull()
+    expect(await backend.storage!.connect()).toEqual({ outcome: 'dismissed' })
     expect(backend.storage!.connection()).toEqual({ kind: 'disconnected' })
   })
 })
@@ -313,7 +329,7 @@ describe('browser backend, when the folder permission lapses', () => {
     const backend = connected(store, folder)
     await backend.loadDocument()
     expect(backend.storage!.connection()).toEqual({ kind: 'disconnected' })
-    expect(await store.get('state', 'directoryHandle')).toBeNull()
+    expect((await store.keys('state')).some((key) => key.startsWith('directory:'))).toBe(false)
   })
 })
 
@@ -362,12 +378,12 @@ describe('the backup reminder', () => {
     await backend.saveDocument(withApplication())
     await backend.storage!.markBackedUp()
     expect(backend.storage!.state().unbackedSince).toBeNull()
-    expect(await store.get('state', 'unbackedSince')).toBeNull()
+    expect((await store.keys('state')).some((key) => key.startsWith('backlog:'))).toBe(false)
 
     clock = new Date('2026-09-09T09:00:00.000Z')
     await backend.saveDocument(withApplication('After the export'))
     expect(backend.storage!.state().unbackedSince).toBe('2026-09-09T09:00:00.000Z')
-    expect(seen).toEqual([null, '2026-09-01T09:00:00.000Z', null, '2026-09-09T09:00:00.000Z'])
+    expect(changes(seen)).toEqual([null, '2026-09-01T09:00:00.000Z', null, '2026-09-09T09:00:00.000Z'])
   })
 
   /*
@@ -413,7 +429,7 @@ describe('the backup reminder', () => {
     expect(backend.storage!.state().unbackedSince).not.toBeNull()
 
     await backend.storage!.connect()
-    expect(backend.storage!.state()).toEqual({
+    expect(backend.storage!.state()).toMatchObject({
       connection: { kind: 'connected', name: 'job-applications' },
       unbackedSince: null,
     })
@@ -439,6 +455,180 @@ describe('the backup reminder', () => {
     await backend.loadDocument()
     await backend.saveDocument(withApplication())
     expect(backend.storage!.state().unbackedSince).toBeNull()
+  })
+})
+
+/*
+ * A browser holds several trackers, and a tab holds one of them — the one its URL names.
+ * Two tabs with two trackers open must never read or write each other's data.
+ */
+describe('several trackers in one browser', () => {
+  let store: KeyValueStore
+  let clock: Date
+
+  beforeEach(() => {
+    store = memoryStore()
+    clock = new Date('2026-09-01T09:00:00.000Z')
+  })
+
+  function tab(requested: string | null, extra: Partial<BrowserBackendOptions> = {}) {
+    const shown: string[] = []
+    const backend = browserBackend({
+      store,
+      supportsFolders: false,
+      persist: async () => true,
+      now: () => clock,
+      address: { requested: () => requested, show: (id) => shown.push(id) },
+      ...extra,
+    })
+    return { backend, shown }
+  }
+
+  async function trackerIn(backend: TrackerBackend): Promise<string> {
+    await backend.loadDocument()
+    return backend.storage!.state().tracker!.id
+  }
+
+  it('keeps two trackers apart, documents and attachments both', async () => {
+    const first = tab(NEW_TRACKER).backend
+    await first.saveDocument(withApplication('First'))
+    await first.writeAttachment(APPLICATION_ID, ATTACHMENT_ID, new Blob(['first']), null)
+    const second = tab(NEW_TRACKER).backend
+    await second.saveDocument(withApplication('Second'))
+
+    const firstId = await trackerIn(first)
+    const secondId = await trackerIn(second)
+    expect(firstId).not.toBe(secondId)
+    expect((await tab(firstId).backend.loadDocument()).applications[0].company).toBe('First')
+    expect((await tab(secondId).backend.loadDocument()).applications[0].company).toBe('Second')
+    expect(await second.readAttachment(APPLICATION_ID, ATTACHMENT_ID)).toBeNull()
+
+    await second.wipeAttachments()
+    expect(await first.readAttachment(APPLICATION_ID, ATTACHMENT_ID)).not.toBeNull()
+  })
+
+  it('puts the tracker it opened in the URL, so a reload comes back to it', async () => {
+    const { backend, shown } = tab(null)
+    const id = await trackerIn(backend)
+    expect(shown).toEqual([id])
+  })
+
+  it('opens the most recently opened tracker when the URL names none', async () => {
+    const older = tab(NEW_TRACKER).backend
+    await older.saveDocument(withApplication('Older'))
+    clock = new Date('2026-09-02T09:00:00.000Z')
+    const newer = tab(NEW_TRACKER).backend
+    await newer.saveDocument(withApplication('Newer'))
+
+    expect((await tab(null).backend.loadDocument()).applications[0].company).toBe('Newer')
+  })
+
+  it('opens a new tracker for an id this browser does not hold', async () => {
+    const known = tab(NEW_TRACKER).backend
+    await known.saveDocument(withApplication('Known'))
+
+    const { backend, shown } = tab('0190a0a0-0000-7000-8000-000000000000')
+    expect((await backend.loadDocument()).applications).toEqual([])
+    expect(shown[0]).not.toBe('0190a0a0-0000-7000-8000-000000000000')
+  })
+
+  it('lists what it holds, and does not list a tracker nothing was ever written to', async () => {
+    const named = tab(NEW_TRACKER).backend
+    await named.saveDocument(withApplication())
+    await named.storage!.nameAfterFile('job-search-2026.json')
+    await tab(NEW_TRACKER).backend.loadDocument()
+
+    const listed = await named.storage!.listTrackers()
+    expect(listed.map(({ name, applications }) => ({ name, applications }))).toEqual([
+      { name: 'job-search-2026', applications: 1 },
+    ])
+  })
+
+  it('numbers trackers started from nothing, so two can be told apart', async () => {
+    const first = tab(NEW_TRACKER).backend
+    await first.saveDocument(withApplication())
+    const second = tab(NEW_TRACKER).backend
+    await second.saveDocument(withApplication())
+    await second.storage!.nameAfterFile('imported.json')
+    const third = tab(NEW_TRACKER).backend
+    await third.loadDocument()
+
+    expect(first.storage!.state().tracker!.name).toBe('Untitled tracker')
+    expect(third.storage!.state().tracker!.name).toBe('Untitled tracker 2')
+  })
+
+  it('is named after the folder it saves to, and keeps that name over an import', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })
+    await backend.loadDocument()
+    await backend.storage!.connect()
+    await backend.storage!.nameAfterFile('someone-elses.json')
+    expect(backend.storage!.state().tracker!.name).toBe('job-apps')
+  })
+
+  /*
+   * Two trackers writing whole documents into one folder would each undo the other, so a
+   * folder already connected elsewhere is handed back as that tracker instead.
+   */
+  it('will not connect a folder another tracker already saves to', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const holder = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+    await holder.loadDocument()
+    await holder.storage!.connect()
+    const holderId = holder.storage!.state().tracker!.id
+
+    const other = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+    await other.loadDocument()
+    const result = await other.storage!.connect()
+    expect(result).toMatchObject({ outcome: 'already-open', tracker: { id: holderId, name: 'job-apps' } })
+    expect(other.storage!.connection()).toEqual({ kind: 'disconnected' })
+  })
+
+  it('removes only its own tracker, leaves a folder its files, and names the next', async () => {
+    const kept = tab(NEW_TRACKER).backend
+    await kept.saveDocument(withApplication('Kept'))
+    const keptId = await trackerIn(kept)
+
+    const folder = new FakeDirectory('job-apps')
+    const removed = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+    await removed.loadDocument()
+    await removed.storage!.connect()
+    await removed.saveDocument(withApplication('Removed'))
+    await removed.writeAttachment(APPLICATION_ID, ATTACHMENT_ID, new Blob(['resume']), null)
+    const removedId = removed.storage!.state().tracker!.id
+
+    expect(await removed.storage!.removeTracker()).toMatchObject({ id: keptId })
+    expect((await store.keys('state')).filter((key) => key.includes(removedId))).toEqual([])
+    expect((await store.keys('attachments')).filter((key) => key.startsWith(removedId))).toEqual([])
+    expect(folder.readText(TRACKER_FILENAME)).toContain('Removed')
+    expect(folder.readText(`attachments/${APPLICATION_ID}/${ATTACHMENT_ID}`)).toBe('resume')
+    expect((await tab(keptId).backend.loadDocument()).applications[0].company).toBe('Kept')
+  })
+
+  /*
+   * Before a browser could hold more than one tracker, it held one under fixed keys. That
+   * visitor's data must come back as their first tracker, not vanish behind keys nothing
+   * reads any more.
+   */
+  it('moves a single-tracker browser into the first of several', async () => {
+    const document = `${JSON.stringify(withApplication('From before'))}\n`
+    await store.put('state', 'document', document)
+    await store.put('state', 'unbackedSince', '2026-08-01T09:00:00.000Z')
+    await store.put('attachments', `${APPLICATION_ID}/${ATTACHMENT_ID}`, new TextEncoder().encode('resume').buffer)
+
+    const { backend } = tab(null)
+    const loaded = await backend.loadDocument()
+    expect(loaded.applications[0].company).toBe('From before')
+    expect(backend.storage!.state().unbackedSince).toBe('2026-08-01T09:00:00.000Z')
+    expect(new TextDecoder().decode(await backend.readAttachment(APPLICATION_ID, ATTACHMENT_ID) ?? undefined)).toBe('resume')
+    expect(await store.get('state', 'document')).toBeNull()
+    expect(await backend.storage!.listTrackers()).toHaveLength(1)
+  })
+
+  it('seeds the demo once, not every new tracker in it', async () => {
+    vi.stubEnv('VITE_TRACKER_PROFILE', 'demo')
+    expect((await tab(null).backend.loadDocument()).applications).toHaveLength(19)
+    expect((await tab(NEW_TRACKER).backend.loadDocument()).applications).toEqual([])
   })
 })
 

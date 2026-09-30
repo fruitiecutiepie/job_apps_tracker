@@ -24,18 +24,21 @@ export type TrackerReplacement =
       folder: string | null
     }
   | {
-      kind: 'clear'
+      kind: 'remove'
+      /** The tracker's name, as its tab and the switcher show it. */
+      name: string
       current: number
       /**
-       * As for an import, except that a connected folder does count: starting fresh
-       * stops writing to it rather than emptying it, so its file is left as the copy.
+       * As for an import, except that a connected folder does count: removing a tracker
+       * deletes it from browser storage and never touches the folder, so its file is
+       * left as the copy.
        */
       backedUp: boolean
-      /** The folder that keeps the old tracker, when one is connected. */
+      /** The folder that keeps its file, when one is connected. */
       folder: string | null
     }
 
-/** `proceed` is the import or the clear; `save-then-proceed` downloads a copy first. */
+/** `proceed` is the import or the removal; `save-then-proceed` downloads a copy first. */
 export type ReplaceChoice = 'save-then-proceed' | 'proceed' | 'cancel'
 
 export interface ReplaceTrackerDialogProps {
@@ -53,14 +56,12 @@ function describe(replacement: TrackerReplacement): { title: string; body: strin
     ? 'Your last backup already has them.'
     : 'They are not saved anywhere else, so save a copy first if you might want them back.'
 
-  if (replacement.kind === 'clear') {
-    const where = folder
-      ? ` Your ${folder} folder keeps its copy, and new changes stop being saved to it.`
-      : ` ${kept}`
+  if (replacement.kind === 'remove') {
+    const where = folder ? ` Your ${folder} folder keeps its file.` : ` ${kept}`
     return {
-      title: 'Start a fresh tracker?',
-      body: `This clears the ${plural(current, 'application')} you have now.${where}`,
-      verb: 'start fresh',
+      title: `Remove ${replacement.name} from this browser?`,
+      body: `This deletes its ${plural(current, 'application')} from this browser.${where}`,
+      verb: 'remove',
     }
   }
 
@@ -76,8 +77,8 @@ function describe(replacement: TrackerReplacement): { title: string; body: strin
 }
 
 /**
- * The question asked before anything replaces the whole tracker — an import, or starting
- * fresh. It is a dialog rather than `window.confirm` because the answer has three parts,
+ * The question asked before anything replaces or removes a whole tracker — an import, or
+ * removing a tracker from the browser. It is a dialog rather than `window.confirm` because the answer has three parts,
  * not two: someone who is about to lose applications no file holds should be offered the
  * copy, not only a yes or a no. When a file already holds everything the copy is not
  * offered — there is nothing it would keep — and the question goes back to a plain one.
