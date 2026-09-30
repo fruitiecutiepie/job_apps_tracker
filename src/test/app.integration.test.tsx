@@ -4615,16 +4615,53 @@ describe('job applications tracker', () => {
     expect(widthOf(0)).toBe('70%')
   })
 
-  it('groups existing prep notes from several applications under the stage they share', async () => {
+  /** Opens Compare and shows one stage, returning the board that stage lays out. */
+  async function compareStage(user: ReturnType<typeof userEvent.setup>, stage: string) {
+    await user.click(
+      within(screen.getByRole('navigation', { name: 'Tracker views' })).getByRole('button', { name: 'Compare' }),
+    )
+    await user.click(screen.getByRole('radio', { name: new RegExp(`^${stage} ?,`) }))
+    return screen.getByRole('region', { name: stage })
+  }
+
+  it('opens on the stage with the most to compare, and lays out one stage at a time', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
+    await user.click(
+      within(screen.getByRole('navigation', { name: 'Tracker views' })).getByRole('button', { name: 'Compare' }),
+    )
 
-    const group = screen.getByRole('region', { name: 'Interview 1' })
-    expect(within(group).getByRole('heading', { level: 4, name: /Halcyon Maps/ })).toBeInTheDocument()
-    expect(within(group).getByRole('heading', { level: 4, name: /Echo Robotics/ })).toBeInTheDocument()
-    expect(within(group).getByText(/pushed hard on incident response/)).toBeInTheDocument()
+    // Interview 1 is the only stage two of the seeded applications share, so it is the one
+    // the board opens on — and only its cards are on screen, not every stage stacked.
+    expect(screen.getByRole('radio', { name: /^Interview 1 ?,/ })).toBeChecked()
+    const board = screen.getByRole('region', { name: 'Interview 1' })
+    expect(within(board).getByRole('heading', { level: 4, name: /Halcyon Maps/ })).toBeInTheDocument()
+    expect(within(board).getByRole('heading', { level: 4, name: /Echo Robotics/ })).toBeInTheDocument()
+    expect(within(board).getByText(/pushed hard on incident response/)).toBeInTheDocument()
+    expect(screen.queryByRole('region', { name: 'Interview 2' })).not.toBeInTheDocument()
+
+    // The application at this stage now leads, and the one that has moved on says where to.
+    const [first, second] = within(board).getAllByRole('article')
+    expect(first).toHaveAccessibleName(/Echo Robotics/)
+    expect(within(first!).getByText('Current stage')).toBeInTheDocument()
+    expect(second).toHaveAccessibleName(/Halcyon Maps/)
+    expect(within(second!).getByText('Now Interview 2')).toBeInTheDocument()
+  })
+
+  it('offers only the stages that have something to compare', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(
+      within(screen.getByRole('navigation', { name: 'Tracker views' })).getByRole('button', { name: 'Compare' }),
+    )
+    const stages = within(screen.getByRole('group', { name: 'Stage' }))
+      .getAllByRole('radio')
+      .map((radio) => radio.getAttribute('value'))
+    // A stage a note is written for, or a live application is at now. Saffron Systems is
+    // accepted with nothing written, so Accepted is not a gap anyone is heading into.
+    expect(stages).toEqual(['applied', 'recruiter_messaged', 'online_assessment', 'interview_1', 'interview_2', 'offer'])
   })
 
   it('edits an existing note inline and writes only that application and stage', async () => {
@@ -4633,10 +4670,9 @@ describe('job applications tracker', () => {
 
     const before = readSavedDocument().applications.find((application) => application.company === 'Halcyon Maps')!
 
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
-    const group = screen.getByRole('region', { name: 'Interview 2' })
-    await user.click(within(group).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
-    const editor = within(group).getByLabelText('Halcyon Maps · Interview 2 prep notes')
+    const board = await compareStage(user, 'Interview 2')
+    await user.click(within(board).getByRole('button', { name: 'Edit Halcyon Maps · Interview 2' }))
+    const editor = within(board).getByLabelText('Halcyon Maps · Interview 2 prep notes')
     await user.type(editor, ' Ask about the platform roadmap.')
 
     await waitFor(
@@ -4660,45 +4696,65 @@ describe('job applications tracker', () => {
     )
   })
 
-  it('shows a gap as a ready editor for one stage, and writing into it does not touch other applications', async () => {
+  it('shows a live application at the stage with nothing written as a gap, and fills it in there', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
-    const halcyonBefore = readSavedDocument().applications.find(
-      (application) => application.company === 'Halcyon Maps',
+    const paperKiteBefore = readSavedDocument().applications.find(
+      (application) => application.company === 'Paper Kite',
     )!
-    const echoBefore = readSavedDocument().applications.find(
-      (application) => application.company === 'Echo Robotics',
-    )!
-    expect(echoBefore.stage_notes.map((note) => note.state)).toEqual(['interview_1'])
+    expect(paperKiteBefore.stage_notes).toEqual([])
 
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Stage' }), 'Interview 2')
-
-    const group = screen.getByRole('region', { name: 'Interview 2' })
-    // Halcyon Maps already has a note for this stage, so it opens read-only.
-    expect(within(group).getByRole('heading', { level: 4, name: /Halcyon Maps/ })).toBeInTheDocument()
-    // Echo Robotics has none, so its card is the gap: an editor, open by default.
-    const gapEditor = within(group).getByLabelText('Echo Robotics · Interview 2 prep notes')
-    await user.type(gapEditor, 'Ask about the roadmap for the safety review.')
+    const board = await compareStage(user, 'Recruiter messaged')
+    const card = within(board).getByRole('article', { name: /Paper Kite/ })
+    expect(within(card).getByText('Nothing written yet')).toBeInTheDocument()
+    // The gap is an editor already, and one that did not take the caret on arrival: a
+    // stage with two gaps would otherwise hand focus to whichever mounted last.
+    const gapEditor = within(card).getByLabelText('Paper Kite · Recruiter messaged prep notes')
+    expect(gapEditor).not.toHaveFocus()
+    await user.type(gapEditor, 'Ask which team the role reports into.')
 
     await waitFor(
       () => {
-        const echoAfter = readSavedDocument().applications.find((application) => application.id === echoBefore.id)!
-        expect(echoAfter.stage_notes.find((note) => note.state === 'interview_2')?.body).toBe(
-          'Ask about the roadmap for the safety review.',
-        )
-        expect(echoAfter.stage_notes.find((note) => note.state === 'interview_1')?.body).toBe(
-          echoBefore.stage_notes[0]!.body,
+        const after = readSavedDocument().applications.find((application) => application.id === paperKiteBefore.id)!
+        expect(after.stage_notes.find((note) => note.state === 'recruiter_messaged')?.body).toBe(
+          'Ask which team the role reports into.',
         )
       },
       { timeout: 4000 },
     )
+  })
 
-    const halcyonAfter = readSavedDocument().applications.find(
-      (application) => application.id === halcyonBefore.id,
-    )!
-    expect(halcyonAfter.stage_notes).toEqual(halcyonBefore.stage_notes)
+  it('does not list an application at a stage it is not at and wrote nothing for', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Echo Robotics is at Interview 1. Every application lacks notes for most stages, and
+    // an empty editor for each of them is what used to bury the notes being compared.
+    const board = await compareStage(user, 'Interview 2')
+    expect(within(board).getAllByRole('article').map((card) => card.getAttribute('aria-labelledby'))).toHaveLength(1)
+    expect(within(board).queryByRole('article', { name: /Echo Robotics/ })).not.toBeInTheDocument()
+  })
+
+  it('keeps a card on the board while its note is being rewritten from empty', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    // Halcyon Maps is on the Offer board only because of what it wrote there. Clearing that
+    // removes the reason it was listed, and the card must not vanish under the caret.
+    const board = await compareStage(user, 'Offer')
+    await user.click(within(board).getByRole('button', { name: 'Edit Halcyon Maps · Offer' }))
+    const editor = within(board).getByLabelText('Halcyon Maps · Offer prep notes')
+    await user.clear(editor)
+
+    await waitFor(
+      () => {
+        const halcyon = readSavedDocument().applications.find((item) => item.company === 'Halcyon Maps')!
+        expect(halcyon.stage_notes.find((note) => note.state === 'offer')).toBeUndefined()
+      },
+      { timeout: 4000 },
+    )
+    expect(within(board).getByLabelText('Halcyon Maps · Offer prep notes')).toBeInTheDocument()
   })
 
   it('does not lose a compare-card edit when the full editor is opened over it', async () => {
@@ -4710,19 +4766,14 @@ describe('job applications tracker', () => {
     )!
     const originalBody = before.stage_notes.find((note) => note.state === 'interview_2')!.body
 
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Stage' }), 'Interview 2')
-
-    const group = screen.getByRole('region', { name: 'Interview 2' })
-    const card = within(group)
-      .getByRole('heading', { level: 4, name: /Halcyon Maps/ })
-      .closest('article')!
+    const board = await compareStage(user, 'Interview 2')
+    const card = within(board).getByRole('article', { name: /Halcyon Maps/ })
 
     // Type into the card, then leave for the full editor before the autosave runs.
     await user.click(within(card).getByRole('button', { name: /^Edit [A-Z]/ }))
     const editor = within(card).getByLabelText('Halcyon Maps · Interview 2 prep notes')
     await user.type(editor, '\n\nAsk who owns the platform roadmap.')
-    await user.click(within(card).getByRole('button', { name: /in the full editor$/ }))
+    await user.click(within(card).getByRole('button', { name: /in prep notes$/ }))
 
     const panel = await screen.findByRole('region', { name: 'Stage prep notes' })
     // Let the card's own autosave land while the panel is holding the same note.
@@ -4760,44 +4811,30 @@ describe('job applications tracker', () => {
     expect(body).toContain('Confirm the start date.')
   }, 30_000)
 
-  it('drops an application from the board when its chip is unchecked, and shows the empty state when none remain', async () => {
+  it('follows the global company filter rather than a picker of its own', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
-    await user.selectOptions(screen.getByRole('combobox', { name: 'Stage' }), 'Interview 2')
-    expect(
-      within(screen.getByRole('region', { name: 'Interview 2' })).getByRole('heading', {
-        level: 4,
-        name: /Halcyon Maps/,
-      }),
-    ).toBeInTheDocument()
+    let board = await compareStage(user, 'Interview 1')
+    expect(within(board).getAllByRole('article')).toHaveLength(2)
 
-    await user.click(screen.getByRole('checkbox', { name: 'Halcyon Maps' }))
-    expect(
-      within(screen.getByRole('region', { name: 'Interview 2' })).queryByRole('heading', {
-        level: 4,
-        name: /Halcyon Maps/,
-      }),
-    ).not.toBeInTheDocument()
-
-    await user.click(screen.getByRole('button', { name: 'Select none' }))
-    expect(screen.getByText('Select at least one application to compare.')).toBeInTheDocument()
+    await user.selectOptions(screen.getByRole('combobox', { name: 'Filter by company' }), 'Halcyon Maps')
+    board = screen.getByRole('region', { name: 'Interview 1' })
+    expect(within(board).getAllByRole('article')).toHaveLength(1)
+    expect(within(board).getByRole('article', { name: /Halcyon Maps/ })).toBeInTheDocument()
+    expect(screen.queryByRole('checkbox', { name: 'Halcyon Maps' })).not.toBeInTheDocument()
   })
 
-  it('opens the full editor from a comparison card', async () => {
+  it('opens the stage the card is showing in prep notes, not the application’s current one', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
-    await user.click(screen.getByRole('button', { name: 'Compare' }))
-    const group = screen.getByRole('region', { name: 'Interview 2' })
-    await user.click(
-      within(group).getByRole('button', { name: 'Open Halcyon Maps · Interview 2 in the full editor' }),
-    )
+    // Halcyon Maps is at Interview 2; its Offer card must open the Offer note.
+    const board = await compareStage(user, 'Offer')
+    await user.click(within(board).getByRole('button', { name: 'Open Halcyon Maps · Offer in prep notes' }))
 
-    const dialog = screen.getByRole('region', { name: 'Stage prep notes' })
-    expect(
-      within(dialog).getByRole('heading', { name: 'Halcyon Maps · Engineering Manager' }),
-    ).toBeInTheDocument()
+    const panel = screen.getByRole('region', { name: 'Stage prep notes' })
+    expect(within(panel).getByRole('tab', { selected: true })).toHaveTextContent('Offer')
+    expect(within(panel).getByRole('tab', { selected: true })).toHaveAccessibleName(/Halcyon Maps/)
   })
 })

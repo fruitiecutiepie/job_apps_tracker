@@ -1028,7 +1028,9 @@ export default function App() {
    * navigation: there is no opener to return focus to afterwards, and a stale one would
    * aim at a card the switch has already unmounted.
    */
-  const openStageNotes = (id: string) => {
+  // A state names a note other than the current stage's: the Compare view opens the stage it
+  // is showing, which is often not where the application is now.
+  const openStageNotes = (id: string, state?: StateId) => {
     const application = tracker.applications.find((candidate) => candidate.id === id)
     if (!application) return
     dialogOpenerRef.current = null
@@ -1038,7 +1040,7 @@ export default function App() {
     dialogWasOpenRef.current = false
     notesNonce.current += 1
     setNotesRequest({
-      ref: { applicationId: id, state: application.state },
+      ref: { applicationId: id, state: state ?? application.state },
       nonce: notesNonce.current,
     })
     setNotesOpen(true)
