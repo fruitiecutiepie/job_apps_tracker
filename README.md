@@ -348,6 +348,7 @@ The global search, state, activity, company, and source filters apply across vie
 ### Back up or replace data
 
 - **Export** downloads a zip archive with `tracker.json` and any attachment files. This is a complete copy: it is what you import into another browser, another machine, or a fresh checkout.
+- **Start fresh** empties the tracker, after the same question an import asks. With a folder connected it stops saving to that folder and leaves its `tracker.json` as it was, so the old tracker is still there to import or reconnect to.
 - **Import** accepts zip archives or legacy JSON. You can also **drop a file anywhere on the window**, or paste one you have copied — the button, the drop and the paste are the same import. On the hosted app, importing is also offered on the first visit, before there is anything to look at.
 
   Whichever way the file arrives it is parsed into the domain model and checked against the schema and its invariants *before* you are asked to replace anything, so a hand-edited export that no longer holds together names the field that broke rather than half-replacing your data. A file that is not a tracker export is refused with what it is you can drop. Dragging a Kanban card or a notes tab is untouched: only a drag carrying files from outside the page is an import.

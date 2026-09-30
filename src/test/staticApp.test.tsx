@@ -6,6 +6,7 @@ import type { ComponentType } from 'react'
 import { prepareTrackerDatabase } from '../domain/database'
 import { serializeTrackerDocument } from '../domain/export'
 import { createApplication } from '../domain/mutations'
+import { FakeDirectory } from '../backend/fakeDirectory'
 
 /**
  * The static build, exercised as the app rather than as the backend.
@@ -262,6 +263,34 @@ describe('the static build, in a browser that can write a folder', () => {
     expect(actions).toEqual(['Add your first application', 'Import a file', 'Save to a folder'])
     expect(within(intro).getByRole('button', { name: 'Add your first application' })).toHaveClass('button--primary')
     expect(intro).toHaveTextContent(/deletes them, so save to a folder to keep a copy on your computer\./)
+  })
+
+  /*
+   * Starting fresh with a folder connected lets go of the folder rather than emptying it.
+   * The file there is the viewer's, so it is the copy, and the question is a plain one.
+   */
+  it('starts fresh by leaving the connected folder its file', async () => {
+    const user = userEvent.setup()
+    const folder = new FakeDirectory('job-apps')
+    Object.assign(window, { showDirectoryPicker: vi.fn(async () => folder) })
+    await renderStaticApp()
+
+    await user.click(screen.getByRole('button', { name: /Save to a folder/ }))
+    await within(topbar()).findByRole('button', { name: 'Saving to job-apps' })
+    await addApplication(user, 'Northwind')
+    await waitFor(() => expect(folder.readText('tracker.json')).toContain('Northwind'))
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    await user.click(screen.getByRole('button', { name: 'Start fresh' }))
+    const question = await screen.findByRole('alertdialog', { name: 'Start a fresh tracker?' })
+    expect(question).toHaveTextContent('Your job-apps folder keeps its copy')
+    expect(within(question).queryByRole('button', { name: /Discard/ })).not.toBeInTheDocument()
+    await user.click(within(question).getByRole('button', { name: 'Start fresh' }))
+
+    await waitFor(() => expect(screen.getByText('0 of 0 applications shown')).toBeInTheDocument())
+    expect(folder.readText('tracker.json')).toContain('Northwind')
+    expect(within(topbar()).getByRole('button', { name: 'Saved in this browser' })).toBeInTheDocument()
+    expect(screen.getByRole('status')).toHaveTextContent('Your job-apps folder still has the old one.')
   })
 
   it('says nothing when the folder picker is dismissed', async () => {

@@ -3439,6 +3439,35 @@ describe('job applications tracker', () => {
     }
   })
 
+  /*
+   * Starting fresh goes through the same gate as an import. On the dev server the file it
+   * empties is the only copy, so the copy is offered before the discard.
+   */
+  it('starts a fresh tracker through the same question an import asks', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.length
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    await user.click(screen.getByRole('button', { name: 'Start fresh' }))
+    let question = await screen.findByRole('alertdialog', { name: 'Start a fresh tracker?' })
+    expect(question).toHaveTextContent(`This clears the ${before} applications you have now.`)
+    expect(within(question).getByRole('button', { name: 'Save a copy, then start fresh' })).toHaveFocus()
+    await user.click(within(question).getByRole('button', { name: 'Cancel' }))
+    expect(readSavedDocument().applications).toHaveLength(before)
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    await user.click(screen.getByRole('button', { name: 'Start fresh' }))
+    question = await screen.findByRole('alertdialog', { name: 'Start a fresh tracker?' })
+    await user.click(within(question).getByRole('button', { name: 'Discard and start fresh' }))
+
+    await waitFor(() => expect(readSavedDocument().applications).toHaveLength(0))
+    expect(screen.getByRole('status')).toHaveTextContent('Started a fresh tracker.')
+    // Nothing left to clear, so nothing offers to.
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.queryByRole('button', { name: 'Start fresh' })).not.toBeInTheDocument()
+  })
+
   it('backs out of an import on Escape', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()

@@ -10,6 +10,7 @@ import {
   NotebookPen,
   Plus,
   RotateCcw,
+  FilePlus2,
   Search,
   Table2,
   Upload,
@@ -35,6 +36,7 @@ import {
   importTrackerArchive,
   describeImportErrors,
   readTrackerImport,
+  createEmptyDocument,
   type TrackerImportSuccess,
   loadTrackerDatabase,
   MAX_ATTACHMENT_BYTES,
@@ -70,7 +72,7 @@ import {
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
 import { backend, isBrowserBackend, type StorageConnection } from './backend'
 import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
-import { ImportReplaceDialog, type ImportChoice, type ImportReplacement } from './ImportReplaceDialog'
+import { ReplaceTrackerDialog, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
 import { useStorageState } from './useStorageState'
 import { useFileImport } from './useFileImport'
 import { ThemeMenu } from './ThemeMenu'
@@ -709,10 +711,14 @@ export default function App() {
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const storageState = useStorageState()
-  const [pendingImport, setPendingImport] = useState<{
-    document: TrackerImportSuccess['document']
-    files: TrackerImportSuccess['files']
-    replacement: ImportReplacement
+  /*
+   * A replacement waiting on its question: what the dialog asks about, and what runs if the
+   * viewer goes ahead. An import and starting fresh are one gate, so neither can grow a
+   * way of replacing the tracker the other does not ask about.
+   */
+  const [pendingReplace, setPendingReplace] = useState<{
+    replacement: TrackerReplacement
+    proceed: () => Promise<void>
   } | null>(null)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
@@ -845,10 +851,9 @@ export default function App() {
       }
 
       const connection = storageState?.connection ?? null
-      setPendingImport({
-        document: result.document,
-        files: result.files,
+      setPendingReplace({
         replacement: {
+          kind: 'import',
           incoming: result.document.applications.length,
           attachments: result.files.length,
           current,
@@ -858,6 +863,7 @@ export default function App() {
             && storageState?.unbackedSince === null,
           folder: connection?.kind === 'connected' ? connection.name : null,
         },
+        proceed: () => applyImport(result.document, result.files),
       })
     } catch (error) {
       setNotice(`Import failed: ${errorMessage(error)}`)
@@ -880,21 +886,68 @@ export default function App() {
     }
   }
 
-  const answerImport = async (choice: ImportChoice) => {
-    const pending = pendingImport
-    setPendingImport(null)
+  /*
+   * Starting fresh with a folder connected stops writing to it rather than emptying it:
+   * the file there is the viewer's, and leaving it is what makes it the copy. So the
+   * folder is let go of first — attachments are wiped next, and wiping while still
+   * connected would delete the folder's as well.
+   */
+  const startFresh = async () => {
+    const folder = storageState?.connection.kind === 'connected' ? storageState.connection.name : null
+    try {
+      if (folder) await backend.storage?.disconnect()
+      const saved = await importTrackerArchive(createEmptyDocument(), [])
+      // Nothing is left to lose, so nothing is waiting on a backup.
+      await backend.storage?.markBackedUp()
+      trackerRef.current = saved
+      setTracker(saved)
+      setSearch('')
+      setStateFilter('all')
+      setCompanyFilter('all')
+      setSourceFilter('all')
+      setNotice(
+        folder
+          ? `Started a fresh tracker. Your ${folder} folder still has the old one.`
+          : 'Started a fresh tracker.',
+      )
+    } catch (error) {
+      setNotice(`Could not start fresh: ${errorMessage(error)}`)
+    }
+  }
+
+  const askToStartFresh = () => {
+    const current = trackerRef.current?.applications.length ?? 0
+    if (current === 0) return
+    const connection = storageState?.connection ?? null
+    const folder = connection?.kind === 'connected' ? connection.name : null
+    setPendingReplace({
+      replacement: {
+        kind: 'clear',
+        current,
+        backedUp:
+          folder !== null
+          || (connection !== null && storageState?.unbackedSince === null),
+        folder,
+      },
+      proceed: startFresh,
+    })
+  }
+
+  const answerReplace = async (choice: ReplaceChoice) => {
+    const pending = pendingReplace
+    setPendingReplace(null)
     if (!pending || choice === 'cancel') return
-    if (choice === 'save-then-import') {
+    if (choice === 'save-then-proceed') {
       const current = trackerRef.current
       try {
         if (current) await downloadTrackerArchive(current)
       } catch (error) {
         // No copy, no replacement: the viewer asked for the two together.
-        setNotice(`Nothing was imported, because saving a copy failed: ${errorMessage(error)}`)
+        setNotice(`Nothing was replaced, because saving a copy failed: ${errorMessage(error)}`)
         return
       }
     }
-    await applyImport(pending.document, pending.files)
+    await pending.proceed()
   }
 
   const dragging = useFileImport({
@@ -1343,6 +1396,11 @@ export default function App() {
             >
               <Download aria-hidden="true" size={16} /> Export
             </button>
+            {tracker.applications.length > 0 && (
+              <button className="actions-menu__item" onClick={askToStartFresh} type="button">
+                <FilePlus2 aria-hidden="true" size={16} /> Start fresh
+              </button>
+            )}
             {isDemoTrackerProfile() && (
               <button
                 className="actions-menu__item"
@@ -1547,10 +1605,10 @@ export default function App() {
           />
         )}
 
-        {pendingImport && (
-          <ImportReplaceDialog
-            onChoose={(choice) => void answerImport(choice)}
-            replacement={pendingImport.replacement}
+        {pendingReplace && (
+          <ReplaceTrackerDialog
+            onChoose={(choice) => void answerReplace(choice)}
+            replacement={pendingReplace.replacement}
           />
         )}
 
