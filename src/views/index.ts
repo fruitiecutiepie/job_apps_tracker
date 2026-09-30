@@ -5,6 +5,7 @@ export { InviteSummaries } from "./InviteSummaries";
 export { KanbanView } from "./KanbanView";
 export { MessagesButton } from "./MessagesButton";
 export { PrepNotesView } from "./PrepNotesView";
+export { PostingButton } from "./PostingButton";
 export { StageNotesButton } from "./StageNotesButton";
 export { StatisticsView } from "./StatisticsView";
 export { TableView } from "./TableView";

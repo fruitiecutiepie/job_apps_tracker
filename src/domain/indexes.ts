@@ -81,6 +81,9 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       ...application.state_events.map((event) =>
         [STATE_LABELS[event.state], event.summary, event.location].filter(Boolean).join(' '),
       ),
+      // The posting's text, but not its URL: a link is not prose, and indexing it would make
+      // every captured posting answer to "https".
+      application.posting?.body ?? null,
       // A message is prose someone wrote, and until it had a field of its own it was being
       // typed into prep notes, which are already matched here — leaving it out would make
       // filing a recruiter's email properly a search regression. The correspondent goes in

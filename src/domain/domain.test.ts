@@ -33,6 +33,11 @@ import {
   ratingFor,
   RATING_IDS,
   rebuildIndexes,
+  setPosting,
+  revisePosting,
+  reviseApplicationPosting,
+  clearPosting,
+  updateApplicationPosting,
   rejectedStateFor,
   isRejectedState,
   LIVE_STATE_IDS,
@@ -1719,6 +1724,210 @@ describe('calendar invites', () => {
     expect(
       document.applications.some((application) => application.state_events.length > 0),
     ).toBe(true)
+  })
+})
+
+describe('job postings', () => {
+  const LATER = new Date('2026-08-20T09:00:00+10:00')
+  const captured = () => setPosting(
+    createApplication({ company: 'Northwind' }, REFERENCE),
+    { body: '## Staff Engineer\n\nBuilds the thing.', source_url: 'https://example.com/jobs/7' },
+    REFERENCE,
+  )
+
+  it('captures a posting and trims the body', () => {
+    const application = setPosting(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      { body: '  Staff Engineer  ' },
+      REFERENCE,
+    )
+
+    expect(application.posting).toEqual({
+      body: 'Staff Engineer',
+      captured_at: REFERENCE.toISOString(),
+      source_url: null,
+    })
+    expect(application.updated_at).toBe(REFERENCE.toISOString())
+  })
+
+  it('starts with no posting', () => {
+    expect(createApplication({ company: 'Northwind' }, REFERENCE).posting).toBeNull()
+  })
+
+  it('returns the same application when nothing changed', () => {
+    const application = captured()
+
+    expect(setPosting(application, {
+      body: '## Staff Engineer\n\nBuilds the thing.',
+      source_url: 'https://example.com/jobs/7',
+    }, LATER)).toBe(application)
+  })
+
+  it('moves captured_at when the text moves, and holds it when only the link does', () => {
+    const application = captured()
+
+    const rewritten = setPosting(application, { body: 'Different posting entirely' }, LATER)
+    expect(rewritten.posting!.captured_at).toBe(LATER.toISOString())
+
+    // Correcting where a posting came from is not a recapture.
+    const relinked = setPosting(application, {
+      body: '## Staff Engineer\n\nBuilds the thing.',
+      source_url: 'https://example.com/jobs/8',
+    }, LATER)
+    expect(relinked.posting!.captured_at).toBe(REFERENCE.toISOString())
+    expect(relinked.posting!.source_url).toBe('https://example.com/jobs/8')
+    expect(relinked.updated_at).toBe(LATER.toISOString())
+  })
+
+  it('clears the posting on a blank body, and leaves the application alone when there is none', () => {
+    const application = captured()
+
+    expect(setPosting(application, { body: '   ' }, LATER).posting).toBeNull()
+    expect(clearPosting(application, LATER).posting).toBeNull()
+    expect(clearPosting(application, LATER).updated_at).toBe(LATER.toISOString())
+
+    const bare = createApplication({ company: 'Northwind' }, REFERENCE)
+    expect(clearPosting(bare, LATER)).toBe(bare)
+    expect(setPosting(bare, { body: '' }, LATER)).toBe(bare)
+  })
+
+  it('corrects the text without moving when the posting arrived', () => {
+    const application = captured()
+    const fixed = revisePosting(application, '## Staff Engineer\n\nBuilds the thing well.', LATER)
+
+    // Tidying a mangled paste is not a recapture: it is still the posting you read when you
+    // read it, which is what `captured_at` records.
+    expect(fixed.posting!.captured_at).toBe(REFERENCE.toISOString())
+    expect(fixed.posting!.body).toBe('## Staff Engineer\n\nBuilds the thing well.')
+    expect(fixed.posting!.source_url).toBe('https://example.com/jobs/7')
+    expect(fixed.updated_at).toBe(LATER.toISOString())
+
+    // Unchanged text is no write at all.
+    expect(revisePosting(application, '## Staff Engineer\n\nBuilds the thing.', LATER))
+      .toBe(application)
+  })
+
+  it('captures rather than corrects when there was no posting to correct', () => {
+    const bare = createApplication({ company: 'Northwind' }, REFERENCE)
+    const first = revisePosting(bare, 'Pasted straight into the pane', LATER)
+
+    // Nothing to preserve, so this is the capture — and it is dated when it happened.
+    expect(first.posting!.captured_at).toBe(LATER.toISOString())
+    expect(first.posting!.source_url).toBeNull()
+  })
+
+  it('forgets a posting emptied in the pane', () => {
+    expect(revisePosting(captured(), '   ', LATER).posting).toBeNull()
+  })
+
+  it('revises the posting through the document without touching other applications', () => {
+    const document = createDemoDocument(REFERENCE)
+    const target = document.applications.find((entry) => entry.posting)!
+    const before = target.posting!.captured_at
+    const next = reviseApplicationPosting(document, target.id, 'Corrected text', LATER)
+    const after = next.applications.find((entry) => entry.id === target.id)!
+
+    expect(after.posting!.body).toBe('Corrected text')
+    expect(after.posting!.captured_at).toBe(before)
+    expect(reviseApplicationPosting(document, 'missing', 'x', LATER)).toBe(document)
+  })
+
+  it('rejects a source_url that is not http or https', () => {
+    expect(() => setPosting(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      { body: 'Staff Engineer', source_url: 'mailto:jobs@example.com' },
+      REFERENCE,
+    )).toThrow()
+  })
+
+  it('updates the posting through the document without touching other applications', () => {
+    const document = createDemoDocument(REFERENCE)
+    const target = document.applications[0]!
+    const next = updateApplicationPosting(document, target.id, { body: 'Pasted posting' }, LATER)
+
+    expect(next.applications[0]!.posting!.body).toBe('Pasted posting')
+    expect(next.applications[1]).toBe(document.applications[1])
+    expect(updateApplicationPosting(next, target.id, null, LATER).applications[0]!.posting).toBeNull()
+    expect(updateApplicationPosting(document, 'missing', { body: 'x' }, LATER)).toBe(document)
+  })
+
+  it('carries the posting through an unrelated edit', () => {
+    const application = captured()
+    const edited = editApplication(application, { role: 'Staff Engineer' }, LATER)
+
+    expect(edited.posting).toEqual(application.posting)
+  })
+
+  it('indexes the posting text but not its link', () => {
+    const document = createDemoDocument(REFERENCE)
+    const withPosting = updateApplicationPosting(
+      document,
+      document.applications[0]!.id,
+      { body: 'Clearance required for the role', source_url: 'https://example.com/jobs/99' },
+      LATER,
+    )
+    const text = rebuildIndexes(withPosting.applications).search_text[withPosting.applications[0]!.id]!
+
+    expect(text).toContain('clearance required')
+    expect(text).not.toContain('example.com/jobs/99')
+  })
+
+  it('canonicalizes a missing posting on import and rejects a malformed one', () => {
+    const withPosting = (posting: unknown) => ({
+      schema_version: 1,
+      applications: [{
+        id: '018f24c0-0000-7000-8000-000000000001',
+        company: 'Northwind',
+        state: 'applied',
+        posting,
+        created_at: REFERENCE.toISOString(),
+        updated_at: REFERENCE.toISOString(),
+      }],
+    })
+
+    // Every document written before postings existed says nothing about them.
+    const missing = validateTrackerDocument(withPosting(undefined))
+    expect(missing.ok).toBe(true)
+    if (missing.ok) expect(missing.value.applications[0]!.posting).toBeNull()
+    expect(validateTrackerDocument(withPosting(null)).ok).toBe(true)
+
+    const stored = {
+      body: 'Staff Engineer',
+      captured_at: REFERENCE.toISOString(),
+      source_url: 'https://example.com/jobs/7',
+    }
+    const kept = validateTrackerDocument(withPosting(stored))
+    expect(kept.ok).toBe(true)
+    if (kept.ok) expect(kept.value.applications[0]!.posting).toEqual(stored)
+
+    expect(validateTrackerDocument(withPosting({ ...stored, body: '  ' })).ok).toBe(false)
+    expect(validateTrackerDocument(withPosting({ ...stored, captured_at: 'soon' })).ok).toBe(false)
+    expect(validateTrackerDocument(withPosting({ ...stored, source_url: 'mailto:a@b.com' })).ok)
+      .toBe(false)
+    expect(validateTrackerDocument(withPosting('Staff Engineer')).ok).toBe(false)
+  })
+
+  it('preserves a captured posting through a validation round trip', () => {
+    // The rebuild literal in `applicationValue` type-checks with a field omitted and then
+    // deletes it on the next save; this is the guard against that.
+    const document = createDemoDocument(REFERENCE)
+    const result = validateTrackerDocument({ schema_version: 1, applications: document.applications })
+
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.value.applications.map((application) => application.posting))
+        .toEqual(document.applications.map((application) => application.posting))
+    }
+  })
+
+  it('seeds demo postings both with and without a link', () => {
+    const applications = createDemoDocument(REFERENCE).applications
+    const postings = applications.filter((application) => application.posting)
+
+    expect(postings.length).toBeGreaterThanOrEqual(2)
+    expect(postings.some((application) => application.posting!.source_url)).toBe(true)
+    expect(postings.some((application) => application.posting!.source_url === null)).toBe(true)
+    expect(postings.length).toBeLessThan(applications.length)
   })
 })
 

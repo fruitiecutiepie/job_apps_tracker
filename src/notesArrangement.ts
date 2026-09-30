@@ -22,8 +22,11 @@ import {
   MIN_PANE_FRACTION,
   groupsOf,
   makeGroup,
+  POSTING_SEGMENT,
   noteRefKey,
+  postingRef,
   prune,
+  stageRef,
   type LayoutNode,
   type NoteRef,
   type SplitNode,
@@ -162,19 +165,27 @@ export function sidebarWidthWithin(width: number): number {
 }
 
 /**
- * The arrangement a panel opens with when nothing was stored: the stage it was opened for
- * first, then that application's other noted stages, so the stage you are interviewing
- * for is the one you land on.
+ * The arrangement a panel opens with when nothing was stored: the application's job posting,
+ * then the stage it was opened for, then that application's other noted stages.
+ *
+ * One strip holding everything written for one application is where this app says "these
+ * belong together" — the notes tree is grouped by stage on purpose, to answer what a stage
+ * looks like across every application, so a posting has no home there that reads as its
+ * application's. The posting leads because it is what every note behind it was written
+ * against, and because it belongs to no stage that would place it anywhere in the fan.
+ *
+ * You still land on the stage you are interviewing for. The posting is context for the note
+ * being written, not the thing you came to write.
  */
 export function openingLayout(application: Application, state: StateId): TabGroup {
   const rest = [...new Set(application.stage_notes.map((note) => note.state))]
     .filter((noted) => noted !== state)
     .sort((left, right) => stateRank(left) - stateRank(right))
-  const tabs: NoteRef[] = [state, ...rest].map((stage) => ({
-    applicationId: application.id,
-    state: stage,
-  }))
-  return makeGroup(FIRST_PANE_ID, tabs, noteRefKey({ applicationId: application.id, state }))
+  const stages = [state, ...rest].map((stage) => stageRef(application.id, stage))
+  const tabs: NoteRef[] = application.posting
+    ? [postingRef(application.id), ...stages]
+    : stages
+  return makeGroup(FIRST_PANE_ID, tabs, noteRefKey(stageRef(application.id, state)))
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -233,13 +244,24 @@ function readNode(value: unknown, known: ReadonlySet<string>): LayoutNode | null
     const seen = new Set<string>()
     for (const tab of value.tabs) {
       if (!isRecord(tab)) continue
-      const { applicationId, state } = tab
+      const { applicationId, kind, state } = tab
       if (typeof applicationId !== 'string' || !known.has(applicationId)) continue
-      if (!isStateId(state)) continue
-      const key = noteRefKey({ applicationId, state })
+      /*
+       * A tab with no `kind` is a stage note: that is every tab written before postings
+       * could be opened in a pane, and reading them as they are is why the stored version
+       * did not have to move. A tab naming a kind this build does not know is skipped, the
+       * way an unreadable one always was.
+       */
+      const ref = kind === POSTING_SEGMENT
+        ? postingRef(applicationId)
+        : kind === undefined || kind === 'stage'
+          ? isStateId(state) ? stageRef(applicationId, state) : null
+          : null
+      if (!ref) continue
+      const key = noteRefKey(ref)
       if (seen.has(key)) continue
       seen.add(key)
-      tabs.push({ applicationId, state })
+      tabs.push(ref)
     }
     const activeKey = typeof value.activeKey === 'string' ? value.activeKey : null
     /*
