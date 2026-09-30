@@ -7,6 +7,7 @@ import { trackerProfile, type TrackerProfile } from '../domain/trackerProfile'
 export type StoreName = 'state' | 'attachments'
 
 export interface KeyValueStore {
+  /** Null, never undefined, when the key is absent. */
   get(store: StoreName, key: string): Promise<unknown>
   put(store: StoreName, key: string, value: unknown): Promise<void>
   delete(store: StoreName, key: string): Promise<void>
@@ -71,7 +72,13 @@ export function indexedDbStore(profile: TrackerProfile = trackerProfile()): KeyV
   }
 
   return {
-    get: (store, key) => transact(store, 'readonly', (objectStore) => objectStore.get(key)),
+    /*
+     * IndexedDB answers a missing key with `undefined`, and every caller asks `=== null`,
+     * which is what the in-memory store the unit tests use has always returned. Passing
+     * `undefined` through made a first visit parse it as a document and refuse to load.
+     */
+    get: async (store, key) =>
+      (await transact(store, 'readonly', (objectStore) => objectStore.get(key))) ?? null,
     put: async (store, key, value) => {
       await transact(store, 'readwrite', (objectStore) => objectStore.put(value, key))
     },

@@ -619,6 +619,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 ## Gotchas
 
+- Every backend unit test runs on `memoryStore`, because jsdom has no IndexedDB, so nothing there can notice where the real store answers differently. It did: IndexedDB returns `undefined` for a missing key, and passing that through made every first visit to the static build fail to load. `KeyValueStore.get` returns `null` for an absent key, and `src/backend/idb.browser.test.tsx` checks the real store against that in a browser. Anything new that leans on the store's answers belongs there too.
 - `src/calendar/parseIcs.ts` is a deliberate subset of RFC 5545, not an iCalendar implementation: no
   recurrence, alarms, or attendees. It reads UTC (`…Z`), named-zone (`TZID=`), floating, and date-only
   starts. A named zone is resolved through `Intl` in two passes, because the offset depends on the instant
