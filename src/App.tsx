@@ -6,13 +6,11 @@ import {
   Columns3,
   Download,
   KanbanSquare,
-  Moon,
   MoreHorizontal,
   NotebookPen,
   Plus,
   RotateCcw,
   Search,
-  Sun,
   Table2,
   Upload,
   X,
@@ -73,6 +71,7 @@ import { backend, isBrowserBackend } from './backend'
 import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
 import { useStorageConnection } from './useStorageConnection'
 import { useFileImport } from './useFileImport'
+import { ThemeMenu } from './ThemeMenu'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
 import { RatingFields } from './RatingFields'
 import { StateHistory } from './StateHistory'
@@ -204,28 +203,6 @@ function MoreActionsMenu({ children }: { children: ReactNode }) {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong. Please try again.'
-}
-
-type Theme = 'light' | 'dark'
-
-function systemPrefersDark(): boolean {
-  return window.matchMedia('(prefers-color-scheme: dark)').matches
-}
-
-function useTheme(): [Theme, () => void] {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const stored = localStorage.getItem('theme')
-    return stored === 'light' || stored === 'dark' ? stored : systemPrefersDark() ? 'dark' : 'light'
-  })
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme
-    localStorage.setItem('theme', theme)
-  }, [theme])
-
-  const toggle = () => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))
-
-  return [theme, toggle]
 }
 
 async function applyAttachmentPlan(
@@ -733,7 +710,6 @@ export default function App() {
   const [introDismissed, setIntroDismissed] = useState(false)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
-  const [theme, toggleTheme] = useTheme()
 
   useEffect(() => {
     let cancelled = false
@@ -1069,10 +1045,14 @@ export default function App() {
     setNotesOpen(true)
   }
 
-  const openStageNotes = (id: string) => {
+  /**
+   * A state names a note other than the current stage's: the Compare view opens the stage it
+   * is showing, which is often not where the application is now.
+   */
+  const openStageNotes = (id: string, state?: StateId) => {
     const application = tracker.applications.find((candidate) => candidate.id === id)
     if (!application) return
-    openNotesAt(stageRef(id, application.state))
+    openNotesAt(stageRef(id, state ?? application.state))
   }
 
   /**
@@ -1267,14 +1247,7 @@ export default function App() {
             />
           )}
 
-          <button
-            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
-            className="icon-button"
-            onClick={toggleTheme}
-            type="button"
-          >
-            {theme === 'dark' ? <Sun aria-hidden="true" size={18} /> : <Moon aria-hidden="true" size={18} />}
-          </button>
+          <ThemeMenu />
 
           <button
             className="button button--primary add-button"

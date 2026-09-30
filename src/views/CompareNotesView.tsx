@@ -1,140 +1,113 @@
 import { useMemo, useState } from "react";
-import { STATE_CONFIG, stateLabel, stateRank } from "../domain";
+import { stateLabel, stateRank } from "../domain";
 import type { Application, StateId } from "../domain";
 import { CompareNoteCard } from "./CompareNoteCard";
+import { compareStages, defaultCompareStage } from "./compareStages";
+import type { CompareEntry } from "./compareStages";
 
 interface CompareNotesViewProps {
   applications: Application[];
-  onOpenStageNotes: (id: string) => void;
+  onOpenStageNotes: (id: string, state: StateId) => void;
   onSaveStageNote: (id: string, state: StateId, body: string) => Promise<void>;
 }
 
 /**
- * Reads and edits prep notes across several applications at once. "All stages" groups by
- * whatever stages the selected applications already have notes for, good for skimming what
- * you have written; picking one stage instead lays out every selected application at that
- * stage, including ones with nothing yet, so a gap in your prep is something you see and can
- * fill in here rather than something the view quietly leaves out.
+ * One stage at a time, laid out across every application it concerns: what you wrote for
+ * Interview 1 at each company side by side, and the live applications at Interview 1 with
+ * nothing written yet as gaps to fill in here. Which applications those are is the global
+ * filters' business — the view has no picker of its own, since a second filter over the
+ * same collection is two ways to narrow one thing.
  */
 export function CompareNotesView({ applications, onOpenStageNotes, onSaveStageNote }: CompareNotesViewProps) {
-  const candidates = useMemo(
-    () =>
-      applications
-        .filter((application) => application.stage_notes.length > 0)
-        .sort((left, right) => left.company.localeCompare(right.company)),
-    [applications],
-  );
+  const stages = useMemo(() => compareStages(applications), [applications]);
 
-  const [selected, setSelected] = useState<Set<string> | null>(null);
-  const selectedIds = selected ?? new Set(candidates.map((application) => application.id));
+  /*
+   * What is on the board stays there for as long as its stage is showing, even if what put
+   * it there goes: clearing a note written elsewhere removes the only reason it was listed,
+   * and a card vanishing under the caret a second after the text is selected and deleted
+   * reads as losing the note rather than rewriting it. The same holds for the stage, which
+   * would otherwise drop out of the list when its only note is cleared and swap the board
+   * for another. `shown` is that memory, adjusted during render rather than in an effect so
+   * no render ever shows the board without it; picking another stage is what lets it go.
+   */
+  const [picked, setPicked] = useState<StateId | null>(null);
+  const [shown, setShown] = useState<{ state: StateId | null; ids: string[] }>({ state: null, ids: [] });
 
-  const [stage, setStage] = useState<StateId | "all">("all");
+  const retained = (state: StateId | null) =>
+    shown.state !== null && shown.state === state && shown.ids.some((id) => applications.some((item) => item.id === id));
+  const valid = (state: StateId | null): state is StateId =>
+    state !== null && (stages.some((item) => item.state === state) || retained(state));
+  const stage = [picked, shown.state].find(valid) ?? defaultCompareStage(stages);
 
-  const toggle = (id: string) => {
-    setSelected((current) => {
-      const next = new Set(current ?? candidates.map((application) => application.id));
-      if (!next.delete(id)) next.add(id);
-      return next;
-    });
-  };
+  const listed = stages.find((item) => item.state === stage)?.entries ?? [];
+  const listedIds = listed.map((entry) => entry.application.id);
+  if (shown.state !== stage || listedIds.some((id) => !shown.ids.includes(id))) {
+    const kept = shown.state === stage ? shown.ids : [];
+    setShown({ state: stage, ids: [...new Set([...kept, ...listedIds])] });
+  }
+  const entries: CompareEntry[] = [...listed];
+  for (const id of shown.state === stage ? shown.ids : []) {
+    if (listedIds.includes(id)) continue;
+    const application = applications.find((item) => item.id === id);
+    if (application) entries.push({ application, isHere: application.state === stage, hasNote: false });
+  }
 
-  const chosen = candidates.filter((application) => selectedIds.has(application.id));
+  // The stage on show keeps its place in the list, counted by what the board is holding.
+  const options = stage && !stages.some((item) => item.state === stage)
+    ? [...stages, { state: stage, entries }].sort((left, right) => stateRank(left.state) - stateRank(right.state))
+    : stages;
 
-  const groups = useMemo(() => {
-    if (stage !== "all") return [{ state: stage, applications: chosen }];
-
-    const states = new Set<StateId>();
-    for (const application of chosen) {
-      for (const note of application.stage_notes) states.add(note.state);
-    }
-    return [...states]
-      .sort((left, right) => stateRank(left) - stateRank(right))
-      .map((state) => ({
-        state,
-        applications: chosen.filter((application) =>
-          application.stage_notes.some((note) => note.state === state),
-        ),
-      }));
-  }, [chosen, stage]);
-
-  const save = (id: string, state: StateId) => (body: string) => onSaveStageNote(id, state, body);
+  if (!stage) {
+    return (
+      <section aria-labelledby="compare-notes-heading" className="compare-notes">
+        <h2 className="sr-only" id="compare-notes-heading">Compare prep notes</h2>
+        <p className="empty-state">Nothing to compare yet. Prep notes, and applications still in progress, appear here by stage.</p>
+      </section>
+    );
+  }
 
   return (
     <section aria-labelledby="compare-notes-heading" className="compare-notes">
-      <header className="view-heading">
-        <h2 className="sr-only" id="compare-notes-heading">Compare prep notes</h2>
-        <div className="compare-notes__toolbar">
-          <label className="field compare-notes__stage-field">
-            <span>Stage</span>
-            <select
-              onChange={(event) => setStage(event.target.value as StateId | "all")}
-              value={stage}
-            >
-              <option value="all">All stages</option>
-              {STATE_CONFIG.map(({ id, label }) => (
-                <option key={id} value={id}>{label}</option>
-              ))}
-            </select>
-          </label>
+      <h2 className="sr-only" id="compare-notes-heading">Compare prep notes</h2>
 
-          {candidates.length > 0 ? (
-            <div className="compare-notes__picker" role="group" aria-label="Applications to compare">
-              <button
-                className="button button--quiet"
-                onClick={() => setSelected(new Set(candidates.map((application) => application.id)))}
-                type="button"
-              >
-                Select all
-              </button>
-              <button className="button button--quiet" onClick={() => setSelected(new Set())} type="button">
-                Select none
-              </button>
-              <div className="compare-notes__chips">
-                {candidates.map((application) => (
-                  <label className="compare-notes__chip" key={application.id}>
-                    <input
-                      checked={selectedIds.has(application.id)}
-                      onChange={() => toggle(application.id)}
-                      type="checkbox"
-                    />
-                    {application.company}
-                  </label>
-                ))}
-              </div>
-            </div>
-          ) : null}
-        </div>
-      </header>
+      <fieldset className="compare-notes__stages">
+        <legend className="sr-only">Stage</legend>
+        {options.map((item) => {
+          const count = item.state === stage ? entries.length : item.entries.length;
+          return (
+            <label className="compare-notes__stage" key={item.state}>
+              <input
+                checked={item.state === stage}
+                name="compare-stage"
+                onChange={() => setPicked(item.state)}
+                type="radio"
+                value={item.state}
+              />
+              <span>{stateLabel(item.state)}</span>
+              <span aria-hidden="true" className="count-badge">{count}</span>
+              <span className="sr-only">, {count} {count === 1 ? "application" : "applications"}</span>
+            </label>
+          );
+        })}
+      </fieldset>
 
-      {candidates.length === 0 ? (
-        <p className="empty-state">No applications have prep notes yet.</p>
-      ) : chosen.length === 0 ? (
-        <p className="empty-state">Select at least one application to compare.</p>
-      ) : (
-        <div className="compare-notes__board">
-          {groups.map((group) => (
-            <section
-              aria-label={stateLabel(group.state)}
-              className="compare-notes__group"
-              key={group.state}
-              role="region"
-            >
-              {stage === "all" ? <h3 className="compare-notes__group-heading">{stateLabel(group.state)}</h3> : null}
-              <div className="compare-notes__row">
-                {group.applications.map((application) => (
-                  <CompareNoteCard
-                    application={application}
-                    key={application.id}
-                    onOpenFull={() => onOpenStageNotes(application.id)}
-                    onSave={save(application.id, group.state)}
-                    state={group.state}
-                  />
-                ))}
-              </div>
-            </section>
+      <section aria-labelledby="compare-notes-stage" className="compare-notes__stage-board">
+        {/* The pill above already names the stage and counts it, and every gap says so on its
+            own card, so the heading is for a screen reader's outline rather than the eye. */}
+        <h3 className="sr-only" id="compare-notes-stage">{stateLabel(stage)}</h3>
+        <div className="compare-notes__grid">
+          {entries.map(({ application, isHere }) => (
+            <CompareNoteCard
+              application={application}
+              isHere={isHere}
+              key={`${application.id}:${stage}`}
+              onOpenFull={() => onOpenStageNotes(application.id, stage)}
+              onSave={(body) => onSaveStageNote(application.id, stage, body)}
+              state={stage}
+            />
           ))}
         </div>
-      )}
+      </section>
     </section>
   );
 }
