@@ -69,7 +69,7 @@ import {
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
 import { backend, isBrowserBackend } from './backend'
 import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
-import { useStorageConnection } from './useStorageConnection'
+import { useStorageState } from './useStorageState'
 import { useFileImport } from './useFileImport'
 import { ThemeMenu } from './ThemeMenu'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
@@ -706,7 +706,7 @@ export default function App() {
   const dialogOpenerRef = useRef<HTMLElement | null>(null)
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
-  const storageConnection = useStorageConnection()
+  const storageState = useStorageState()
   const [introDismissed, setIntroDismissed] = useState(false)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
@@ -841,6 +841,8 @@ export default function App() {
       }
 
       const saved = await importTrackerArchive(result.document, result.files)
+      // What was just imported is a file the viewer already holds.
+      await backend.storage?.markBackedUp()
       trackerRef.current = saved
       setTracker(saved)
       setNotice(`Imported ${saved.applications.length} applications.`)
@@ -943,9 +945,9 @@ export default function App() {
    * would be in the way, and the topbar control says the same thing in a line.
    */
   const showStorageIntro =
-    storageConnection !== null
+    storageState !== null
     && !introDismissed
-    && storageConnection.kind !== 'connected'
+    && storageState.connection.kind !== 'connected'
     && tracker.applications.length === 0
 
   const editingApplication = editor?.mode === 'edit'
@@ -1090,6 +1092,19 @@ export default function App() {
 
   const reconnectStorage = () => {
     void reloadAfter(() => backend.storage!.reconnect(), 'Reconnected to your folder.')
+  }
+
+  /*
+   * A download is the one backup a browser without folder support can make, so it is
+   * what clears the reminder. Whether the viewer then keeps the file is theirs to know:
+   * the download is as far as a page can see.
+   */
+  const exportTracker = () => {
+    downloadTrackerArchive(tracker)
+      .then(() => backend.storage?.markBackedUp())
+      .catch((error) => {
+        setNotice(`Export failed: ${errorMessage(error)}`)
+      })
   }
 
   const closeEditor = () => setEditor(null)
@@ -1239,11 +1254,12 @@ export default function App() {
         </div>
 
         <div className="topbar__actions">
-          {storageConnection && (
+          {storageState && (
             <StorageStatus
-              connection={storageConnection}
               onConnect={connectStorage}
+              onExport={exportTracker}
               onReconnect={reconnectStorage}
+              state={storageState}
             />
           )}
 
@@ -1269,11 +1285,7 @@ export default function App() {
             </button>
             <button
               className="actions-menu__item"
-              onClick={() => {
-                downloadTrackerArchive(tracker).catch((error) => {
-                  setNotice(`Export failed: ${errorMessage(error)}`)
-                })
-              }}
+              onClick={exportTracker}
               type="button"
             >
               <Download aria-hidden="true" size={16} /> Export
@@ -1474,7 +1486,7 @@ export default function App() {
 
         {showStorageIntro && (
           <StorageIntro
-            connection={storageConnection}
+            connection={storageState.connection}
             onConnect={connectStorage}
             onDismiss={() => setIntroDismissed(true)}
             onImport={() => importInputRef.current?.click()}

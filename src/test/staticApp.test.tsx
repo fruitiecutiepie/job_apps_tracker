@@ -36,6 +36,13 @@ async function addApplication(
   await user.click(within(dialog).getByRole('button', { name: 'Add application' }))
 }
 
+/** Looked up where it is used: the app remounts across a reload. */
+function topbar(): HTMLElement {
+  const header = document.querySelector<HTMLElement>('header.topbar')
+  if (!header) throw new Error('No topbar rendered')
+  return header
+}
+
 describe('the static build', () => {
   beforeEach(() => {
     vi.stubEnv('VITE_TRACKER_BACKEND', 'browser')
@@ -55,7 +62,9 @@ describe('the static build', () => {
 
   it('explains where the data goes before there is any', async () => {
     await renderStaticApp()
-    expect(screen.getByRole('heading', { name: 'Your applications, on your machine' })).toBeInTheDocument()
+    expect(
+      screen.getByRole('heading', { name: 'Your applications, kept in this browser' }),
+    ).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Import a file/ })).toBeInTheDocument()
   })
 
@@ -69,14 +78,59 @@ describe('the static build', () => {
     expect(screen.queryByRole('button', { name: /Choose a folder/ })).not.toBeInTheDocument()
   })
 
-  it('puts the intro away once the viewer starts fresh', async () => {
+  it('puts the intro away once the viewer starts', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
 
-    await user.click(screen.getByRole('button', { name: 'Start fresh' }))
+    await user.click(screen.getByRole('button', { name: 'Start' }))
     expect(
-      screen.queryByRole('heading', { name: 'Your applications, on your machine' }),
+      screen.queryByRole('heading', { name: 'Your applications, kept in this browser' }),
     ).not.toBeInTheDocument()
+  })
+
+  /*
+   * A browser with no folder support saves every change to its own storage and cannot do
+   * better, so what gets lost is the export nobody remembered to make. The pill turns into
+   * that export the moment a change exists only here.
+   */
+  it('turns the storage pill into Export once a change is only in this browser', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    const banner = topbar()
+    expect(within(banner).getByText('Saved in this browser')).toBeInTheDocument()
+
+    await addApplication(user, 'Northwind')
+    const exportButton = await within(banner).findByRole('button', { name: 'Export a backup' })
+    expect(exportButton).toHaveAttribute('title', expect.stringMatching(/^Changes since .+ are only in this browser/))
+
+    // jsdom has no object URLs, and following the download link would navigate.
+    const objectUrls = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL }
+    URL.createObjectURL = vi.fn(() => 'blob:tracker')
+    URL.revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    try {
+      await user.click(exportButton)
+      await waitFor(() => expect(within(banner).getByText('Saved in this browser')).toBeInTheDocument())
+      expect(click).toHaveBeenCalledTimes(1)
+    } finally {
+      click.mockRestore()
+      Object.assign(URL, objectUrls)
+    }
+  })
+
+  it('keeps reminding after a reload, since forgetting happens between visits', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    await addApplication(user, 'Northwind')
+    await within(topbar()).findByRole('button', { name: 'Export a backup' })
+
+    cleanup()
+    const { default: App } = (await import('../App')) as { default: ComponentType }
+    render(<App />)
+    await waitFor(
+      () => expect(within(topbar()).getByRole('button', { name: 'Export a backup' })).toBeInTheDocument(),
+      { timeout: 5000 },
+    )
   })
 
   it('auto-saves an added application and has it back after a reload', async () => {
@@ -122,6 +176,44 @@ describe('the static build', () => {
       expect(screen.getByRole('region', { name: 'Prep' })).toBeInTheDocument(),
     )
     expect(screen.queryByRole('button', { name: /Open .* in an editor/ })).not.toBeInTheDocument()
+  })
+})
+
+/*
+ * Where a folder can be written, choosing one is the first step rather than one option of
+ * three: it is the only arrangement in which nothing has to be remembered later.
+ */
+describe('the static build, in a browser that can write a folder', () => {
+  // Assigned rather than stubbed: unstubbing every global would take setup's with it.
+  beforeEach(() => {
+    Object.assign(window, { showDirectoryPicker: vi.fn() })
+  })
+
+  afterEach(() => {
+    cleanup()
+    Reflect.deleteProperty(window, 'showDirectoryPicker')
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  it('asks where to save before anything is typed', async () => {
+    await renderStaticApp()
+    const intro = screen.getByRole('region', { name: 'First, choose where this is saved' })
+    const actions = within(intro).getAllByRole('button').map((button) => button.textContent?.trim())
+    expect(actions).toEqual(['Choose a folder', 'Import a file', 'Keep it in this browser'])
+    expect(within(intro).getByRole('button', { name: 'Choose a folder' })).toHaveClass('button--primary')
+  })
+
+  it('keeps offering a folder in the top bar once the viewer skips it', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    await user.click(screen.getByRole('button', { name: 'Keep it in this browser' }))
+    await addApplication(user, 'Northwind')
+
+    const pill = await within(topbar()).findByRole('button', { name: 'Choose a folder' })
+    await waitFor(() =>
+      expect(pill).toHaveAttribute('title', expect.stringMatching(/^Changes since .+ are only in this browser/)),
+    )
   })
 })
 

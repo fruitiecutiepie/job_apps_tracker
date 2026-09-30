@@ -52,13 +52,36 @@ export type StorageConnection =
   | { kind: 'needs-permission'; name: string }
   | { kind: 'connected'; name: string }
 
+/**
+ * Where the data is going, and whether any of it exists only in this browser.
+ *
+ * `unbackedSince` is when the first change not yet in a file the viewer holds was made:
+ * written while no folder was reaching it, and not since exported. It is stored, not
+ * derived per session, because forgetting to export is something that happens across
+ * visits — a reminder that reset on every reload would say "nothing to worry about" to
+ * someone who has been typing into one browser for a month. Always null while connected,
+ * where every write reaches the folder, and on the demo, whose data is fictional.
+ */
+export interface StorageState {
+  connection: StorageConnection
+  unbackedSince: string | null
+}
+
 export interface ConnectableStorage {
   connection(): StorageConnection
+  state(): StorageState
   /** Opens the picker. Must be called from a user gesture. */
   connect(): Promise<StorageConnection>
   /** Re-asks for permission on the folder already stored. Must be called from a gesture. */
   reconnect(): Promise<StorageConnection>
   disconnect(): Promise<StorageConnection>
-  /** Fires whenever the connection changes, so the UI can follow it. */
-  subscribe(listener: (connection: StorageConnection) => void): () => void
+  /**
+   * Records that the viewer now holds a file with everything in it — an export, or an
+   * import of the file they already had. Runs behind any write already queued, so an
+   * import's own save lands first rather than starting a backlog straight after this
+   * cleared it.
+   */
+  markBackedUp(): Promise<void>
+  /** Fires whenever the connection or the backlog changes, so the UI can follow it. */
+  subscribe(listener: (state: StorageState) => void): () => void
 }

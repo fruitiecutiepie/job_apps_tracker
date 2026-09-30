@@ -6,11 +6,13 @@ A polished, local-first job search organizer built with React and TypeScript. It
 
 ## Start here
 
-**Use the hosted app.** Open [the tracker](https://fruitiecutiepie.com/job_apps_tracker/) and it starts empty, with three ways in: choose a folder, import a file you already have, or just start typing. Every change saves as you make it — there is no Save button anywhere in this app.
+**Use the hosted app.** Open [the tracker](https://fruitiecutiepie.com/job_apps_tracker/) and it starts empty. Every change saves as you make it — there is no Save button anywhere in this app.
 
-Choosing a folder is the one worth doing first. It puts a real `tracker.json` on your disk that you can back up, sync, or open in any text editor, and the app writes to it on every change. Chrome and Edge support this; Firefox and Safari do not, and there the top bar says *Saved in this browser* and **Export** is how you get a copy out. Either way nothing is uploaded — the site is static files, with no account and nowhere to send anything.
+In Chrome and Edge, the first thing it asks is where to save: choose a folder and it puts a real `tracker.json` on your disk that you can back up, sync, or open in any text editor, written on every change. If you already have one, choose the folder it is in. You can skip this and keep everything in the browser instead, and the top bar will go on offering a folder.
 
-The catch worth knowing up front: without a connected folder, your data lives only in that browser profile. Clearing site data takes it with it. Connect a folder, or export regularly. See [Where your data lives](#where-your-data-lives).
+Firefox and Safari cannot write to a folder, so there the data is kept in the browser and the top bar does the remembering for you: the moment a change exists only in the browser it turns into **Export a backup**, and stays that way — across reloads — until you export. Either way nothing is uploaded — the site is static files, with no account and nowhere to send anything.
+
+The catch worth knowing up front: without a connected folder, your data lives only in that browser profile. Clearing site data takes it with it. See [Where your data lives](#where-your-data-lives).
 
 **Run it yourself** if you would rather the file sat in a project directory you control, or you want to write stage notes in your own editor — the one feature the hosted app cannot offer, because it needs a machine to start the editor on. See [Running it yourself](#running-it-yourself).
 
@@ -374,12 +376,13 @@ The top bar always says which of these you have:
 
 | It says | What that means |
 | --- | --- |
-| **Choose a folder** | Browser storage only, so far. Click to pick a folder. |
+| **Choose a folder** | Browser storage only, so far. Click to pick a folder. Hover it to see since when a change has been only in the browser. |
 | *Saving to `<folder>`* | Both copies are current. Click to switch folders. |
 | **Reconnect `<folder>`** | The folder is still yours but its permission lapsed, which browsers do. Edits are still being saved to browser storage; click to grant it again and the folder catches up. |
-| *Saved in this browser* | This browser has no File System Access API — Firefox and Safari. Nothing is wrong, but **Export** is the only way a copy leaves. |
+| *Saved in this browser* | This browser has no File System Access API — Firefox and Safari — and your last export has everything in it, or there is nothing yet. |
+| **Export a backup** | The same browser, with changes your last export does not have. Click to export; hover it to see since when. An import counts as a backup too, since you are holding the file you imported. |
 
-Durability follows from that: a connected folder is a file you own, and browser storage is only as durable as the browser profile. Nothing is uploaded in either build — the hosted app is static files, with no account and no endpoint to send anything to.
+Durability follows from that: a connected folder is a file you own, and browser storage is only as durable as the browser profile. The first time a change lands only in browser storage, the app asks the browser to keep that storage persistent, which makes it less likely to be cleared to free up space; Firefox may ask you to allow it. That makes the browser copy harder to lose, but it is still not a file you hold, so the reminder does not go away because of it. Nothing is uploaded in either build — the hosted app is static files, with no account and no endpoint to send anything to.
 
 ### The demo
 

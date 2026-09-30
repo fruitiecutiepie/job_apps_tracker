@@ -213,7 +213,7 @@ describe('browser backend, with a folder connected', () => {
   it('tells subscribers when the connection changes', async () => {
     const backend = connected(store, folder)
     const seen: string[] = []
-    backend.storage!.subscribe((connection) => seen.push(connection.kind))
+    backend.storage!.subscribe((state) => seen.push(state.connection.kind))
 
     // Subscribing reports the current state first, so a late subscriber is never blank.
     expect(seen).toEqual(['disconnected'])
@@ -313,6 +313,131 @@ describe('browser backend, when the folder permission lapses', () => {
     await backend.loadDocument()
     expect(backend.storage!.connection()).toEqual({ kind: 'disconnected' })
     expect(await store.get('state', 'directoryHandle')).toBeNull()
+  })
+})
+
+/*
+ * Without a folder the browser copy is the only copy, and the risk is not an unsaved edit
+ * but an export nobody remembered to make. The backlog is what the topbar reads to say so.
+ */
+describe('the backup reminder', () => {
+  let store: KeyValueStore
+  let clock: Date
+
+  beforeEach(() => {
+    store = memoryStore()
+    clock = new Date('2026-09-01T09:00:00.000Z')
+  })
+
+  function unsupported(persist: () => Promise<boolean> = async () => true) {
+    return browserBackend({ store, supportsFolders: false, persist, now: () => clock })
+  }
+
+  it('has nothing to back up before anything is written', async () => {
+    const backend = unsupported()
+    await backend.loadDocument()
+    expect(backend.storage!.state().unbackedSince).toBeNull()
+  })
+
+  it('dates the backlog from the first change that reached no file, not the latest', async () => {
+    const backend = unsupported()
+    await backend.saveDocument(withApplication('First'))
+    clock = new Date('2026-09-05T09:00:00.000Z')
+    await backend.saveDocument(withApplication('Second'))
+    expect(backend.storage!.state().unbackedSince).toBe('2026-09-01T09:00:00.000Z')
+  })
+
+  it('is still there after a reload, which is when it gets forgotten', async () => {
+    await unsupported().saveDocument(withApplication())
+    const reloaded = unsupported()
+    await reloaded.loadDocument()
+    expect(reloaded.storage!.state().unbackedSince).toBe('2026-09-01T09:00:00.000Z')
+  })
+
+  it('clears on a backup, and the next change starts a new one', async () => {
+    const backend = unsupported()
+    const seen: (string | null)[] = []
+    backend.storage!.subscribe((state) => seen.push(state.unbackedSince))
+    await backend.saveDocument(withApplication())
+    await backend.storage!.markBackedUp()
+    expect(backend.storage!.state().unbackedSince).toBeNull()
+    expect(await store.get('state', 'unbackedSince')).toBeNull()
+
+    clock = new Date('2026-09-09T09:00:00.000Z')
+    await backend.saveDocument(withApplication('After the export'))
+    expect(backend.storage!.state().unbackedSince).toBe('2026-09-09T09:00:00.000Z')
+    expect(seen).toEqual([null, '2026-09-01T09:00:00.000Z', null, '2026-09-09T09:00:00.000Z'])
+  })
+
+  /*
+   * An import saves the imported document and then marks it backed up. If the mark ran
+   * first, the import's own save would start a backlog straight after it was cleared.
+   */
+  it('marks a backup only after the writes already queued ahead of it', async () => {
+    const backend = browserBackend({
+      store: slowFirstWrite(store),
+      supportsFolders: false,
+      persist: async () => true,
+      now: () => clock,
+    })
+    const saving = backend.saveDocument(withApplication('Imported'))
+    const marking = backend.storage!.markBackedUp()
+    await Promise.all([saving, marking])
+    expect(backend.storage!.state().unbackedSince).toBeNull()
+  })
+
+  it('asks the browser to keep its storage once, when the browser copy becomes the only one', async () => {
+    const persist = vi.fn(async () => true)
+    const backend = unsupported(persist)
+    await backend.saveDocument(withApplication('First'))
+    await backend.saveDocument(withApplication('Second'))
+    expect(persist).toHaveBeenCalledTimes(1)
+  })
+
+  it('never builds up while a folder is taking every write', async () => {
+    const backend = connected(store, new FakeDirectory('job-applications'))
+    await backend.storage!.connect()
+    await backend.saveDocument(withApplication())
+    expect(backend.storage!.state().unbackedSince).toBeNull()
+  })
+
+  it('clears when a folder is connected, since the folder now has everything', async () => {
+    const backend = browserBackend({
+      store,
+      supportsFolders: true,
+      pick: async () => new FakeDirectory('job-applications'),
+      persist: async () => true,
+    })
+    await backend.saveDocument(withApplication())
+    expect(backend.storage!.state().unbackedSince).not.toBeNull()
+
+    await backend.storage!.connect()
+    expect(backend.storage!.state()).toEqual({
+      connection: { kind: 'connected', name: 'job-applications' },
+      unbackedSince: null,
+    })
+  })
+
+  it('builds up while the folder permission is lapsed, and clears on reconnecting', async () => {
+    const folder = new FakeDirectory('job-applications')
+    await connected(store, folder).storage!.connect()
+    folder.permission = 'prompt'
+
+    const backend = connected(store, folder)
+    await backend.loadDocument()
+    await backend.saveDocument(withApplication('Saved while locked out'))
+    expect(backend.storage!.state().unbackedSince).not.toBeNull()
+
+    await backend.storage!.reconnect()
+    expect(backend.storage!.state().unbackedSince).toBeNull()
+  })
+
+  it('stays quiet on the demo, whose data is fictional', async () => {
+    vi.stubEnv('VITE_TRACKER_PROFILE', 'demo')
+    const backend = unsupported()
+    await backend.loadDocument()
+    await backend.saveDocument(withApplication())
+    expect(backend.storage!.state().unbackedSince).toBeNull()
   })
 })
 

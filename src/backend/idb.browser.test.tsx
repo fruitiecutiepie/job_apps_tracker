@@ -24,5 +24,6 @@ describe('the IndexedDB store', () => {
     const backend = browserBackend({ store: indexedDbStore('live'), supportsFolders: false })
     const loaded = await backend.loadDocument()
     expect(loaded.applications).toEqual([])
+    expect(backend.storage!.state().unbackedSince).toBeNull()
   })
 })

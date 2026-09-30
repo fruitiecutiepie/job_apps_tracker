@@ -15,7 +15,7 @@ import {
   type DirectoryHandleLike,
 } from './fileSystem'
 import { indexedDbStore, memoryStore, type KeyValueStore } from './idb'
-import type { ConnectableStorage, StorageConnection, TrackerBackend } from './types'
+import type { ConnectableStorage, StorageConnection, StorageState, TrackerBackend } from './types'
 
 /** Mirrors the layout the dev server writes, so the same folder opens in either build. */
 export const TRACKER_FILENAME = 'tracker.json'
@@ -23,12 +23,16 @@ export const ATTACHMENTS_DIRNAME = 'attachments'
 
 const DOCUMENT_KEY = 'document'
 const DIRECTORY_KEY = 'directoryHandle'
+const BACKLOG_KEY = 'unbackedSince'
 
 export interface BrowserBackendOptions {
   store?: KeyValueStore
   supportsFolders?: boolean
   /** Opens the picker. Injected so tests can hand over a fake folder. */
   pick?: () => Promise<DirectoryHandleLike | null>
+  /** Asks the browser not to evict this origin's storage. Injected so tests can see it. */
+  persist?: () => Promise<boolean>
+  now?: () => Date
 }
 
 function attachmentKey(applicationId: string, attachmentId: string): string {
@@ -52,16 +56,50 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
   const store = options.store ?? defaultStore()
   const canConnect = options.supportsFolders ?? supportsDirectoryPicker()
   const pick = options.pick ?? pickDirectory
+  const persist = options.persist ?? requestPersistence
+  const now = options.now ?? (() => new Date())
 
   let directory: DirectoryHandleLike | null = null
   let connection: StorageConnection = canConnect ? { kind: 'disconnected' } : { kind: 'unsupported' }
+  let unbackedSince: string | null = null
   let restored: Promise<void> | null = null
-  const listeners = new Set<(connection: StorageConnection) => void>()
+  const listeners = new Set<(state: StorageState) => void>()
 
-  function announce(next: StorageConnection): StorageConnection {
+  function state(): StorageState {
+    return { connection, unbackedSince }
+  }
+
+  function announce(next: StorageConnection = connection): StorageConnection {
     connection = next
-    for (const listener of listeners) listener(next)
+    const current = state()
+    for (const listener of listeners) listener(current)
     return next
+  }
+
+  /*
+   * The first write that reaches no file starts the backlog; later ones leave its date
+   * alone, since "only in this browser since Tuesday" is the fact worth knowing. The
+   * demo is exempt: nagging someone to back up nineteen fictional applications would
+   * teach them to ignore the reminder on the site where it matters.
+   */
+  async function noteUnbacked(): Promise<void> {
+    if (unbackedSince !== null || isDemoTrackerProfile()) return
+    unbackedSince = now().toISOString()
+    await store.put('state', BACKLOG_KEY, unbackedSince)
+    announce()
+    /*
+     * This is the moment the browser copy became the only copy, so it is the moment to
+     * ask the browser not to evict it under storage pressure. Whatever it answers, the
+     * reminder stands: persistence makes eviction less likely, not a file you hold.
+     */
+    void persist().catch(() => false)
+  }
+
+  /** Leaves announcing to the caller, which usually has a connection change to announce too. */
+  async function clearBacklog(): Promise<void> {
+    if (unbackedSince === null) return
+    unbackedSince = null
+    await store.delete('state', BACKLOG_KEY)
   }
 
   /*
@@ -70,6 +108,11 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
    * the honest answer, and the UI turns it into a button the viewer can press.
    */
   async function restore(): Promise<void> {
+    const backlog = (await store.get('state', BACKLOG_KEY)) as string | null
+    if (backlog !== null && !isDemoTrackerProfile()) {
+      unbackedSince = backlog
+      announce()
+    }
     if (!canConnect) return
     const stored = (await store.get('state', DIRECTORY_KEY)) as DirectoryHandleLike | null
     if (!stored) return
@@ -148,10 +191,12 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     const text = serialize(document)
     await store.put('state', DOCUMENT_KEY, text)
     if (directory) await writeFileIn(directory, TRACKER_FILENAME, text)
+    else await noteUnbacked()
   }
 
   const storage: ConnectableStorage = {
     connection: () => connection,
+    state,
 
     async connect(): Promise<StorageConnection> {
       const picked = await pick()
@@ -171,6 +216,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
         const cached = (await store.get('state', DOCUMENT_KEY)) as string | null
         await writeFileIn(picked, TRACKER_FILENAME, cached ?? serialize(createEmptyDocument()))
       }
+      await clearBacklog()
       return announce({ kind: 'connected', name: picked.name })
     },
 
@@ -183,6 +229,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       }
       directory = stored
       await flushToFolder()
+      await clearBacklog()
       return announce({ kind: 'connected', name: stored.name })
     },
 
@@ -192,9 +239,23 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       return announce(canConnect ? { kind: 'disconnected' } : { kind: 'unsupported' })
     },
 
+    /*
+     * Waits on `ready` as every save does, so it joins the queue behind a save made just
+     * before it rather than overtaking one still waiting to start — and so the stored
+     * backlog has been read before there is anything to clear.
+     */
+    async markBackedUp(): Promise<void> {
+      await ready()
+      return serialized(async () => {
+        if (unbackedSince === null) return
+        await clearBacklog()
+        announce()
+      })
+    },
+
     subscribe(listener): () => void {
       listeners.add(listener)
-      listener(connection)
+      listener(state())
       return () => void listeners.delete(listener)
     },
   }
@@ -324,6 +385,11 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       })
     },
   }
+}
+
+function requestPersistence(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.storage?.persist) return Promise.resolve(false)
+  return navigator.storage.persist()
 }
 
 function defaultStore(): KeyValueStore {
