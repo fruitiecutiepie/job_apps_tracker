@@ -8,9 +8,9 @@ A polished, local-first job search organizer built with React and TypeScript. It
 
 **Use the hosted app.** Open [the tracker](https://fruitiecutiepie.com/job_apps_tracker/) and it starts empty. Every change saves as you make it — there is no Save button anywhere in this app.
 
-In Chrome and Edge, the first thing it asks is where to save: choose a folder and it puts a real `tracker.json` on your disk that you can back up, sync, or open in any text editor, written on every change. If you already have one, choose the folder it is in. You can skip this and keep everything in the browser instead, and the top bar will go on offering a folder.
+Press **Add your first application** and start. Everything is kept in the browser to begin with, and the top bar does the remembering for you: the moment a change exists only in the browser, it asks you to keep a copy, and it goes on asking — across reloads — until you have one.
 
-Firefox and Safari cannot write to a folder, so there the data is kept in the browser and the top bar does the remembering for you: the moment a change exists only in the browser it turns into **Export a backup**, and stays that way — across reloads — until you export. Either way nothing is uploaded — the site is static files, with no account and nowhere to send anything.
+In Chrome and Edge that copy is a folder. **Save to a folder** puts a real `tracker.json` on your disk that you can back up, sync, or open in any text editor, written on every change; if you already have one, choose the folder it is in. A page cannot write anywhere you have not pointed it, so there is no folder it could pick for you, but the picker opens in Documents. Firefox and Safari cannot write to a folder at all, so there the top bar offers **Export a backup** instead. Either way nothing is uploaded — the site is static files, with no account and nowhere to send anything.
 
 The catch worth knowing up front: without a connected folder, your data lives only in that browser profile. Clearing site data takes it with it. See [Where your data lives](#where-your-data-lives).
 
@@ -376,11 +376,11 @@ The top bar always says which of these you have:
 
 | It says | What that means |
 | --- | --- |
-| **Choose a folder** | Browser storage only, so far. Click to pick a folder. Hover it to see since when a change has been only in the browser. |
+| *Saved in this browser* | Nothing is only in the browser yet: the tracker is empty, or your last export or import has everything in it. Click it in Chrome or Edge to save to a folder anyway. |
+| **Save to a folder** | Chrome or Edge, with changes only in the browser. Click to pick a folder; hover it to see since when. |
 | *Saving to `<folder>`* | Both copies are current. Click to switch folders. |
 | **Reconnect `<folder>`** | The folder is still yours but its permission lapsed, which browsers do. Edits are still being saved to browser storage; click to grant it again and the folder catches up. |
-| *Saved in this browser* | This browser has no File System Access API — Firefox and Safari — and your last export has everything in it, or there is nothing yet. |
-| **Export a backup** | The same browser, with changes your last export does not have. Click to export; hover it to see since when. An import counts as a backup too, since you are holding the file you imported. |
+| **Export a backup** | Firefox or Safari, which cannot write to a folder, with changes your last export does not have. Click to export; hover it to see since when. An import counts as a backup too, since you are holding the file you imported. |
 
 Durability follows from that: a connected folder is a file you own, and browser storage is only as durable as the browser profile. The first time a change lands only in browser storage, the app asks the browser to keep that storage persistent, which makes it less likely to be cleared to free up space; Firefox may ask you to allow it. That makes the browser copy harder to lose, but it is still not a file you hold, so the reminder does not go away because of it. Nothing is uploaded in either build — the hosted app is static files, with no account and no endpoint to send anything to.
 

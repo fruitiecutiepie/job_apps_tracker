@@ -1,4 +1,4 @@
-import { Download, FlaskConical, FolderOpen, HardDrive, TriangleAlert, Upload } from 'lucide-react'
+import { Download, FlaskConical, FolderOpen, HardDrive, Plus, TriangleAlert, Upload } from 'lucide-react'
 
 import type { StorageConnection, StorageState } from './backend'
 import { demoSiteUrl, trackerSiteUrl } from './siteLinks'
@@ -11,7 +11,7 @@ function describe({ connection, unbackedSince }: StorageState): string {
     case 'needs-permission':
       return `Reconnect ${connection.name}`
     case 'disconnected':
-      return 'Choose a folder'
+      return unbackedSince === null ? 'Saved in this browser' : 'Save to a folder'
     case 'unsupported':
       return unbackedSince === null ? 'Saved in this browser' : 'Export a backup'
   }
@@ -20,22 +20,20 @@ function describe({ connection, unbackedSince }: StorageState): string {
 function explain({ connection, unbackedSince }: StorageState): string {
   const backlog = unbackedSince === null
     ? null
-    : `Changes since ${formatShortDate(unbackedSince)} are only in this browser, which can clear them.`
+    : `Changes since ${formatShortDate(unbackedSince)} are only in this browser.`
   switch (connection.kind) {
     case 'connected':
-      return `Every change is written to ${connection.name}. Click to pick a different folder.`
+      return `Every change is saved to ${connection.name}. Click to pick a different folder.`
     case 'needs-permission':
-      return [backlog, `Click to let this site write to ${connection.name} again; it catches up at once.`]
-        .filter(Boolean)
-        .join(' ')
+      return [backlog, `Click to keep saving to ${connection.name}.`].filter(Boolean).join(' ')
     case 'disconnected':
-      return [backlog, 'Pick a folder so every change is written to it as well as to this browser.']
+      return [backlog, 'Click to save to a folder on your computer as well.']
         .filter(Boolean)
         .join(' ')
     case 'unsupported':
       return backlog === null
-        ? 'This browser cannot save into a folder, so this will say when there is something to export.'
-        : `${backlog} Click to export a file you can keep.`
+        ? 'Everything is saved in this browser.'
+        : `${backlog} Click to download a copy.`
   }
 }
 
@@ -48,13 +46,12 @@ export interface StorageStatusProps {
 
 /**
  * The topbar control. Its job is to make the one thing that matters legible at a glance:
- * whether what you type is reaching a file you can find again, or only this browser — and,
- * where the browser cannot write a file on its own, whether there is anything to export.
+ * whether what you type is reaching a file you can find again, or only this browser.
  *
- * That last case is the one a reminder exists for. A browser with no folder support
- * saves every change to its own storage and cannot do better, so the risk is not an
- * unsaved edit but an export nobody remembered to make. The pill turns into the Export
- * button the moment a change exists only here, and stays one until a file has it.
+ * It stays quiet while nothing is at risk and asks for attention only once a change exists
+ * only here — the backlog — offering whichever fix this browser has: a folder where one can
+ * be written, and an export where it cannot. Asking before there is anything to lose
+ * would be asking someone who came to track job applications to think about storage first.
  */
 export function StorageStatus({ state, onConnect, onReconnect, onExport }: StorageStatusProps) {
   const { connection, unbackedSince } = state
@@ -73,12 +70,14 @@ export function StorageStatus({ state, onConnect, onReconnect, onExport }: Stora
   const onClick = connection.kind === 'unsupported'
     ? onExport
     : connection.kind === 'needs-permission' ? onReconnect : onConnect
-  const needsAttention = connection.kind !== 'connected'
+  const needsAttention = connection.kind === 'needs-permission' || unbackedSince !== null
   const icon = connection.kind === 'unsupported'
     ? <Download aria-hidden="true" size={16} />
     : needsAttention
       ? <TriangleAlert aria-hidden="true" size={16} />
-      : <FolderOpen aria-hidden="true" size={16} />
+      : connection.kind === 'connected'
+        ? <FolderOpen aria-hidden="true" size={16} />
+        : <HardDrive aria-hidden="true" size={16} />
   return (
     <button
       className={`storage-status${needsAttention ? ' storage-status--attention' : ''}`}
@@ -115,89 +114,57 @@ export function DemoBanner() {
 
 export interface StorageIntroProps {
   connection: StorageConnection
+  /** Opens the add form, exactly as the topbar's Add application does. */
+  onAdd: (opener: HTMLButtonElement) => void
   onConnect: () => void
   onImport: () => void
-  onDismiss: () => void
   /** Absent on the demo site, which is already the thing the link would lead to. */
   showDemoLink: boolean
 }
 
 /**
- * The first thing a visitor sees, before there is any data to look at.
+ * The empty tracker's first screen. Someone arriving here came to track job applications,
+ * so that is the one thing it offers up front; where the data goes is answered in a line
+ * and otherwise left to the topbar, which speaks up once there is something to lose.
+ * A folder is an option where the browser can write one, never the price of starting.
  *
- * Where the browser can write a folder, choosing one is the first step rather than one
- * option of three: it is the only arrangement in which nothing has to be remembered
- * later, and the moment before anything is typed is the only moment it costs nothing.
- * Skipping it is still allowed, but the button says what skipping means.
- *
- * Where it cannot, asking for a file up front would buy nothing — the browser could not
- * write to it afterwards — so the intro says so plainly and hands the job to the topbar,
- * which turns into Export as soon as there is something only this browser holds.
+ * It has no dismiss: it is what an empty tracker looks like, and it goes when the first
+ * application arrives.
  */
 export function StorageIntro({
   connection,
+  onAdd,
   onConnect,
   onImport,
-  onDismiss,
   showDemoLink,
 }: StorageIntroProps) {
   const canConnect = connection.kind !== 'unsupported'
   return (
     <section aria-labelledby="storage-intro-heading" className="storage-intro">
-      {canConnect ? (
-        <>
-          <h2 id="storage-intro-heading">First, choose where this is saved</h2>
-          <p>
-            Pick a folder and every change is written to a tracker.json in it
-            as you make it: a file on your disk you can back up, sync, or open anywhere.
-            Nothing is uploaded. Already have one? Choose the folder it is in.
-          </p>
-        </>
-      ) : (
-        <>
-          <h2 id="storage-intro-heading">Your applications, kept in this browser</h2>
-          <p>
-            Nothing is uploaded. Every change is saved in this browser as you make it, but
-            this browser cannot write to a file on its own — so the top bar will say when
-            you have changes to export, and Export gives you a file you can import anywhere.
-            Chrome and Edge can save to a folder as you go instead.
-          </p>
-        </>
-      )}
+      <h2 id="storage-intro-heading">Track your job applications</h2>
+      <p>
+        Everything stays on your computer. Nothing is uploaded, and there is no account.
+      </p>
       <div className="storage-intro__actions">
-        {canConnect ? (
-          <>
-            <button className="button button--primary" onClick={onConnect} type="button">
-              <FolderOpen aria-hidden="true" size={16} /> Choose a folder
-            </button>
-            <button className="button" onClick={onImport} type="button">
-              <Upload aria-hidden="true" size={16} /> Import a file
-            </button>
-            <button className="button button--quiet" onClick={onDismiss} type="button">
-              Keep it in this browser
-            </button>
-          </>
-        ) : (
-          <>
-            <button className="button button--primary" onClick={onDismiss} type="button">
-              Start
-            </button>
-            <button className="button" onClick={onImport} type="button">
-              <Upload aria-hidden="true" size={16} /> Import a file
-            </button>
-          </>
+        <button
+          className="button button--primary"
+          onClick={(event) => onAdd(event.currentTarget)}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={16} /> Add your first application
+        </button>
+        <button className="button" onClick={onImport} type="button">
+          <Upload aria-hidden="true" size={16} /> Import a file
+        </button>
+        {canConnect && (
+          <button className="button button--quiet" onClick={onConnect} type="button">
+            <FolderOpen aria-hidden="true" size={16} /> Save to a folder
+          </button>
         )}
       </div>
-      {canConnect && (
-        <p className="storage-intro__note">
-          Kept only in this browser, your data goes if the browser&apos;s site data is
-          cleared. The top bar keeps offering a folder until one is chosen.
-        </p>
-      )}
       {showDemoLink && (
         <p className="storage-intro__aside">
-          Not sure yet? <a href={demoSiteUrl()}>Look around the demo</a> — nineteen
-          fictional applications, kept well away from this one.
+          Just looking? <a href={demoSiteUrl()}>Try the demo</a>.
         </p>
       )}
     </section>

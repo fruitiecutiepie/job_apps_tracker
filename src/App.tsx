@@ -707,7 +707,6 @@ export default function App() {
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const storageState = useStorageState()
-  const [introDismissed, setIntroDismissed] = useState(false)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
 
@@ -946,7 +945,6 @@ export default function App() {
    */
   const showStorageIntro =
     storageState !== null
-    && !introDismissed
     && storageState.connection.kind !== 'connected'
     && tracker.applications.length === 0
 
@@ -1079,7 +1077,6 @@ export default function App() {
       const loaded = await loadTrackerDatabase()
       trackerRef.current = loaded
       setTracker(loaded)
-      setIntroDismissed(true)
       setNotice(message)
     } catch (error) {
       setNotice(`Could not open the folder: ${errorMessage(error)}`)
@@ -1488,7 +1485,7 @@ export default function App() {
           <StorageIntro
             connection={storageState.connection}
             onConnect={connectStorage}
-            onDismiss={() => setIntroDismissed(true)}
+            onAdd={(opener) => openNewApplication(opener)}
             onImport={() => importInputRef.current?.click()}
             showDemoLink={!isDemoTrackerProfile()}
           />

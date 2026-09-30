@@ -597,13 +597,7 @@ p {
   gap: var(--s3);
 }
 
-.storage-intro p.storage-intro__note {
-  margin: var(--s3) 0 0;
-  color: var(--ink-3);
-  font-size: var(--t2);
-}
-
-/* Both qualified by `p` so they outrank `.storage-intro p`, whose bottom margin is for the body. */
+/* Qualified by `p` so it outranks `.storage-intro p`, whose bottom margin is for the body. */
 .storage-intro p.storage-intro__aside {
   margin: var(--s4) 0 0;
   padding-top: var(--s4);

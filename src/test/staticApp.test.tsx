@@ -62,9 +62,8 @@ describe('the static build', () => {
 
   it('explains where the data goes before there is any', async () => {
     await renderStaticApp()
-    expect(
-      screen.getByRole('heading', { name: 'Your applications, kept in this browser' }),
-    ).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Track your job applications' })).toBeInTheDocument()
+    expect(screen.getByText(/Everything stays on your computer/)).toBeInTheDocument()
     expect(screen.getByRole('button', { name: /Import a file/ })).toBeInTheDocument()
   })
 
@@ -78,14 +77,20 @@ describe('the static build', () => {
     expect(screen.queryByRole('button', { name: /Choose a folder/ })).not.toBeInTheDocument()
   })
 
-  it('puts the intro away once the viewer starts', async () => {
+  it('starts by adding an application, and goes once there is one', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
 
-    await user.click(screen.getByRole('button', { name: 'Start' }))
-    expect(
-      screen.queryByRole('heading', { name: 'Your applications, kept in this browser' }),
-    ).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'Add your first application' }))
+    const dialog = screen.getByRole('dialog', { name: 'Add application' })
+    await user.type(within(dialog).getByLabelText('Company'), 'Northwind')
+    await user.click(within(dialog).getByRole('button', { name: 'Add application' }))
+
+    await waitFor(() =>
+      expect(
+        screen.queryByRole('heading', { name: 'Track your job applications' }),
+      ).not.toBeInTheDocument(),
+    )
   })
 
   /*
@@ -153,7 +158,7 @@ describe('the static build', () => {
 
   it('points anyone still deciding at the demo', async () => {
     await renderStaticApp()
-    const link = screen.getByRole('link', { name: 'Look around the demo' })
+    const link = screen.getByRole('link', { name: 'Try the demo' })
     expect(link).toHaveAttribute('href', '/demo/')
   })
 
@@ -180,8 +185,9 @@ describe('the static build', () => {
 })
 
 /*
- * Where a folder can be written, choosing one is the first step rather than one option of
- * three: it is the only arrangement in which nothing has to be remembered later.
+ * Where a folder can be written it is offered, but never as the price of starting: the
+ * browser copy is the default, and the topbar asks for a folder once there is something
+ * only this browser holds.
  */
 describe('the static build, in a browser that can write a folder', () => {
   // Assigned rather than stubbed: unstubbing every global would take setup's with it.
@@ -196,24 +202,24 @@ describe('the static build, in a browser that can write a folder', () => {
     vi.resetModules()
   })
 
-  it('asks where to save before anything is typed', async () => {
+  it('offers a folder beside starting, not in place of it', async () => {
     await renderStaticApp()
-    const intro = screen.getByRole('region', { name: 'First, choose where this is saved' })
+    const intro = screen.getByRole('region', { name: 'Track your job applications' })
     const actions = within(intro).getAllByRole('button').map((button) => button.textContent?.trim())
-    expect(actions).toEqual(['Choose a folder', 'Import a file', 'Keep it in this browser'])
-    expect(within(intro).getByRole('button', { name: 'Choose a folder' })).toHaveClass('button--primary')
+    expect(actions).toEqual(['Add your first application', 'Import a file', 'Save to a folder'])
+    expect(within(intro).getByRole('button', { name: 'Add your first application' })).toHaveClass('button--primary')
   })
 
-  it('keeps offering a folder in the top bar once the viewer skips it', async () => {
+  it('asks for a folder in the top bar once a change is only in this browser', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
-    await user.click(screen.getByRole('button', { name: 'Keep it in this browser' }))
-    await addApplication(user, 'Northwind')
+    const quiet = within(topbar()).getByRole('button', { name: 'Saved in this browser' })
+    expect(quiet).not.toHaveClass('storage-status--attention')
 
-    const pill = await within(topbar()).findByRole('button', { name: 'Choose a folder' })
-    await waitFor(() =>
-      expect(pill).toHaveAttribute('title', expect.stringMatching(/^Changes since .+ are only in this browser/)),
-    )
+    await addApplication(user, 'Northwind')
+    const pill = await within(topbar()).findByRole('button', { name: 'Save to a folder' })
+    expect(pill).toHaveClass('storage-status--attention')
+    expect(pill).toHaveAttribute('title', expect.stringMatching(/^Changes since .+ are only in this browser/))
   })
 })
 
@@ -242,7 +248,7 @@ describe('the hosted demo', () => {
 
   it('does not talk anyone out of the demo they are already looking at', async () => {
     await renderStaticApp('demo')
-    expect(screen.queryByRole('link', { name: 'Look around the demo' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('link', { name: 'Try the demo' })).not.toBeInTheDocument()
   })
 
   it('can be reset, which the real tracker cannot', async () => {
