@@ -50,7 +50,8 @@ import {
   moveTab,
   neighbourGroup,
   noteRefKey,
-  openInGroup,
+  openPrepNoteFor,
+  revealOrOpen,
   orderedRefs,
   orderedTabs,
   parseNoteRefKey,
@@ -1312,11 +1313,11 @@ export function StageNotesPanel({
       const wanted = intoGroupId ?? focusedGroupId
       const target = groupsOf(layoutRef.current).find((group) => group.id === wanted)
         ?? groupsOf(layoutRef.current)[0]
-      // Into this pane, whatever any other pane is showing. `openInGroup` settles the rest:
-      // a pane already holding the note just shows it, and one that is not gets a copy.
-      // Reaching for a note is a request to have it here, not a request to be sent to
-      // wherever a copy of it happens to be.
-      applyLayout(openInGroup(layoutRef.current, target.id, ref), target.id)
+      // Shown where it is already open, if it is open anywhere; into this pane otherwise.
+      // `revealOrOpen` also keeps the one exception: an empty pane was made to hold the
+      // next note, so it gets one even when another pane already has it.
+      const shown = revealOrOpen(layoutRef.current, target.id, ref)
+      applyLayout(shown.layout, shown.groupId)
     },
     [applyLayout, focusedGroupId],
   )
@@ -1351,31 +1352,38 @@ export function StageNotesPanel({
         const group = groupsOf(layoutRef.current).find((entry) => entry.id === groupId)
         const remembered = flippedFrom[tabId(groupId, ref)]
         /*
-         * Where this pane was flipped from, when that note is still in it. Failing that the
+         * Where this pane was flipped from, when that note is still in it. Failing that, any
+         * of this application's prep notes already open — this pane's first, then another
+         * pane's — whatever stage it is for: going back to a note you have open beats
+         * opening one you do not. Only with none open anywhere does it open the
          * application's **current stage**, which is where every other way into its notes
-         * lands — `openingLayout`, the card and the table row all do. The pane's first other
-         * tab is not an answer: a pane holds notes from any application, so that tab is as
-         * likely to be another company's, and landing on it would read as the control
-         * jumping somewhere at random.
+         * lands — `openingLayout`, the card and the table row all do. Never another
+         * company's note, which `openPrepNoteFor` keeps to.
          */
         const application = applicationsById.get(ref.applicationId)
         const back = remembered && group?.tabs.some((tab) => noteRefKey(tab) === remembered)
           ? parseNoteRefKey(remembered)
-          : application
-            ? stageRef(ref.applicationId, application.state)
-            : null
+          : openPrepNoteFor(layoutRef.current, groupId, ref.applicationId)
+            ?? (application ? stageRef(ref.applicationId, application.state) : null)
         if (!back) return
-        applyLayout(openInGroup(layoutRef.current, groupId, back), groupId)
+        // A note open in another pane is shown there rather than opened a second time here.
+        const shown = revealOrOpen(layoutRef.current, groupId, back)
+        applyLayout(shown.layout, shown.groupId)
         return
       }
 
       const posting = postingRef(ref.applicationId)
+      // Shown where it is already open, the rule `showRef` keeps: a posting another pane is
+      // showing is gone to there rather than opened a second time here.
+      const shown = revealOrOpen(layoutRef.current, groupId, posting)
       // Keyed by this pane's copy of this posting, not by the pane: a pane may hold two
       // applications' postings, and one slot between them sends the second one back to the
-      // first one's note.
-      setFlippedFrom((current) => ({ ...current, [tabId(groupId, posting)]: noteRefKey(ref) }))
-      // Into this pane, whatever another pane is showing: the same rule `showRef` keeps.
-      applyLayout(openInGroup(layoutRef.current, groupId, posting), groupId)
+      // first one's note. Only remembered when it flipped this pane — a posting shown in
+      // another pane was not flipped from anything there.
+      if (shown.groupId === groupId) {
+        setFlippedFrom((current) => ({ ...current, [tabId(groupId, posting)]: noteRefKey(ref) }))
+      }
+      applyLayout(shown.layout, shown.groupId)
     },
     [applyLayout, applicationsById, flippedFrom],
   )
@@ -1383,16 +1391,18 @@ export function StageNotesPanel({
   /**
    * What the stage-switch dropdown on a pane picks: swaps the tab it sits on for the
    * stage chosen, in that tab's own place — "show me this stage instead" rather than
-   * "also open this one". A stage already open elsewhere is focused there instead of
-   * opening a second copy of it, closing the tab it was swapped out from.
+   * "also open this one". A stage already open in another pane is shown there instead,
+   * leaving this pane as it was; one already open in this pane replaces the tab it was
+   * picked from.
    */
   const switchStage = useCallback(
     (groupId: string, fromKey: string, ref: NoteRef) => {
       const next = replaceTab(layoutRef.current, groupId, fromKey, ref)
-      // Not necessarily `groupId` any more: swapping onto a stage already open elsewhere
-      // closes this pane's own tab and focuses that one instead, which can take the pane
-      // itself with it if that tab was the only one here.
-      const target = groupHolding(next, noteRefKey(ref))?.id ?? groupId
+      // Not necessarily `groupId` any more: a stage already open in another pane is shown
+      // there, so focus follows it. The pane asked for wins when it holds the stage itself.
+      const key = noteRefKey(ref)
+      const holding = groupsOf(next).filter((group) => group.tabs.some((tab) => noteRefKey(tab) === key))
+      const target = (holding.find((group) => group.id === groupId) ?? holding.find((group) => group.activeKey === key) ?? holding[0])?.id ?? groupId
       applyLayout(next, target)
     },
     [applyLayout],
@@ -1623,8 +1633,9 @@ export function StageNotesPanel({
       if (!query) return
       const groups = groupsOf(layoutRef.current)
       const target = groups.find((group) => group.id === focusedGroupRef.current) ?? groups[0]
-      const next = openInGroup(layoutRef.current, target.id, ref)
-      applyLayout(next, target.id)
+      const shown = revealOrOpen(layoutRef.current, target.id, ref)
+      const next = shown.layout
+      applyLayout(next, shown.groupId)
       setFindQuery(query)
       setFindOpen(true)
       setFindSeq((current) => current + 1)
@@ -1633,7 +1644,7 @@ export function StageNotesPanel({
       // note read as prose and the find counts them in the note as written, and the two
       // need not agree. Landing in the right note with the find running is the promise;
       // stepping from there is what the find bar is for.
-      const found = findMatches(query, orderedTabs(next)).perTab.get(tabId(target.id, ref))
+      const found = findMatches(query, orderedTabs(next)).perTab.get(tabId(shown.groupId, ref))
       setMatchCursor(found ? found.base : 0)
     },
     [applyLayout, findMatches],
@@ -1992,18 +2003,19 @@ export function StageNotesPanel({
         stages: ordered.map((ref) => ({
           id: noteRefKey(ref),
           label: ref.kind === 'posting' ? POSTING_LABEL : stateLabel(ref.state),
-          // Open **here**, in the pane this picker belongs to, rather than open anywhere:
-          // that is what decides whether picking it shows a tab you have or adds one, and
-          // a badge saying Open over a note this pane has not got would be describing
-          // somewhere else.
-          open: pickingInto?.tabs.some((tab) => noteRefKey(tab) === noteRefKey(ref)) ?? false,
+          // Whether picking it shows a tab you already have rather than adding one — which
+          // is `revealOrOpen`'s rule: open in any pane, unless this picker's pane is empty,
+          // where picking it adds the copy the empty pane was made for.
+          open: pickingInto && pickingInto.tabs.length === 0
+            ? false
+            : openKeys.has(noteRefKey(ref)),
         })),
         // Enter still lands on the stage you are at: the posting is a row you choose, not
         // the one the picker assumes.
         defaultStageId: noteRefKey(stageRef(application.id, application.state)),
       }
     })
-  }, [applicationRole, applicationsById, pickable, pickingInto])
+  }, [applicationRole, applicationsById, openKeys, pickable, pickingInto])
 
   const openFromPicker = (key: string) => {
     const ref = pickable.get(key)?.ref

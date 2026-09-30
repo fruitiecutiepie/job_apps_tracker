@@ -2411,7 +2411,7 @@ describe('job applications tracker', () => {
     expect(within(dialog).getAllByRole('tabpanel')).toHaveLength(1)
   })
 
-  it('opens a copy in the pane you are reading, whatever another pane holds', async () => {
+  it('shows a note where it is already open rather than opening a second copy', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
 
@@ -2422,7 +2422,7 @@ describe('job applications tracker', () => {
     const strip = (paneNumber: number) =>
       within(dialog).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
     // Panes hold Interview 2 and Interview 1. Reading the first, ask for the note the
-    // second is showing: that is a request to have it here, not to be sent over there.
+    // second is showing: it is already on screen, so that is where the reader is sent.
     await user.click(within(strip(1)).getByRole('tab', { name: /Interview 2/ }))
     const tree = within(within(dialog).getByRole('list', { name: 'Prep notes by stage' }))
     await user.click(
@@ -2430,8 +2430,52 @@ describe('job applications tracker', () => {
         .getByRole('button', { name: /^Halcyon Maps/ }),
     )
 
-    expect(within(strip(1)).getByRole('tab', { name: /Interview 1/ })).toBeInTheDocument()
-    expect(within(strip(2)).getByRole('tab', { name: /Interview 1/ })).toBeInTheDocument()
+    expect(within(strip(1)).queryByRole('tab', { name: /Interview 1/ })).not.toBeInTheDocument()
+    expect(within(strip(2)).getByRole('tab', { name: /Interview 1/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('arriving from a card goes to the pane that already has the note', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+    await splitPane(user, screen.getByRole('region', { name: 'Prep' }))
+    const strip = (paneNumber: number) =>
+      within(screen.getByRole('region', { name: 'Prep' }))
+        .getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
+    // Reading the second pane, which does not hold Interview 2 — the card's own stage.
+    await user.click(within(strip(2)).getByRole('tab', { name: /Interview 1/ }))
+    const secondBefore = within(strip(2)).getAllByRole('tab').map(tabText)
+
+    // Back to the board, and in again from the card.
+    await user.click(screen.getByRole('button', { name: 'Prep', pressed: true }))
+    await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
+
+    expect(within(strip(2)).getAllByRole('tab').map(tabText)).toEqual(secondBefore)
+    expect(within(strip(1)).getByRole('tab', { name: /Interview 2/ })).toHaveAttribute('aria-selected', 'true')
+  })
+
+  it('flips to a posting another pane already has by going there', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Prep' })
+    // The fan is the posting and Applied; the split sends Applied to a second pane.
+    await splitPane(user, dialog)
+    const strip = (paneNumber: number) =>
+      within(dialog).getByRole('tablist', { name: `Prep note tabs, pane ${paneNumber}` })
+    await user.click(within(strip(2)).getByRole('tab', { name: /Applied/ }))
+
+    await user.click(
+      within(dialog).getByRole('button', { name: 'Show the Marble & Finch job posting in Marble & Finch · Applied' }),
+    )
+
+    // The posting was already open in the first pane, so that is where the flip went.
+    expect(within(strip(2)).getAllByRole('tab').map(tabText)).toEqual([
+      expect.stringMatching(/Applied/),
+    ])
+    expect(within(strip(1)).getByRole('tab', { name: /Job posting/ })).toHaveAttribute('aria-selected', 'true')
   })
 
   it('does nothing but show it when the pane you are reading already has it', async () => {
@@ -4931,6 +4975,30 @@ describe('job applications tracker', () => {
      */
     await user.click(within(dialog).getByRole('button', { name: /^Show the prep note in/ }))
     expect(within(dialog).getByRole('tabpanel')).toHaveAccessibleName('Marble & Finch · Applied')
+  })
+
+  it('comes back from a posting to any of its prep notes already open, not only the current stage', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add prep notes for Marble & Finch' }))
+    const dialog = screen.getByRole('region', { name: 'Prep' })
+
+    // Offer open beside the posting, and the current stage, Applied, put away.
+    await user.click(within(dialog).getByRole('button', { name: 'Open' }))
+    await user.selectOptions(
+      within(dialog).getByRole('combobox', { name: /^Other stages for Marble & Finch/ }),
+      'Offer',
+    )
+    await user.click(within(dialog).getByRole('button', { name: 'Close the Marble & Finch · Applied tab' }))
+
+    // Straight to the posting, so there is nothing remembered to go back to.
+    await user.click(within(dialog).getByRole('tab', { name: /Job posting/ }))
+    await user.click(within(dialog).getByRole('button', { name: /^Show the prep note in/ }))
+
+    // The note that is open, rather than Applied opened again beside it.
+    expect(within(dialog).getByRole('tabpanel')).toHaveAccessibleName('Marble & Finch · Offer')
+    expect(within(dialog).queryByRole('tab', { name: /Applied/ })).not.toBeInTheDocument()
   })
 
   it('remembers where each posting was flipped from, not one per pane', async () => {

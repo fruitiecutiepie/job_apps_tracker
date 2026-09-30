@@ -215,6 +215,39 @@ describe('the panel in a real browser', () => {
     expect(tab.right).toBeLessThanOrEqual(box.right + 1)
   })
 
+  it('keeps an overflowing strip\'s scrollbar a hairline, clear of the tabs', async () => {
+    const { halcyon } = renderPanel()
+    await page.viewport(640, 800)
+    const strip = () => document.querySelector<HTMLElement>('.panel__tabs')!
+    for (const state of ['applied', 'recruiter_messaged', 'recruiter_interview', 'take_home_assessment'] as const) {
+      await userEvent.click(screen.getByRole('button', { name: 'Open' }))
+      await userEvent.selectOptions(
+        screen.getByRole('combobox', { name: new RegExp(`Other stages for ${halcyon.company}`) }),
+        [stateLabel(state)],
+      )
+    }
+    expect(strip().scrollWidth).toBeGreaterThan(strip().clientWidth)
+
+    /*
+     * What the scrollbar takes: the strip's box less its content box and its own border.
+     * At the platform's width it sat over the bottom of every tab and took the press meant
+     * for one. Styled through `::-webkit-scrollbar` it stops overlaying and is laid out
+     * below the tabs instead, a hairline thick — which only WebKit shows here: headless
+     * Chromium hides scrollbars outright and Firefox draws overlay ones, so both read 0
+     * with or without the rule. WebKit read 0 before the rule too, which is what makes its
+     * 4 the evidence that the rule applied.
+     */
+    const bar = strip().offsetHeight - strip().clientHeight - parseFloat(getComputedStyle(strip()).borderBottomWidth)
+    expect(bar).toBeLessThanOrEqual(4)
+    const webkitOnly = /AppleWebKit/.test(navigator.userAgent) && !/Chrome/.test(navigator.userAgent)
+    if (webkitOnly) expect(bar).toBe(4)
+
+    // A press near the bottom of a tab lands on the tab, not on the scrollbar.
+    const tab = strip().querySelector<HTMLElement>('[role="tab"]')!.getBoundingClientRect()
+    const hit = document.elementFromPoint(tab.left + tab.width / 2, tab.bottom - 2)
+    expect(hit?.closest('[role="tab"]')).not.toBeNull()
+  })
+
   it('stacks the panes when the panel is narrow in a window that is not', async () => {
     renderPanel()
     await splitRight()

@@ -3734,6 +3734,38 @@ tbody tr:hover {
   background: var(--surface-2);
 }
 
+/*
+ * The strip scrolls, but its scrollbar is a hint that there is more, not a control anyone
+ * reaches for — a wheel, a trackpad and the strip bringing the open tab into view do the
+ * scrolling. At the platform's width it sat over the bottom of every tab and took the
+ * press meant for one, so it is drawn a hairline thick.
+ *
+ * Two routes, and they must not meet. Chromium and WebKit take the `::-webkit-scrollbar`
+ * rules — but only while `scrollbar-width` and `scrollbar-color` are unset on the element,
+ * since either one makes Chromium ignore the pseudo-elements. Firefox has no such
+ * pseudo-element and gets the standard property instead, behind the `@supports` below,
+ * which is as thin as it offers.
+ */
+.panel__tabs::-webkit-scrollbar {
+  height: var(--s2);
+}
+
+.panel__tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.panel__tabs::-webkit-scrollbar-thumb {
+  border-radius: var(--pill);
+  background: var(--line-strong);
+}
+
+@supports not selector(::-webkit-scrollbar) {
+  .panel__tabs {
+    scrollbar-width: thin;
+    scrollbar-color: var(--line-strong) transparent;
+  }
+}
+
 /* A tab and its close control read as one tab, so the pair shares the tab's background
    and the control only appears once the pair is being pointed at or keyed into. */
 .panel__tab-slot {

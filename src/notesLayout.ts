@@ -324,6 +324,63 @@ export function openInGroup(tree: LayoutNode, groupId: string, ref: NoteRef): La
   return prune(opened) ?? opened
 }
 
+/**
+ * A prep note of this application that is already open, for the posting flip to come back
+ * to when it has nowhere remembered. This pane's own first, in strip order — coming back
+ * without moving is the least surprising place to land — then any other pane's, preferring
+ * one showing it over one where it sits behind another tab. Only this application's notes:
+ * a pane holds notes from any application, and landing on another company's would read as
+ * the control jumping somewhere at random. Null when none is open anywhere.
+ */
+export function openPrepNoteFor(tree: LayoutNode, groupId: string, applicationId: string): StageNoteRef | null {
+  const prepNotes = (group: TabGroup) =>
+    group.tabs.filter((tab): tab is StageNoteRef => tab.kind === 'stage' && tab.applicationId === applicationId)
+  const here = findGroup(tree, groupId)
+  const own = here ? prepNotes(here) : []
+  if (own.length > 0) return own[0]!
+  const others = groupsOf(tree).filter((group) => group.id !== groupId)
+  for (const group of others) {
+    const showing = prepNotes(group).find((tab) => noteRefKey(tab) === group.activeKey)
+    if (showing) return showing
+  }
+  for (const group of others) {
+    const [first] = prepNotes(group)
+    if (first) return first
+  }
+  return null
+}
+
+/**
+ * Puts a note on screen for someone who reached for it — a card, a table row, the tree, the
+ * picker, `Ctrl+P` — and says which pane it ended up in, so that pane can take focus.
+ *
+ * A note already open in some pane is shown there rather than opened a second time here:
+ * the reader asked for the note, and a copy of it one pane over is the note. The pane
+ * asked for wins when it holds the note itself; otherwise a pane already showing it is
+ * preferred over one where it sits behind another tab, and among equals the first in
+ * layout order.
+ *
+ * An empty pane is the exception. It was made by Split for the next note to land in, and
+ * reading one note beside another part of itself is what a split is for — so a note
+ * reached for from an empty pane opens there even when it is open elsewhere. A drag is the
+ * other way to ask for a second copy, and does not come through here.
+ */
+export function revealOrOpen(
+  tree: LayoutNode,
+  groupId: string,
+  ref: NoteRef,
+): { layout: LayoutNode; groupId: string } {
+  const key = noteRefKey(ref)
+  const here = findGroup(tree, groupId)
+  const holds = (group: TabGroup) => group.tabs.some((tab) => noteRefKey(tab) === key)
+  if (here && here.tabs.length > 0 && !holds(here)) {
+    const holding = groupsOf(tree).filter(holds)
+    const elsewhere = holding.find((group) => group.activeKey === key) ?? holding[0]
+    if (elsewhere) return { layout: activateTab(tree, elsewhere.id, key), groupId: elsewhere.id }
+  }
+  return { layout: openInGroup(tree, groupId, ref), groupId }
+}
+
 export function activateTab(tree: LayoutNode, groupId: string, key: string): LayoutNode {
   return mapGroup(tree, groupId, (group) =>
     group.tabs.some((tab) => noteRefKey(tab) === key) ? { ...group, activeKey: key } : group,
@@ -343,15 +400,20 @@ export function replaceTab(tree: LayoutNode, groupId: string, fromKey: string, r
   const toKey = noteRefKey(ref)
   if (fromKey === toKey) return tree
 
-  // Only this pane's own tabs stand in the way. A copy in another pane is somewhere else,
-  // and swapping onto a stage here is not a request to go there; but swapping onto one
-  // this pane already shows would leave two tabs for it, so that one closes the old tab
-  // and moves to the tab already holding it.
+  // Swapping onto a stage this pane already shows would leave two tabs for it, so that
+  // closes the old tab and moves to the tab already holding it.
   const here = findGroup(tree, groupId)
   if (here?.tabs.some((tab) => noteRefKey(tab) === toKey)) {
     const focused = activateTab(tree, groupId, toKey)
     return closeTab(focused, groupId, fromKey) ?? focused
   }
+
+  // Open in another pane, it is shown there, the way every other way of reaching a note
+  // goes to it where it is. This pane is left exactly as it was: the reader was sent
+  // somewhere, not asked to give up the note they were reading.
+  const elsewhere = groupsOf(tree).filter((group) => group.tabs.some((tab) => noteRefKey(tab) === toKey))
+  const shown = elsewhere.find((group) => group.activeKey === toKey) ?? elsewhere[0]
+  if (shown) return activateTab(tree, shown.id, toKey)
 
   return mapGroup(tree, groupId, (group) => ({
     ...group,

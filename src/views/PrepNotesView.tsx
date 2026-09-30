@@ -8,7 +8,7 @@ import {
   saveArrangement,
   type Arrangement,
 } from "../notesArrangement";
-import { openInGroup, type NoteRequest } from "../notesLayout";
+import { openInGroup, revealOrOpen, type NoteRequest } from "../notesLayout";
 import { StageNotesPanel, type StageNoteDraftBatch } from "../StageNotesPanel";
 
 interface PrepNotesViewProps {
@@ -59,10 +59,9 @@ export function PrepNotesView({
     if (!request) return restored;
     // Arriving from a card onto a restored workspace opens the note asked for and nothing
     // else: re-fanning that application's noted stages would pile them up on every visit.
-    return {
-      layout: openInGroup(restored.layout, restored.focusedGroupId, request.ref),
-      focusedGroupId: restored.focusedGroupId,
-    };
+    // Shown where it is already open, so arriving from a card lands on the pane that has it.
+    const shown = revealOrOpen(restored.layout, restored.focusedGroupId, request.ref);
+    return { layout: shown.layout, focusedGroupId: shown.groupId };
   });
 
   const handled = useRef<number | null>(null);
