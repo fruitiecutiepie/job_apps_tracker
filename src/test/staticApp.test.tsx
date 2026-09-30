@@ -3,6 +3,10 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ComponentType } from 'react'
 
+import { prepareTrackerDatabase } from '../domain/database'
+import { serializeTrackerDocument } from '../domain/export'
+import { createApplication } from '../domain/mutations'
+
 /**
  * The static build, exercised as the app rather than as the backend.
  *
@@ -34,6 +38,24 @@ async function addApplication(
   const dialog = screen.getByRole('dialog', { name: 'Add application' })
   await user.type(within(dialog).getByLabelText('Company'), company)
   await user.click(within(dialog).getByRole('button', { name: 'Add application' }))
+}
+
+/** A one-application export, as a file to hand the import input. */
+function trackerFile(company: string): File {
+  const document = prepareTrackerDatabase([
+    createApplication({
+      company,
+      role: '',
+      url: '',
+      source: '',
+      state: 'applied',
+      next_action: '',
+      next_action_at: null,
+      deadline_at: null,
+      notes: '',
+    }),
+  ])
+  return new File([serializeTrackerDocument(document)], `${company}.json`, { type: 'application/json' })
 }
 
 /** Looked up where it is used: the app remounts across a reload. */
@@ -123,6 +145,34 @@ describe('the static build', () => {
     }
   })
 
+  /*
+   * An empty tracker has nothing to lose, so an import there simply happens. One that
+   * holds only what the last import brought is backed up by that file, so the question is
+   * a plain one; add something after it and the copy is offered again.
+   */
+  it('asks about replacing only as much as there is to lose', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+
+    await user.upload(input, trackerFile('Imported Ltd'))
+    await waitFor(() => expect(screen.getByText('1 of 1 applications shown')).toBeInTheDocument())
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+
+    await user.upload(input, trackerFile('Second Import'))
+    let question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
+    expect(question).toHaveTextContent('Your last backup already has them.')
+    expect(within(question).queryByRole('button', { name: 'Discard and import' })).not.toBeInTheDocument()
+    await user.click(within(question).getByRole('button', { name: 'Cancel' }))
+
+    await addApplication(user, 'Typed Since')
+    await within(topbar()).findByRole('button', { name: 'Export a backup' })
+    await user.upload(input, trackerFile('Second Import'))
+    question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
+    expect(question).toHaveTextContent('They are not saved anywhere else')
+    expect(within(question).getByRole('button', { name: 'Discard and import' })).toBeInTheDocument()
+  })
+
   it('keeps reminding after a reload, since forgetting happens between visits', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
@@ -208,6 +258,16 @@ describe('the static build, in a browser that can write a folder', () => {
     const actions = within(intro).getAllByRole('button').map((button) => button.textContent?.trim())
     expect(actions).toEqual(['Add your first application', 'Import a file', 'Save to a folder'])
     expect(within(intro).getByRole('button', { name: 'Add your first application' })).toHaveClass('button--primary')
+  })
+
+  it('says nothing when the folder picker is dismissed', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    await user.click(screen.getByRole('button', { name: /Save to a folder/ }))
+
+    expect((window as unknown as { showDirectoryPicker: () => void }).showDirectoryPicker).toHaveBeenCalled()
+    expect(screen.queryByRole('status')).not.toBeInTheDocument()
+    expect(within(topbar()).getByRole('button', { name: 'Saved in this browser' })).toBeInTheDocument()
   })
 
   it('asks for a folder in the top bar once a change is only in this browser', async () => {

@@ -223,9 +223,10 @@ describe('browser backend, with a folder connected', () => {
     expect(seen).toEqual(['disconnected', 'connected', 'disconnected'])
   })
 
-  it('treats a dismissed picker as no change', async () => {
+  it('treats a dismissed picker as no change, and says it was dismissed', async () => {
     const backend = browserBackend({ store, supportsFolders: true, pick: async () => null })
-    expect(await backend.storage!.connect()).toEqual({ kind: 'disconnected' })
+    expect(await backend.storage!.connect()).toBeNull()
+    expect(backend.storage!.connection()).toEqual({ kind: 'disconnected' })
   })
 })
 

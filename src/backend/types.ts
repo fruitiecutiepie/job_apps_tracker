@@ -70,8 +70,12 @@ export interface StorageState {
 export interface ConnectableStorage {
   connection(): StorageConnection
   state(): StorageState
-  /** Opens the picker. Must be called from a user gesture. */
-  connect(): Promise<StorageConnection>
+  /**
+   * Opens the picker. Must be called from a user gesture. Null when the viewer dismissed
+   * it, which is a decision rather than a result: nothing changed, and a caller that read
+   * the unchanged connection as an answer would report a folder nobody picked.
+   */
+  connect(): Promise<StorageConnection | null>
   /** Re-asks for permission on the folder already stored. Must be called from a gesture. */
   reconnect(): Promise<StorageConnection>
   disconnect(): Promise<StorageConnection>

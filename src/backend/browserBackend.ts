@@ -198,9 +198,9 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     connection: () => connection,
     state,
 
-    async connect(): Promise<StorageConnection> {
+    async connect(): Promise<StorageConnection | null> {
       const picked = await pick()
-      if (!picked) return connection
+      if (!picked) return null
       directory = picked
       await store.put('state', DIRECTORY_KEY, picked)
       /*

@@ -35,6 +35,7 @@ import {
   importTrackerArchive,
   describeImportErrors,
   readTrackerImport,
+  type TrackerImportSuccess,
   loadTrackerDatabase,
   MAX_ATTACHMENT_BYTES,
   moveApplication,
@@ -67,8 +68,9 @@ import {
   type TrackerDocument,
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
-import { backend, isBrowserBackend } from './backend'
+import { backend, isBrowserBackend, type StorageConnection } from './backend'
 import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
+import { ImportReplaceDialog, type ImportChoice, type ImportReplacement } from './ImportReplaceDialog'
 import { useStorageState } from './useStorageState'
 import { useFileImport } from './useFileImport'
 import { ThemeMenu } from './ThemeMenu'
@@ -707,6 +709,11 @@ export default function App() {
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const storageState = useStorageState()
+  const [pendingImport, setPendingImport] = useState<{
+    document: TrackerImportSuccess['document']
+    files: TrackerImportSuccess['files']
+    replacement: ImportReplacement
+  } | null>(null)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
 
@@ -830,16 +837,39 @@ export default function App() {
         return
       }
 
-      const { applications } = result.document
-      const attachments = result.files.length
-      const carrying = attachments > 0 ? ` and ${attachments} attachments` : ''
-      if (!window.confirm(
-        `Replace your current tracker with ${applications.length} imported applications${carrying}?`,
-      )) {
+      // An empty tracker has nothing to replace, so there is nothing to ask.
+      const current = trackerRef.current?.applications.length ?? 0
+      if (current === 0) {
+        await applyImport(result.document, result.files)
         return
       }
 
-      const saved = await importTrackerArchive(result.document, result.files)
+      const connection = storageState?.connection ?? null
+      setPendingImport({
+        document: result.document,
+        files: result.files,
+        replacement: {
+          incoming: result.document.applications.length,
+          attachments: result.files.length,
+          current,
+          backedUp:
+            connection !== null
+            && connection.kind !== 'connected'
+            && storageState?.unbackedSince === null,
+          folder: connection?.kind === 'connected' ? connection.name : null,
+        },
+      })
+    } catch (error) {
+      setNotice(`Import failed: ${errorMessage(error)}`)
+    }
+  }
+
+  const applyImport = async (
+    document: TrackerImportSuccess['document'],
+    files: TrackerImportSuccess['files'],
+  ) => {
+    try {
+      const saved = await importTrackerArchive(document, files)
       // What was just imported is a file the viewer already holds.
       await backend.storage?.markBackedUp()
       trackerRef.current = saved
@@ -848,6 +878,23 @@ export default function App() {
     } catch (error) {
       setNotice(`Import failed: ${errorMessage(error)}`)
     }
+  }
+
+  const answerImport = async (choice: ImportChoice) => {
+    const pending = pendingImport
+    setPendingImport(null)
+    if (!pending || choice === 'cancel') return
+    if (choice === 'save-then-import') {
+      const current = trackerRef.current
+      try {
+        if (current) await downloadTrackerArchive(current)
+      } catch (error) {
+        // No copy, no replacement: the viewer asked for the two together.
+        setNotice(`Nothing was imported, because saving a copy failed: ${errorMessage(error)}`)
+        return
+      }
+    }
+    await applyImport(pending.document, pending.files)
   }
 
   const dragging = useFileImport({
@@ -1071,9 +1118,18 @@ export default function App() {
    * back rather than assumed unchanged: pointing the site at last week's export is one of
    * the two reasons anyone presses this.
    */
-  const reloadAfter = async (connect: () => Promise<unknown>, message: string) => {
+  const reloadAfter = async (
+    connect: () => Promise<StorageConnection | null>,
+    message: string,
+  ) => {
     try {
-      await connect()
+      /*
+       * Only a folder actually connected is news. A dismissed picker comes back null and a
+       * refused permission comes back still needing one; both leave everything as it was,
+       * and the topbar already says so.
+       */
+      const result = await connect()
+      if (result?.kind !== 'connected') return
       const loaded = await loadTrackerDatabase()
       trackerRef.current = loaded
       setTracker(loaded)
@@ -1488,6 +1544,13 @@ export default function App() {
             onAdd={(opener) => openNewApplication(opener)}
             onImport={() => importInputRef.current?.click()}
             showDemoLink={!isDemoTrackerProfile()}
+          />
+        )}
+
+        {pendingImport && (
+          <ImportReplaceDialog
+            onChoose={(choice) => void answerImport(choice)}
+            replacement={pendingImport.replacement}
           />
         )}
 

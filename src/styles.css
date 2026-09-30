@@ -1787,6 +1787,17 @@ tbody tr:hover {
   flex: 1;
 }
 
+/* A question rather than a form: narrower, and the prose sits at reading size. */
+.dialog--compact {
+  width: min(36rem, 100%);
+}
+
+.dialog__body {
+  margin: 0 0 var(--s5);
+  color: var(--ink-2);
+  font-size: var(--t3);
+}
+
 /* --------------------------------------------------------- attachments --- */
 
 .attachment-field {
