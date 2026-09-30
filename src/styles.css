@@ -111,10 +111,14 @@
   /* The grab strip between two panes of the prep notes panel */
   --pane-handle: 6px;
 
-  /* Width of one application's card in the prep-notes comparison board, and how tall
-     its note may grow before it scrolls on its own rather than the whole card */
-  --compare-card: 22rem;
-  --compare-card-body: 20rem;
+  /* An application's card on the Compare board, until the reader resizes it. The width is
+     where a row starts to wrap — two to a row on a laptop, which is what comparing two notes
+     wants — and the cap keeps a card alone on its row from stretching to a measure no one
+     reads comfortably. The height is what a note hugs before it scrolls on its own, sized so
+     a card and the row of stages above it fit the window together. */
+  --compare-card: 26rem;
+  --compare-card-max: 44rem;
+  --compare-card-height: min(34rem, 72dvh);
 
   color: var(--ink);
   background: var(--bg);
@@ -1461,85 +1465,170 @@ tbody tr:hover {
 
 /* ------------------------------------------------------- compare notes --- */
 
-.compare-notes__toolbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: var(--s5);
-}
-
-.compare-notes__stage-field {
-  min-width: 12rem;
-}
-
-.compare-notes__picker {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s3);
-}
-
-.compare-notes__chips {
+/*
+  The stages as one row of choices, each with how many applications it would lay out. Radios
+  rather than a select, because which stages have anything to compare is itself worth seeing
+  before choosing one, and a menu hides it behind a press.
+*/
+.compare-notes__stages {
   display: flex;
   flex-wrap: wrap;
   gap: var(--s2);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
 }
 
-.compare-notes__chip {
+.compare-notes__stage {
   display: flex;
   align-items: center;
   gap: var(--s2);
-  padding: var(--s2) var(--s3);
+  min-height: var(--control);
+  padding: 0 var(--s3);
   border: 1px solid var(--line);
   border-radius: var(--pill);
   background: var(--surface);
+  color: var(--ink-2);
   font-size: var(--t2);
   cursor: pointer;
 }
 
-.compare-notes__board {
-  display: flex;
-  flex-direction: column;
-  gap: var(--s6);
-  margin-top: var(--s5);
+.compare-notes__stage input {
+  position: absolute;
+  opacity: 0;
 }
 
-.compare-notes__group-heading {
-  margin: 0 0 var(--s3);
+.compare-notes__stage:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-weak);
   color: var(--ink);
-  font-size: var(--t4);
-  font-weight: 600;
+  font-weight: 500;
 }
 
-.compare-notes__row {
+.compare-notes__stage:has(input:focus-visible) {
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+
+.compare-notes__stage-board {
+  margin-top: var(--s4);
+}
+
+/*
+  A wrapping row rather than a grid, because a card can be given a width of its own and a
+  grid track cannot follow one item. Cards the reader has not sized share the row between
+  them from `--compare-card` up, so the default fills the width the way a grid would.
+  `flex-start` lets a short note end where it ends instead of stretching to the tallest.
+*/
+.compare-notes__grid {
   display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
   gap: var(--s4);
-  overflow-x: auto;
-  padding-bottom: var(--s2);
 }
 
 .compare-notes__card {
+  position: relative;
   display: flex;
+  flex: 1 1 var(--compare-card);
   flex-direction: column;
-  flex: 0 0 var(--compare-card);
+  min-width: 0;
+  max-width: min(100%, var(--compare-card-max));
+  max-height: var(--compare-card-height);
   border: 1px solid var(--line);
   border-radius: var(--r3);
   background: var(--surface);
 }
 
-.compare-notes__card--current {
-  border-color: var(--accent);
+/* A width of its own leaves the row alone; the inline width says how much. */
+.compare-notes__card--sized-width {
+  flex: 0 0 auto;
+  max-width: 100%;
 }
 
+/* A height of its own is a height, not a cap to hug below. */
+.compare-notes__card--sized-height {
+  max-height: none;
+}
+
+/*
+  The handles sit over the card's own edges, half outside it, so a press on the border finds
+  one. The corner is drawn at rest — a handle that appears only on hover is one nobody finds —
+  and the edges light up when reached for.
+*/
+.compare-notes__resize {
+  position: absolute;
+  z-index: 1;
+  touch-action: none;
+}
+
+.compare-notes__resize--width {
+  top: 0;
+  right: calc(var(--pane-handle) / -2);
+  bottom: var(--s5);
+  width: var(--pane-handle);
+  cursor: col-resize;
+}
+
+.compare-notes__resize--height {
+  right: var(--s5);
+  bottom: calc(var(--pane-handle) / -2);
+  left: 0;
+  height: var(--pane-handle);
+  cursor: row-resize;
+}
+
+.compare-notes__resize--width:hover,
+.compare-notes__resize--height:hover {
+  background: var(--line-strong);
+}
+
+.compare-notes__resize--width:focus-visible,
+.compare-notes__resize--height:focus-visible {
+  outline: none;
+  background: var(--accent);
+}
+
+.compare-notes__resize--corner {
+  right: 0;
+  bottom: 0;
+  width: var(--s5);
+  height: var(--s5);
+  border-bottom-right-radius: var(--r3);
+  background: linear-gradient(
+    135deg,
+    transparent 0 52%,
+    var(--ink-3) 52% 58%,
+    transparent 58% 72%,
+    var(--ink-3) 72% 78%,
+    transparent 78%
+  );
+  cursor: nwse-resize;
+}
+
+.compare-notes__resize--corner:hover {
+  background-color: var(--surface-3);
+}
+
+/* The name and the controls share the first row; the name gives way and ellipses. */
 .compare-notes__card-header {
+  display: grid;
+  flex: none;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--s1) var(--s3);
   padding: var(--s3) var(--s4);
   border-bottom: 1px solid var(--line);
 }
 
 .compare-notes__card-title {
+  overflow: hidden;
   margin: 0;
   font-size: var(--t3);
   font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .compare-notes__card-role {
@@ -1547,16 +1636,42 @@ tbody tr:hover {
   font-weight: 400;
 }
 
+.compare-notes__card-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.compare-notes__card-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  grid-column: 1 / -1;
+  gap: var(--s3);
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t2);
+}
+
 .compare-notes__card-body {
-  max-height: var(--compare-card-body);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
   padding: var(--s4);
-  overflow-y: auto;
+  overflow: auto;
 }
 
 .compare-notes__captured {
   margin-top: var(--s4);
   padding-top: var(--s3);
   border-top: 1px solid var(--line);
+}
+
+.compare-notes__captured-heading {
+  margin: 0 0 var(--s2);
+  color: var(--ink-2);
+  font-size: var(--t2);
+  font-weight: 600;
 }
 
 /* ------------------------------------------------------------- dialogs --- */
