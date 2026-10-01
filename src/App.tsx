@@ -1248,7 +1248,7 @@ export default function App() {
   const connectStorage = () => {
     void reloadAfter(async () => {
       const result = await backend.storage!.connect()
-      if (result.outcome === 'already-open') {
+      if (result.outcome === 'already-open' || result.outcome === 'opened') {
         navigation.open(trackerHref(result.tracker.id))
         return null
       }

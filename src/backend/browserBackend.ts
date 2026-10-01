@@ -500,6 +500,29 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     else await noteUnbacked()
   }
 
+  /*
+   * A folder opened as a tracker of its own rather than into this one: written under a new
+   * id with the folder already connected, so the tab that navigates to it finds it whole.
+   */
+  async function storeAsNewTracker(
+    folder: DirectoryHandleLike,
+    document: TrackerDatabase,
+  ): Promise<TrackerSummary> {
+    const created = createUuidV7(now())
+    await store.put('state', documentKey(created), serialize(document))
+    await store.put('state', directoryKey(created), folder)
+    await store.put('state', revisionKey(created), 1)
+    const summary: TrackerSummary = {
+      id: created,
+      name: document.name ?? folder.name,
+      fallbackName: folder.name,
+      applications: document.applications.length,
+      openedAt: now().toISOString(),
+    }
+    await store.put('state', metaKey(created), summary)
+    return summary
+  }
+
   /* Another tracker in this browser already writing to the folder just picked, if any. */
   async function trackerHolding(picked: DirectoryHandleLike): Promise<TrackerSummary | null> {
     if (!picked.isSameEntry) return null
@@ -523,22 +546,33 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       if (holder) return { outcome: 'already-open', tracker: holder }
 
       return exclusive(async () => {
+        /*
+         * One action both opens and saves, and what the folder holds says which was meant.
+         * A folder with a tracker in it is opened; an empty one starts saving this tracker
+         * there. Opening into this tracker is only safe while it is empty — the first
+         * visit — because adopting the folder's file replaces whatever this one holds, and
+         * the moment someone presses "Save to a folder" is exactly when it holds changes
+         * that are nowhere else. So a tracker with anything in it is left alone, and the
+         * folder opens as a tracker of its own.
+         */
+        const existing = await readFileIn(picked, TRACKER_FILENAME)
+        const parsedExisting = existing
+          ? ensureFreshIndexes(parseTrackerDocument(await existing.text()))
+          : null
+        const cachedText = (await store.get('state', documentKey(id()))) as string | null
+        if (parsedExisting && cachedText !== null && countApplications(cachedText) > 0) {
+          return { outcome: 'opened' as const, tracker: await storeAsNewTracker(picked, parsedExisting) }
+        }
+
         directory = picked
         fallbackName = picked.name
         await store.put('state', directoryKey(id()), picked)
-        /*
-         * Connecting a folder adopts whatever is already in it. Someone pointing the site
-         * at the folder they exported last week means to open that data, not to overwrite
-         * it with the empty document the page started on.
-         */
-        const existing = await readFileIn(picked, TRACKER_FILENAME)
-        if (existing) {
-          await cacheDocument(ensureFreshIndexes(parseTrackerDocument(await existing.text())))
+        if (parsedExisting) {
+          await cacheDocument(parsedExisting)
         } else {
-          const cached = (await store.get('state', documentKey(id()))) as string | null
-          const document = cached === null
+          const document = cachedText === null
             ? createEmptyDocument()
-            : ensureFreshIndexes(parseTrackerDocument(cached))
+            : ensureFreshIndexes(parseTrackerDocument(cachedText))
           const text = await cacheDocument(document)
           await writeFileIn(picked, TRACKER_FILENAME, text)
         }

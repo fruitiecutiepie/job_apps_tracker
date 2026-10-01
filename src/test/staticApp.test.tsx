@@ -313,13 +313,15 @@ describe('the static build, in a browser that can write a folder', () => {
     vi.resetModules()
   })
 
-  it('offers a folder beside starting, not in place of it', async () => {
+  it('offers one way to bring data in beside starting', async () => {
     await renderStaticApp()
     const intro = screen.getByRole('region', { name: 'Track your job applications' })
     const actions = within(intro).getAllByRole('button').map((button) => button.textContent?.trim())
-    expect(actions).toEqual(['Add your first application', 'Import a file', 'Save to a folder'])
+    // One way to bring data in: a folder both opens and saves, so Import would repeat it.
+    expect(actions).toEqual(['Add your first application', 'Choose a folder'])
     expect(within(intro).getByRole('button', { name: 'Add your first application' })).toHaveClass('button--primary')
-    expect(intro).toHaveTextContent(/deletes them, so save to a folder to keep a copy on your computer\./)
+    expect(intro).toHaveTextContent(/deletes them, so keep them in a folder on your computer as well\./)
+    expect(intro).toHaveTextContent(/A folder with your tracker in it opens it; an empty folder starts saving there\./)
   })
 
   /*
@@ -334,7 +336,7 @@ describe('the static build, in a browser that can write a folder', () => {
     const { navigation } = await import('../backend/trackerAddress')
     const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
 
-    await user.click(screen.getByRole('button', { name: /Save to a folder/ }))
+    await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
     await within(topbar()).findByRole('button', { name: 'Saving to job-apps' })
     await addApplication(user, 'Northwind')
     await waitFor(() => expect(folder.readText('tracker.json')).toContain('Northwind'))
@@ -366,7 +368,7 @@ describe('the static build, in a browser that can write a folder', () => {
     })
     const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
 
-    await user.click(screen.getByRole('button', { name: /Save to a folder/ }))
+    await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
     await waitFor(() => expect(open).toHaveBeenCalledWith('?tracker=holder'))
     expect(screen.queryByText(/now saved to that folder/)).not.toBeInTheDocument()
   })
@@ -374,7 +376,7 @@ describe('the static build, in a browser that can write a folder', () => {
   it('says nothing when the folder picker is dismissed', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
-    await user.click(screen.getByRole('button', { name: /Save to a folder/ }))
+    await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
 
     expect((window as unknown as { showDirectoryPicker: () => void }).showDirectoryPicker).toHaveBeenCalled()
     expect(screen.queryByRole('status')).not.toBeInTheDocument()

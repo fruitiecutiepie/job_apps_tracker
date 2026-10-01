@@ -204,7 +204,12 @@ describe('browser backend, with a folder connected', () => {
     expect(await store.keys('attachments')).toEqual([])
   })
 
-  it('adopts the data already in the folder instead of overwriting it', async () => {
+  /*
+   * Neither copy is overwritten. The folder's tracker is not replaced by what the page
+   * had, and — since the page had applications of its own — the page's are not replaced
+   * by the folder's either: the folder opens as a tracker of its own.
+   */
+  it('overwrites neither the folder\'s tracker nor the one already in the page', async () => {
     const backend = connected(store, folder)
     await backend.saveDocument(withApplication('Typed before connecting'))
 
@@ -213,11 +218,9 @@ describe('browser backend, with a folder connected', () => {
     await seeded.storage!.connect()
     await seeded.saveDocument(withApplication('Already in the folder'))
 
-    await backend.storage!.connect()
-    const loaded = await backend.loadDocument()
-    expect(loaded.applications.map((application) => application.company)).toEqual([
-      'Already in the folder',
-    ])
+    expect(await backend.storage!.connect()).toMatchObject({ outcome: 'opened' })
+    expect((await backend.loadDocument()).applications[0].company).toBe('Typed before connecting')
+    expect(folder.readText(TRACKER_FILENAME)).toContain('Already in the folder')
   })
 
   it('seeds an empty folder with what the page already had', async () => {
@@ -632,6 +635,45 @@ describe('several trackers in one browser', () => {
     await backend.storage!.connect()
     await backend.storage!.nameAfterFile('someone-elses.json')
     expect(backend.storage!.state().tracker!.name).toBe('job-apps')
+  })
+
+  /*
+   * Choosing a folder both opens and saves. Opened into a tracker that already holds
+   * applications, the folder's file would replace them — and "Save to a folder" is pressed
+   * exactly when they exist nowhere else — so that folder opens as a tracker of its own.
+   */
+  it('opens a folder holding a tracker as its own tracker, leaving this one alone', async () => {
+    const folder = new FakeDirectory('last-year')
+    await folder.getFileHandle(TRACKER_FILENAME, { create: true }).then(async (handle) => {
+      const writable = await handle.createWritable()
+      await writable.write(`${JSON.stringify(withApplication('From the folder'))}\n`)
+      await writable.close()
+    })
+    const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })
+    await backend.saveDocument(withApplication('Only in this browser'))
+    const before = backend.storage!.state().tracker!.id
+
+    const result = await backend.storage!.connect()
+    expect(result).toMatchObject({ outcome: 'opened', tracker: { name: 'last-year', applications: 1 } })
+    expect((await backend.loadDocument()).applications[0].company).toBe('Only in this browser')
+    expect(backend.storage!.connection()).toEqual({ kind: 'disconnected' })
+
+    const opened = tab(result.outcome === 'opened' ? result.tracker.id : '', { supportsFolders: true }).backend
+    expect((await opened.loadDocument()).applications[0].company).toBe('From the folder')
+    expect(opened.storage!.connection()).toEqual({ kind: 'connected', name: 'last-year' })
+    expect(opened.storage!.state().tracker!.id).not.toBe(before)
+  })
+
+  it('opens a folder holding a tracker into this one while this one is empty', async () => {
+    const folder = new FakeDirectory('last-year')
+    const writable = await (await folder.getFileHandle(TRACKER_FILENAME, { create: true })).createWritable()
+    await writable.write(`${JSON.stringify(withApplication('From the folder'))}\n`)
+    await writable.close()
+    const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })
+    await backend.loadDocument()
+
+    expect(await backend.storage!.connect()).toMatchObject({ outcome: 'connected' })
+    expect((await backend.loadDocument()).applications[0].company).toBe('From the folder')
   })
 
   /*

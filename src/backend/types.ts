@@ -118,6 +118,12 @@ export type ConnectResult =
    * caller should open that tracker instead.
    */
   | { outcome: 'already-open'; tracker: TrackerSummary }
+  /**
+   * The folder holds a tracker of its own and this one already has applications, so the
+   * folder was stored as a separate tracker rather than adopted over this one. The caller
+   * should open it; this tracker is untouched.
+   */
+  | { outcome: 'opened'; tracker: TrackerSummary }
 
 export interface ConnectableStorage {
   connection(): StorageConnection

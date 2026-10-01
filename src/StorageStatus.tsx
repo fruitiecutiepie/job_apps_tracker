@@ -123,6 +123,11 @@ export interface StorageIntroProps {
 }
 
 /**
+ * One action brings existing data in, per browser. Where a folder can be written, choosing
+ * one both opens and saves — the folder's contents say which — so a separate Import beside
+ * it would be a second way to say the same thing. Where it cannot, Import is that action.
+ * An export file is still taken by drop anywhere, which the line under the buttons says.
+ *
  * The empty tracker's first screen. Someone arriving here came to track job applications,
  * so that is the one thing it offers up front. A folder is an option where the browser
  * can write one, never the price of starting — but an option is only worth taking if the
@@ -147,7 +152,7 @@ export function StorageIntro({
         Nothing is uploaded and there is no account: your applications are saved in this
         browser. Clearing your browsing data or closing a private window deletes them,{' '}
         {canConnect
-          ? 'so save to a folder to keep a copy on your computer.'
+          ? 'so keep them in a folder on your computer as well.'
           : 'so export a backup now and then — the top bar will remind you.'}
       </p>
       <div className="storage-intro__actions">
@@ -158,15 +163,21 @@ export function StorageIntro({
         >
           <Plus aria-hidden="true" size={16} /> Add your first application
         </button>
-        <button className="button" onClick={onImport} type="button">
-          <Upload aria-hidden="true" size={16} /> Import a file
-        </button>
-        {canConnect && (
-          <button className="button button--quiet" onClick={onConnect} type="button">
-            <FolderOpen aria-hidden="true" size={16} /> Save to a folder
+        {canConnect ? (
+          <button className="button" onClick={onConnect} type="button">
+            <FolderOpen aria-hidden="true" size={16} /> Choose a folder
+          </button>
+        ) : (
+          <button className="button" onClick={onImport} type="button">
+            <Upload aria-hidden="true" size={16} /> Import a file
           </button>
         )}
       </div>
+      <p className="storage-intro__hint">
+        {canConnect
+          ? 'A folder with your tracker in it opens it; an empty folder starts saving there. Have an exported file instead? Drop it anywhere on this page.'
+          : 'Have an exported file? You can also drop it anywhere on this page.'}
+      </p>
       {showDemoLink && (
         <p className="storage-intro__aside">
           Just looking? <a href={demoSiteUrl()}>Try the demo</a>.
