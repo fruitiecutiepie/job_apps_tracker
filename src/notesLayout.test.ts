@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
+import { isStateId, type StateId } from './domain'
+
 import {
   MIN_PANE_FRACTION,
   splitEmpty,
@@ -19,21 +21,27 @@ import {
   orderedRefs,
   parseNoteRefKey,
   parseTabId,
+  sameRef,
   placeTab,
   tabId,
   prune,
   replaceTab,
   resizeSplit,
+  openPrepNoteFor,
+  revealOrOpen,
   singleGroup,
   splitWith,
+  stageRef,
+  postingRef,
+  POSTING_SEGMENT,
   type LayoutNode,
   type NoteRef,
   type SplitNode,
   type TabGroup,
 } from './notesLayout'
 
-const acme = (state: NoteRef['state']): NoteRef => ({ applicationId: 'acme', state })
-const globex = (state: NoteRef['state']): NoteRef => ({ applicationId: 'globex', state })
+const acme = (state: StateId): NoteRef => stageRef('acme', state)
+const globex = (state: StateId): NoteRef => stageRef('globex', state)
 
 /** Ids the assertions can name, rather than whatever a counter happened to reach. */
 function ids(...names: string[]): () => string {
@@ -55,6 +63,60 @@ describe('noteRefKey', () => {
   })
 })
 
+describe('posting refs', () => {
+  /*
+   * The whole defence of the key namespace. A posting's key stands where a state's does, so
+   * the two are only unambiguous while no state is called `posting` — and a collision would
+   * not throw, it would quietly hand one pane another's contents.
+   */
+  it('reserves a segment no state can claim', () => {
+    expect(isStateId(POSTING_SEGMENT)).toBe(false)
+  })
+
+  it('keys a stage note exactly as it did before postings existed', () => {
+    // Frozen deliberately: every arrangement in storage is keyed by this string.
+    expect(noteRefKey(stageRef('acme', 'interview_1'))).toBe('acme::interview_1')
+    expect(noteRefKey(postingRef('acme'))).toBe('acme::posting')
+  })
+
+  it('reads every key back as the ref it names', () => {
+    const refs = [stageRef('acme', 'interview_1'), postingRef('acme')]
+    for (const ref of refs) {
+      expect(parseNoteRefKey(noteRefKey(ref))).toEqual(ref)
+      expect(parseTabId(tabId('pane-2', ref))).toEqual({ groupId: 'pane-2', ref })
+    }
+  })
+
+  it('rejects a key naming neither a state nor a posting', () => {
+    expect(parseNoteRefKey('acme::postings')).toBeNull()
+    expect(parseNoteRefKey('acme::nope')).toBeNull()
+    expect(parseNoteRefKey('acme::posting::extra')).toBeNull()
+  })
+
+  it('tells a posting from a stage note of the same application', () => {
+    expect(sameRef(postingRef('acme'), stageRef('acme', 'applied'))).toBe(false)
+    expect(sameRef(postingRef('acme'), postingRef('acme'))).toBe(true)
+    expect(sameRef(postingRef('acme'), postingRef('globex'))).toBe(false)
+  })
+
+  it('carries a posting through the layout operations beside a stage note', () => {
+    const posting = postingRef('acme')
+    const group = makeGroup('g1', [posting, acme('interview_1')])
+    expect(group.tabs).toHaveLength(2)
+
+    // Opening it again activates the tab that is there rather than adding a second.
+    const reopened = openInGroup(group, 'g1', posting)
+    expect(orderedRefs(reopened)).toHaveLength(2)
+    expect((reopened as TabGroup).activeKey).toBe(noteRefKey(posting))
+
+    const split = splitWith(group, 'g1', 'right', posting, ids('g2'))
+    expect(orderedRefs(split!)).toContainEqual(posting)
+
+    const closed = closeTab(group, 'g1', noteRefKey(posting))
+    expect(orderedRefs(closed!)).toEqual([acme('interview_1')])
+  })
+})
+
 describe('makeGroup', () => {
   it('activates the last tab when no active key is given', () => {
     const group = makeGroup('g1', [acme('applied'), acme('offer')])
@@ -68,6 +130,92 @@ describe('makeGroup', () => {
 
   it('leaves an empty group with nothing active', () => {
     expect(makeGroup('g1', []).activeKey).toBeNull()
+  })
+})
+
+describe('openPrepNoteFor', () => {
+  it('finds this pane\'s own prep note of the application first, whatever stage it is for', () => {
+    let tree: LayoutNode = makeGroup('g1', [globex('applied'), postingRef('acme'), acme('offer')], noteRefKey(postingRef('acme')))
+    tree = splitWith(tree, 'g1', 'right', acme('interview_1'), ids('g2', 's1'), 'g1')
+
+    expect(openPrepNoteFor(tree, 'g1', 'acme')).toEqual(acme('offer'))
+  })
+
+  it('then another pane\'s, preferring one it is showing', () => {
+    let tree: LayoutNode = makeGroup('g1', [postingRef('acme')], noteRefKey(postingRef('acme')))
+    tree = splitWith(tree, 'g1', 'right', acme('applied'), ids('g2', 's1'), 'g1')
+    tree = splitWith(tree, 'g2', 'right', acme('offer'), ids('g3', 's2'), 'g1')
+    tree = openInGroup(tree, 'g2', globex('offer'))
+    // g2 holds Acme · Applied behind Globex · Offer; g3 shows Acme · Offer.
+
+    expect(openPrepNoteFor(tree, 'g1', 'acme')).toEqual(acme('offer'))
+  })
+
+  it('never answers with another application\'s note, and is null when none is open', () => {
+    const tree = makeGroup('g1', [postingRef('acme'), globex('offer')], noteRefKey(postingRef('acme')))
+
+    expect(openPrepNoteFor(tree, 'g1', 'acme')).toBeNull()
+  })
+})
+
+describe('revealOrOpen', () => {
+  function twoPanes(): LayoutNode {
+    // g1 holds Acme · Applied; g2 holds Globex · Offer.
+    return splitWith(singleGroup('g1', acme('applied')), 'g1', 'right', globex('offer'), ids('g2', 's1'))
+  }
+
+  it('shows a note already open in another pane there, rather than opening it again here', () => {
+    const shown = revealOrOpen(twoPanes(), 'g1', globex('offer'))
+
+    expect(shown.groupId).toBe('g2')
+    expect(findGroup(shown.layout, 'g1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('applied'))])
+    expect(findGroup(shown.layout, 'g2')!.activeKey).toBe(noteRefKey(globex('offer')))
+  })
+
+  it('brings the note forward in the pane holding it, when another tab was in front', () => {
+    let tree = openInGroup(twoPanes(), 'g2', acme('offer'))
+    expect(findGroup(tree, 'g2')!.activeKey).toBe(noteRefKey(acme('offer')))
+
+    const shown = revealOrOpen(tree, 'g1', globex('offer'))
+    tree = shown.layout
+    expect(shown.groupId).toBe('g2')
+    expect(findGroup(tree, 'g2')!.activeKey).toBe(noteRefKey(globex('offer')))
+  })
+
+  it('prefers the pane asked for when that pane has it too', () => {
+    const tree = openInGroup(twoPanes(), 'g1', globex('offer'))
+    const shown = revealOrOpen(tree, 'g1', globex('offer'))
+
+    expect(shown.groupId).toBe('g1')
+    expect(findGroup(shown.layout, 'g1')!.activeKey).toBe(noteRefKey(globex('offer')))
+  })
+
+  it('prefers a pane already showing the note over one where it sits behind another tab', () => {
+    let tree = splitWith(twoPanes(), 'g2', 'right', globex('offer'), ids('g3', 's2'))
+    tree = openInGroup(tree, 'g2', acme('offer'))
+    // g2 holds Globex · Offer behind Acme · Offer; g3 has it in front.
+    const shown = revealOrOpen(tree, 'g1', globex('offer'))
+
+    expect(shown.groupId).toBe('g3')
+  })
+
+  it('opens into the pane asked for when no pane has the note', () => {
+    const shown = revealOrOpen(twoPanes(), 'g1', globex('interview_1'))
+
+    expect(shown.groupId).toBe('g1')
+    expect(findGroup(shown.layout, 'g1')!.tabs.map(noteRefKey)).toEqual([
+      noteRefKey(acme('applied')),
+      noteRefKey(globex('interview_1')),
+    ])
+  })
+
+  it('fills an empty pane even with a note open elsewhere, since that is what it was made for', () => {
+    const tree = splitEmpty(singleGroup('pane-1', acme('applied')), 'pane-1', 'right', () => 'pane-2')
+    const shown = revealOrOpen(tree, 'pane-2', acme('applied'))
+
+    expect(shown.groupId).toBe('pane-2')
+    expect(findGroup(shown.layout, 'pane-2')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('applied'))])
+    expect(findGroup(shown.layout, 'pane-1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('applied'))])
   })
 })
 
@@ -138,7 +286,7 @@ describe('replaceTab', () => {
     expect(replaceTab(group, 'g1', noteRefKey(acme('applied')), acme('applied'))).toBe(group)
   })
 
-  it('swaps onto a stage another pane is showing, leaving that pane alone', () => {
+  it('shows a stage another pane already has there, leaving this pane as it was', () => {
     const split = splitWith(
       singleGroup('g1', acme('applied')),
       'g1',
@@ -149,10 +297,19 @@ describe('replaceTab', () => {
     )
     const swapped = replaceTab(split, 'g1', noteRefKey(acme('applied')), acme('offer'))
 
-    // A copy elsewhere is somewhere else. Swapping this tab onto that stage is a request
-    // to read it here, and both panes end up showing it.
-    expect(findGroup(swapped, 'g1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('offer'))])
+    // Reaching for a note goes to it where it is open, rather than opening a second copy.
+    expect(findGroup(swapped, 'g1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('applied'))])
     expect(findGroup(swapped, 'g2')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('offer'))])
+    expect(findGroup(swapped, 'g2')!.activeKey).toBe(noteRefKey(acme('offer')))
+  })
+
+  it('brings a stage forward in the other pane when it sat behind another tab there', () => {
+    let tree = splitWith(singleGroup('g1', acme('applied')), 'g1', 'right', acme('offer'), ids('g2', 's1'), 'g1')
+    tree = openInGroup(tree, 'g2', globex('offer'))
+    const swapped = replaceTab(tree, 'g1', noteRefKey(acme('applied')), acme('offer'))
+
+    expect(findGroup(swapped, 'g2')!.activeKey).toBe(noteRefKey(acme('offer')))
+    expect(findGroup(swapped, 'g1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('applied'))])
   })
 
   it('moves to the tab this pane already has rather than showing it twice', () => {

@@ -50,6 +50,7 @@ function application(
     state_events: [],
     correspondence: [],
     attachments: [],
+    posting: null,
     ratings: [],
     compensation: emptyCompensation(),
     created_at: localDate(-40),
@@ -130,6 +131,7 @@ describe('TableView', () => {
         onMove={vi.fn()}
         onOpen={vi.fn()}
         onOpenMessages={vi.fn()}
+        onOpenPosting={vi.fn()}
         onOpenStageNotes={vi.fn()}
         quietDays={15}
       />,
@@ -157,7 +159,7 @@ describe('TableView', () => {
     ]
 
     render(
-      <TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />,
+      <TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />,
     )
 
     expect(screen.getByText('Idle 40 days')).toBeInTheDocument()
@@ -200,7 +202,7 @@ describe('TableView', () => {
     ]
 
     render(
-      <TableView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />,
+      <TableView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />,
     )
 
     // The default sort: both live rows tie on score and neither is rated, so the band's
@@ -253,7 +255,7 @@ describe('TableView', () => {
       application('Zebra Works', { source: 'Referral', role: 'Designer' }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter Company column' }), {
       target: { value: 'Alpha' },
@@ -292,7 +294,7 @@ describe('TableView', () => {
       }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     const sooner = screen.getByRole('row', { name: /Sooner Panel/ })
     expect(within(sooner).getByText('Called off round')).toBeInTheDocument()
@@ -335,7 +337,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -370,7 +372,7 @@ describe('TableView', () => {
         applications={[tasked, application('Idle Co')]}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={onCompleteAction}
       />,
     )
@@ -393,7 +395,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -424,7 +426,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -471,7 +473,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -516,7 +518,7 @@ describe('TableView', () => {
         applications={[application('Quiet Co')]}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -559,7 +561,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -578,7 +580,7 @@ describe('TableView', () => {
         applications={[waiting]}
         onOpen={vi.fn()}
         onMove={onMove}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -598,7 +600,7 @@ describe('TableView', () => {
         applications={[application('Sent Co')]}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -626,7 +628,7 @@ describe('TableView', () => {
         ]}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -650,7 +652,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -675,7 +677,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -700,7 +702,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -722,7 +724,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -754,7 +756,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -783,7 +785,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -813,7 +815,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -851,7 +853,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -883,7 +885,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -913,7 +915,7 @@ describe('TableView', () => {
         applications={applications}
         onOpen={vi.fn()}
         onMove={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
@@ -945,7 +947,7 @@ describe('TableView', () => {
       application('Zebra Works', { source: 'LinkedIn' }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByRole('combobox', { name: 'Filter Company column' })).toHaveAttribute(
       'list',
@@ -973,7 +975,7 @@ describe('TableView', () => {
       application('Plain Record'),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByText('resume.pdf')).toBeInTheDocument()
   })
@@ -981,7 +983,7 @@ describe('TableView', () => {
   it('resizes a column via its header handle', () => {
     const applications = [application('Alpha Labs', { role: 'Engineer' })]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     const handle = screen.getByRole('separator', { name: 'Resize Role column' })
     const roleColumn = document.querySelectorAll('col')[1] as HTMLElement
@@ -999,7 +1001,7 @@ describe('TableView', () => {
   it('clamps resizing at the maximum readable column width', () => {
     const applications = [application('Alpha Labs', { role: 'Engineer' })]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     const handle = screen.getByRole('separator', { name: 'Resize Role column' })
     const roleColumn = document.querySelectorAll('col')[1] as HTMLElement
@@ -1018,7 +1020,7 @@ describe('TableView', () => {
       }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     const cell = document.querySelector('[data-column="compensation"] .table-view__urgency')!
     expect(getComputedStyle(cell).whiteSpace).not.toBe('nowrap')
@@ -1030,7 +1032,7 @@ describe('TableView', () => {
       application('Beta Inc', { role: 'PM' }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     const handle = screen.getByRole('separator', { name: 'Resize Role column' })
     const roleColumn = document.querySelectorAll('col')[1] as HTMLElement
@@ -1395,7 +1397,69 @@ describe('kanbanColumnGroups', () => {
   })
 })
 
+describe('TableView job posting', () => {
+  it('offers the posting beside the prep notes on the row that has one', () => {
+    const onOpenPosting = vi.fn()
+    const posted = application('Marble & Finch', {
+      posting: { body: '## Product Manager', captured_at: localDate(-5), source_url: null },
+    })
+    const bare = application('Echo Robotics')
+
+    render(
+      <TableView
+        applications={[posted, bare]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onOpenPosting={onOpenPosting}
+        onOpenMessages={vi.fn()}
+        onCompleteAction={vi.fn()}
+        onMove={vi.fn()}
+      />,
+    )
+
+    // The column is the way into Prep, and Prep holds more than notes, so it is not headed
+    // as notes — the same reason the sidebar stopped filing postings under prep notes.
+    expect(screen.getByRole('columnheader', { name: /^Prep/ })).toBeInTheDocument()
+
+    expect(screen.queryByRole('button', { name: 'Job posting for Echo Robotics' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Job posting for Marble & Finch' }))
+
+    expect(onOpenPosting).toHaveBeenCalledWith(posted.id)
+  })
+})
+
 describe('KanbanView', () => {
+  it('offers the job posting from the card that has one, and not from one that has not', () => {
+    const onOpenPosting = vi.fn()
+    const posted = application('Marble & Finch', {
+      posting: {
+        body: '## Product Manager',
+        captured_at: localDate(-5),
+        source_url: null,
+      },
+    })
+    const bare = application('Echo Robotics')
+
+    render(
+      <KanbanView
+        applications={[posted, bare]}
+        onOpen={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        onOpenPosting={onOpenPosting}
+        onOpenMessages={vi.fn()}
+        onCompleteAction={vi.fn()}
+        onMove={vi.fn()}
+      />,
+    )
+
+    // Only where there is one to open. A control that opened an empty pane would be
+    // offering something that is not there.
+    expect(screen.queryByRole('button', { name: 'Job posting for Echo Robotics' })).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'Job posting for Marble & Finch' }))
+
+    expect(onOpenPosting).toHaveBeenCalledWith(posted.id)
+  })
+
   it('opens a card\'s messages on the stage the card is in', () => {
     const onOpenMessages = vi.fn()
     const record = application('Mailbox Co', {
@@ -1421,6 +1485,7 @@ describe('KanbanView', () => {
         applications={[record]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onOpenPosting={vi.fn()}
         onOpenMessages={onOpenMessages}
         onCompleteAction={vi.fn()}
         onMove={vi.fn()}
@@ -1442,6 +1507,7 @@ describe('KanbanView', () => {
         applications={[application('Quiet Co')]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()}
+        onOpenPosting={vi.fn()}
         onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
         onMove={vi.fn()}
@@ -1458,7 +1524,7 @@ describe('KanbanView', () => {
     const onMove = vi.fn()
     const record = application('Keyboard Movers')
 
-    render(<KanbanView applications={[record]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
+    render(<KanbanView applications={[record]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
 
     expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(19)
     fireEvent.click(screen.getByRole('button', { name: /Open Keyboard Movers/ }))
@@ -1485,7 +1551,7 @@ describe('KanbanView', () => {
       ],
     })
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     const card = screen.getByText('Invite Board').closest('article')
     expect(within(card!).getByText(/Research panel/)).toBeInTheDocument()
@@ -1505,7 +1571,7 @@ describe('KanbanView', () => {
       getData: (type: string) => values.get(type) ?? '',
     }
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
 
     const card = screen.getByText('Drag & Drop Co').closest('article')
     const destination = screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section')
@@ -1530,7 +1596,7 @@ describe('KanbanView', () => {
       getData: (type: string) => values.get(type) ?? '',
     }
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
 
     const card = screen.getByText('Nested Drop Co').closest('article')
     const destination = screen
@@ -1557,13 +1623,13 @@ describe('KanbanView', () => {
       }],
     })
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByLabelText('Attachments')).toHaveTextContent('resume.pdf')
   })
 
   it('omits attachment filenames when there are no attachments', () => {
-    render(<KanbanView applications={[application('No Files Co')]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<KanbanView applications={[application('No Files Co')]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.queryByLabelText('Attachments')).not.toBeInTheDocument()
   })
@@ -1580,7 +1646,7 @@ describe('KanbanView', () => {
           application('Unrated Co'),
         ]}
         onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
         onMove={vi.fn()}
       />,
@@ -1607,7 +1673,7 @@ describe('KanbanView', () => {
       <KanbanView
         applications={[tasked, application('Idle Co')]}
         onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={onCompleteAction}
         onMove={vi.fn()}
       />,
@@ -1634,7 +1700,7 @@ describe('KanbanView', () => {
           application('Quiet Co', { state_history: [{ state, at: localDate(-30) }] }),
         ]}
         onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
         onMove={vi.fn()}
       />,
@@ -1670,7 +1736,7 @@ describe('KanbanView', () => {
           }),
         ]}
         onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
         onMove={vi.fn()}
       />,
@@ -1694,7 +1760,7 @@ describe('KanbanView', () => {
           }),
         ]}
         onOpen={vi.fn()}
-        onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
         onMove={vi.fn()}
       />,

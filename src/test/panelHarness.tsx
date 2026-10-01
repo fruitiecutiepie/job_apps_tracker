@@ -18,6 +18,7 @@ import { createDemoDocument } from '../domain/demo'
 import type { Application } from '../domain'
 import { StageNotesPanel } from '../StageNotesPanel'
 import { openingLayout } from '../notesArrangement'
+import type { LayoutNode } from '../notesLayout'
 
 /** Two companies with notes between them, which is all any of these tests needs. */
 export const COMPANIES = ['Halcyon Maps', 'Echo Robotics']
@@ -31,9 +32,13 @@ export function fixtureApplications(): Application[] {
   )
 }
 
-export function renderPanel(applications = fixtureApplications()) {
+export function renderPanel(
+  applications = fixtureApplications(),
+  /** The arrangement to mount, for a test that needs one the opening fan cannot express. */
+  layoutFor?: (halcyon: Application) => LayoutNode,
+) {
   const halcyon = applications.find((application) => application.company === 'Halcyon Maps')!
-  const layout = openingLayout(halcyon, halcyon.state)
+  const layout = layoutFor?.(halcyon) ?? openingLayout(halcyon, halcyon.state)
   render(
     <div className="app-shell">
       <header className="topbar">
@@ -44,7 +49,7 @@ export function renderPanel(applications = fixtureApplications()) {
           <h1>Prep notes</h1>
         </div>
         <section className="view-surface view-surface--panel">
-          <section aria-label="Stage prep notes" className="panel-view">
+          <section aria-label="Prep" className="panel-view">
             <StageNotesPanel
               applications={applications}
               initial={{ layout, focusedGroupId: layout.id }}

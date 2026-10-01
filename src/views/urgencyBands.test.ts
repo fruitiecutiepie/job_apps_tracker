@@ -34,6 +34,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
     correspondence: [],
     completed_actions: [],
     attachments: [],
+    posting: null,
     created_at: at(-40),
     updated_at: at(-1),
     ...overrides,

@@ -8,7 +8,7 @@ import {
   saveArrangement,
   type Arrangement,
 } from "../notesArrangement";
-import { openInGroup, type NoteRequest } from "../notesLayout";
+import { openInGroup, revealOrOpen, type NoteRequest } from "../notesLayout";
 import { StageNotesPanel, type StageNoteDraftBatch } from "../StageNotesPanel";
 
 interface PrepNotesViewProps {
@@ -59,10 +59,9 @@ export function PrepNotesView({
     if (!request) return restored;
     // Arriving from a card onto a restored workspace opens the note asked for and nothing
     // else: re-fanning that application's noted stages would pile them up on every visit.
-    return {
-      layout: openInGroup(restored.layout, restored.focusedGroupId, request.ref),
-      focusedGroupId: restored.focusedGroupId,
-    };
+    // Shown where it is already open, so arriving from a card lands on the pane that has it.
+    const shown = revealOrOpen(restored.layout, restored.focusedGroupId, request.ref);
+    return { layout: shown.layout, focusedGroupId: shown.groupId };
   });
 
   const handled = useRef<number | null>(null);
@@ -117,7 +116,7 @@ export function PrepNotesView({
   }, []);
 
   return (
-    <section aria-label="Stage prep notes" className="panel-view">
+    <section aria-label="Prep" className="panel-view">
       {initial ? (
         <StageNotesPanel
           applications={applications}
@@ -133,7 +132,7 @@ export function PrepNotesView({
         />
       ) : (
         <p className="panel-view__empty">
-          Nothing open yet. Prep notes opened from a card on the board or a row in the table
+          Nothing open yet. Prep opened from a card on the board or a row in the table
           arrive here, and stay arranged the way you leave them.
         </p>
       )}
@@ -146,6 +145,12 @@ function openingFor(applications: Application[], request: NoteRequest | null): A
   if (!request) return null;
   const application = applications.find((candidate) => candidate.id === request.ref.applicationId);
   if (!application) return null;
-  const layout = openingLayout(application, request.ref.state);
+  // The fan is the application's own material either way — its posting and its noted
+  // stages. Which tab you land on is the one that was asked for.
+  const state = request.ref.kind === 'stage' ? request.ref.state : application.state;
+  const fan = openingLayout(application, state);
+  const layout = request.ref.kind === 'posting'
+    ? openInGroup(fan, fan.id, request.ref)
+    : fan;
   return { layout, focusedGroupId: layout.id };
 }

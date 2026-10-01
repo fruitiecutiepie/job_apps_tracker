@@ -5,6 +5,7 @@ import { AttachmentFilenames } from "./AttachmentFilenames";
 import { CompleteActionButton } from "./CompleteActionButton";
 import { InviteSummaries } from "./InviteSummaries";
 import { RejectButton } from "./RejectButton";
+import { PostingButton } from "./PostingButton";
 import { StageNotesButton } from "./StageNotesButton";
 import {
   compensationSortValue,
@@ -261,6 +262,7 @@ export function TableView({
   applications,
   onOpen,
   onOpenStageNotes,
+  onOpenPosting,
   onCompleteAction,
   onMove,
   quietDays,
@@ -691,11 +693,21 @@ export function TableView({
       )}
       {bodyCell(
         "prep_notes",
-        <StageNotesButton
-          application={application}
-          onOpenStageNotes={onOpenStageNotes}
-          variant="table"
-        />,
+        /* Both ways into Prep for this row, stacked: the notes written for its stages, and
+           the posting they were written against. The posting is absent where there is
+           none, so most rows still read as one control. */
+        <div className="table-prep-actions">
+          <StageNotesButton
+            application={application}
+            onOpenStageNotes={onOpenStageNotes}
+            variant="table"
+          />
+          <PostingButton
+            application={application}
+            onOpenPosting={onOpenPosting}
+            variant="table"
+          />
+        </div>,
       )}
       {bodyCell(
         "created_at",
@@ -797,7 +809,7 @@ export function TableView({
                 "compensation",
               )}
               {headerCell("Attachments", textFilter("attachments", "Attachments"), "attachments")}
-              {headerCell("Prep notes", null, "prep_notes")}
+              {headerCell("Prep", null, "prep_notes")}
               {headerCell(
                 "Created",
                 textFilter("created_at", "Created"),
