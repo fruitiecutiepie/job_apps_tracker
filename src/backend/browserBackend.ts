@@ -22,6 +22,7 @@ import type {
   ConnectableStorage,
   ConnectResult,
   ExternalChange,
+  OpenResult,
   StorageConnection,
   StorageState,
   TrackerBackend,
@@ -514,17 +515,24 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
    * id with the folder already connected, so the tab that navigates to it finds it whole.
    */
   async function storeAsNewTracker(
-    folder: DirectoryHandleLike,
+    folder: DirectoryHandleLike | null,
     document: TrackerDatabase,
+    fallback: string,
+    files: Array<{ applicationId: string; attachmentId: string; data: Uint8Array }> = [],
   ): Promise<TrackerSummary> {
     const created = createUuidV7(now())
     await store.put('state', documentKey(created), serialize(document))
-    await store.put('state', directoryKey(created), folder)
+    if (folder) await store.put('state', directoryKey(created), folder)
     await store.put('state', revisionKey(created), 1)
+    for (const file of files) {
+      if (!isSafeAttachmentId(file.applicationId) || !isSafeAttachmentId(file.attachmentId)) continue
+      const bytes = file.data.slice().buffer
+      await store.put('attachments', `${created}/${file.applicationId}/${file.attachmentId}`, bytes)
+    }
     const summary: TrackerSummary = {
       id: created,
-      name: document.name ?? folder.name,
-      fallbackName: folder.name,
+      name: document.name ?? fallback,
+      fallbackName: fallback,
       applications: document.applications.length,
       openedAt: now().toISOString(),
     }
@@ -570,7 +578,10 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
           : null
         const cachedText = (await store.get('state', documentKey(id()))) as string | null
         if (parsedExisting && cachedText !== null && countApplications(cachedText) > 0) {
-          return { outcome: 'opened' as const, tracker: await storeAsNewTracker(picked, parsedExisting) }
+          return {
+            outcome: 'opened' as const,
+            tracker: await storeAsNewTracker(picked, parsedExisting, picked.name),
+          }
         }
 
         directory = picked
@@ -592,6 +603,48 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
           connection: announce({ kind: 'connected', name: picked.name }),
         }
       })
+    },
+
+    /*
+     * A folder opened as a new tracker from the switcher, whatever this tab holds: one
+     * with a tracker in it opens that, an empty one becomes a new tracker that saves there,
+     * and one some tracker already saves to — this tab's included — opens that tracker.
+     */
+    async openFolder(): Promise<OpenResult> {
+      await ready()
+      const picked = await pick()
+      if (!picked) return { outcome: 'dismissed' }
+      if (directory && (await picked.isSameEntry?.(directory))) {
+        const current = (await listMetas()).find((item) => item.id === id())
+        return {
+          outcome: 'opened',
+          tracker: current ?? { id: id(), name: trackerName, applications: 0, openedAt: '' },
+        }
+      }
+      const holder = await trackerHolding(picked)
+      if (holder) return { outcome: 'opened', tracker: holder }
+      return serialized(async () => {
+        const existing = await readFileIn(picked, TRACKER_FILENAME)
+        if (existing) {
+          const parsed = ensureFreshIndexes(parseTrackerDocument(await existing.text()))
+          return { outcome: 'opened' as const, tracker: await storeAsNewTracker(picked, parsed, picked.name) }
+        }
+        const empty = createEmptyDocument()
+        await writeFileIn(picked, TRACKER_FILENAME, serialize(empty))
+        return { outcome: 'opened' as const, tracker: await storeAsNewTracker(picked, empty, picked.name) }
+      })
+    },
+
+    /*
+     * An imported file as a new tracker, beside this one rather than over it, so there is
+     * nothing to replace and nothing to ask. The viewer holds the file it came from, so it
+     * starts with nothing waiting on a backup.
+     */
+    async createTracker(document, files, filename): Promise<TrackerSummary> {
+      await ready()
+      return serialized(() =>
+        storeAsNewTracker(null, refreshTrackerDatabase(document), trackerNameFromFile(filename), files),
+      )
     },
 
     async reconnect(): Promise<StorageConnection> {

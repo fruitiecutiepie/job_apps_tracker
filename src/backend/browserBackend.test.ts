@@ -701,6 +701,82 @@ describe('several trackers in one browser', () => {
     expect((await backend.loadDocument()).applications[0].company).toBe('From the folder')
   })
 
+  async function folderHolding(name: string, company: string): Promise<FakeDirectory> {
+    const folder = new FakeDirectory(name)
+    const writable = await (await folder.getFileHandle(TRACKER_FILENAME, { create: true })).createWritable()
+    await writable.write(`${JSON.stringify(withApplication(company))}\n`)
+    await writable.close()
+    return folder
+  }
+
+  /*
+   * New tracker, from a folder: whatever this tab holds is never touched, because the
+   * point is a second tracker beside it.
+   */
+  describe('a new tracker from a folder', () => {
+    it('opens a folder holding a tracker as a new one, connected to it', async () => {
+      const folder = await folderHolding('last-year', 'From the folder')
+      const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })
+      await backend.saveDocument(withApplication('Stays here'))
+
+      const result = await backend.storage!.openFolder()
+      expect(result).toMatchObject({ outcome: 'opened', tracker: { name: 'last-year', applications: 1 } })
+      const opened = tab(result.outcome === 'opened' ? result.tracker.id : '', { supportsFolders: true }).backend
+      expect((await opened.loadDocument()).applications[0].company).toBe('From the folder')
+      expect(opened.storage!.connection()).toEqual({ kind: 'connected', name: 'last-year' })
+      expect((await backend.loadDocument()).applications[0].company).toBe('Stays here')
+    })
+
+    it('starts a new tracker saving into an empty folder', async () => {
+      const folder = new FakeDirectory('next-year')
+      const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })
+      await backend.saveDocument(withApplication('Stays here'))
+
+      const result = await backend.storage!.openFolder()
+      expect(result).toMatchObject({ outcome: 'opened', tracker: { name: 'next-year', applications: 0 } })
+      expect(JSON.parse(folder.readText(TRACKER_FILENAME)!).applications).toEqual([])
+    })
+
+    it('opens the tracker that already saves to the folder rather than a second one', async () => {
+      const folder = new FakeDirectory('job-apps')
+      const holder = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+      await holder.loadDocument()
+      await holder.storage!.connect()
+      const holderId = holder.storage!.state().tracker!.id
+
+      const other = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+      await other.loadDocument()
+      expect(await other.storage!.openFolder()).toMatchObject({ outcome: 'opened', tracker: { id: holderId } })
+      expect(await holder.storage!.openFolder()).toMatchObject({ outcome: 'opened', tracker: { id: holderId } })
+      expect(await other.storage!.listTrackers()).toHaveLength(1)
+    })
+
+    it('does nothing when the picker is dismissed', async () => {
+      const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => null })
+      expect(await backend.storage!.openFolder()).toEqual({ outcome: 'dismissed' })
+    })
+  })
+
+  it('stores an imported file as a new tracker, attachments and all, beside this one', async () => {
+    const { backend } = tab(NEW_TRACKER)
+    await backend.saveDocument(withApplication('Stays here'))
+    const imported = withApplication('Imported')
+    const applicationId = imported.applications[0].id
+
+    const created = await backend.storage!.createTracker(
+      imported,
+      [{ applicationId, attachmentId: ATTACHMENT_ID, data: new TextEncoder().encode('resume') }],
+      'Autumn search 2026-10-01.zip',
+    )
+    expect(created).toMatchObject({ name: 'Autumn search', applications: 1 })
+
+    const opened = tab(created.id).backend
+    expect((await opened.loadDocument()).applications[0].company).toBe('Imported')
+    expect(new TextDecoder().decode((await opened.readAttachment(applicationId, ATTACHMENT_ID)) ?? undefined)).toBe('resume')
+    expect(opened.storage!.state().unbackedSince).toBeNull()
+    expect((await backend.loadDocument()).applications[0].company).toBe('Stays here')
+  })
+
   /*
    * Two trackers writing whole documents into one folder would each undo the other, so a
    * folder already connected elsewhere is handed back as that tracker instead.

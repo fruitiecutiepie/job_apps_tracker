@@ -714,6 +714,8 @@ export default function App() {
   const dialogOpenerRef = useRef<HTMLElement | null>(null)
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
+  /* Kept apart from the import input: that one replaces this tracker, this one starts another. */
+  const newTrackerInputRef = useRef<HTMLInputElement>(null)
   const storageState = useStorageState()
 
   /*
@@ -936,6 +938,33 @@ export default function App() {
       navigation.open(trackerHref(next?.id ?? NEW_TRACKER))
     } catch (error) {
       setNotice(`Could not remove the tracker: ${errorMessage(error)}`)
+    }
+  }
+
+  const newTrackerFromFolder = async () => {
+    try {
+      const result = await backend.storage!.openFolder()
+      if (result.outcome === 'opened') navigation.open(trackerHref(result.tracker.id))
+    } catch (error) {
+      setNotice(`Could not open the folder: ${errorMessage(error)}`)
+    }
+  }
+
+  /*
+   * The same reading and validating an import does, so an unreadable file says why rather
+   * than becoming an empty tracker; then the document goes beside this tracker, not over it.
+   */
+  const newTrackerFromFile = async (file: File) => {
+    try {
+      const result = readTrackerImport(await readFileAsUint8Array(file))
+      if (!result.ok) {
+        setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
+        return
+      }
+      const created = await backend.storage!.createTracker(result.document, result.files, file.name)
+      navigation.open(trackerHref(created.id))
+    } catch (error) {
+      setNotice(`Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1367,6 +1396,10 @@ export default function App() {
               current={storageState.tracker}
               listTrackers={listTrackers}
               onRemove={askToRemoveTracker}
+              onNewFromFolder={
+                storageState.connection.kind === 'unsupported' ? null : () => void newTrackerFromFolder()
+              }
+              onNewFromFile={() => newTrackerInputRef.current?.click()}
               onRename={async (name) => {
                 // A mutation like any other: the name is the document's, so it reaches
                 // the folder, the other tabs, and the next export the way an edit does.
@@ -1511,6 +1544,19 @@ export default function App() {
           if (file) void importFile(file)
         }}
         ref={importInputRef}
+        type="file"
+      />
+      <input
+        accept="application/json,.json,application/zip,.zip"
+        aria-hidden="true"
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (file) void newTrackerFromFile(file)
+        }}
+        ref={newTrackerInputRef}
+        tabIndex={-1}
         type="file"
       />
 

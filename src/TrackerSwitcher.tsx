@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, FilePlus2, Pencil, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, FilePlus2, FolderOpen, Pencil, Trash2, Upload } from 'lucide-react'
 
 import type { TrackerSummary } from './backend'
 import { NEW_TRACKER, trackerHref } from './backend/trackerAddress'
@@ -10,6 +10,10 @@ export interface TrackerSwitcherProps {
   /** Asks before removing this tab's tracker from the browser. */
   onRemove: () => void
   onRename: (name: string) => Promise<void>
+  /** Starts a new tracker from a folder; absent where the browser cannot open one. */
+  onNewFromFolder: (() => void) | null
+  /** Starts a new tracker from an exported file. */
+  onNewFromFile: () => void
 }
 
 function describeCount(count: number): string {
@@ -27,7 +31,14 @@ function describeCount(count: number): string {
  * reason. Like More actions it is a disclosure of plain controls, not an ARIA menu, so
  * Tab alone reaches everything in it.
  */
-export function TrackerSwitcher({ current, listTrackers, onRemove, onRename }: TrackerSwitcherProps) {
+export function TrackerSwitcher({
+  current,
+  listTrackers,
+  onRemove,
+  onRename,
+  onNewFromFolder,
+  onNewFromFile,
+}: TrackerSwitcherProps) {
   const [open, setOpen] = useState(false)
   /*
    * Renaming happens in the panel rather than in a dialog of its own: it is one field, and
@@ -148,9 +159,40 @@ export function TrackerSwitcher({ current, listTrackers, onRemove, onRename }: T
               )
             })}
           </ul>
-          <a className="actions-menu__item" href={trackerHref(NEW_TRACKER)}>
-            <FilePlus2 aria-hidden="true" size={16} /> New tracker
-          </a>
+          {/*
+            * A new tracker starts from nothing, from a folder, or from a file, and those are
+            * offered together because which one is the question someone starting a tracker
+            * is answering. Each opens beside this tracker, never over it.
+            */}
+          <div aria-labelledby="tracker-switcher-new" className="tracker-switcher__group" role="group">
+            <p className="tracker-switcher__caption" id="tracker-switcher-new">New tracker</p>
+            <a className="actions-menu__item" href={trackerHref(NEW_TRACKER)}>
+              <FilePlus2 aria-hidden="true" size={16} /> Blank tracker
+            </a>
+            {onNewFromFolder && (
+              <button
+                className="actions-menu__item"
+                onClick={() => {
+                  setOpen(false)
+                  onNewFromFolder()
+                }}
+                type="button"
+              >
+                <FolderOpen aria-hidden="true" size={16} /> From a folder…
+              </button>
+            )}
+            <button
+              className="actions-menu__item"
+              onClick={() => {
+                setOpen(false)
+                onNewFromFile()
+              }}
+              type="button"
+            >
+              <Upload aria-hidden="true" size={16} /> From a file…
+            </button>
+          </div>
+          <div className="tracker-switcher__divider" />
           <button
             className="actions-menu__item"
             onClick={() => {

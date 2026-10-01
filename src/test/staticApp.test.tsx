@@ -198,7 +198,11 @@ describe('the static build', () => {
     const current = within(list).getByRole('link', { name: /job-search-2026/ })
     expect(current).toHaveAttribute('aria-current', 'page')
     expect(current).toHaveTextContent('1 application')
-    expect(screen.getByRole('link', { name: 'New tracker' })).toHaveAttribute('href', '?tracker=new')
+    const starting = screen.getByRole('group', { name: 'New tracker' })
+    expect(within(starting).getByRole('link', { name: 'Blank tracker' })).toHaveAttribute('href', '?tracker=new')
+    // No folder in a browser that cannot open one; a file works everywhere.
+    expect(within(starting).queryByRole('button', { name: /From a folder/ })).not.toBeInTheDocument()
+    expect(within(starting).getByRole('button', { name: /From a file/ })).toBeInTheDocument()
   })
 
   it('renames the tracker from the switcher, and exports under the new name', async () => {
@@ -232,6 +236,31 @@ describe('the static build', () => {
       click.mockRestore()
       Object.assign(URL, objectUrls)
     }
+  })
+
+  /*
+   * New tracker, from a file: the file becomes a tracker beside this one, so nothing is
+   * replaced and nothing is asked, and the tab goes to it.
+   */
+  it('starts a new tracker from a file without touching this one', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    await addApplication(user, 'Stays here')
+    const { navigation } = await import('../backend/trackerAddress')
+    const { backend } = await import('../backend')
+    const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
+
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+    await user.click(screen.getByRole('button', { name: /From a file/ }))
+    const inputs = document.querySelectorAll<HTMLInputElement>('input[type="file"]')
+    await user.upload(inputs[inputs.length - 1], trackerFile('last-year'))
+
+    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\?tracker=/)))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    const listed = await backend.storage!.listTrackers()
+    expect(listed.map((tracker) => tracker.name).sort()).toEqual(['Untitled tracker', 'last-year'])
+    expect(screen.getByText('1 of 1 applications shown')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open Stays here/ })).toBeInTheDocument()
   })
 
   it('keeps reminding after a reload, since forgetting happens between visits', async () => {
@@ -373,6 +402,15 @@ describe('the static build, in a browser that can write a folder', () => {
     await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
     await waitFor(() => expect(open).toHaveBeenCalledWith('?tracker=holder'))
     expect(screen.queryByText(/now saved to that folder/)).not.toBeInTheDocument()
+  })
+
+  it('offers a folder among the ways to start a new tracker', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+    const starting = screen.getByRole('group', { name: 'New tracker' })
+    expect(within(starting).getAllByRole('link').concat(within(starting).getAllByRole('button')).map((item) => item.textContent?.trim()))
+      .toEqual(['Blank tracker', 'From a folder…', 'From a file…'])
   })
 
   it('says nothing when the folder picker is dismissed', async () => {

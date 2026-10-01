@@ -436,6 +436,15 @@ p {
   gap: var(--s2);
 }
 
+.tracker-switcher__group {
+  display: grid;
+}
+
+.tracker-switcher__divider {
+  margin: var(--s2) 0;
+  border-top: 1px solid var(--line);
+}
+
 .tracker-switcher__spacer {
   flex-shrink: 0;
   width: 16px;

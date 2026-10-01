@@ -130,11 +130,28 @@ export type ConnectResult =
    */
   | { outcome: 'opened'; tracker: TrackerSummary }
 
+export type OpenResult =
+  | { outcome: 'dismissed' }
+  /** The tracker the folder or file became, or already was; the caller opens it. */
+  | { outcome: 'opened'; tracker: TrackerSummary }
+
 export interface ConnectableStorage {
   connection(): StorageConnection
   state(): StorageState
   /** Opens the picker. Must be called from a user gesture. */
   connect(): Promise<ConnectResult>
+  /**
+   * Opens the picker for a new tracker rather than for this one: a folder holding a
+   * tracker becomes one, an empty folder becomes a new tracker saving there, and a folder
+   * another tracker already uses opens that tracker. This tab's tracker is never touched.
+   */
+  openFolder(): Promise<OpenResult>
+  /** Stores an imported document as a new tracker beside this one, attachments included. */
+  createTracker(
+    document: TrackerDatabase,
+    files: Array<{ applicationId: string; attachmentId: string; data: Uint8Array }>,
+    filename: string,
+  ): Promise<TrackerSummary>
   /** Re-asks for permission on the folder already stored. Must be called from a gesture. */
   reconnect(): Promise<StorageConnection>
   disconnect(): Promise<StorageConnection>
