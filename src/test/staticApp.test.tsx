@@ -83,7 +83,8 @@ describe('the static build', () => {
   it('opens on an empty tracker, not on the demo data', async () => {
     await renderStaticApp()
     expect(screen.getByText('0 of 0 applications shown')).toBeInTheDocument()
-    expect(document.title).toBe('Untitled tracker — Job applications')
+    // Set once the backend has said which tracker this is, which can be a render after load.
+    await waitFor(() => expect(document.title).toBe('Untitled tracker — Job applications'))
   })
 
   it('explains where the data goes before there is any', async () => {
@@ -198,6 +199,39 @@ describe('the static build', () => {
     expect(current).toHaveAttribute('aria-current', 'page')
     expect(current).toHaveTextContent('1 application')
     expect(screen.getByRole('link', { name: 'New tracker' })).toHaveAttribute('href', '?tracker=new')
+  })
+
+  it('renames the tracker from the switcher, and exports under the new name', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    await addApplication(user, 'Northwind')
+
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker: Untitled tracker/ }))
+    await user.click(screen.getByRole('button', { name: 'Rename this tracker' }))
+    const field = screen.getByRole('textbox', { name: 'Tracker name' })
+    expect(field).toHaveValue('Untitled tracker')
+    await user.clear(field)
+    expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled()
+    await user.type(field, 'Autumn search{Enter}')
+
+    await waitFor(() => expect(document.title).toBe('Autumn search — Job applications'))
+    expect(within(topbar()).getByRole('button', { name: /^Tracker: Autumn search/ })).toHaveFocus()
+
+    const objectUrls = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL }
+    URL.createObjectURL = vi.fn(() => 'blob:tracker')
+    URL.revokeObjectURL = vi.fn()
+    const downloads: string[] = []
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download)
+    })
+    try {
+      await user.click(within(topbar()).getByRole('button', { name: 'Export a backup' }))
+      await waitFor(() => expect(downloads).toHaveLength(1))
+      expect(downloads[0]).toMatch(/^Autumn search \d{4}-\d{2}-\d{2}\.zip$/)
+    } finally {
+      click.mockRestore()
+      Object.assign(URL, objectUrls)
+    }
   })
 
   it('keeps reminding after a reload, since forgetting happens between visits', async () => {

@@ -5,7 +5,8 @@ import { prepareTrackerDatabase } from '../domain/database'
 import { MAX_ATTACHMENT_BYTES } from '../domain/attachmentPaths'
 import type { TrackerDatabase } from '../domain/types'
 import type { ExternalChange, TrackerBackend } from './types'
-import { browserBackend, TRACKER_FILENAME, type BrowserBackendOptions } from './browserBackend'
+import { browserBackend, TRACKER_FILENAME, trackerNameFromFile, type BrowserBackendOptions } from './browserBackend'
+import { exportFilename } from '../domain/export'
 import { NEW_TRACKER } from './trackerAddress'
 import type { TabChannel, TabLock, TabMessage } from './tabSync'
 import { FakeDirectory } from './fakeDirectory'
@@ -558,6 +559,48 @@ describe('several trackers in one browser', () => {
     expect(third.storage!.state().tracker!.name).toBe('Untitled tracker 2')
   })
 
+  /*
+   * A chosen name outranks the folder's and the file's, which are only guesses at what to
+   * call it, so connecting a folder or importing afterwards does not replace it.
+   */
+  it('keeps a name the reader chose, over a folder and an import alike', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })
+    await backend.loadDocument()
+    await backend.storage!.rename('  Autumn search  ')
+    await backend.storage!.connect()
+    await backend.storage!.nameAfterFile('someone-elses.json')
+    expect(backend.storage!.state().tracker!.name).toBe('Autumn search')
+
+    const id = backend.storage!.state().tracker!.id
+    const reopened = tab(id).backend
+    await reopened.loadDocument()
+    expect(reopened.storage!.state().tracker!.name).toBe('Autumn search')
+    expect(folder.name).toBe('job-apps')
+  })
+
+  it('keeps a tracker that was named before anything was saved in it', async () => {
+    const { backend } = tab(NEW_TRACKER)
+    await backend.loadDocument()
+    await backend.storage!.rename('Next year')
+    expect((await backend.storage!.listTrackers()).map((tracker) => tracker.name)).toEqual(['Next year'])
+  })
+
+  it('ignores a blank name rather than storing one', async () => {
+    const { backend } = tab(NEW_TRACKER)
+    await backend.saveDocument(withApplication())
+    await backend.storage!.rename('   ')
+    expect(backend.storage!.state().tracker!.name).toBe('Untitled tracker')
+  })
+
+  it('names a tracker imported from an export after the tracker, not the export\'s date', () => {
+    expect(trackerNameFromFile('Autumn search 2026-10-01.zip')).toBe('Autumn search')
+    expect(trackerNameFromFile('Autumn search 2026-10-01 (1).zip')).toBe('Autumn search')
+    expect(trackerNameFromFile('job-applications-2026-09-30T09-15-00-000Z.zip')).toBe('job-applications')
+    expect(trackerNameFromFile('notes.json')).toBe('notes')
+    expect(trackerNameFromFile(exportFilename(new Date(2026, 9, 1), 'zip', 'Autumn search'))).toBe('Autumn search')
+  })
+
   it('is named after the folder it saves to, and keeps that name over an import', async () => {
     const folder = new FakeDirectory('job-apps')
     const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })
@@ -777,6 +820,12 @@ describe('one tracker open in two tabs', () => {
     const result = await second.updateDocument!(secondDocument, (document) => document)
     expect(result.wrote).toBe(false)
     expect(result.document.applications.map((item) => item.company)).toContain('Halcyon')
+  })
+
+  it('shows a name chosen in the other tab', async () => {
+    const { first, second } = await twoTabs()
+    await first.storage!.rename('Autumn search')
+    await vi.waitFor(() => expect(second.storage!.state().tracker!.name).toBe('Autumn search'))
   })
 
   it('follows a folder the other tab connected', async () => {

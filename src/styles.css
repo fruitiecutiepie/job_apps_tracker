@@ -422,6 +422,20 @@ p {
   font-size: var(--t1);
 }
 
+.tracker-switcher__rename {
+  gap: var(--s3);
+  padding: var(--s3);
+}
+
+.tracker-switcher__rename .tracker-switcher__caption {
+  padding: 0;
+}
+
+.tracker-switcher__rename-actions {
+  display: flex;
+  gap: var(--s2);
+}
+
 .tracker-switcher__spacer {
   flex-shrink: 0;
   width: 16px;

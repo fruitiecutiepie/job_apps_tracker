@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, FilePlus2, Trash2 } from 'lucide-react'
+import { Check, ChevronDown, FilePlus2, Pencil, Trash2 } from 'lucide-react'
 
 import type { TrackerSummary } from './backend'
 import { NEW_TRACKER, trackerHref } from './backend/trackerAddress'
@@ -9,6 +9,7 @@ export interface TrackerSwitcherProps {
   listTrackers: () => Promise<TrackerSummary[]>
   /** Asks before removing this tab's tracker from the browser. */
   onRemove: () => void
+  onRename: (name: string) => Promise<void>
 }
 
 function describeCount(count: number): string {
@@ -26,8 +27,14 @@ function describeCount(count: number): string {
  * reason. Like More actions it is a disclosure of plain controls, not an ARIA menu, so
  * Tab alone reaches everything in it.
  */
-export function TrackerSwitcher({ current, listTrackers, onRemove }: TrackerSwitcherProps) {
+export function TrackerSwitcher({ current, listTrackers, onRemove, onRename }: TrackerSwitcherProps) {
   const [open, setOpen] = useState(false)
+  /*
+   * Renaming happens in the panel rather than in a dialog of its own: it is one field, and
+   * the list it renames a row of is the context that makes the new name mean something.
+   */
+  const [renaming, setRenaming] = useState(false)
+  const [draftName, setDraftName] = useState('')
   const [trackers, setTrackers] = useState<TrackerSummary[] | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
@@ -52,10 +59,16 @@ export function TrackerSwitcher({ current, listTrackers, onRemove }: TrackerSwit
     document.addEventListener('pointerdown', onPointerDown)
     return () => {
       cancelled = true
+      setRenaming(false)
       document.removeEventListener('keydown', onKeyDown)
       document.removeEventListener('pointerdown', onPointerDown)
     }
   }, [open, listTrackers])
+
+  const close = () => {
+    setOpen(false)
+    triggerRef.current?.focus()
+  }
 
   // A tracker never saved is not in the list yet, but it is the one on screen.
   const listed = trackers ?? []
@@ -78,7 +91,39 @@ export function TrackerSwitcher({ current, listTrackers, onRemove }: TrackerSwit
         <span className="tracker-switcher__name">{current.name}</span>
         <ChevronDown aria-hidden="true" size={14} />
       </button>
-      {open && (
+      {open && renaming && (
+        <form
+          className="actions-menu__panel tracker-switcher__panel tracker-switcher__rename"
+          onSubmit={(event) => {
+            event.preventDefault()
+            if (!draftName.trim()) return
+            void onRename(draftName).then(close)
+          }}
+        >
+          <label className="field">
+            <span>Tracker name</span>
+            <input
+              autoFocus
+              onChange={(event) => setDraftName(event.target.value)}
+              onFocus={(event) => event.currentTarget.select()}
+              value={draftName}
+            />
+          </label>
+          <p className="tracker-switcher__caption">
+            Names this tracker here and in the tab. A connected folder keeps its own name on
+            disk.
+          </p>
+          <div className="tracker-switcher__rename-actions">
+            <button className="button button--primary" disabled={!draftName.trim()} type="submit">
+              Rename
+            </button>
+            <button className="button" onClick={() => setRenaming(false)} type="button">
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+      {open && !renaming && (
         <div className="actions-menu__panel tracker-switcher__panel">
           <p className="tracker-switcher__caption" id="tracker-switcher-caption">
             Trackers in this browser. Open one in a new tab to work in two at once.
@@ -106,6 +151,16 @@ export function TrackerSwitcher({ current, listTrackers, onRemove }: TrackerSwit
           <a className="actions-menu__item" href={trackerHref(NEW_TRACKER)}>
             <FilePlus2 aria-hidden="true" size={16} /> New tracker
           </a>
+          <button
+            className="actions-menu__item"
+            onClick={() => {
+              setDraftName(current.name)
+              setRenaming(true)
+            }}
+            type="button"
+          >
+            <Pencil aria-hidden="true" size={16} /> Rename this tracker
+          </button>
           <button
             className="actions-menu__item"
             onClick={() => {

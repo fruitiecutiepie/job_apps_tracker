@@ -82,6 +82,11 @@ export interface TrackerSummary {
   applications: number
   /** When a tab last opened it: a new tab opens the most recent. */
   openedAt: string
+  /**
+   * The reader named it. A chosen name outranks the folder's and the imported file's,
+   * which are only ever guesses at what to call it, so neither replaces it afterwards.
+   */
+  renamed?: boolean
 }
 
 /**
@@ -133,6 +138,12 @@ export interface ConnectableStorage {
    * connected, whose name is the one that says where the data is.
    */
   nameAfterFile(filename: string): Promise<void>
+  /**
+   * Gives this tracker a name of the reader's choosing. Only the name in this browser: a
+   * connected folder keeps its own on disk, which a page has no reliable way to change.
+   * A blank name is ignored rather than stored.
+   */
+  rename(name: string): Promise<void>
   /** Every tracker this browser holds, most recently opened first. */
   listTrackers(): Promise<TrackerSummary[]>
   /**

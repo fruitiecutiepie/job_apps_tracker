@@ -70,9 +70,17 @@ function serialize(document: TrackerDatabase): string {
   return `${JSON.stringify(assertTrackerDocument(document), null, 2)}\n`
 }
 
-/** `job-search.json` names a tracker `job-search`; an export's zip the same way. */
+/**
+ * `job-search.json` names a tracker `job-search`; an export's zip the same way. The date an
+ * export stamps on its name — and the ` (1)` a browser adds to a second download that day —
+ * is dropped, so a tracker exported and imported again comes back under its own name.
+ */
 export function trackerNameFromFile(filename: string): string {
-  const base = filename.replace(/\.(json|zip)$/i, '').trim()
+  const base = filename
+    .replace(/\.(json|zip)$/i, '')
+    .replace(/\s*\(\d+\)$/, '')
+    .replace(/[ -]\d{4}-\d{2}-\d{2}(T[\d-]+Z)?$/, '')
+    .trim()
   return base || UNTITLED_TRACKER
 }
 
@@ -132,6 +140,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
    */
   let trackerId: string | null = null
   let trackerName = UNTITLED_TRACKER
+  let renamed = false
   let meta: TrackerSummary | null = null
   /* No tracker existed anywhere when this one was opened: the demo seeds only then. */
   let firstEver = false
@@ -186,6 +195,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       name: trackerName,
       applications,
       openedAt: meta?.openedAt ?? now().toISOString(),
+      ...(renamed ? { renamed } : {}),
     }
     await store.put('state', metaKey(meta.id), meta)
   }
@@ -240,6 +250,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     if (found) {
       trackerId = found.id
       trackerName = found.name
+      renamed = found.renamed ?? false
       meta = { ...found, openedAt: now().toISOString() }
       await store.put('state', metaKey(found.id), meta)
     } else {
@@ -309,6 +320,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     if (stored) {
       meta = { ...stored, openedAt: meta?.openedAt ?? stored.openedAt }
       trackerName = stored.name
+      renamed = stored.renamed ?? false
     }
     const backlog = (await store.get('state', backlogKey(id()))) as string | null
     unbackedSince = isDemoTrackerProfile() ? null : backlog
@@ -496,7 +508,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
 
       return exclusive(async () => {
         directory = picked
-        trackerName = picked.name
+        if (!renamed) trackerName = picked.name
         await store.put('state', directoryKey(id()), picked)
         /*
          * Connecting a folder adopts whatever is already in it. Someone pointing the site
@@ -568,9 +580,23 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     async nameAfterFile(filename: string): Promise<void> {
       await ready()
       return exclusive(async () => {
-        if (directory) return
+        if (directory || renamed) return
         trackerName = trackerNameFromFile(filename)
         if (meta) await writeMeta(meta.applications)
+        post({ type: 'storage' })
+        announce()
+      })
+    },
+
+    async rename(name: string): Promise<void> {
+      const chosen = name.trim()
+      if (!chosen) return
+      await ready()
+      return exclusive(async () => {
+        trackerName = chosen
+        renamed = true
+        // Written even before the first save: naming a tracker is reason enough to keep it.
+        await writeMeta(meta?.applications ?? 0)
         post({ type: 'storage' })
         announce()
       })

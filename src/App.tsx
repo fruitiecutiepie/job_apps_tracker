@@ -968,7 +968,7 @@ export default function App() {
     if (choice === 'save-then-proceed') {
       const current = trackerRef.current
       try {
-        if (current) await downloadTrackerArchive(current)
+        if (current) await downloadTrackerArchive(current, new Date(), storageState?.tracker?.name)
       } catch (error) {
         // No copy, no replacement: the viewer asked for the two together.
         setNotice(`Nothing was replaced, because saving a copy failed: ${errorMessage(error)}`)
@@ -1265,7 +1265,7 @@ export default function App() {
    * the download is as far as a page can see.
    */
   const exportTracker = () => {
-    downloadTrackerArchive(tracker)
+    downloadTrackerArchive(tracker, new Date(), storageState?.tracker?.name)
       .then(() => backend.storage?.markBackedUp())
       .catch((error) => {
         setNotice(`Export failed: ${errorMessage(error)}`)
@@ -1366,6 +1366,7 @@ export default function App() {
               current={storageState.tracker}
               listTrackers={listTrackers}
               onRemove={askToRemoveTracker}
+              onRename={(name) => backend.storage!.rename(name)}
             />
           )}
         </div>
