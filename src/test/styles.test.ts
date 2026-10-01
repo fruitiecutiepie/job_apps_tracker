@@ -85,17 +85,20 @@ describe('move controls', () => {
   })
 })
 
-describe('statistics figures', () => {
-  it('keeps a share quieter than the figure it qualifies, in tokens only', () => {
-    const body = ruleBody('.statistics__total small,\n.statistics td small')
-    const figure = ruleBody('.statistics__total strong')
+describe('statistics answers', () => {
+  it('sets the answer above the question it answers, in tokens only', () => {
+    const question = ruleBody('.question-card__question')
+    const answer = ruleBody('.question-card__answer')
+    const method = ruleBody('.question-card__method')
 
-    // The count leads; the percentage beside it is context, not a second headline.
-    expect(figure).toMatch(/font-size:\s*var\(--t6\)/)
-    expect(body).toMatch(/font-size:\s*var\(--t2\)/)
-    expect(body).toMatch(/color:\s*var\(--ink-3\)/)
-    expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
-    expect(body).not.toMatch(/\d+px/)
+    // The answer is the news; the question names the card and the method is the small print.
+    expect(answer).toMatch(/font-size:\s*var\(--t5\)/)
+    expect(question).toMatch(/font-size:\s*var\(--t3\)/)
+    expect(method).toMatch(/font-size:\s*var\(--t2\)/)
+    for (const body of [question, answer, method]) {
+      expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+      expect(body).not.toMatch(/\d+px/)
+    }
   })
 })
 

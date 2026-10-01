@@ -1,4 +1,4 @@
-import { RATING_IDS, RATING_LABELS } from "../domain";
+import { MAX_RATING_SCORE, MIN_RATING_SCORE, RATING_IDS, RATING_LABELS } from "../domain";
 import type { Application, RatingDimensionId } from "../domain";
 
 /**
@@ -140,6 +140,11 @@ export interface PreferenceDimensionSummary {
   unassessed: number;
   /** Plain mean of the judged scores, or null when this dimension holds none. */
   mean: number | null;
+  /**
+   * How many judgements landed on each score, lowest score first. Kept beside the mean
+   * because a mean hides a dealbreaker: 5, 5, 5, 1 and 4, 4, 4, 4 both average 4.00.
+   */
+  scores: number[];
 }
 
 export interface PreferenceSummary {
@@ -173,6 +178,7 @@ export function preferenceSummary(
       unknown: 0,
       unassessed: 0,
       mean: null,
+      scores: Array.from({ length: MAX_RATING_SCORE - MIN_RATING_SCORE + 1 }, () => 0),
     };
     let judgedSum = 0;
 
@@ -184,6 +190,7 @@ export function preferenceSummary(
         summary.unknown += 1;
       } else {
         summary.judged += 1;
+        summary.scores[rating.score - MIN_RATING_SCORE]! += 1;
         judgedSum += rating.score;
       }
     }

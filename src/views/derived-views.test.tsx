@@ -14,6 +14,8 @@ import type {
 } from '../domain'
 import { KanbanView } from './KanbanView'
 import { StatisticsView } from './StatisticsView'
+import { DEFAULT_STATS_SETTINGS } from '../statsSettings'
+import type { StatsSettingId, StatsSettings } from '../statsSettings'
 import { TableView } from './TableView'
 import { kanbanColumnGroups } from './viewUtils'
 
@@ -119,6 +121,29 @@ function rowCompanies(): (string | null)[] {
 }
 
 describe('TableView', () => {
+  it('reads Idle at the threshold the reader set on Statistics', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+
+    const state: StateId = 'applied'
+    render(
+      <TableView
+        applications={[application('Twenty Co', { state_history: [{ state, outcome: 'active', at: localDate(-20) }] })]}
+        onArchive={vi.fn()}
+        onCompleteAction={vi.fn()}
+        onMove={vi.fn()}
+        onOpen={vi.fn()}
+        onOpenMessages={vi.fn()}
+        onOpenPosting={vi.fn()}
+        onOpenStageNotes={vi.fn()}
+        quietDays={15}
+      />,
+    )
+
+    // Twenty days is not idle at the default thirty, and is at fifteen.
+    expect(screen.getByText('Idle 20 days')).toBeInTheDocument()
+  })
+
   beforeAll(() => {
     const style = document.createElement('style')
     style.textContent = stylesheet
@@ -1129,10 +1154,7 @@ describe('StatisticsView', () => {
     return screen.getByRole('table', { name })
   }
 
-  const stagesTable = () =>
-    tableNamed(
-      'Applications that reached each live stage, that sit in it now, and that got no further',
-    )
+  const passTable = () => tableNamed('How many applications got past each live stage')
   const sourcesTable = () =>
     tableNamed('Applications, replies, and progress by where the role came from')
   const ratingsTable = () =>
@@ -1141,6 +1163,31 @@ describe('StatisticsView', () => {
   function rowCells(table: HTMLElement, rowHeader: string): string[] {
     const row = within(table).getByRole('rowheader', { name: rowHeader }).closest('tr')!
     return within(row).getAllByRole('cell').map((cell) => cell.textContent ?? '')
+  }
+
+  /** The card answering one question, found by the question it is named for. */
+  function card(question: string): HTMLElement {
+    return screen.getByRole('region', { name: question })
+  }
+
+  function answerOf(question: string): string {
+    return card(question).querySelector('.question-card__answer')?.textContent ?? ''
+  }
+
+  function renderStats(
+    applications: Application[],
+    overrides: Partial<StatsSettings> = {},
+    handlers: { onOpen?: (id: string) => void; onSettingChange?: (id: StatsSettingId, value: number) => void } = {},
+  ) {
+    return render(
+      <StatisticsView
+        applications={applications}
+        onOpen={handlers.onOpen ?? vi.fn()}
+        onSettingChange={handlers.onSettingChange ?? vi.fn()}
+        settings={{ ...DEFAULT_STATS_SETTINGS, ...overrides }}
+        today={now}
+      />,
+    )
   }
 
   /** Two rejected, one live and talking, one live and silent. */
@@ -1176,56 +1223,181 @@ describe('StatisticsView', () => {
     }),
   ]
 
-  it('leads with what the search did, not with how many sit in each state', () => {
-    render(<StatisticsView applications={searched} />)
+  it('asks the questions a search asks, most actionable first', () => {
+    renderStats(searched)
 
-    expect(screen.getByLabelText('Applications: 4')).toBeInTheDocument()
-    expect(screen.getByLabelText('Still live: 2, 50%')).toBeInTheDocument()
-    expect(screen.getByLabelText('Heard back: 3, 75%')).toBeInTheDocument()
-    // Bounced Co heard back without getting anywhere, which is the distinction.
-    expect(screen.getByLabelText('Got past the first stage: 2, 50%')).toBeInTheDocument()
+    const questions = screen
+      .getAllByRole('heading', { level: 3 })
+      .map((heading) => heading.textContent)
+    expect(questions).toEqual([
+      'Am I being ghosted?',
+      'Where am I losing?',
+      'Where do applications go?',
+      'Am I keeping momentum?',
+      'Is anyone answering?',
+      'Which channels are worth my time?',
+      'How long does it take?',
+      'Is the money there?',
+      'How do I judge roles?',
+    ])
+  })
+
+  it('answers whether anyone is answering, leaving the silent out of the wait', () => {
+    renderStats(searched)
+
     // Replies came after 2, 10 and 13 days. Silent Co has none and is left out rather
     // than counted as zero, which would drag the figure to 2.
-    expect(screen.getByLabelText('Median days to first reply: 10')).toBeInTheDocument()
+    expect(answerOf('Is anyone answering?')).toBe('3 of 4 heard back. Half of them within 10 days.')
+    expect(card('Is anyone answering?')).toHaveTextContent(
+      '1 live application is still waiting for a first reply.',
+    )
   })
 
-  it('separates reaching a stage from sitting in it and from ending there', () => {
-    render(<StatisticsView applications={searched} />)
+  it('lists the applications that have gone quiet, at the threshold the reader set', async () => {
+    const onOpen = vi.fn()
+    const { unmount } = renderStats(searched)
+    // Silent Co has been quiet 20 days, Talking Co 12: neither reaches the default 30.
+    expect(answerOf('Am I being ghosted?')).toBe('Nothing live has gone 30 days without a stage change.')
+    unmount()
 
-    expect(rowCells(stagesTable(), 'Applied')).toEqual(['4', '1', '1'])
-    expect(rowCells(stagesTable(), 'Recruiter interview')).toEqual(['2', '1', '1'])
+    renderStats(searched, { quietDays: 15 }, { onOpen })
+    expect(answerOf('Am I being ghosted?')).toBe(
+      '1 live application has had no stage change for 15 days or more.',
+    )
+    const item = within(card('Am I being ghosted?')).getByRole('button', { name: /Silent Co · Applied/ })
+    expect(item).toHaveTextContent('20 days')
+    fireEvent.click(item)
+    expect(onOpen).toHaveBeenCalledWith(searched[3]!.id)
   })
 
-  it('leaves out the stages nothing has reached rather than listing them as zeros', () => {
-    render(<StatisticsView applications={searched} />)
+  it('states each threshold on the card it changes, and edits it there', () => {
+    const onSettingChange = vi.fn()
+    const { unmount } = renderStats(searched, {}, { onSettingChange })
 
-    // Two stages reached, plus the header row. The old table printed all nineteen states.
-    expect(within(stagesTable()).getAllByRole('row')).toHaveLength(3)
-    expect(
-      within(stagesTable()).queryByRole('rowheader', { name: 'Offer' }),
-    ).not.toBeInTheDocument()
-    // Rejected states are outcomes of live stages, never rows of their own.
-    expect(
-      within(stagesTable()).queryByRole('rowheader', { name: /Rejected/ }),
-    ).not.toBeInTheDocument()
+    const quiet = within(card('Am I being ghosted?')).getByRole('spinbutton', {
+      name: 'Days without a stage change before an application counts as quiet',
+    })
+    expect(quiet).toHaveValue(30)
+    // At the default there is nothing to reset to.
+    expect(within(card('Am I being ghosted?')).queryByRole('button', { name: /Reset/ })).not.toBeInTheDocument()
+
+    fireEvent.change(quiet, { target: { value: '21' } })
+    expect(onSettingChange).toHaveBeenCalledWith('quietDays', 21)
+    // A half-typed or out-of-range value never reaches the answers.
+    onSettingChange.mockClear()
+    fireEvent.change(quiet, { target: { value: '0' } })
+    fireEvent.change(quiet, { target: { value: '' } })
+    expect(onSettingChange).not.toHaveBeenCalled()
+    unmount()
+
+    renderStats(searched, { minSourceApplications: 2 }, { onSettingChange })
+    const reset = within(card('Which channels are worth my time?')).getByRole('button', {
+      name: 'Reset applications a source needs before it is compared to 3',
+    })
+    expect(reset).toHaveTextContent('Reset to 3')
+    fireEvent.click(reset)
+    expect(onSettingChange).toHaveBeenCalledWith('minSourceApplications', 3)
   })
 
-  it('reports each source against what came of it', () => {
-    render(<StatisticsView applications={searched} />)
+  it('names where you lose the most only once a stage has enough decided to compare', () => {
+    const { unmount } = renderStats(searched)
+    expect(answerOf('Where am I losing?')).toBe(
+      'Too few decided applications to say where you lose the most yet. A stage needs 5 before it\'s compared.',
+    )
+    // Silent Co is still at Applied and Talking Co at the recruiter interview: neither is a
+    // loss yet, so both are left out of the stage they sit in.
+    expect(rowCells(passTable(), 'Applied')).toEqual(['3', '2', '1'])
+    expect(rowCells(passTable(), 'Recruiter interview')).toEqual(['1', '0', '1'])
+    unmount()
 
+    const { container } = renderStats(searched, { minStageDecided: 1 })
+    expect(answerOf('Where am I losing?')).toBe(
+      'You lose the most at Recruiter interview: 1 of 1 went no further.',
+    )
+    // The row the answer names is the one marked in the chart.
+    expect(container.querySelector('[data-bar="recruiter_interview"]')).toHaveClass(
+      'outcome-bars__row--emphasis',
+    )
+    expect(container.querySelector('[data-bar="applied"]')).not.toHaveClass(
+      'outcome-bars__row--emphasis',
+    )
+  })
+
+  it('draws each count as a bar whose parts add up to it', () => {
+    const { container } = renderStats(searched)
+
+    function segments(key: string): Record<string, string> {
+      const bars = container.querySelectorAll(`[data-bar="${key}"] [data-segment]`)
+      return Object.fromEntries(
+        [...bars].map((bar) => [bar.getAttribute('data-segment'), (bar as HTMLElement).style.flexGrow]),
+      )
+    }
+    const row = (key: string) => container.querySelector(`[data-bar="${key}"]`)!
+
+    // Of Applied's three decided, two got past it; the one still there is not drawn.
+    expect(segments('applied')).toEqual({ passed: '2', lost: '1' })
+    expect(row('applied')).toHaveTextContent('1 went no further · 1 still in it')
+    // Nested, not side by side: LinkedIn's two both heard back and one got further.
+    expect(segments('LinkedIn')).toEqual({ advanced: '1', replied: '1' })
+
+    // Shares, not volume: every source's bar is the full width, so rates compare by eye.
+    for (const source of ['LinkedIn', 'Referral']) {
+      const bar = row(source).querySelector<HTMLElement>('.outcome-bars__bar')!
+      expect(bar.style.width).toBe('calc(1 * (100% - var(--chart-value)))')
+    }
+
+    // The chart and the table say the same thing, so only one of them may be read out.
+    expect(container.querySelector('.outcome-bars__chart')).toHaveAttribute('aria-hidden', 'true')
+  })
+
+  it('draws every recorded move between where it left and where it landed', () => {
+    const { container } = renderStats(searched)
+
+    const moves = [...container.querySelectorAll('[data-move]')].map((path) => [
+      path.getAttribute('data-move'),
+      path.getAttribute('class'),
+    ])
+    expect(moves).toEqual([
+      // A move is between a stage-and-outcome pair on each end, so a rejection lands on the
+      // stage it happened at.
+      ['applied:active>applied:rejected', 'stage-flow__link stage-flow__link--rest'],
+      ['applied:active>recruiter_interview:active', 'stage-flow__link stage-flow__link--strong'],
+      [
+        'recruiter_interview:active>recruiter_interview:rejected',
+        'stage-flow__link stage-flow__link--rest',
+      ],
+    ])
+
+    expect(answerOf('Where do applications go?')).toBe(
+      'Of 4 recorded moves, 2 went to a later stage and 2 to a rejection.',
+    )
+    const table = tableNamed('Every recorded move, from the state it left to the state it reached')
+    expect(rowCells(table, 'Recruiter interview')).toEqual(['Recruiter interview — Rejected', '1'])
+  })
+
+  it('compares sources only once each has enough applications, and ranks by progress', () => {
+    const { unmount, container } = renderStats(searched)
+    expect(answerOf('Which channels are worth my time?')).toBe(
+      'No source has 3 applications yet, too few to compare.',
+    )
+    // Too few is drawn back and said, not dropped.
+    expect(container.querySelector('[data-bar="LinkedIn"]')).toHaveClass('outcome-bars__row--quiet')
     expect(rowCells(sourcesTable(), 'LinkedIn')).toEqual(['2', '2 100%', '1 50%'])
     expect(rowCells(sourcesTable(), 'Referral')).toEqual(['2', '1 50%', '1 50%'])
+    unmount()
+
+    renderStats(searched, { minSourceApplications: 2 })
+    // One past the first stage each: a tie, said as one.
+    expect(answerOf('Which channels are worth my time?')).toBe(
+      'LinkedIn and Referral tie for furthest, with 50% of each past the first stage.',
+    )
   })
 
   it('names an unrecorded source rather than dropping those applications', () => {
-    render(
-      <StatisticsView
-        applications={[
-          ...searched,
-          application('Nowhere Co', { state_history: [{ state: 'applied', outcome: 'active', at: localDate(-5) }] }),
-        ]}
-      />,
-    )
+    renderStats([
+      ...searched,
+      application('Nowhere Co', { state_history: [{ state: 'applied', outcome: 'active', at: localDate(-5) }] }),
+    ])
 
     const row = within(sourcesTable()).getByLabelText('Not recorded').closest('tr')!
     expect(within(row).getAllByRole('cell').map((cell) => cell.textContent)).toEqual([
@@ -1235,36 +1407,84 @@ describe('StatisticsView', () => {
     ])
   })
 
+  it('lists how long things took while there are too few for a median', () => {
+    renderStats(searched)
+
+    expect(answerOf('How long does it take?')).toBe('Your 2 rejections took 2 and 20 days.')
+  })
+
+  it('reads the money from offers, and says when there is nothing to read', () => {
+    const { unmount } = renderStats(searched)
+    expect(answerOf('Is the money there?')).toBe(
+      'No offers yet, and no advertised pay with a target to compare it against.',
+    )
+    unmount()
+
+    renderStats([
+      application('Short Co', {
+        state: 'offer',
+        state_history: [{ state: 'offer', outcome: 'active', at: localDate(-3) }],
+        compensation: {
+          currency: 'EUR',
+          advertised: null,
+          expected: { min: 100000, max: 100000 },
+          offered: { min: 90000, max: 90000 },
+        },
+      }),
+    ])
+    expect(answerOf('Is the money there?')).toBe('1 offer: 1 below target.')
+    expect(card('Is the money there?')).toHaveTextContent('Short CoEUR 90,00010% below target')
+  })
+
+  it('draws the scores themselves, so a mean cannot hide a dealbreaker', () => {
+    const { container } = renderStats([
+      application('Even Co', { ratings: ratings({ people: 4 }) }),
+      application('Hidden One Co', { ratings: ratings({ people: 1 }) }),
+    ])
+
+    const people = container.querySelector('[data-scale="people"]')!
+    const columns = [...people.querySelectorAll('[data-score]')].map((column) => [
+      column.getAttribute('data-score'),
+      column.textContent,
+    ])
+    expect(columns).toEqual([
+      ['1', '1'],
+      ['4', '1'],
+    ])
+    expect(people.querySelector('[data-mean]')).toHaveAttribute('data-mean', '2.5')
+  })
+
   it('summarises how the collection was rated, per dimension', () => {
-    const applications = [
+    renderStats([
       application('Even Co', { ratings: ratings({ work: 4, growth: 4, people: 4, company: 4 }) }),
       application('Hidden One Co', {
         ratings: ratings({ work: 5, growth: 5, people: 1, company: 5 }),
       }),
       application('Partly Judged Co', { ratings: ratings({ work: 3, growth: null }) }),
       application('Unrated Co'),
-    ]
+    ])
 
-    render(<StatisticsView applications={applications} />)
-
-    // Rated, Don't know, Not rated, Mean of the judged scores.
-    expect(rowCells(ratingsTable(), 'Work')).toEqual(['3', '0', '1', '4.00'])
-    expect(rowCells(ratingsTable(), 'Growth')).toEqual(['2', '1', '1', '4.50'])
-    // People reads low because it was judged low, not because it went unassessed.
-    expect(rowCells(ratingsTable(), 'People')).toEqual(['2', '0', '2', '2.50'])
-    expect(rowCells(ratingsTable(), 'Company & product')).toEqual(['2', '0', '2', '4.50'])
-    expect(screen.getByText('3 of 4 rated, mean preference 3.48.')).toBeInTheDocument()
+    // Rated, Don't know, Not rated, how many scored 1 to 5, Mean of the judged scores.
+    expect(rowCells(ratingsTable(), 'Work')).toEqual(['3', '0', '1', '0', '0', '1', '1', '1', '4.00'])
+    expect(rowCells(ratingsTable(), 'Growth')).toEqual(['2', '1', '1', '0', '0', '0', '1', '1', '4.50'])
+    // People reads low because it was judged low, not because it went unassessed — and
+    // the scores say it is one 1 dragging a 4 down, which the mean alone cannot.
+    expect(rowCells(ratingsTable(), 'People')).toEqual(['2', '0', '2', '1', '0', '0', '1', '0', '2.50'])
+    expect(rowCells(ratingsTable(), 'Company & product')).toEqual(['2', '0', '2', '0', '0', '0', '1', '1', '4.50'])
+    expect(answerOf('How do I judge roles?')).toBe(
+      '3 of 4 rated, mean preference 3.48. People scores lowest.',
+    )
   })
 
   it('says so plainly when nothing has been rated', () => {
-    render(<StatisticsView applications={[application('Unrated Co')]} />)
+    renderStats([application('Unrated Co')])
 
-    expect(screen.getByText('No application has been rated yet.')).toBeInTheDocument()
+    expect(answerOf('How do I judge roles?')).toBe('No application has been rated yet.')
     expect(screen.queryByText(/mean preference/)).not.toBeInTheDocument()
   })
 
   it('offers an empty state rather than a page of dashes when there is nothing yet', () => {
-    render(<StatisticsView applications={[]} />)
+    renderStats([])
 
     expect(screen.getByRole('heading', { name: 'Nothing to summarise yet' })).toBeInTheDocument()
     expect(screen.queryByRole('table')).not.toBeInTheDocument()

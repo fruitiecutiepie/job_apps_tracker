@@ -127,3 +127,15 @@ describe('idleFilterMatches', () => {
     expect(idleFilterMatches('not_idle', rejected, today)).toBe(true)
   })
 })
+
+describe('a threshold the reader chose', () => {
+  it('moves the line for the status and the filter alike', () => {
+    const twenty = application('Twenty Co', { movedDaysAgo: 20 })
+
+    expect(idleStatusFor(twenty, today)).toBeNull()
+    expect(idleStatusFor(twenty, today, 20)).toEqual({ days: 20 })
+    expect(idleStatusFor(twenty, today, 21)).toBeNull()
+    expect(idleFilterMatches('idle', twenty, today, 20)).toBe(true)
+    expect(idleFilterMatches('idle', twenty, today)).toBe(false)
+  })
+})
