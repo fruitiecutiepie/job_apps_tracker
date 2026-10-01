@@ -8,11 +8,19 @@ Run:
 pnpm test:smoke
 ```
 
-This checks the demo-profile journey: 19 first-load examples, navigation through all four views
-(Kanban, Table, Statistics, Compare), creating and searching for an application,
-changing its state and recording history, marking a next action done and logging it in the
+This checks the demo-profile journey: 19 first-load examples (18 showing, one archived),
+navigation through all four views (Kanban, Table, Statistics, Compare), creating and searching
+for an application, stepping it on a stage from its card, changing its stage in the editor and
+recording history, marking a next action done and logging it in the
 notes, recording stage prep notes against it, persistence across an app reload, and confirmed
 demo-data reset.
+
+Ending an application from the End menu (and the next action it clears), reopening and
+archiving one, the stage and outcome filters and the archive filter, **Archive all ended** with
+its confirmation, and opening a pre-split version-1 file are covered by the app integration
+tests; the move buttons' names and targets for each kind of row, and the Kanban lanes, by
+`src/views/derived-views.test.tsx`; the migration itself, archiving and the move mutations by
+`src/domain/domain.test.ts`.
 
 Reading an application's state history back in the editor — one row per move, oldest first, and
 none at all on a new application — is covered by the app integration tests, and the spans it shows
@@ -95,8 +103,20 @@ neither a finger nor any browser automation.
    is created empty on first launch and that **More actions** offers Import and Export
    but not **Reset demo data**.
 2. Run `pnpm dev:demo` and confirm `data/demo/tracker.json` is created. Confirm Kanban
-   shows 11 stage columns with a labelled lane for each of the 19 states and one demo
-   application in each state.
+   shows 10 stage columns (Accepted last, holding Saffron Systems), a running lane in each
+   holding one demo application, and an
+   ending lane only where something ended there — Offer carries
+   Offer — Withdrawn. Confirm the count reads 18 of 19 (Copperline Health is archived).
+   On a running card, press the on-button and confirm it moves one stage; open **End**,
+   confirm Escape and a press outside close it and return focus, and that choosing
+   **I withdrew** moves the card to its stage's Withdrawn lane. On an ended card, confirm
+   **Reopen** and **Archive**, and that the Archive filter set to Archived shows
+   Copperline Health with **Unarchive**. Check the move row stays on one line on a
+   narrow card and in the table's Stage cell. Set the Archive filter to Current and archived and
+   confirm Copperline Health's card and row are told apart at a glance. Change each filter in
+   turn and confirm no other control in the context bar moves, Clear filters included.
+   Open a copy of a pre-split `tracker.json` (one using ids like `auto_rejected`) with
+   `pnpm dev` and confirm it opens migrated and a copy lands under `data/backups/`.
    Narrow the window and confirm the board scrolls horizontally without clipping cards.
    Confirm cards last updated 14 or more days ago look greyed out and show an untouched-age label.
    Confirm the Lumen Pantry card shows `Preference 4.00 · People 1`, that Halcyon Maps shows a
@@ -119,10 +139,10 @@ neither a finger nor any browser automation.
    Confirm a column filter narrows rows without changing Kanban, and that
    Clear column filters restores the table, including when only the Preference filter is set.
    Confirm the most pressing live applications lead, that each row
-   explains itself, and that rejected, accepted, and no-openings rows show an unranked dash.
-   Confirm a live row has a **Reject** button beside its state select and that
-   already-rejected, accepted, and no-openings rows do not. Press it on one and confirm the
-   row moves to that state's rejected counterpart and gains a history entry.
+   explains itself, and that ended and accepted rows show an unranked dash.
+   Confirm a running row has ←, → and **End** beside its stage select and that ended rows
+   offer Reopen and Archive instead. Choose **End → Rejected** on one and confirm the row
+   moves to its stage's Rejected outcome and gains a history entry.
 4. Confirm **Done** appears beside a next action in both places and nowhere else: on the
    Atlas Thread Kanban card — on the **Next** line itself, not down beside Move and Prep notes —
    and in its Table **Next action** cell, but on no card or row without an

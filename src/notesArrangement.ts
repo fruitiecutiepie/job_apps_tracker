@@ -14,7 +14,7 @@
  */
 
 import type { Application, StateId } from './domain'
-import { isStateId, stateRank } from './domain'
+import { isStateId, legacyState, stateRank } from './domain'
 import type { StorageLike } from './domain/storage'
 import { trackerProfile } from './domain/trackerProfile'
 import {
@@ -244,7 +244,10 @@ function readNode(value: unknown, known: ReadonlySet<string>): LayoutNode | null
     const seen = new Set<string>()
     for (const tab of value.tabs) {
       if (!isRecord(tab)) continue
-      const { applicationId, kind, state } = tab
+      const { applicationId, kind } = tab
+      // An arrangement stored before stages and outcomes split names a note by a state
+      // like `interview_1_rejected`, which is that stage's note now.
+      const state = legacyState(tab.state)
       if (typeof applicationId !== 'string' || !known.has(applicationId)) continue
       /*
        * A tab with no `kind` is a stage note: that is every tab written before postings

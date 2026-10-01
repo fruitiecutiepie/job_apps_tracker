@@ -2,6 +2,7 @@ import { isSafeAttachmentId, MAX_ATTACHMENT_BYTES } from '../domain/attachmentPa
 import { createEmptyDocument, ensureFreshIndexes, refreshTrackerDatabase } from '../domain/database'
 import { createDemoDocument } from '../domain/demo'
 import { isDemoTrackerProfile } from '../domain/trackerProfile'
+import { DATA_VERSION, needsMigration } from '../domain/migrate'
 import type { TrackerDatabase } from '../domain/types'
 import { assertTrackerDocument, parseTrackerDocument } from '../domain/validation'
 import {
@@ -19,7 +20,27 @@ import type { ConnectableStorage, StorageConnection, TrackerBackend } from './ty
 
 /** Mirrors the layout the dev server writes, so the same folder opens in either build. */
 export const TRACKER_FILENAME = 'tracker.json'
+
+/** Where a folder's older-layout file is kept before the first save rewrites it. */
+export const MIGRATION_BACKUP_FILENAME = `tracker.before-v${DATA_VERSION}.json`
 export const ATTACHMENTS_DIRNAME = 'attachments'
+
+/**
+ * Keeps a folder's file aside when it is in the older layout, before anything writes the
+ * migrated document over it. Once only: a backup already there is the original, and a
+ * second would be a copy of a copy.
+ */
+async function backUpBeforeMigrating(directory: DirectoryHandleLike, text: string): Promise<void> {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return
+  }
+  if (!needsMigration(raw)) return
+  if (await readFileIn(directory, MIGRATION_BACKUP_FILENAME)) return
+  await writeFileIn(directory, MIGRATION_BACKUP_FILENAME, text)
+}
 
 const DOCUMENT_KEY = 'document'
 const DIRECTORY_KEY = 'directoryHandle'
@@ -165,7 +186,9 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
        */
       const existing = await readFileIn(picked, TRACKER_FILENAME)
       if (existing) {
-        const parsed = ensureFreshIndexes(parseTrackerDocument(await existing.text()))
+        const text = await existing.text()
+        const parsed = ensureFreshIndexes(parseTrackerDocument(text))
+        await backUpBeforeMigrating(picked, text)
         await store.put('state', DOCUMENT_KEY, serialize(parsed))
       } else {
         const cached = (await store.get('state', DOCUMENT_KEY)) as string | null
@@ -209,7 +232,9 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
         if (directory) {
           const file = await readFileIn(directory, TRACKER_FILENAME)
           if (file) {
-            const parsed = ensureFreshIndexes(parseTrackerDocument(await file.text()))
+            const text = await file.text()
+            const parsed = ensureFreshIndexes(parseTrackerDocument(text))
+            await backUpBeforeMigrating(directory, text)
             await store.put('state', DOCUMENT_KEY, serialize(parsed))
             return parsed
           }

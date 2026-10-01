@@ -1,5 +1,5 @@
-import { STATE_CONFIG, STATE_LABELS } from './states'
-import type { Application, StateId, TrackerIndexes } from './types'
+import { OUTCOME_IDS, STATE_CONFIG, STATE_LABELS, statusLabel } from './states'
+import type { Application, OutcomeId, StateId, TrackerIndexes } from './types'
 
 function emptyStateArrays(): Record<StateId, string[]> {
   const record = {} as Record<StateId, string[]>
@@ -17,6 +17,14 @@ function emptyStateCounts(): Record<StateId, number> {
   return record
 }
 
+function emptyOutcomeArrays(): Record<OutcomeId, string[]> {
+  const record = {} as Record<OutcomeId, string[]>
+  for (const id of OUTCOME_IDS) {
+    record[id] = []
+  }
+  return record
+}
+
 export function rebuildIndexes(applications: Application[]): TrackerIndexes {
   const by_id: Record<string, number> = {}
   const by_state = emptyStateArrays()
@@ -27,6 +35,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
   const by_deadline_at: string[] = []
   const with_next_action: string[] = []
   const unscheduled: Application[] = []
+  const by_outcome = emptyOutcomeArrays()
   const ever_reached = emptyStateArrays()
   const search_text: Record<string, string> = {}
   const stats_current = emptyStateCounts()
@@ -35,6 +44,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
   applications.forEach((application, index) => {
     by_id[application.id] = index
     by_state[application.state].push(application.id)
+    by_outcome[application.outcome].push(application.id)
     const companyIds = by_company[application.company] ?? (by_company[application.company] = [])
     companyIds.push(application.id)
     by_created_at.push(application.id)
@@ -72,7 +82,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       // What you did is as findable as what you plan to do; before Done had a field of its
       // own these lines lived in `notes` and were already matched here.
       ...application.completed_actions.map((entry) => entry.action),
-      STATE_LABELS[application.state],
+      statusLabel(application),
       ...application.stage_notes.map((note) =>
         [STATE_LABELS[note.state], note.body, ...note.heard.map((entry) => entry.body)]
           .filter(Boolean)
@@ -139,6 +149,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
     by_deadline_at,
     with_next_action,
     unscheduled_next_actions,
+    by_outcome,
     ever_reached,
     search_text,
     stats_current,
@@ -152,6 +163,7 @@ export function indexesAreStale(applications: Application[], indexes: TrackerInd
     return true
   }
   if (!indexes.by_company || typeof indexes.by_company !== 'object') return true
+  if (!indexes.by_outcome || typeof indexes.by_outcome !== 'object') return true
 
   for (let index = 0; index < applications.length; index++) {
     const application = applications[index]!

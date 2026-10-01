@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { emptyCompensation } from '../domain'
-import type { Application, StateEvent, StateId } from '../domain'
+import { emptyCompensation, legacyStatus } from '../domain'
+import type { Application, StateEvent, StateHistoryEntry } from '../domain'
 import {
   advanced,
   daysToFirstReply,
@@ -25,14 +25,21 @@ function at(daysFromToday: number, hour = 9): string {
   return date.toISOString()
 }
 
-/** A history built from `[state, daysAgo]` pairs, oldest first. */
-function history(entries: readonly (readonly [StateId, number])[]) {
-  return entries.map(([state, daysAgo]) => ({ state, at: at(-daysAgo) }))
+/**
+ * A history built from `[status, daysAgo]` pairs, oldest first. A status is written the way a
+ * reader says it — `auto_rejected`, `recruiter_interview_rejected` — and read through the
+ * same table that migrates old files, so the tables below stay one word per move.
+ */
+function history(entries: readonly (readonly [string, number])[]): StateHistoryEntry[] {
+  return entries.map(([status, daysAgo]) => ({ ...legacyStatus(status)!, at: at(-daysAgo) }))
 }
+
+/** A move end written the way a reader says it, read through the migration's table. */
+const status = (name: string) => legacyStatus(name)!
 
 function application(
   company: string,
-  entries: readonly (readonly [StateId, number])[],
+  entries: readonly (readonly [string, number])[],
   overrides: Partial<Application> = {},
 ): Application {
   const trail = history(entries)
@@ -46,7 +53,9 @@ function application(
     url: null,
     source: null,
     state: last?.state ?? 'applied',
+    outcome: last?.outcome ?? 'active',
     state_history: trail,
+    archived_at: null,
     next_action: null,
     next_action_at: null,
     deadline_at: null,
@@ -93,9 +102,9 @@ describe('hearing back', () => {
 
   it('reads two moves on one day as no days, like every other span', () => {
     const sameDay = application('Fast Co', [])
-    const trail = [
-      { state: 'applied' as StateId, at: at(-3, 9) },
-      { state: 'auto_rejected' as StateId, at: at(-3, 17) },
+    const trail: StateHistoryEntry[] = [
+      { state: 'applied', outcome: 'active', at: at(-3, 9) },
+      { state: 'applied', outcome: 'rejected', at: at(-3, 17) },
     ]
 
     expect(daysToFirstReply({ ...sameDay, state_history: trail })).toBe(0)
@@ -103,9 +112,9 @@ describe('hearing back', () => {
 
   it('reads history in time order rather than trusting the stored order', () => {
     const scrambled = application('Jumbled Co', [])
-    const trail = [
-      { state: 'recruiter_messaged' as StateId, at: at(-10) },
-      { state: 'applied' as StateId, at: at(-20) },
+    const trail: StateHistoryEntry[] = [
+      { state: 'recruiter_messaged', outcome: 'active', at: at(-10) },
+      { state: 'applied', outcome: 'active', at: at(-20) },
     ]
 
     expect(daysToFirstReply({ ...scrambled, state_history: trail })).toBe(10)
@@ -241,9 +250,9 @@ describe('stageMoves', () => {
 
     // In configured state order on both ends: Auto-rejected sits right after Applied.
     expect(stageMoves(applications)).toEqual([
-      { from: 'applied', to: 'auto_rejected', count: 1 },
-      { from: 'applied', to: 'recruiter_interview', count: 2 },
-      { from: 'recruiter_interview', to: 'interview_1', count: 1 },
+      { from: status('applied'), to: status('auto_rejected'), count: 1 },
+      { from: status('applied'), to: status('recruiter_interview'), count: 2 },
+      { from: status('recruiter_interview'), to: status('interview_1'), count: 1 },
     ])
   })
 
@@ -255,8 +264,8 @@ describe('stageMoves', () => {
     ])
 
     expect(stageMoves([revisited])).toEqual([
-      { from: 'applied', to: 'recruiter_interview', count: 1 },
-      { from: 'recruiter_interview', to: 'applied', count: 1 },
+      { from: status('applied'), to: status('recruiter_interview'), count: 1 },
+      { from: status('recruiter_interview'), to: status('applied'), count: 1 },
     ])
   })
 
@@ -264,27 +273,28 @@ describe('stageMoves', () => {
     const shuffled = application('Shuffled Co', [], {
       state: 'recruiter_interview',
       state_history: [
-        { state: 'recruiter_interview', at: at(-5) },
-        { state: 'applied', at: at(-10) },
+        { state: 'recruiter_interview', outcome: 'active', at: at(-5) },
+        { state: 'applied', outcome: 'active', at: at(-10) },
       ],
     })
 
     expect(stageMoves([shuffled])).toEqual([
-      { from: 'applied', to: 'recruiter_interview', count: 1 },
+      { from: status('applied'), to: status('recruiter_interview'), count: 1 },
     ])
   })
 })
 
 describe('stageMoveKind', () => {
   it('calls a move further only when it lands on a later live stage', () => {
-    expect(stageMoveKind({ from: 'applied', to: 'interview_1' })).toBe('further')
-    expect(stageMoveKind({ from: 'interview_1', to: 'applied' })).toBe('other')
+    expect(stageMoveKind({ from: status('applied'), to: status('interview_1') })).toBe('further')
+    expect(stageMoveKind({ from: status('interview_1'), to: status('applied') })).toBe('other')
   })
 
   it('names a rejection as one, and a close without one as neither', () => {
-    expect(stageMoveKind({ from: 'applied', to: 'auto_rejected' })).toBe('rejected')
-    expect(stageMoveKind({ from: 'offer', to: 'accepted' })).toBe('other')
-    expect(stageMoveKind({ from: 'applied', to: 'no_openings' })).toBe('other')
+    expect(stageMoveKind({ from: status('applied'), to: status('auto_rejected') })).toBe('rejected')
+    // Accepted is the stage after Offer, so taking the job is going further.
+    expect(stageMoveKind({ from: status('offer'), to: status('accepted') })).toBe('further')
+    expect(stageMoveKind({ from: status('applied'), to: status('no_openings') })).toBe('other')
   })
 })
 

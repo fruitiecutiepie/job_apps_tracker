@@ -1,7 +1,7 @@
 import { fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { COMPENSATION_STAGE_IDS, emptyCompensation } from '../domain'
+import { COMPENSATION_STAGE_IDS, STATE_IDS, emptyCompensation } from '../domain'
 import stylesheet from '../styles.css?raw'
 import type {
   Application,
@@ -39,8 +39,10 @@ function application(
     url: null,
     source: null,
     state,
+    outcome: 'active',
     // Created 40 days ago but moved yesterday, so nothing is silent by default.
-    state_history: [{ state, at: localDate(-1) }],
+    state_history: [{ state, outcome: 'active', at: localDate(-1) }],
+    archived_at: null,
     next_action: null,
     next_action_at: null,
     deadline_at: null,
@@ -126,7 +128,8 @@ describe('TableView', () => {
     const state: StateId = 'applied'
     render(
       <TableView
-        applications={[application('Twenty Co', { state_history: [{ state, at: localDate(-20) }] })]}
+        applications={[application('Twenty Co', { state_history: [{ state, outcome: 'active', at: localDate(-20) }] })]}
+        onArchive={vi.fn()}
         onCompleteAction={vi.fn()}
         onMove={vi.fn()}
         onOpen={vi.fn()}
@@ -153,13 +156,13 @@ describe('TableView', () => {
 
     const state: StateId = 'applied'
     const applications = [
-      application('Quiet Co', { state_history: [{ state, at: localDate(-40) }] }),
-      application('Busy Co', { state_history: [{ state, at: localDate(-2) }] }),
-      application('Silent Co', { state_history: [{ state, at: localDate(-35) }] }),
+      application('Quiet Co', { state_history: [{ state, outcome: 'active', at: localDate(-40) }] }),
+      application('Busy Co', { state_history: [{ state, outcome: 'active', at: localDate(-2) }] }),
+      application('Silent Co', { state_history: [{ state, outcome: 'active', at: localDate(-35) }] }),
     ]
 
     render(
-      <TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />,
+      <TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />,
     )
 
     expect(screen.getByText('Idle 40 days')).toBeInTheDocument()
@@ -193,8 +196,8 @@ describe('TableView', () => {
     const applications = [
       application('Zebra Works', { created_at: localDate(-10), updated_at: localDate(-3) }),
       application('Alpha Labs', {
-        state: 'accepted',
-        state_history: [{ state: 'accepted', at: localDate(-2) }],
+        state: 'accepted', outcome: 'active',
+        state_history: [{ state: 'accepted', outcome: 'active', at: localDate(-2) }],
         created_at: localDate(-30),
         updated_at: localDate(-2),
       }),
@@ -202,7 +205,7 @@ describe('TableView', () => {
     ]
 
     render(
-      <TableView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />,
+      <TableView applications={applications} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />,
     )
 
     // The default sort: both live rows tie on score and neither is rated, so the band's
@@ -228,10 +231,10 @@ describe('TableView', () => {
     ])
 
     fireEvent.change(
-      screen.getByRole('combobox', { name: 'Move Alpha Labs to state' }),
+      screen.getByRole('combobox', { name: 'Move Alpha Labs to stage' }),
       { target: { value: 'offer' } },
     )
-    expect(onMove).toHaveBeenCalledWith(applications[1].id, 'offer')
+    expect(onMove).toHaveBeenCalledWith(applications[1].id, { state: 'offer' })
 
     fireEvent.click(within(screen.getByRole('rowheader', { name: 'Alpha Labs' })).getByRole('button'))
     expect(onOpen).toHaveBeenCalledWith(applications[1].id)
@@ -241,8 +244,8 @@ describe('TableView', () => {
   it('narrows rows with column filters without changing the data', () => {
     const applications = [
       application('Alpha Labs', {
-        state: 'accepted',
-        state_history: [{ state: 'accepted', at: localDate(-2) }],
+        state: 'accepted', outcome: 'active',
+        state_history: [{ state: 'accepted', outcome: 'active', at: localDate(-2) }],
         source: 'LinkedIn',
         attachments: [{
           id: '018f0000-0000-7000-8000-000000000002',
@@ -255,7 +258,7 @@ describe('TableView', () => {
       application('Zebra Works', { source: 'Referral', role: 'Designer' }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     fireEvent.change(screen.getByRole('combobox', { name: 'Filter Company column' }), {
       target: { value: 'Alpha' },
@@ -265,7 +268,7 @@ describe('TableView', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Clear column filters' }))
     expect(rowCompanies()).toHaveLength(2)
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Filter State column' }), {
+    fireEvent.change(screen.getByRole('combobox', { name: 'Filter Stage column' }), {
       target: { value: 'accepted' },
     })
     expect(rowCompanies()).toEqual(['Alpha Labs'])
@@ -294,7 +297,7 @@ describe('TableView', () => {
       }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     const sooner = screen.getByRole('row', { name: /Sooner Panel/ })
     expect(within(sooner).getByText('Called off round')).toBeInTheDocument()
@@ -336,7 +339,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -371,7 +374,7 @@ describe('TableView', () => {
       <TableView
         applications={[tasked, application('Idle Co')]}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={onCompleteAction}
       />,
@@ -394,7 +397,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -413,8 +416,8 @@ describe('TableView', () => {
     const applications = [
       application('Quiet Co'),
       application('Rejected Co', {
-        state: 'auto_rejected',
-        state_history: [{ state: 'auto_rejected', at: localDate(-2) }],
+        state: 'applied', outcome: 'rejected',
+        state_history: [{ state: 'applied', outcome: 'rejected', at: localDate(-2) }],
         deadline_at: localDate(1),
       }),
       application('Deadline Co', { deadline_at: localDate(2) }),
@@ -425,7 +428,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -457,13 +460,13 @@ describe('TableView', () => {
     const applications = [
       application('Quiet Co'),
       application('Loose End Co', {
-        state: 'auto_rejected',
-        state_history: [{ state: 'auto_rejected', at: localDate(-2) }],
+        state: 'applied', outcome: 'rejected',
+        state_history: [{ state: 'applied', outcome: 'rejected', at: localDate(-2) }],
         next_action: 'Ask for feedback',
       }),
       application('Closed Co', {
-        state: 'auto_rejected',
-        state_history: [{ state: 'auto_rejected', at: localDate(-2) }],
+        state: 'applied', outcome: 'rejected',
+        state_history: [{ state: 'applied', outcome: 'rejected', at: localDate(-2) }],
       }),
       application('Overdue Co', { next_action: 'Follow up', next_action_at: localDate(-3) }),
     ]
@@ -472,7 +475,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -517,7 +520,7 @@ describe('TableView', () => {
       <TableView
         applications={[application('Quiet Co')]}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -560,7 +563,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -569,7 +572,7 @@ describe('TableView', () => {
     expect(rowCompanies()).toEqual(['Action Co', 'Invite Co'])
   })
 
-  it('offers a one-click rejection beside the state select, for the counterpart state', () => {
+  it('steps a running row on or back a stage, one press each', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
     const onMove = vi.fn()
@@ -579,63 +582,166 @@ describe('TableView', () => {
       <TableView
         applications={[waiting]}
         onOpen={vi.fn()}
-        onMove={onMove}
+        onArchive={vi.fn()} onMove={onMove}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
 
-    fireEvent.click(
-      screen.getByRole('button', { name: 'Move Waiting Co to Recruiter interview — Rejected' }),
-    )
-    expect(onMove).toHaveBeenCalledWith(waiting.id, 'recruiter_interview_rejected')
+    // The name says where the press goes, so a column of them is not a column of "Next";
+    // the face is the arrow alone.
+    const next = screen.getByRole('button', { name: 'Move Waiting Co to Take-home assessment' })
+    expect(next).toHaveTextContent(/^$/)
+    expect(next).toHaveAttribute('title', 'Next: Take-home assessment')
+    fireEvent.click(next)
+    expect(onMove).toHaveBeenLastCalledWith(waiting.id, { state: 'take_home_assessment' })
+    fireEvent.click(screen.getByRole('button', { name: 'Move Waiting Co back to Online assessment' }))
+    expect(onMove).toHaveBeenLastCalledWith(waiting.id, { state: 'online_assessment' })
   })
 
-  it('uses Auto-rejected as the counterpart for Applied', () => {
+  it('archives a running row as it is, without ending it first', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
+    const onArchive = vi.fn()
+    const onMove = vi.fn()
+    const running = application('Paused Co', { state: 'interview_1' })
 
     render(
       <TableView
-        applications={[application('Sent Co')]}
+        applications={[running]}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={onArchive} onMove={onMove}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
 
-    expect(
-      screen.getByRole('button', { name: 'Move Sent Co to Auto-rejected' }),
-    ).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Archive Paused Co' }))
+    expect(onArchive).toHaveBeenCalledWith(running.id, true)
+    expect(onMove).not.toHaveBeenCalled()
   })
 
-  it('omits the rejection shortcut on a row that is already finished', () => {
+  it('ends a running row where it stands, by whichever way it ended', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
+    const onMove = vi.fn()
+    const waiting = application('Waiting Co', { state: 'interview_1' })
+
+    render(
+      <TableView
+        applications={[waiting]}
+        onOpen={vi.fn()}
+        onArchive={vi.fn()} onMove={onMove}
+        onOpenPosting={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    const end = screen.getByRole('button', { name: 'End Waiting Co' })
+    expect(end).toHaveAttribute('aria-expanded', 'false')
+    fireEvent.click(end)
+    expect(end).toHaveAttribute('aria-expanded', 'true')
+
+    fireEvent.click(screen.getByRole('button', { name: 'Move Waiting Co to Interview 1 — Withdrawn' }))
+    expect(onMove).toHaveBeenLastCalledWith(waiting.id, { outcome: 'withdrawn' })
+    // Choosing closes the menu and hands focus back to what opened it.
+    expect(end).toHaveAttribute('aria-expanded', 'false')
+    expect(end).toHaveFocus()
+
+    fireEvent.click(end)
+    expect(screen.getByRole('button', { name: 'Move Waiting Co to Interview 1 — Rejected' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Move Waiting Co to Interview 1 — Closed' })).toBeInTheDocument()
+  })
+
+  it('uses Auto-rejected for a rejection at Applied, and makes Accepted the ordinary step on from an offer', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const onMove = vi.fn()
+    const offer = application('Offer Co', { state: 'offer' })
+
+    render(
+      <TableView
+        applications={[application('Sent Co'), offer]}
+        onOpen={vi.fn()}
+        onArchive={vi.fn()} onMove={onMove}
+        onOpenPosting={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    fireEvent.click(screen.getByRole('button', { name: 'End Sent Co' }))
+    expect(screen.getByRole('button', { name: 'Move Sent Co to Auto-rejected' })).toBeInTheDocument()
+
+    // The same arrow every other stage has, going to the next stage like every other one.
+    fireEvent.click(screen.getByRole('button', { name: 'Move Offer Co to Accepted' }))
+    expect(onMove).toHaveBeenLastCalledWith(offer.id, { state: 'accepted' })
+  })
+
+  it('offers an ended row its way back and its way out, and says how it ended', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const onMove = vi.fn()
+    const onArchive = vi.fn()
+    const turnedDown = application('Turned Down', {
+      state: 'interview_1', outcome: 'rejected',
+      state_history: [{ state: 'interview_1', outcome: 'rejected', at: localDate(-2) }],
+    })
 
     render(
       <TableView
         applications={[
           application('Offer Taken', {
-            state: 'accepted',
-            state_history: [{ state: 'accepted', at: localDate(-2) }],
+            state: 'accepted', outcome: 'active',
+            state_history: [{ state: 'accepted', outcome: 'active', at: localDate(-2) }],
           }),
-          application('Turned Down', {
-            state: 'auto_rejected',
-            state_history: [{ state: 'auto_rejected', at: localDate(-2) }],
-          }),
+          turnedDown,
         ]}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={onArchive} onMove={onMove}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
     )
 
-    // Accepted has no rejected counterpart, and a rejected row has nowhere left to go.
+    // Nothing to step on to or end: both have ended.
     expect(screen.queryByRole('button', { name: /^Move Offer Taken to / })).not.toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: /^Move Turned Down to / })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: /^End Turned Down/ })).not.toBeInTheDocument()
+
+    const row = screen.getByRole('rowheader', { name: 'Turned Down' }).closest('tr')!
+    expect(within(row).getByText('Rejected')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen Turned Down at Interview 1' }))
+    expect(onMove).toHaveBeenLastCalledWith(turnedDown.id, { outcome: 'active' })
+    fireEvent.click(screen.getByRole('button', { name: 'Archive Turned Down' }))
+    expect(onArchive).toHaveBeenLastCalledWith(turnedDown.id, true)
+  })
+
+  it('offers an archived row only its way back into the current search', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(now)
+    const onArchive = vi.fn()
+    const archived = application('Put Away Co', {
+      outcome: 'rejected',
+      archived_at: localDate(-1),
+      state_history: [{ state: 'applied', outcome: 'rejected', at: localDate(-2) }],
+    })
+
+    render(
+      <TableView
+        applications={[archived]}
+        onOpen={vi.fn()}
+        onArchive={onArchive} onMove={vi.fn()}
+        onOpenPosting={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()}
+        onCompleteAction={vi.fn()}
+      />,
+    )
+
+    expect(screen.getByText('Archived')).toBeInTheDocument()
+    // Told apart from the rows around it at a glance, not only by the badge in one cell.
+    expect(screen.getByRole('rowheader', { name: 'Put Away Co' }).closest('tr')).toHaveClass('table-row--archived')
+    expect(screen.queryByRole('button', { name: /^Reopen/ })).not.toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Unarchive Put Away Co' }))
+    expect(onArchive).toHaveBeenLastCalledWith(archived.id, false)
   })
 
   it('filters the urgency column by its reason', () => {
@@ -651,7 +757,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -676,7 +782,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -701,7 +807,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -723,7 +829,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -755,7 +861,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -784,7 +890,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -814,7 +920,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -852,7 +958,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -884,7 +990,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -914,7 +1020,7 @@ describe('TableView', () => {
       <TableView
         applications={applications}
         onOpen={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
       />,
@@ -947,7 +1053,7 @@ describe('TableView', () => {
       application('Zebra Works', { source: 'LinkedIn' }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByRole('combobox', { name: 'Filter Company column' })).toHaveAttribute(
       'list',
@@ -975,7 +1081,7 @@ describe('TableView', () => {
       application('Plain Record'),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByText('resume.pdf')).toBeInTheDocument()
   })
@@ -983,7 +1089,7 @@ describe('TableView', () => {
   it('resizes a column via its header handle', () => {
     const applications = [application('Alpha Labs', { role: 'Engineer' })]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     const handle = screen.getByRole('separator', { name: 'Resize Role column' })
     const roleColumn = document.querySelectorAll('col')[1] as HTMLElement
@@ -1001,7 +1107,7 @@ describe('TableView', () => {
   it('clamps resizing at the maximum readable column width', () => {
     const applications = [application('Alpha Labs', { role: 'Engineer' })]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     const handle = screen.getByRole('separator', { name: 'Resize Role column' })
     const roleColumn = document.querySelectorAll('col')[1] as HTMLElement
@@ -1020,7 +1126,7 @@ describe('TableView', () => {
       }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     const cell = document.querySelector('[data-column="compensation"] .table-view__urgency')!
     expect(getComputedStyle(cell).whiteSpace).not.toBe('nowrap')
@@ -1032,7 +1138,7 @@ describe('TableView', () => {
       application('Beta Inc', { role: 'PM' }),
     ]
 
-    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<TableView applications={applications} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     const handle = screen.getByRole('separator', { name: 'Resize Role column' })
     const roleColumn = document.querySelectorAll('col')[1] as HTMLElement
@@ -1087,32 +1193,32 @@ describe('StatisticsView', () => {
   /** Two rejected, one live and talking, one live and silent. */
   const searched = [
     application('Bounced Co', {
-      state: 'auto_rejected',
+      state: 'applied', outcome: 'rejected',
       state_history: [
-        { state: 'applied', at: localDate(-30) },
-        { state: 'auto_rejected', at: localDate(-28) },
+        { state: 'applied', outcome: 'active', at: localDate(-30) },
+        { state: 'applied', outcome: 'rejected', at: localDate(-28) },
       ],
       source: 'LinkedIn',
     }),
     application('Nearly Co', {
-      state: 'recruiter_interview_rejected',
+      state: 'recruiter_interview', outcome: 'rejected',
       state_history: [
-        { state: 'applied', at: localDate(-40) },
-        { state: 'recruiter_interview', at: localDate(-30) },
-        { state: 'recruiter_interview_rejected', at: localDate(-20) },
+        { state: 'applied', outcome: 'active', at: localDate(-40) },
+        { state: 'recruiter_interview', outcome: 'active', at: localDate(-30) },
+        { state: 'recruiter_interview', outcome: 'rejected', at: localDate(-20) },
       ],
       source: 'LinkedIn',
     }),
     application('Talking Co', {
       state: 'recruiter_interview',
       state_history: [
-        { state: 'applied', at: localDate(-25) },
-        { state: 'recruiter_interview', at: localDate(-12) },
+        { state: 'applied', outcome: 'active', at: localDate(-25) },
+        { state: 'recruiter_interview', outcome: 'active', at: localDate(-12) },
       ],
       source: 'Referral',
     }),
     application('Silent Co', {
-      state_history: [{ state: 'applied', at: localDate(-20) }],
+      state_history: [{ state: 'applied', outcome: 'active', at: localDate(-20) }],
       source: 'Referral',
     }),
   ]
@@ -1252,10 +1358,12 @@ describe('StatisticsView', () => {
       path.getAttribute('class'),
     ])
     expect(moves).toEqual([
-      ['applied>auto_rejected', 'stage-flow__link stage-flow__link--rest'],
-      ['applied>recruiter_interview', 'stage-flow__link stage-flow__link--strong'],
+      // A move is between a stage-and-outcome pair on each end, so a rejection lands on the
+      // stage it happened at.
+      ['applied:active>applied:rejected', 'stage-flow__link stage-flow__link--rest'],
+      ['applied:active>recruiter_interview:active', 'stage-flow__link stage-flow__link--strong'],
       [
-        'recruiter_interview>recruiter_interview_rejected',
+        'recruiter_interview:active>recruiter_interview:rejected',
         'stage-flow__link stage-flow__link--rest',
       ],
     ])
@@ -1288,7 +1396,7 @@ describe('StatisticsView', () => {
   it('names an unrecorded source rather than dropping those applications', () => {
     renderStats([
       ...searched,
-      application('Nowhere Co', { state_history: [{ state: 'applied', at: localDate(-5) }] }),
+      application('Nowhere Co', { state_history: [{ state: 'applied', outcome: 'active', at: localDate(-5) }] }),
     ])
 
     const row = within(sourcesTable()).getByLabelText('Not recorded').closest('tr')!
@@ -1315,7 +1423,7 @@ describe('StatisticsView', () => {
     renderStats([
       application('Short Co', {
         state: 'offer',
-        state_history: [{ state: 'offer', at: localDate(-3) }],
+        state_history: [{ state: 'offer', outcome: 'active', at: localDate(-3) }],
         compensation: {
           currency: 'EUR',
           advertised: null,
@@ -1384,16 +1492,43 @@ describe('StatisticsView', () => {
 })
 
 describe('kanbanColumnGroups', () => {
-  it('groups live states with their rejected counterparts into 11 columns', () => {
-    const groups = kanbanColumnGroups()
+  it('draws a running lane for every stage, and an ending lane only once something ended there', () => {
+    const groups = kanbanColumnGroups([
+      application('Live Co'),
+      application('Bounced Co', { outcome: 'rejected' }),
+      application('Signed Co', { state: 'accepted', outcome: 'active' }),
+    ])
 
-    expect(groups).toHaveLength(11)
-    expect(groups[2]).toEqual({ lanes: ['applied', 'auto_rejected'] })
-    expect(groups.flatMap((group) => group.lanes)).toHaveLength(19)
+    expect(groups).toHaveLength(10)
+    expect(groups.map(({ state }) => state)).toEqual([...STATE_IDS])
+    expect(groups[1]).toEqual({
+      state: 'applied',
+      lanes: [
+        { state: 'applied', outcome: 'active' },
+        { state: 'applied', outcome: 'rejected' },
+      ],
+    })
+    // Accepted is a column like any other, its job in the running lane.
+    expect(groups[9]).toEqual({ state: 'accepted', lanes: [{ state: 'accepted', outcome: 'active' }] })
+    expect(groups.flatMap((group) => group.lanes)).toHaveLength(11)
   })
 
-  it('returns a single unpaired lane when filtering to a rejected state', () => {
-    expect(kanbanColumnGroups(['auto_rejected'])).toEqual([{ lanes: ['auto_rejected'] }])
+  it('draws the one lane a filter names at every stage it admits, empty or not', () => {
+    expect(kanbanColumnGroups([], ['interview_1'], ['withdrawn'])).toEqual([
+      { state: 'interview_1', lanes: [{ state: 'interview_1', outcome: 'withdrawn' }] },
+    ])
+  })
+
+  it('leaves out a stage with nothing to show under a filter that hides its running lane', () => {
+    const groups = kanbanColumnGroups(
+      [application('Bounced Co', { outcome: 'rejected' })],
+      undefined,
+      ['rejected', 'withdrawn', 'closed'],
+    )
+
+    expect(groups).toEqual([
+      { state: 'applied', lanes: [{ state: 'applied', outcome: 'rejected' }] },
+    ])
   })
 })
 
@@ -1413,7 +1548,7 @@ describe('TableView job posting', () => {
         onOpenPosting={onOpenPosting}
         onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
       />,
     )
 
@@ -1448,7 +1583,7 @@ describe('KanbanView', () => {
         onOpenPosting={onOpenPosting}
         onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
       />,
     )
 
@@ -1488,7 +1623,7 @@ describe('KanbanView', () => {
         onOpenPosting={vi.fn()}
         onOpenMessages={onOpenMessages}
         onCompleteAction={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
       />,
     )
 
@@ -1510,7 +1645,7 @@ describe('KanbanView', () => {
         onOpenPosting={vi.fn()}
         onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
       />,
     )
 
@@ -1524,19 +1659,18 @@ describe('KanbanView', () => {
     const onMove = vi.fn()
     const record = application('Keyboard Movers')
 
-    render(<KanbanView applications={[record]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
+    render(<KanbanView applications={[record]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
 
-    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(19)
+    // One running lane per stage; nothing has ended, so no ending lane is drawn.
+    expect(screen.getAllByRole('heading', { level: 3 })).toHaveLength(10)
     fireEvent.click(screen.getByRole('button', { name: /Open Keyboard Movers/ }))
     expect(onOpen).toHaveBeenCalledWith(record.id)
 
-    fireEvent.change(screen.getByRole('combobox', { name: 'Move Keyboard Movers to state' }), {
-      target: { value: 'accepted' },
-    })
-    expect(onMove).toHaveBeenCalledWith(record.id, 'accepted')
-    expect(
-      screen.queryByRole('button', { name: 'Move Keyboard Movers to Auto-rejected' }),
-    ).not.toBeInTheDocument()
+    // The select lists stages only, so an ending is not one of its options.
+    const select = screen.getByRole('combobox', { name: 'Move Keyboard Movers to stage' })
+    expect(within(select).queryByRole('option', { name: /Rejected/ })).not.toBeInTheDocument()
+    fireEvent.change(select, { target: { value: 'offer' } })
+    expect(onMove).toHaveBeenCalledWith(record.id, { state: 'offer' })
   })
 
   it('shows the soonest invite still ahead and skips cancelled or past ones', () => {
@@ -1551,7 +1685,7 @@ describe('KanbanView', () => {
       ],
     })
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     const card = screen.getByText('Invite Board').closest('article')
     expect(within(card!).getByText(/Research panel/)).toBeInTheDocument()
@@ -1560,7 +1694,7 @@ describe('KanbanView', () => {
     expect(within(card!).queryByText(/Leadership chat/)).not.toBeInTheDocument()
   })
 
-  it('moves a dragged card to any other state', () => {
+  it('moves a dragged card to another stage, still running', () => {
     const onMove = vi.fn()
     const record = application('Drag & Drop Co')
     const values = new Map<string, string>()
@@ -1571,10 +1705,10 @@ describe('KanbanView', () => {
       getData: (type: string) => values.get(type) ?? '',
     }
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
 
     const card = screen.getByText('Drag & Drop Co').closest('article')
-    const destination = screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section')
+    const destination = screen.getByRole('heading', { level: 3, name: 'Offer' }).closest('section')
     expect(card).not.toBeNull()
     expect(destination).not.toBeNull()
 
@@ -1582,12 +1716,13 @@ describe('KanbanView', () => {
     fireEvent.dragOver(destination!, { dataTransfer })
     fireEvent.drop(destination!, { dataTransfer })
 
-    expect(onMove).toHaveBeenCalledWith(record.id, 'accepted')
+    expect(onMove).toHaveBeenCalledWith(record.id, { state: 'offer', outcome: 'active' })
   })
 
-  it('moves a dragged card onto a nested rejected lane', () => {
+  it('moves a dragged card onto an ending lane, which is the move End makes', () => {
     const onMove = vi.fn()
     const record = application('Nested Drop Co')
+    const bounced = application('Already Bounced Co', { outcome: 'rejected' })
     const values = new Map<string, string>()
     const dataTransfer = {
       effectAllowed: 'none',
@@ -1596,7 +1731,7 @@ describe('KanbanView', () => {
       getData: (type: string) => values.get(type) ?? '',
     }
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={onMove} />)
+    render(<KanbanView applications={[record, bounced]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
 
     const card = screen.getByText('Nested Drop Co').closest('article')
     const destination = screen
@@ -1609,7 +1744,20 @@ describe('KanbanView', () => {
     fireEvent.dragOver(destination!, { dataTransfer })
     fireEvent.drop(destination!, { dataTransfer })
 
-    expect(onMove).toHaveBeenCalledWith(record.id, 'auto_rejected')
+    expect(onMove).toHaveBeenCalledWith(record.id, { state: 'applied', outcome: 'rejected' })
+  })
+
+  it('marks an archived card apart from the ones beside it', () => {
+    const archived = application('Put Away Co', { outcome: 'rejected', archived_at: localDate(-1) })
+    const current = application('Current Co', { outcome: 'rejected' })
+
+    render(<KanbanView applications={[archived, current]} onOpen={vi.fn()} onOpenPosting={vi.fn()} onOpenStageNotes={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
+
+    const card = (company: string) => screen.getByText(company).closest('article')!
+    expect(card('Put Away Co')).toHaveClass('application-card--archived')
+    expect(within(card('Put Away Co')).getByText('Archived')).toBeInTheDocument()
+    expect(card('Current Co')).not.toHaveClass('application-card--archived')
+    expect(within(card('Current Co')).queryByText('Archived')).not.toBeInTheDocument()
   })
 
   it('shows attachment filenames on a card when present', () => {
@@ -1623,13 +1771,13 @@ describe('KanbanView', () => {
       }],
     })
 
-    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.getByLabelText('Attachments')).toHaveTextContent('resume.pdf')
   })
 
   it('omits attachment filenames when there are no attachments', () => {
-    render(<KanbanView applications={[application('No Files Co')]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onMove={vi.fn()} />)
+    render(<KanbanView applications={[application('No Files Co')]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
 
     expect(screen.queryByLabelText('Attachments')).not.toBeInTheDocument()
   })
@@ -1648,7 +1796,7 @@ describe('KanbanView', () => {
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
       />,
     )
 
@@ -1675,7 +1823,7 @@ describe('KanbanView', () => {
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={onCompleteAction}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
       />,
     )
 
@@ -1696,13 +1844,13 @@ describe('KanbanView', () => {
     render(
       <KanbanView
         applications={[
-          application('Fresh Co', { state_history: [{ state, at: localDate(-29) }] }),
-          application('Quiet Co', { state_history: [{ state, at: localDate(-30) }] }),
+          application('Fresh Co', { state_history: [{ state, outcome: 'active', at: localDate(-29) }] }),
+          application('Quiet Co', { state_history: [{ state, outcome: 'active', at: localDate(-30) }] }),
         ]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
       />,
     )
 
@@ -1731,14 +1879,14 @@ describe('KanbanView', () => {
       <KanbanView
         applications={[
           application('Annotated Co', {
-            state_history: [{ state, at: localDate(-40) }],
+            state_history: [{ state, outcome: 'active', at: localDate(-40) }],
             updated_at: localDate(0),
           }),
         ]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
       />,
     )
 
@@ -1754,15 +1902,15 @@ describe('KanbanView', () => {
       <KanbanView
         applications={[
           application('Turned Down Co', {
-            state: 'auto_rejected',
-            state_history: [{ state: 'auto_rejected', at: localDate(-60) }],
+            state: 'applied', outcome: 'rejected',
+            state_history: [{ state: 'applied', outcome: 'rejected', at: localDate(-60) }],
             updated_at: localDate(-60),
           }),
         ]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
         onCompleteAction={vi.fn()}
-        onMove={vi.fn()}
+        onArchive={vi.fn()} onMove={vi.fn()}
       />,
     )
 

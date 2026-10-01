@@ -1,25 +1,38 @@
-import { isRejectedState, rejectedStateFor, STATE_CONFIG } from "../domain";
-import type { Application, StateEvent, StateId } from "../domain";
+import { OUTCOME_IDS, STATE_CONFIG } from "../domain";
+import type { Application, OutcomeId, StateEvent, StateId, Status } from "../domain";
 
 export interface KanbanColumnGroup {
-  lanes: StateId[];
+  state: StateId;
+  /** The stage's running lane first, then one per way of ending that is on show. */
+  lanes: Status[];
 }
 
-export function kanbanColumnGroups(visibleStates?: readonly StateId[]): KanbanColumnGroup[] {
-  if (visibleStates) {
-    const visible = new Set(visibleStates);
-    return STATE_CONFIG.filter(({ id }) => visible.has(id)).map(({ id }) => ({ lanes: [id] }));
-  }
+/**
+ * One column per stage, and in it a lane per outcome. The running lane is always drawn
+ * (when the filter admits it), because it is where a card is dragged to move it on; a lane
+ * for a way of ending is drawn only once something ended that way, so nine stages do not
+ * cost the board thirty-six mostly empty lanes. A filter naming one outcome draws that lane
+ * everywhere, since asking for it is asking where it would be.
+ *
+ * Every lane drawn is its own drop target, so dragging onto "Interview 1 — Rejected" is the
+ * same move End makes.
+ */
+export function kanbanColumnGroups(
+  applications: readonly Application[],
+  visibleStates?: readonly StateId[],
+  visibleOutcomes: readonly OutcomeId[] = OUTCOME_IDS,
+): KanbanColumnGroup[] {
+  const stages = visibleStates ? new Set(visibleStates) : null;
+  const held = new Set(applications.map((application) => `${application.state}:${application.outcome}`));
+  const onlyOne = visibleOutcomes.length === 1;
 
-  return STATE_CONFIG.reduce<KanbanColumnGroup[]>((groups, { id }) => {
-    if (isRejectedState(id)) return groups;
-
-    const lanes: StateId[] = [id];
-    const rejected = rejectedStateFor(id);
-    if (rejected) lanes.push(rejected);
-    groups.push({ lanes });
-    return groups;
-  }, []);
+  return STATE_CONFIG.flatMap(({ id: state }) => {
+    if (stages && !stages.has(state)) return [];
+    const lanes = visibleOutcomes
+      .filter((outcome) => outcome === "active" || onlyOne || held.has(`${state}:${outcome}`))
+      .map((outcome) => ({ state, outcome }));
+    return lanes.length > 0 ? [{ state, lanes }] : [];
+  });
 }
 
 const shortDateFormatter = new Intl.DateTimeFormat(undefined, {

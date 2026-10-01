@@ -1,4 +1,4 @@
-import { MIN_RATING_SCORE, RATING_LABELS, stateLabel } from "../domain";
+import { MIN_RATING_SCORE, RATING_LABELS, stateLabel, statusLabel } from "../domain";
 import type { Application } from "../domain";
 import type { StatsSettingId, StatsSettings } from "../statsSettings";
 import { describeCompensationGap, formatCompensationBand } from "./compensation";
@@ -9,6 +9,7 @@ import {
   finishDurations,
   replyWaits,
   sourceOutcomes,
+  moveKey,
   stageMoves,
   stagePassRates,
   weeklyActivity,
@@ -294,9 +295,9 @@ export function StatisticsView({
                 </thead>
                 <tbody>
                   {moves.map((move) => (
-                    <tr key={`${move.from}>${move.to}`}>
-                      <th scope="row">{stateLabel(move.from)}</th>
-                      <td>{stateLabel(move.to)}</td>
+                    <tr key={moveKey(move)}>
+                      <th scope="row">{statusLabel(move.from)}</th>
+                      <td>{statusLabel(move.to)}</td>
                       <td>{move.count}</td>
                     </tr>
                   ))}

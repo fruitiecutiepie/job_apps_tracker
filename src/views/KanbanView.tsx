@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
-import { STATE_CONFIG, stateLabel } from "../domain";
-import type { StateId } from "../domain";
+import { STATE_CONFIG, statusLabel } from "../domain";
+import type { Status } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import { CompleteActionButton } from "./CompleteActionButton";
 import { describeIdle, idleStatusFor } from "./idle";
 import { describePreference, preferenceFor } from "./preference";
 import { PostingButton } from "./PostingButton";
 import { MessagesButton } from "./MessagesButton";
+import { ArchivedBadge, MoveControls } from "./MoveControls";
 import { StageNotesButton } from "./StageNotesButton";
 import type { MovableApplicationsViewProps } from "./types";
 import { formatShortDate, kanbanColumnGroups, upcomingStateEvent } from "./viewUtils";
@@ -19,30 +20,29 @@ export function KanbanView({
   onOpenMessages,
   onCompleteAction,
   onMove,
+  onArchive,
   visibleStates,
+  visibleOutcomes,
   quietDays,
 }: MovableApplicationsViewProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  const columnGroups = useMemo(() => kanbanColumnGroups(visibleStates), [visibleStates]);
-  const stateById = useMemo(
-    () => new Map(STATE_CONFIG.map((state) => [state.id, state])),
-    [],
+  const columnGroups = useMemo(
+    () => kanbanColumnGroups(applications, visibleStates, visibleOutcomes),
+    [applications, visibleStates, visibleOutcomes],
   );
-  const [dropTarget, setDropTarget] = useState<StateId | null>(null);
-  const applicationsByState = useMemo(
-    () =>
-      new Map(
-        STATE_CONFIG.map((state) => [
-          state.id,
-          applications.filter((application) => application.state === state.id),
-        ]),
-      ),
-    [applications],
-  );
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const applicationsByLane = useMemo(() => {
+    const lanes = new Map<string, typeof applications>();
+    for (const application of applications) {
+      const key = laneKey(application);
+      lanes.set(key, [...(lanes.get(key) ?? []), application]);
+    }
+    return lanes;
+  }, [applications]);
 
-  const moveDroppedApplication = (state: StateId, id: string) => {
-    const application = applications.find((item) => item.id === id);
-    if (application && application.state !== state) onMove(id, state);
+  const moveDroppedApplication = (lane: Status, id: string) => {
+    // A same-lane drop is a no-op in the mutation, which is what keeps it off the disk.
+    if (applications.some((item) => item.id === id)) onMove(id, lane);
     setDraggingId(null);
     setDropTarget(null);
   };
@@ -53,31 +53,31 @@ export function KanbanView({
         Applications board
       </h2>
       <p className="sr-only" id="kanban-instructions">
-        Drag an application between columns, or use the state selector on each card.
+        Drag an application between lanes, or use the move buttons and the stage selector on each card.
       </p>
       <div className="kanban__scroller" aria-describedby="kanban-instructions">
         <div className="kanban__columns">
           {columnGroups.map((group) => (
-            <div className="kanban-column" key={group.lanes.join("-")}>
-              {group.lanes.map((stateId) => {
-                const state = stateById.get(stateId);
-                if (!state) return null;
-                const stateApplications = applicationsByState.get(state.id) ?? [];
-                const isRejectedLane = stateId !== group.lanes[0];
+            <div className="kanban-column" key={group.state}>
+              {group.lanes.map((lane) => {
+                const key = laneKey(lane);
+                const headingId = `kanban-state-${lane.state}-${lane.outcome}`;
+                const stateApplications = applicationsByLane.get(key) ?? [];
+                const isEndedLane = lane.outcome !== "active";
                 return (
                   <section
                     className={[
                       "kanban-lane",
-                      isRejectedLane ? "kanban-lane--rejected" : "",
-                      dropTarget === state.id ? "kanban-lane--drop-target" : "",
+                      isEndedLane ? `kanban-lane--ended kanban-lane--${lane.outcome}` : "",
+                      dropTarget === key ? "kanban-lane--drop-target" : "",
                     ]
                       .filter(Boolean)
                       .join(" ")}
-                    aria-labelledby={`kanban-state-${state.id}`}
-                    key={state.id}
+                    aria-labelledby={headingId}
+                    key={key}
                     onDragEnter={(event) => {
                       event.preventDefault();
-                      setDropTarget(state.id);
+                      setDropTarget(key);
                     }}
                     onDragOver={(event) => {
                       event.preventDefault();
@@ -90,11 +90,11 @@ export function KanbanView({
                     }}
                     onDrop={(event) => {
                       event.preventDefault();
-                      moveDroppedApplication(state.id, event.dataTransfer.getData("text/plain"));
+                      moveDroppedApplication(lane, event.dataTransfer.getData("text/plain"));
                     }}
                   >
                     <header className="kanban-lane__header">
-                      <h3 id={`kanban-state-${state.id}`}>{state.label}</h3>
+                      <h3 id={headingId}>{statusLabel(lane)}</h3>
                       <span className="count-badge" aria-label={`${stateApplications.length} applications`}>
                         {stateApplications.length}
                       </span>
@@ -125,6 +125,7 @@ export function KanbanView({
                             className={[
                               "application-card",
                               idle ? "application-card--idle" : "",
+                              application.archived_at !== null ? "application-card--archived" : "",
                               draggingId === application.id ? "application-card--dragging" : "",
                             ]
                               .filter(Boolean)
@@ -150,6 +151,12 @@ export function KanbanView({
                               <strong>{application.company}</strong>
                               {application.role ? <span>{application.role}</span> : null}
                             </button>
+                            {application.archived_at !== null ? (
+                              // The lane already says how it ended; this says it was put away.
+                              <p className="application-card__archived">
+                                <ArchivedBadge />
+                              </p>
+                            ) : null}
                             {idle ? (
                               <p className="application-card__idle">{describeIdle(idle)}</p>
                             ) : null}
@@ -191,25 +198,35 @@ export function KanbanView({
                               </p>
                             ) : null}
                             <AttachmentFilenames attachments={application.attachments} variant="card" />
+                            <MoveControls
+                              application={application}
+                              onArchive={onArchive}
+                              onMove={onMove}
+                              variant="card"
+                            />
                             {/*
-                              * The card already sits in its state's lane, so the
-                              * select does not repeat that state: it reads "Move".
-                              * The native select stays — it is the accessible and
+                              * The card already sits in its stage's column, so the
+                              * select does not repeat that stage: it reads "Stage".
+                              * It lists stages only — how the stage went is the move
+                              * buttons' business — and keeps the outcome, so it can
+                              * correct where an application ended without reopening
+                              * it. The native select stays — it is the accessible and
                               * touch fallback for drag-and-drop — laid over the
                               * trigger at zero opacity, so it keeps its role, its
                               * keyboard behaviour and its accessible name.
                               */}
                             <div className="application-card__row">
                               <span className="application-card__move">
-                                <span aria-hidden="true">Move</span>
+                                <span aria-hidden="true">Stage</span>
                                 <select
-                                  aria-label={`Move ${application.company} to state`}
+                                  aria-label={`Move ${application.company} to stage`}
                                   value={application.state}
-                                  onChange={(event) => onMove(application.id, event.target.value as StateId)}
+                                  onChange={(event) =>
+                                    onMove(application.id, { state: event.target.value as Status["state"] })}
                                 >
                                   {STATE_CONFIG.map((option) => (
                                     <option key={option.id} value={option.id}>
-                                      {stateLabel(option.id)}
+                                      {option.label}
                                     </option>
                                   ))}
                                 </select>
@@ -242,4 +259,8 @@ export function KanbanView({
       </div>
     </section>
   );
+}
+
+function laneKey({ state, outcome }: Status): string {
+  return `${state}:${outcome}`;
 }

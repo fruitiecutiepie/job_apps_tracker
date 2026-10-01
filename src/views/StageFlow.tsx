@@ -1,11 +1,10 @@
 import type { ReactNode } from "react";
 
-import { STATE_IDS, stateLabel } from "../domain";
-import type { StateId } from "../domain";
+import { OUTCOME_IDS, stateRank, statusLabel } from "../domain";
 import { ChartKey } from "./ChartKey";
 import type { ChartTone } from "./ChartKey";
-import { stageMoveKind } from "./outcomes";
-import type { StageMove, StageMoveKind } from "./outcomes";
+import { moveKey, stageMoveKind } from "./outcomes";
+import type { MoveEnd, StageMove, StageMoveKind } from "./outcomes";
 
 /*
  * Vertical sizes are fixed pixels, so the plot's height is known without measuring
@@ -17,7 +16,9 @@ const UNIT = 6;
 const LABEL = 18;
 const GAP = 6;
 
-const STATE_ORDER = new Map<StateId, number>(STATE_IDS.map((id, index) => [id, index]));
+/** Stage first, then outcome: the order the moves are listed in, on either side. */
+const order = ({ state, outcome }: MoveEnd) => stateRank(state) * OUTCOME_IDS.length + OUTCOME_IDS.indexOf(outcome);
+const endKey = ({ state, outcome }: MoveEnd) => `${state}:${outcome}`;
 
 const TONE: Record<StageMoveKind, ChartTone> = {
   further: "strong",
@@ -32,7 +33,7 @@ const KEY = [
 ] as const;
 
 interface Node {
-  state: StateId;
+  end: MoveEnd;
   count: number;
   top: number;
   /** Where the next link attaches, walking down the node. */
@@ -40,14 +41,19 @@ interface Node {
 }
 
 /** One column of nodes, in the order the moves list them, and the height it takes. */
-function column(moves: StageMove[], end: "from" | "to"): { nodes: Map<StateId, Node>; height: number } {
-  const counts = new Map<StateId, number>();
-  for (const move of moves) counts.set(move[end], (counts.get(move[end]) ?? 0) + move.count);
+function column(moves: StageMove[], side: "from" | "to"): { nodes: Map<string, Node>; height: number } {
+  const counts = new Map<string, { end: MoveEnd; count: number }>();
+  for (const move of moves) {
+    const key = endKey(move[side]);
+    const held = counts.get(key) ?? { end: move[side], count: 0 };
+    held.count += move.count;
+    counts.set(key, held);
+  }
 
-  const nodes = new Map<StateId, Node>();
+  const nodes = new Map<string, Node>();
   let top = 0;
-  for (const [state, count] of counts) {
-    nodes.set(state, { state, count, top, cursor: top });
+  for (const [key, { end, count }] of counts) {
+    nodes.set(key, { end, count, top, cursor: top });
     top += Math.max(count * UNIT, LABEL) + GAP;
   }
   return { nodes, height: Math.max(0, top - GAP) };
@@ -61,10 +67,11 @@ interface StageFlowProps {
 }
 
 /**
- * Where applications went from each stage: every stage something left on one side, every
- * state something arrived in on the other, and a band between them as wide as the moves.
+ * Where applications went from each stage: every stage and outcome something left on one
+ * side, every one something arrived in on the other, and a band between them as wide as
+ * the moves. "Interview 1 → Interview 1 — Rejected" is a band like any other.
  *
- * Two columns rather than one per stage, because any state may move to any other: a flow
+ * Two columns rather than one per stage, because any stage may move to any other: a flow
  * laid out stage after stage has no place to draw a move backwards, and this one draws it
  * the same way as any other. The bands are paths in a stretched viewBox — horizontal
  * scaling bends them without changing how thick they are, which is the part that encodes.
@@ -75,20 +82,19 @@ export function StageFlow({ moves, children }: StageFlowProps) {
   // the band left, so bands meeting at one node do not cross on the way in.
   const arriving = [...moves].sort(
     (a, b) =>
-      STATE_ORDER.get(a.to)! - STATE_ORDER.get(b.to)! ||
-      STATE_ORDER.get(a.from)! - STATE_ORDER.get(b.from)!,
+      order(a.to) - order(b.to) || order(a.from) - order(b.from),
   );
   const right = column(arriving, "to");
   const height = Math.max(left.height, right.height);
 
   const bands = new Map<StageMove, { y0: number; y1: number }>();
   for (const move of moves) {
-    const node = left.nodes.get(move.from)!;
+    const node = left.nodes.get(endKey(move.from))!;
     bands.set(move, { y0: node.cursor, y1: 0 });
     node.cursor += move.count * UNIT;
   }
   for (const move of arriving) {
-    const node = right.nodes.get(move.to)!;
+    const node = right.nodes.get(endKey(move.to))!;
     bands.get(move)!.y1 = node.cursor;
     node.cursor += move.count * UNIT;
   }
@@ -100,7 +106,7 @@ export function StageFlow({ moves, children }: StageFlowProps) {
         <div className="stage-flow__plot" style={{ height }}>
           <div className="stage-flow__side stage-flow__side--from">
             {[...left.nodes.values()].map((node) => (
-              <NodeLabel key={node.state} node={node} />
+              <NodeLabel key={endKey(node.end)} node={node} />
             ))}
           </div>
           <svg
@@ -115,17 +121,17 @@ export function StageFlow({ moves, children }: StageFlowProps) {
                 <path
                   className={`stage-flow__link stage-flow__link--${TONE[stageMoveKind(move)]}`}
                   d={`M0 ${y0} C50 ${y0} 50 ${y1} 100 ${y1} L100 ${y1 + h} C50 ${y1 + h} 50 ${y0 + h} 0 ${y0 + h} Z`}
-                  data-move={`${move.from}>${move.to}`}
-                  key={`${move.from}>${move.to}`}
+                  data-move={moveKey(move)}
+                  key={moveKey(move)}
                 >
-                  <title>{`${stateLabel(move.from)} → ${stateLabel(move.to)}: ${move.count}`}</title>
+                  <title>{`${statusLabel(move.from)} → ${statusLabel(move.to)}: ${move.count}`}</title>
                 </path>
               );
             })}
           </svg>
           <div className="stage-flow__side stage-flow__side--to">
             {[...right.nodes.values()].map((node) => (
-              <NodeLabel key={node.state} node={node} />
+              <NodeLabel key={endKey(node.end)} node={node} />
             ))}
           </div>
         </div>
@@ -136,7 +142,7 @@ export function StageFlow({ moves, children }: StageFlowProps) {
 }
 
 function NodeLabel({ node }: { node: Node }) {
-  const label = stateLabel(node.state);
+  const label = statusLabel(node.end);
   return (
     <div className="stage-flow__node" style={{ top: node.top }}>
       <span className="stage-flow__bar" style={{ height: node.count * UNIT }} />

@@ -1,10 +1,10 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { COMPENSATION_CONFIG, SOURCE_SUGGESTIONS, STATE_CONFIG } from "../domain";
+import { COMPENSATION_CONFIG, SOURCE_SUGGESTIONS, STATE_CONFIG, outcomeRank, stateRank } from "../domain";
 import type { Application, StateId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import { CompleteActionButton } from "./CompleteActionButton";
 import { InviteSummaries } from "./InviteSummaries";
-import { RejectButton } from "./RejectButton";
+import { MoveControls, OutcomeBadge } from "./MoveControls";
 import { PostingButton } from "./PostingButton";
 import { StageNotesButton } from "./StageNotesButton";
 import {
@@ -138,8 +138,6 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
   updated_at: "",
 };
 
-const stateOrder = new Map(STATE_CONFIG.map((state, index) => [state.id, index]));
-
 type UrgencyLookup = ReadonlyMap<string, UrgencyRanking>;
 type PreferenceLookup = ReadonlyMap<string, PreferenceScore>;
 
@@ -158,7 +156,9 @@ function comparableValue(
   preference: PreferenceLookup,
   quietDays: number | undefined,
 ): string | number | null {
-  if (field === "state") return stateOrder.get(application.state) ?? Number.MAX_SAFE_INTEGER;
+  // Stage first, then how it went, so each stage's running rows sit together ahead of the
+  // ones that ended there.
+  if (field === "state") return stateRank(application.state) * 10 + outcomeRank(application.outcome);
   // Sorting by invite means sorting by what is next, so rows with nothing ahead sink.
   if (field === "invites") {
     const next = upcomingStateEvent(application);
@@ -265,6 +265,7 @@ export function TableView({
   onOpenPosting,
   onCompleteAction,
   onMove,
+  onArchive,
   quietDays,
 }: MovableApplicationsViewProps) {
   /**
@@ -582,7 +583,10 @@ export function TableView({
     );
 
   const renderRow = (application: Application) => (
-    <tr key={application.id}>
+    <tr
+      className={application.archived_at !== null ? "table-row--archived" : undefined}
+      key={application.id}
+    >
       {bodyCell(
         "company",
         <button type="button" className="table-link" onClick={() => onOpen(application.id)}>
@@ -595,19 +599,22 @@ export function TableView({
       {bodyCell(
         "state",
         <>
-          <select
-            aria-label={`Move ${application.company} to state`}
-            className="table-state-select"
-            value={application.state}
-            onChange={(event) => onMove(application.id, event.target.value as StateId)}
-          >
-            {STATE_CONFIG.map((state) => (
-              <option key={state.id} value={state.id}>
-                {state.label}
-              </option>
-            ))}
-          </select>
-          <RejectButton application={application} onMove={onMove} />
+          <span className="table-state">
+            <select
+              aria-label={`Move ${application.company} to stage`}
+              className="table-state-select"
+              value={application.state}
+              onChange={(event) => onMove(application.id, { state: event.target.value as StateId })}
+            >
+              {STATE_CONFIG.map((state) => (
+                <option key={state.id} value={state.id}>
+                  {state.label}
+                </option>
+              ))}
+            </select>
+            <OutcomeBadge application={application} />
+          </span>
+          <MoveControls application={application} onArchive={onArchive} onMove={onMove} variant="table" />
         </>,
       )}
       {/* describeIdle is empty for a row that is not idle, which is the dash case. */}
@@ -760,9 +767,9 @@ export function TableView({
                 "source",
               )}
               {headerCell(
-                "State",
+                "Stage",
                 <select
-                  aria-label="Filter State column"
+                  aria-label="Filter Stage column"
                   onChange={(event) =>
                     setFilters((current) => ({
                       ...current,
@@ -771,7 +778,7 @@ export function TableView({
                   }
                   value={filters.state}
                 >
-                  <option value="all">All states</option>
+                  <option value="all">All stages</option>
                   {stateFilterOptions.map((state) => (
                     <option key={state.id} value={state.id}>
                       {state.label}

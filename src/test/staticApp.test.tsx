@@ -139,7 +139,7 @@ describe('the hosted demo', () => {
 
   it('opens on the nineteen examples rather than on nothing', async () => {
     await renderStaticApp('demo')
-    expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
   })
 
   it('says what it is, and offers the way out', async () => {

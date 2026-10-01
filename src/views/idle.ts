@@ -33,7 +33,7 @@ export function idleStatusFor(
 ): IdleStatus | null {
   // Rejected and closed applications are finished, not idle. Counting them would mark
   // every old rejection and swamp the signal this exists to give.
-  if (classifyLifecycle(application.state) !== "live") return null;
+  if (classifyLifecycle(application) !== "live") return null;
   if (application.state_history.length === 0) return null;
 
   const days = daysSinceLastMove(application, today);

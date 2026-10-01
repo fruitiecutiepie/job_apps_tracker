@@ -242,7 +242,7 @@ export function momentumAnswer(weeks: WeekActivity[]): string {
 }
 
 export function liveCount(applications: Application[]): number {
-  return applications.filter((application) => classifyLifecycle(application.state) === "live").length;
+  return applications.filter((application) => classifyLifecycle(application) === "live").length;
 }
 
 // ---------------------------------------------------------------- durations ---
@@ -305,7 +305,7 @@ export function moneyAnswer(applications: Application[]): MoneyAnswer {
   }
 
   const postings = applications
-    .filter((application) => classifyLifecycle(application.state) === "live")
+    .filter((application) => classifyLifecycle(application) === "live")
     .map((application) => ({ application, gap: compensationGapFor(application) }))
     .filter((row) => row.gap !== null);
   if (postings.length > 0) {

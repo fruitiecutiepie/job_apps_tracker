@@ -24,8 +24,10 @@ describe('compareStages', () => {
       ['Paper Kite', false],
       ['Atlas Thread', true],
     ])
-    // A rejected or finished application at a stage is not heading into it.
-    expect(stages.some((stage) => stage.state === 'auto_rejected')).toBe(false)
+    // A rejected or finished application at a stage is not heading into it: Bright Harbor
+    // was turned down at the online assessment, and the accepted job has nothing ahead.
+    const assessment = stages.find((stage) => stage.state === 'online_assessment')
+    expect(assessment?.entries.map((entry) => entry.application.company) ?? []).not.toContain('Bright Harbor')
     expect(stages.some((stage) => stage.state === 'accepted')).toBe(false)
   })
 
