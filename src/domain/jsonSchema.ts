@@ -50,6 +50,7 @@ export const TRACKER_JSON_SCHEMA = {
         'state_events',
         'correspondence',
         'attachments',
+        'posting',
         'ratings',
         'compensation',
         'created_at',
@@ -116,6 +117,9 @@ export const TRACKER_JSON_SCHEMA = {
         attachments: {
           type: 'array',
           items: { $ref: '#/$defs/attachment' },
+        },
+        posting: {
+          oneOf: [{ $ref: '#/$defs/posting' }, { type: 'null' }],
         },
         ratings: {
           type: 'array',
@@ -256,6 +260,19 @@ export const TRACKER_JSON_SCHEMA = {
         mime: { type: ['string', 'null'] },
         size: { type: 'integer', minimum: 1 },
         created_at: { type: 'string' },
+      },
+    },
+    posting: {
+      type: 'object',
+      description:
+        'The job posting as it read when it was captured, in Markdown. Pasted in by hand: '
+        + 'postings are routinely JS-rendered or login-walled, and nothing here fetches them.',
+      required: ['body', 'captured_at', 'source_url'],
+      additionalProperties: false,
+      properties: {
+        body: { type: 'string', minLength: 1 },
+        captured_at: { type: 'string' },
+        source_url: { type: ['string', 'null'] },
       },
     },
     rating: {

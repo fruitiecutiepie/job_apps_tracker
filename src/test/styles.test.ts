@@ -547,3 +547,13 @@ describe('archived applications', () => {
     }
   })
 })
+
+describe('tab strip scrollbar', () => {
+  it('is a hairline, drawn by the pseudo-elements rather than the standard properties', () => {
+    expect(ruleBody('.panel__tabs::-webkit-scrollbar')).toMatch(/height:\s*var\(--s2\)/)
+    // Either standard property on the strip itself makes Chromium ignore the pseudo-elements
+    // and fall back to a full-width bar, so they live only behind the Firefox `@supports`.
+    expect(ruleBody('.panel__tabs')).not.toMatch(/scrollbar-(width|color)/)
+    expect(css).toMatch(/@supports not selector\(::-webkit-scrollbar\)\s*\{\s*\.panel__tabs\s*\{[^}]*scrollbar-width:\s*thin/)
+  })
+})

@@ -45,6 +45,7 @@ function application(scores: Scores): Application {
     state_events: [],
     correspondence: [],
     attachments: [],
+    posting: null,
     ratings: ratings(scores),
     compensation: emptyCompensation(),
     created_at: at,
