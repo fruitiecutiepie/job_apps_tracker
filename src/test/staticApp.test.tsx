@@ -295,6 +295,63 @@ describe('the static build', () => {
     expect(screen.getByRole('button', { name: /Open Stays here/ })).toBeInTheDocument()
   })
 
+  /*
+   * Import and Export are on each tracker's row, so the topbar's menu, which would act on
+   * one of several without saying which, has nothing left to offer here.
+   */
+  it('keeps Import and Export on the tracker rows rather than in a topbar menu', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    expect(within(topbar()).queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument()
+
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+    expect(screen.getByRole('button', { name: 'Export Untitled tracker' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Import a file into Untitled tracker' })).toBeInTheDocument()
+  })
+
+  it('imports into and exports another tracker from its row, staying in this one', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    await addApplication(user, 'Stays here')
+    const { navigation } = await import('../backend/trackerAddress')
+    const { backend } = await import('../backend')
+    vi.spyOn(navigation, 'open').mockImplementation(() => {})
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+    await user.click(screen.getByRole('button', { name: /From a file/ }))
+    const inputs = () => document.querySelectorAll<HTMLInputElement>('input[type="file"]')
+    await user.upload(inputs()[inputs().length - 1], trackerFile('last-year'))
+    await waitFor(async () => expect(await backend.storage!.listTrackers()).toHaveLength(2))
+
+    // Into it: the file came from somewhere the viewer holds, so the question is plain.
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+    await user.click(await screen.findByRole('button', { name: 'Import a file into last-year' }))
+    await user.upload(inputs()[inputs().length - 1], trackerFile('Replacement'))
+    const question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
+    await user.click(within(question).getByRole('button', { name: 'Import' }))
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Imported 1 application into Replacement.'))
+    const replaced = (await backend.storage!.listTrackers()).find((tracker) => tracker.name !== 'Untitled tracker')!
+    expect((await backend.storage!.readTracker(replaced.id)).document.applications[0].company).toBe('Replacement')
+
+    // And out of it, under its own name, while this tab stays where it is.
+    const objectUrls = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL }
+    URL.createObjectURL = vi.fn(() => 'blob:tracker')
+    URL.revokeObjectURL = vi.fn()
+    const downloads: string[] = []
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push(this.download)
+    })
+    try {
+      await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+      await user.click(await screen.findByRole('button', { name: `Export ${replaced.name}` }))
+      await waitFor(() => expect(downloads).toHaveLength(1))
+      expect(downloads[0]).toMatch(new RegExp(`^${replaced.name} \\d{4}-\\d{2}-\\d{2}\\.zip$`))
+    } finally {
+      click.mockRestore()
+      Object.assign(URL, objectUrls)
+    }
+    expect(screen.getByRole('button', { name: /Open Stays here/ })).toBeInTheDocument()
+  })
+
   it('keeps reminding after a reload, since forgetting happens between visits', async () => {
     const user = userEvent.setup()
     await renderStaticApp()

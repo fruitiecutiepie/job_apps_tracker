@@ -322,10 +322,16 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
   setting for good. The options are radios in a fieldset, and the panel stays open on a pick, because
   the arrow keys move a radio group by clicking it. The trigger's icon shows the preference (a monitor
   for System), not the colour it resolves to.
-- Import, export, and demo reset live behind the topbar's **More actions** disclosure. It is a
-  disclosure holding plain buttons, not an ARIA menu, so Tab alone reaches the items; keep Escape,
-  outside-click dismissal, and focus return to the trigger. The import file input must stay mounted
-  outside the panel, which unmounts when it closes.
+- On the dev server, Import, Export and demo reset live behind the topbar's **More actions**
+  disclosure. Where a browser holds several trackers, Import and Export are on each tracker's row
+  in the switcher instead — a topbar menu would act on one of several without saying which — so
+  More actions is rendered only for the dev server and for the hosted demo's reset, and not at all
+  in the hosted tracker. Importing from another tracker's row is `replaceOtherTracker`, which, like
+  renaming one, rewrites that tracker's folder too and refuses when it cannot; exporting one is
+  `readTracker` and clears its backlog through `markOtherBackedUp`. More actions is a disclosure
+  holding plain buttons, not an ARIA menu, so Tab alone reaches the items; keep Escape,
+  outside-click dismissal, and focus return to the trigger. The import file inputs must stay
+  mounted outside the panels, which unmount when they close.
 - The Kanban card's state `<select>` reads **Move** rather than repeating the lane's state, and is
   laid over that trigger at zero opacity. It must remain a real focusable `combobox` named
   `Move {company} to state` — it is the accessible and touch fallback for drag-and-drop.

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, FilePlus2, FolderOpen, Pencil, Trash2, Upload, X } from 'lucide-react'
+import { Check, ChevronDown, Download, FilePlus2, FolderOpen, Pencil, Trash2, Upload, X } from 'lucide-react'
 
 import type { TrackerSummary } from './backend'
 import { NEW_TRACKER, trackerHref } from './backend/trackerAddress'
@@ -10,6 +10,10 @@ export interface TrackerSwitcherProps {
   /** Asks before removing a tracker from the browser — this tab's or another. */
   onRemove: (tracker: TrackerSummary) => void
   onRename: (tracker: TrackerSummary, name: string) => Promise<void>
+  /** Downloads a tracker as an export file — this tab's or another. */
+  onExport: (tracker: TrackerSummary) => void
+  /** Replaces a tracker's contents from an export file, after the import question. */
+  onImport: (tracker: TrackerSummary) => void
   /** Starts a new tracker from a folder; absent where the browser cannot open one. */
   onNewFromFolder: (() => void) | null
   /** Starts a new tracker from an exported file. */
@@ -27,8 +31,8 @@ function describeCount(count: number): string {
  *
  * Every tracker is a link rather than a button, because switching is a navigation: a
  * plain click opens it here, and a middle click or a modified one opens it in a tab of
- * its own, which is how two are worked on at once. Rename and Remove sit at the end of
- * each row as icons, acting on that row's tracker, so a tracker can be tidied without
+ * its own, which is how two are worked on at once. Rename, Export, Import and Remove sit
+ * at the end of each row as icons, acting on that row's tracker, so a tracker can be tidied without
  * opening it first; each names its tracker to a screen reader and on hover, since an icon
  * alone does not say which row it belongs to. Like More actions it is a disclosure of
  * plain controls, not an ARIA menu, so Tab alone reaches everything in it.
@@ -38,6 +42,8 @@ export function TrackerSwitcher({
   listTrackers,
   onRemove,
   onRename,
+  onExport,
+  onImport,
   onNewFromFolder,
   onNewFromFile,
 }: TrackerSwitcherProps) {
@@ -187,6 +193,30 @@ export function TrackerSwitcher({
                     type="button"
                   >
                     <Pencil aria-hidden="true" size={15} />
+                  </button>
+                  <button
+                    aria-label={`Export ${tracker.name}`}
+                    className="icon-button tracker-switcher__action"
+                    onClick={() => {
+                      setOpen(false)
+                      onExport(tracker)
+                    }}
+                    title={`Export ${tracker.name} as a file`}
+                    type="button"
+                  >
+                    <Download aria-hidden="true" size={15} />
+                  </button>
+                  <button
+                    aria-label={`Import a file into ${tracker.name}`}
+                    className="icon-button tracker-switcher__action"
+                    onClick={() => {
+                      setOpen(false)
+                      onImport(tracker)
+                    }}
+                    title={`Import a file into ${tracker.name}, replacing what it holds`}
+                    type="button"
+                  >
+                    <Upload aria-hidden="true" size={15} />
                   </button>
                   <button
                     aria-label={`Remove ${tracker.name} from this browser`}

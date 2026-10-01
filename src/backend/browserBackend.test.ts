@@ -782,6 +782,70 @@ describe('several trackers in one browser', () => {
     expect(listed.find((tracker) => tracker.id === otherId)?.name).toBe('Autumn search')
   })
 
+  /*
+   * Import from another tracker's row replaces that tracker, and its folder with it: the
+   * folder is what it reads first when it opens, so leaving it would bring the old
+   * contents back over the new.
+   */
+  it('replaces another tracker\'s contents, folder and all, or not at all', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const other = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+    await other.loadDocument()
+    await other.storage!.connect()
+    await other.saveDocument(withApplication('Before'))
+    await other.writeAttachment(APPLICATION_ID, ATTACHMENT_ID, new Blob(['old']), null)
+    const otherId = other.storage!.state().tracker!.id
+    const { backend } = tab(NEW_TRACKER, { supportsFolders: true })
+    await backend.loadDocument()
+
+    const incoming = withApplication('After')
+    const incomingId = incoming.applications[0].id
+    const replaced = await backend.storage!.replaceOtherTracker(
+      otherId,
+      incoming,
+      [{ applicationId: incomingId, attachmentId: ATTACHMENT_ID, data: new TextEncoder().encode('new') }],
+      'backup.zip',
+    )
+    expect(replaced).toMatchObject({ name: 'job-apps', applications: 1 })
+    expect(folder.readText(TRACKER_FILENAME)).toContain('After')
+    expect(folder.read(`attachments/${APPLICATION_ID}/${ATTACHMENT_ID}`)).toBeNull()
+    expect(folder.readText(`attachments/${incomingId}/${ATTACHMENT_ID}`)).toBe('new')
+    const reopened = tab(otherId, { supportsFolders: true }).backend
+    expect((await reopened.loadDocument()).applications[0].company).toBe('After')
+
+    folder.permission = 'prompt'
+    folder.grantOnRequest = false
+    await expect(
+      backend.storage!.replaceOtherTracker(otherId, withApplication('Refused'), [], 'x.json'),
+    ).rejects.toThrow(/job-apps folder/)
+    expect(folder.readText(TRACKER_FILENAME)).toContain('After')
+  })
+
+  it('names another tracker after the file imported into it, and clears its reminder', async () => {
+    const other = tab(NEW_TRACKER).backend
+    await other.saveDocument(withApplication('Before'))
+    const otherId = other.storage!.state().tracker!.id
+    expect(other.storage!.state().unbackedSince).not.toBeNull()
+    const { backend } = tab(NEW_TRACKER)
+    await backend.loadDocument()
+
+    await backend.storage!.replaceOtherTracker(otherId, withApplication('After'), [], 'Autumn search 2026-10-01.zip')
+    const listed = (await backend.storage!.listTrackers()).find((tracker) => tracker.id === otherId)
+    expect(listed).toMatchObject({ name: 'Autumn search', unbackedSince: null })
+  })
+
+  it('clears another tracker\'s reminder once it has been exported', async () => {
+    const other = tab(NEW_TRACKER).backend
+    await other.saveDocument(withApplication())
+    const otherId = other.storage!.state().tracker!.id
+    const { backend } = tab(NEW_TRACKER)
+    await backend.loadDocument()
+
+    await backend.storage!.markOtherBackedUp(otherId)
+    const listed = (await backend.storage!.listTrackers()).find((tracker) => tracker.id === otherId)
+    expect(listed?.unbackedSince).toBeNull()
+  })
+
   it('reads another tracker whole, so it can be exported before it is removed', async () => {
     const { backend } = tab(NEW_TRACKER)
     const imported = withApplication('Imported')

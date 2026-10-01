@@ -166,6 +166,20 @@ export interface ConnectableStorage {
    * cleared it.
    */
   markBackedUp(): Promise<void>
+  /** As `markBackedUp`, for a tracker this tab is not holding: it was just exported. */
+  markOtherBackedUp(id: string): Promise<void>
+  /**
+   * Replaces the contents of a tracker this tab is not holding with an imported document
+   * and its attachments. Where that tracker saves to a folder the folder is rewritten too,
+   * asking for its permission if this tab lacks it; refused, nothing is replaced, so the
+   * folder cannot later bring the old contents back over the new.
+   */
+  replaceOtherTracker(
+    id: string,
+    document: TrackerDatabase,
+    files: Array<{ applicationId: string; attachmentId: string; data: Uint8Array }>,
+    filename: string,
+  ): Promise<TrackerSummary>
   /**
    * Names this tracker after the file it was imported from, while its document names
    * nothing. Ignored while a folder is connected, whose name says where the data is.

@@ -347,9 +347,9 @@ The global search, state, activity, company, and source filters apply across vie
 
 ### Back up or replace data
 
-- **Export** downloads a zip archive with `tracker.json` and any attachment files. This is a complete copy: it is what you import into another browser, another machine, or a fresh checkout.
+- **Export** downloads a zip archive with `tracker.json` and any attachment files. This is a complete copy: it is what you import into another browser, another machine, or a fresh checkout. On the hosted app it is the download icon on each tracker's row in the switcher; running it yourself, it is under **More actions**.
 
-- **Import** accepts zip archives or legacy JSON. You can also **drop a file anywhere on the window**, or paste one you have copied — the button, the drop and the paste are the same import. On the hosted app, importing is also offered on the first visit, before there is anything to look at.
+- **Import** accepts zip archives or legacy JSON, and replaces what the tracker holds. On the hosted app it is the upload icon on each tracker's row; running it yourself, it is under **More actions**. You can also **drop a file anywhere on the window**, or paste one you have copied, to import into the tracker you are in — the button, the drop and the paste are the same import. On the hosted app, importing is also offered on the first visit, before there is anything to look at.
 
   Whichever way the file arrives it is parsed into the domain model and checked against the schema and its invariants *before* you are asked to replace anything, so a hand-edited export that no longer holds together names the field that broke rather than half-replacing your data. A file that is not a tracker export is refused with what it is you can drop. Dragging a Kanban card or a notes tab is untouched: only a drag carrying files from outside the page is an import.
 - **Reset demo data** appears only in the demo — `pnpm dev:demo`, `pnpm start:demo`, or the [hosted demo](https://fruitiecutiepie.com/job_apps_tracker/demo/). It asks for confirmation and restores the original 19 examples.

@@ -715,8 +715,13 @@ export default function App() {
   const dialogOpenerRef = useRef<HTMLElement | null>(null)
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
-  /* Kept apart from the import input: that one replaces this tracker, this one starts another. */
-  const newTrackerInputRef = useRef<HTMLInputElement>(null)
+  /*
+   * Kept apart from the import input, which replaces the tracker on screen: this one is
+   * for a file going somewhere else — a new tracker, or another tracker's row — and says
+   * which through `fileTargetRef`, set just before it is opened.
+   */
+  const otherTrackerInputRef = useRef<HTMLInputElement>(null)
+  const fileTargetRef = useRef<TrackerSummary | null>(null)
   const storageState = useStorageState()
 
   /*
@@ -1006,6 +1011,80 @@ export default function App() {
    * The same question an import asks, about whichever tracker is being removed: the one
    * this tab holds is measured from what is on screen, another from what its listing says.
    */
+  const saveOtherCopy = async (target: TrackerSummary) => {
+    const { document, files } = await backend.storage!.readTracker(target.id)
+    downloadArchive(document, files, new Date(), target.name)
+    await backend.storage!.markOtherBackedUp(target.id)
+  }
+
+  /* Export from a row: the tracker on screen as Export always did, any other by its id. */
+  const exportTrackerById = (target: TrackerSummary) => {
+    if (target.id === storageState?.tracker?.id) {
+      exportTracker()
+      return
+    }
+    saveOtherCopy(target).catch((error) => {
+      setNotice(`Export failed: ${errorMessage(error)}`)
+    })
+  }
+
+  /* Import from a row: into the tracker on screen through the import it always had. */
+  const importIntoTracker = (target: TrackerSummary) => {
+    if (target.id === storageState?.tracker?.id) {
+      importInputRef.current?.click()
+      return
+    }
+    fileTargetRef.current = target
+    otherTrackerInputRef.current?.click()
+  }
+
+  /*
+   * An import into a tracker this tab is not holding asks the question an import here
+   * asks, measured from that tracker's listing. A folder it saves to is not a copy, since
+   * the import writes into that folder.
+   */
+  const importIntoOtherTracker = async (file: File, target: TrackerSummary) => {
+    try {
+      const result = readTrackerImport(await readFileAsUint8Array(file))
+      if (!result.ok) {
+        setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
+        return
+      }
+      const replace = async () => {
+        try {
+          const replaced = await backend.storage!.replaceOtherTracker(
+            target.id,
+            result.document,
+            result.files,
+            file.name,
+          )
+          const count = replaced.applications
+          setNotice(`Imported ${count} application${count === 1 ? '' : 's'} into ${replaced.name}.`)
+        } catch (error) {
+          setNotice(`Import failed: ${errorMessage(error)}`)
+        }
+      }
+      if (target.applications === 0) {
+        await replace()
+        return
+      }
+      setPendingReplace({
+        replacement: {
+          kind: 'import',
+          incoming: result.document.applications.length,
+          attachments: result.files.length,
+          current: target.applications,
+          backedUp: (target.folder ?? null) === null && (target.unbackedSince ?? null) === null,
+          folder: target.folder ?? null,
+        },
+        proceed: replace,
+        saveCopy: () => saveOtherCopy(target),
+      })
+    } catch (error) {
+      setNotice(`Import failed: ${errorMessage(error)}`)
+    }
+  }
+
   const askToRemoveTracker = (target: TrackerSummary) => {
     const holding = target.id === storageState?.tracker?.id
     const connection = storageState?.connection ?? null
@@ -1028,12 +1107,7 @@ export default function App() {
         folder,
       },
       proceed: () => removeTracker(target),
-      saveCopy: holding
-        ? saveCurrentCopy
-        : async () => {
-          const { document, files } = await backend.storage!.readTracker(target.id)
-          downloadArchive(document, files, new Date(), target.name)
-        },
+      saveCopy: holding ? saveCurrentCopy : () => saveOtherCopy(target),
     })
   }
 
@@ -1446,7 +1520,12 @@ export default function App() {
               onNewFromFolder={
                 storageState.connection.kind === 'unsupported' ? null : () => void newTrackerFromFolder()
               }
-              onNewFromFile={() => newTrackerInputRef.current?.click()}
+              onNewFromFile={() => {
+                fileTargetRef.current = null
+                otherTrackerInputRef.current?.click()
+              }}
+              onExport={exportTrackerById}
+              onImport={importIntoTracker}
             />
           )}
         </div>
@@ -1530,21 +1609,32 @@ export default function App() {
             Add application
           </button>
 
+          {/*
+            * Where a browser holds several trackers, Import and Export belong to each one —
+            * they are on its row in the switcher — and a menu offering them here would act
+            * on one of several without saying which. The dev server holds one file, so it
+            * keeps them; the demo keeps the menu for its reset. Nothing left, no menu.
+            */}
+          {(!storageState?.tracker || isDemoTrackerProfile()) && (
           <MoreActionsMenu>
-            <button
-              className="actions-menu__item"
-              onClick={() => importInputRef.current?.click()}
-              type="button"
-            >
-              <Upload aria-hidden="true" size={16} /> Import
-            </button>
-            <button
-              className="actions-menu__item"
-              onClick={exportTracker}
-              type="button"
-            >
-              <Download aria-hidden="true" size={16} /> Export
-            </button>
+            {!storageState?.tracker && (
+              <>
+                <button
+                  className="actions-menu__item"
+                  onClick={() => importInputRef.current?.click()}
+                  type="button"
+                >
+                  <Upload aria-hidden="true" size={16} /> Import
+                </button>
+                <button
+                  className="actions-menu__item"
+                  onClick={exportTracker}
+                  type="button"
+                >
+                  <Download aria-hidden="true" size={16} /> Export
+                </button>
+              </>
+            )}
 
             {isDemoTrackerProfile() && (
               <button
@@ -1570,6 +1660,7 @@ export default function App() {
               </button>
             )}
           </MoreActionsMenu>
+          )}
         </div>
       </header>
 
@@ -1595,9 +1686,11 @@ export default function App() {
         onChange={(event) => {
           const file = event.target.files?.[0]
           event.target.value = ''
-          if (file) void newTrackerFromFile(file)
+          const target = fileTargetRef.current
+          fileTargetRef.current = null
+          if (file) void (target ? importIntoOtherTracker(file, target) : newTrackerFromFile(file))
         }}
-        ref={newTrackerInputRef}
+        ref={otherTrackerInputRef}
         tabIndex={-1}
         type="file"
       />

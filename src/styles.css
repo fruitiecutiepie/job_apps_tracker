@@ -381,10 +381,11 @@ p {
 }
 
 /* Opens under the trigger at the left of the bar, where More actions opens at the right. */
+/* Wide enough for a name beside four row actions; never wider than the window. */
 .actions-menu__panel.tracker-switcher__panel {
   right: auto;
   left: 0;
-  width: 18rem;
+  width: min(24rem, calc(100vw - 2 * var(--gutter)));
 }
 
 .tracker-switcher__caption {
