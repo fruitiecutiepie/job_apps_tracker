@@ -1,4 +1,10 @@
-import type { Application, StateId } from "../domain";
+import type { Application, OutcomeId, StateId, Status } from "../domain";
+
+/** Moves an application along either axis; whatever the change leaves out is kept. */
+export type MoveHandler = (id: string, change: Partial<Status>) => void;
+
+/** Puts an application into the archive, or takes it back out. */
+export type ArchiveHandler = (id: string, archived: boolean) => void;
 
 export interface ApplicationsViewProps {
   applications: Application[];
@@ -11,6 +17,9 @@ export interface ApplicationsViewProps {
 }
 
 export interface MovableApplicationsViewProps extends ApplicationsViewProps {
-  onMove: (id: string, state: StateId) => void;
+  onMove: MoveHandler;
+  onArchive: ArchiveHandler;
   visibleStates?: readonly StateId[];
+  /** The outcomes the filter admits, or undefined for all of them. */
+  visibleOutcomes?: readonly OutcomeId[];
 }

@@ -27,19 +27,30 @@ import {
   isSafeArchiveAttachmentPath,
   loadTrackerDocument,
   moveApplication,
-  moveApplicationState,
+  moveApplicationStatus,
+  archiveApplication,
+  archiveEndedApplications,
+  archivableApplications,
+  setApplicationArchived,
   packTrackerArchive,
   parseTrackerDocument,
   ratingFor,
   RATING_IDS,
   rebuildIndexes,
-  rejectedStateFor,
-  isRejectedState,
-  LIVE_STATE_IDS,
+  OUTCOME_IDS,
+  classifyLifecycle,
+  nextState,
+  previousState,
+  statusLabel,
   statesForFilter,
   stateFilterMatches,
-  REJECTED_STATE_IDS,
-  NOT_REJECTED_STATE_IDS,
+  outcomeFilterMatches,
+  outcomesForFilter,
+  archiveFilterMatches,
+  legacyStatus,
+  migrateDocument,
+  needsMigration,
+  DATA_VERSION,
   removeAttachment,
   editorUrlFor,
   looksLikeRemoteHost,
@@ -80,105 +91,91 @@ const REFERENCE = new Date('2026-08-14T12:00:00+10:00')
 class MemoryStorage extends MemoryTrackerStore {}
 
 describe('state configuration and demo content', () => {
-  it('defines the complete ordered state list and preserves rejection labels', () => {
-    expect(STATE_CONFIG).toHaveLength(19)
-    expect(new Set(STATE_IDS).size).toBe(19)
-    expect(STATE_CONFIG.find(({ id }) => id === 'offer_rejected')?.label).toBe(
-      'Offer — Rejected',
-    )
-  })
-
-  it('maps each state to its rejected counterpart when one exists', () => {
-    const expected: Record<(typeof STATE_IDS)[number], (typeof STATE_IDS)[number] | null> = {
-      headhunted: null,
-      no_openings: null,
-      applied: 'auto_rejected',
-      auto_rejected: null,
-      recruiter_messaged: 'recruiter_messaged_rejected',
-      recruiter_messaged_rejected: null,
-      online_assessment: 'online_assessment_rejected',
-      online_assessment_rejected: null,
-      recruiter_interview: 'recruiter_interview_rejected',
-      recruiter_interview_rejected: null,
-      take_home_assessment: 'take_home_assessment_rejected',
-      take_home_assessment_rejected: null,
-      interview_1: 'interview_1_rejected',
-      interview_1_rejected: null,
-      interview_2: 'interview_2_rejected',
-      interview_2_rejected: null,
-      offer: 'offer_rejected',
-      offer_rejected: null,
-      accepted: null,
-    }
-
-    expect(STATE_IDS.map((id) => [id, rejectedStateFor(id)])).toEqual(
-      STATE_IDS.map((id) => [id, expected[id]]),
-    )
-  })
-
-  it('counts every rejected counterpart as a rejection, and nothing else', () => {
-    expect(STATE_IDS.filter(isRejectedState)).toEqual([...REJECTED_STATE_IDS])
-    expect(REJECTED_STATE_IDS).toEqual([
-      'auto_rejected',
-      'recruiter_messaged_rejected',
-      'online_assessment_rejected',
-      'recruiter_interview_rejected',
-      'take_home_assessment_rejected',
-      'interview_1_rejected',
-      'interview_2_rejected',
-      'offer_rejected',
+  it('defines the stages in order, apart from how each one ends', () => {
+    expect(STATE_IDS).toEqual([
+      'headhunted',
+      'applied',
+      'recruiter_messaged',
+      'online_assessment',
+      'recruiter_interview',
+      'take_home_assessment',
+      'interview_1',
+      'interview_2',
+      'offer',
+      'accepted',
     ])
-    // Ending badly is not the same as being rejected: both of these are the tracker's
-    // own outcomes, and neither is somebody turning the application down.
-    expect(isRejectedState('no_openings')).toBe(false)
-    expect(isRejectedState('accepted')).toBe(false)
+    expect(STATE_CONFIG).toHaveLength(10)
+    // Taking the job is the last stage, so every outcome means something at every stage.
+    expect(OUTCOME_IDS).toEqual(['active', 'rejected', 'withdrawn', 'closed'])
   })
 
-  it('splits the states into rejected and not, with nothing in both or neither', () => {
-    expect([...REJECTED_STATE_IDS, ...NOT_REJECTED_STATE_IDS].sort()).toEqual([...STATE_IDS].sort())
-    expect(REJECTED_STATE_IDS.some((id) => NOT_REJECTED_STATE_IDS.includes(id))).toBe(false)
-    expect(NOT_REJECTED_STATE_IDS).toContain('accepted')
-    expect(NOT_REJECTED_STATE_IDS).toContain('no_openings')
+  it('reads a stage and an outcome together as the words people use for them', () => {
+    expect(statusLabel({ state: 'interview_1', outcome: 'active' })).toBe('Interview 1')
+    // The old rejection labels, em dashes included, come out of the pair unchanged.
+    expect(statusLabel({ state: 'interview_1', outcome: 'rejected' })).toBe('Interview 1 — Rejected')
+    expect(statusLabel({ state: 'offer', outcome: 'rejected' })).toBe('Offer — Rejected')
+    expect(statusLabel({ state: 'applied', outcome: 'rejected' })).toBe('Auto-rejected')
+    expect(statusLabel({ state: 'headhunted', outcome: 'closed' })).toBe('No openings')
+    expect(statusLabel({ state: 'accepted', outcome: 'active' })).toBe('Accepted')
+    // Backing out of a job you took, and an offer rescinded after you said yes.
+    expect(statusLabel({ state: 'accepted', outcome: 'withdrawn' })).toBe('Accepted — Withdrawn')
+    expect(statusLabel({ state: 'accepted', outcome: 'closed' })).toBe('Accepted — Closed')
+    expect(statusLabel({ state: 'interview_2', outcome: 'withdrawn' })).toBe('Interview 2 — Withdrawn')
+    expect(statusLabel({ state: 'take_home_assessment', outcome: 'closed' })).toBe(
+      'Take-home assessment — Closed',
+    )
   })
 
-  it('matches a state filter by outcome as well as by single state', () => {
+  it('steps a stage on and back, stopping at either end', () => {
+    expect(nextState('applied')).toBe('recruiter_messaged')
+    // Accepting is the ordinary step on from an offer.
+    expect(nextState('offer')).toBe('accepted')
+    expect(nextState('accepted')).toBeNull()
+    expect(previousState('applied')).toBe('headhunted')
+    expect(previousState('headhunted')).toBeNull()
+  })
+
+  it('reads a status as live, rejected or closed', () => {
+    expect(classifyLifecycle({ state: 'offer', outcome: 'active' })).toBe('live')
+    expect(classifyLifecycle({ state: 'offer', outcome: 'rejected' })).toBe('rejected')
+    expect(classifyLifecycle({ state: 'offer', outcome: 'withdrawn' })).toBe('closed')
+    expect(classifyLifecycle({ state: 'offer', outcome: 'closed' })).toBe('closed')
+    // The job you took is finished for the search, though it is active as an application.
+    expect(classifyLifecycle({ state: 'accepted', outcome: 'active' })).toBe('closed')
+    expect(classifyLifecycle({ state: 'accepted', outcome: 'rejected' })).toBe('rejected')
+  })
+
+  it('filters by stage and by outcome independently', () => {
     expect(STATE_IDS.filter((id) => stateFilterMatches('all', id))).toEqual([...STATE_IDS])
-    expect(STATE_IDS.filter((id) => stateFilterMatches('rejected', id))).toEqual([
-      ...REJECTED_STATE_IDS,
-    ])
-    expect(STATE_IDS.filter((id) => stateFilterMatches('not_rejected', id))).toEqual([
-      ...NOT_REJECTED_STATE_IDS,
-    ])
     expect(STATE_IDS.filter((id) => stateFilterMatches('applied', id))).toEqual(['applied'])
-  })
-
-  it('names the states a filter shows, and nothing for the one that shows them all', () => {
     expect(statesForFilter('all')).toBeUndefined()
-    expect(statesForFilter('rejected')).toEqual([...REJECTED_STATE_IDS])
-    expect(statesForFilter('not_rejected')).toEqual([...NOT_REJECTED_STATE_IDS])
     expect(statesForFilter('offer')).toEqual(['offer'])
+
+    expect(outcomesForFilter('all')).toEqual([...OUTCOME_IDS])
+    expect(outcomesForFilter('ended')).toEqual(['rejected', 'withdrawn', 'closed'])
+    expect(outcomesForFilter('withdrawn')).toEqual(['withdrawn'])
+    expect(outcomeFilterMatches('ended', 'active')).toBe(false)
   })
 
-  it('filters to the live states, which is narrower than everything not rejected', () => {
-    expect(STATE_IDS.filter((id) => stateFilterMatches('live', id))).toEqual([...LIVE_STATE_IDS])
-    expect(statesForFilter('live')).toEqual([...LIVE_STATE_IDS])
-
-    // The distinction the two outcome groups cannot draw: Accepted and No openings are not
-    // rejections, so `not_rejected` keeps them, and neither is still in play.
-    expect(stateFilterMatches('not_rejected', 'accepted')).toBe(true)
-    expect(stateFilterMatches('live', 'accepted')).toBe(false)
-    expect(stateFilterMatches('not_rejected', 'no_openings')).toBe(true)
-    expect(stateFilterMatches('live', 'no_openings')).toBe(false)
-    expect(LIVE_STATE_IDS.length).toBeLessThan(NOT_REJECTED_STATE_IDS.length)
+  it('keeps archived applications out of the current search and nowhere else', () => {
+    expect(archiveFilterMatches('current', null)).toBe(true)
+    expect(archiveFilterMatches('current', REFERENCE.toISOString())).toBe(false)
+    expect(archiveFilterMatches('archived', null)).toBe(false)
+    expect(archiveFilterMatches('archived', REFERENCE.toISOString())).toBe(true)
+    expect(archiveFilterMatches('all', REFERENCE.toISOString())).toBe(true)
   })
 
-  it('creates one useful example in every state', () => {
+  it('creates one running example at every stage, and every way of ending', () => {
     const document = createDemoDocument(REFERENCE)
 
     expect(document.applications).toHaveLength(19)
-    expect(document.applications.map(({ state }) => state)).toEqual(STATE_IDS)
+    const running = document.applications.filter(({ outcome }) => outcome === 'active')
+    expect(running.map(({ state }) => state)).toEqual(STATE_IDS)
+    expect(new Set(document.applications.map(({ outcome }) => outcome))).toEqual(new Set(OUTCOME_IDS))
+    expect(document.applications.some(({ archived_at }) => archived_at !== null)).toBe(true)
     expect(document.applications.every((application) =>
-      application.state_history.at(-1)?.state === application.state,
+      application.state_history.at(-1)?.state === application.state
+      && application.state_history.at(-1)?.outcome === application.outcome,
     )).toBe(true)
     expect(document.schema).toBeDefined()
     expect(document.indexes.by_id).toHaveProperty(document.applications[0]!.id)
@@ -226,7 +223,9 @@ describe('state configuration and demo content', () => {
     expect([...threads.values()].some((count) => count > 1)).toBe(true)
     // A message filed against a stage the application was rejected at, and one written down
     // well after it arrived — the shape the record exists for.
-    expect(messages.some(({ state }) => isRejectedState(state))).toBe(true)
+    expect(document.applications.some(({ outcome, state, correspondence }) =>
+      outcome === 'rejected' && correspondence.some((message) => message.state === state),
+    )).toBe(true)
     expect(messages.some(({ at, created_at }) => Date.parse(at) < Date.parse(created_at))).toBe(true)
 
     // A real email, which is what the folded row and Read exist for: a log of one-liners
@@ -314,7 +313,11 @@ describe('application mutations', () => {
     expect(application.role).toBe('Engineer')
     expect(application.url).toBe('https://example.com/jobs/1')
     expect(application.source).toBeNull()
-    expect(application.state_history).toEqual([{ state: 'applied', at: REFERENCE.toISOString() }])
+    expect(application.outcome).toBe('active')
+    expect(application.archived_at).toBeNull()
+    expect(application.state_history).toEqual([
+      { state: 'applied', outcome: 'active', at: REFERENCE.toISOString() },
+    ])
     expect(application.attachments).toEqual([])
     expect(() => createApplication({ company: 'Northwind', url: 'ftp://example.com' }, REFERENCE))
       .toThrow(/URL/i)
@@ -388,14 +391,33 @@ describe('application mutations', () => {
   it('appends state history for moves and makes same-state moves a no-op', () => {
     const original = createApplication({ company: 'Northwind' }, REFERENCE)
     const moveTime = new Date('2026-08-16T12:00:00+10:00')
-    const moved = moveApplicationState(original, 'offer', moveTime)
+    const moved = moveApplicationStatus(original, { state: 'offer' }, moveTime)
 
     expect(moved.state).toBe('offer')
+    expect(moved.outcome).toBe('active')
     expect(moved.state_history).toEqual([
       ...original.state_history,
-      { state: 'offer', at: moveTime.toISOString() },
+      { state: 'offer', outcome: 'active', at: moveTime.toISOString() },
     ])
-    expect(moveApplicationState(moved, 'offer', new Date())).toBe(moved)
+    expect(moveApplicationStatus(moved, { state: 'offer' }, new Date())).toBe(moved)
+    expect(moveApplicationStatus(moved, { state: 'offer', outcome: 'active' }, new Date())).toBe(moved)
+  })
+
+  it('keeps whichever axis a move leaves out', () => {
+    const original = createApplication({ company: 'Northwind', state: 'interview_1' }, REFERENCE)
+    const ended = moveApplicationStatus(original, { outcome: 'rejected' }, REFERENCE)
+    expect(ended.state).toBe('interview_1')
+    expect(ended.outcome).toBe('rejected')
+
+    // Correcting where it ended does not reopen it.
+    const corrected = moveApplicationStatus(ended, { state: 'interview_2' }, REFERENCE)
+    expect(corrected.state).toBe('interview_2')
+    expect(corrected.outcome).toBe('rejected')
+
+    const reopened = moveApplicationStatus(corrected, { outcome: 'active' }, REFERENCE)
+    expect(reopened.state).toBe('interview_2')
+    expect(reopened.outcome).toBe('active')
+    expect(reopened.state_history).toHaveLength(4)
   })
 
   it('does not replace a document for a same-state move', () => {
@@ -403,7 +425,12 @@ describe('application mutations', () => {
     const target = document.applications[2]!
 
     expect(
-      moveApplication(document, target.id, target.state, new Date('2026-08-20T12:00:00+10:00')),
+      moveApplication(
+        document,
+        target.id,
+        { state: target.state, outcome: target.outcome },
+        new Date('2026-08-20T12:00:00+10:00'),
+      ),
     ).toBe(document)
   })
 })
@@ -566,7 +593,10 @@ describe('indexes', () => {
 
     expect(Object.keys(indexes.by_id)).toHaveLength(19)
     expect(indexes.by_created_at).toHaveLength(19)
-    expect(indexes.stats_current.applied).toBe(1)
+    // One still running and one auto-rejected: a stage counts both, however each is going.
+    expect(indexes.stats_current.applied).toBe(2)
+    // One running at each of the ten stages, the accepted job among them.
+    expect(indexes.by_outcome.active).toHaveLength(10)
     expect(indexes.stats_ever_reached.applied).toBeGreaterThanOrEqual(1)
     expect(indexesAreStale(document.applications, indexes)).toBe(false)
   })
@@ -2138,13 +2168,13 @@ describe('document validation and persistence', () => {
 
     const parsed = parseTrackerDocument(JSON.stringify(raw))
     expect(parsed).not.toHaveProperty('ignored')
-    expect(parsed).not.toHaveProperty('schema_version')
+    expect(parsed.schema_version).toBe(DATA_VERSION)
     expect(parsed.schema).toBeDefined()
     expect(parsed.indexes).toBeDefined()
     expect(parsed.applications[0]).not.toHaveProperty('ignored_application_field')
     expect(parsed.applications[0]?.next_action_at).toBeNull()
     expect(parsed.applications[0]?.state_history).toEqual([
-      { state: 'applied', at: '2026-08-14T09:00:00+10:00' },
+      { state: 'applied', outcome: 'active', at: '2026-08-14T09:00:00+10:00' },
     ])
   })
 
@@ -2220,7 +2250,15 @@ describe('document validation and persistence', () => {
   })
 
   it.each([
-    [{ schema_version: 2, applications: [] }, 'schema_version'],
+    [{ schema_version: 4, applications: [] }, 'schema_version'],
+    [{ schema_version: 2, applications: [{
+      id: 'one', company: 'Northwind', state: 'auto_rejected', outcome: 'active',
+      created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString(),
+    }] }, 'applications[0].state'],
+    [{ schema_version: 2, applications: [{
+      id: 'one', company: 'Northwind', state: 'applied', outcome: 'ghosted',
+      created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString(),
+    }] }, 'applications[0].outcome'],
     [{ schema_version: 1, applications: [{ state: 'invented' }] }, 'applications[0]'],
     [{
       schema_version: 1,
@@ -2320,7 +2358,7 @@ describe('document validation and persistence', () => {
   })
 })
 
-describe('rejection clears an outstanding next action', () => {
+describe('ending an application clears an outstanding next action', () => {
   const REJECTED_AT = new Date('2026-08-24T09:00:00+10:00')
 
   function withAction() {
@@ -2335,54 +2373,75 @@ describe('rejection clears an outstanding next action', () => {
     )
   }
 
-  it('drops the action and its date when moving into a rejected state', () => {
-    const moved = moveApplicationState(withAction(), 'auto_rejected', REJECTED_AT)
+  it('drops the action and its date when the application is rejected', () => {
+    const moved = moveApplicationStatus(withAction(), { outcome: 'rejected' }, REJECTED_AT)
 
-    expect(moved.state).toBe('auto_rejected')
+    expect(moved.state).toBe('applied')
+    expect(moved.outcome).toBe('rejected')
     expect(moved.next_action).toBeNull()
     expect(moved.next_action_at).toBeNull()
   })
 
+  it('drops it when you withdraw, too', () => {
+    const moved = moveApplicationStatus(withAction(), { outcome: 'withdrawn' }, REJECTED_AT)
+
+    expect(moved.next_action).toBeNull()
+  })
+
   it('does not record the dropped action as completed', () => {
-    const moved = moveApplicationState(withAction(), 'auto_rejected', REJECTED_AT)
+    const moved = moveApplicationStatus(withAction(), { outcome: 'rejected' }, REJECTED_AT)
 
     expect(moved.completed_actions).toEqual([])
   })
 
   it('leaves the deadline alone, the way completing an action does', () => {
     const application = withAction()
-    const moved = moveApplicationState(application, 'auto_rejected', REJECTED_AT)
+    const moved = moveApplicationStatus(application, { outcome: 'rejected' }, REJECTED_AT)
 
     expect(moved.deadline_at).toBe(application.deadline_at)
   })
 
   it('still appends exactly one history entry for the move', () => {
     const application = withAction()
-    const moved = moveApplicationState(application, 'auto_rejected', REJECTED_AT)
+    const moved = moveApplicationStatus(application, { outcome: 'rejected' }, REJECTED_AT)
 
     expect(moved.state_history).toEqual([
       ...application.state_history,
-      { state: 'auto_rejected', at: REJECTED_AT.toISOString() },
+      { state: 'applied', outcome: 'rejected', at: REJECTED_AT.toISOString() },
     ])
   })
 
-  it('keeps the action when moving between live states', () => {
-    const moved = moveApplicationState(withAction(), 'recruiter_interview', REJECTED_AT)
+  it('keeps the action when moving between stages', () => {
+    const moved = moveApplicationStatus(withAction(), { state: 'recruiter_interview' }, REJECTED_AT)
 
     expect(moved.next_action).toBe('Follow up with the recruiter')
     expect(moved.next_action_at).toBe(new Date('2026-08-30T09:00:00+10:00').toISOString())
   })
 
-  it('keeps the action when moving to Accepted, where a task is still live work', () => {
-    const moved = moveApplicationState(withAction(), 'accepted', REJECTED_AT)
+  it('keeps the action when accepted, where a task is still live work', () => {
+    const moved = moveApplicationStatus(withAction(), { state: 'accepted', outcome: 'active' }, REJECTED_AT)
 
     expect(moved.next_action).toBe('Follow up with the recruiter')
   })
 
-  it('is still a no-op when the application is already in that rejected state', () => {
-    const rejected = moveApplicationState(withAction(), 'auto_rejected', REJECTED_AT)
+  it('keeps the action when the employer closed it, which may still be worth a check back', () => {
+    const moved = moveApplicationStatus(withAction(), { outcome: 'closed' }, REJECTED_AT)
 
-    expect(moveApplicationState(rejected, 'auto_rejected', new Date())).toBe(rejected)
+    expect(moved.next_action).toBe('Follow up with the recruiter')
+  })
+
+  it('keeps a task set after the rejection when the stage is corrected', () => {
+    const rejected = moveApplicationStatus(withAction(), { outcome: 'rejected' }, REJECTED_AT)
+    const replanned = editApplication(rejected, { next_action: 'Ask for feedback' }, REJECTED_AT)
+    const corrected = moveApplicationStatus(replanned, { state: 'interview_1' }, REJECTED_AT)
+
+    expect(corrected.next_action).toBe('Ask for feedback')
+  })
+
+  it('is still a no-op when the application already ended that way', () => {
+    const rejected = moveApplicationStatus(withAction(), { outcome: 'rejected' }, REJECTED_AT)
+
+    expect(moveApplicationStatus(rejected, { outcome: 'rejected' }, new Date())).toBe(rejected)
   })
 
   it('clears through the document-level move as well', () => {
@@ -2392,10 +2451,233 @@ describe('rejection clears an outstanding next action', () => {
       REFERENCE,
     )
     const application = document.applications[0]!
-    const moved = moveApplication(document, application.id, 'auto_rejected', REJECTED_AT)
+    const moved = moveApplication(document, application.id, { outcome: 'rejected' }, REJECTED_AT)
     const stored = moved.applications.find((item) => item.id === application.id)!
 
     expect(stored.next_action).toBeNull()
     expect(stored.next_action_at).toBeNull()
+  })
+})
+
+describe('archiving', () => {
+  const ARCHIVED_AT = new Date('2026-09-01T09:00:00+10:00')
+
+  it('hides an application without changing how it ended or appending history', () => {
+    const rejected = moveApplicationStatus(
+      createApplication({ company: 'Northwind' }, REFERENCE),
+      { outcome: 'rejected' },
+      REFERENCE,
+    )
+    const archived = setApplicationArchived(rejected, true, ARCHIVED_AT)
+
+    expect(archived.archived_at).toBe(ARCHIVED_AT.toISOString())
+    expect(archived.updated_at).toBe(ARCHIVED_AT.toISOString())
+    expect(archived.outcome).toBe('rejected')
+    expect(archived.state_history).toBe(rejected.state_history)
+    expect(setApplicationArchived(archived, true, new Date())).toBe(archived)
+
+    const restored = setApplicationArchived(archived, false, ARCHIVED_AT)
+    expect(restored.archived_at).toBeNull()
+    expect(setApplicationArchived(restored, false, new Date())).toBe(restored)
+  })
+
+  it('archives every ended application at once, and nothing still active', () => {
+    let document = addApplication(createEmptyDocument(), { company: 'Live' }, REFERENCE)
+    document = addApplication(document, { company: 'Rejected', outcome: 'rejected' }, REFERENCE)
+    document = addApplication(document, { company: 'Accepted', state: 'accepted', outcome: 'active' }, REFERENCE)
+
+    document = addApplication(document, { company: 'Withdrawn', outcome: 'withdrawn' }, REFERENCE)
+
+    // Exactly what End records. Nobody ended the accepted job, so it is not among them.
+    expect(archivableApplications(document).map(({ company }) => company)).toEqual(['Rejected', 'Withdrawn'])
+    const archived = archiveEndedApplications(document, ARCHIVED_AT)
+    expect(archived.applications.map(({ company, archived_at }) => [company, archived_at !== null])).toEqual([
+      ['Live', false],
+      ['Rejected', true],
+      ['Accepted', false],
+      ['Withdrawn', true],
+    ])
+    expect(archiveEndedApplications(archived, new Date())).toBe(archived)
+  })
+
+  it('returns the same document when nothing changes', () => {
+    const document = addApplication(createEmptyDocument(), { company: 'Northwind' }, REFERENCE)
+    const id = document.applications[0]!.id
+
+    expect(archiveApplication(document, id, false, ARCHIVED_AT)).toBe(document)
+    expect(archiveApplication(document, 'missing', true, ARCHIVED_AT)).toBe(document)
+  })
+
+  it('survives a round trip through validation', () => {
+    const added = addApplication(createEmptyDocument(), { company: 'Northwind' }, REFERENCE)
+    const document = archiveApplication(added, added.applications[0]!.id, true, ARCHIVED_AT)
+    expect(document.applications[0]!.archived_at).toBe(ARCHIVED_AT.toISOString())
+    const parsed = parseTrackerDocument(serializeTrackerDocument(document))
+    expect(parsed.applications).toEqual(document.applications)
+  })
+})
+
+describe('migrating version-1 documents', () => {
+  const AT = '2026-08-01T09:00:00+10:00'
+  const LATER = '2026-08-05T09:00:00+10:00'
+
+  function legacyApplication(overrides: Record<string, unknown> = {}) {
+    return {
+      id: '018f24c0-0000-7000-8000-000000000001',
+      company: 'Northwind',
+      state: 'interview_1_rejected',
+      state_history: [
+        { state: 'applied', at: AT },
+        { state: 'interview_1', at: AT },
+        { state: 'interview_1_rejected', at: LATER },
+      ],
+      created_at: AT,
+      updated_at: LATER,
+      ...overrides,
+    }
+  }
+
+  it('reads every version-1 state as the stage and outcome it meant', () => {
+    expect(legacyStatus('interview_1')).toEqual({ state: 'interview_1', outcome: 'active' })
+    expect(legacyStatus('interview_1_rejected')).toEqual({ state: 'interview_1', outcome: 'rejected' })
+    expect(legacyStatus('auto_rejected')).toEqual({ state: 'applied', outcome: 'rejected' })
+    expect(legacyStatus('no_openings')).toEqual({ state: 'headhunted', outcome: 'closed' })
+    expect(legacyStatus('accepted')).toEqual({ state: 'accepted', outcome: 'active' })
+    expect(legacyStatus('offer_rejected')).toEqual({ state: 'offer', outcome: 'rejected' })
+    expect(legacyStatus('invented')).toBeNull()
+    expect(legacyStatus('constructor')).toBeNull()
+  })
+
+  it('splits the state and every history entry into a stage and an outcome', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({ schema_version: 1, applications: [legacyApplication()] }))
+    const application = parsed.applications[0]!
+
+    expect(parsed.schema_version).toBe(DATA_VERSION)
+    expect(application.state).toBe('interview_1')
+    expect(application.outcome).toBe('rejected')
+    expect(application.archived_at).toBeNull()
+    expect(application.state_history).toEqual([
+      { state: 'applied', outcome: 'active', at: AT },
+      { state: 'interview_1', outcome: 'active', at: AT },
+      { state: 'interview_1', outcome: 'rejected', at: LATER },
+    ])
+  })
+
+  it('migrates a file that carries no version at all, which is every file written before this', () => {
+    const raw = JSON.parse(JSON.stringify(createDemoDocument(REFERENCE))) as Record<string, unknown>
+    delete raw.schema_version
+    ;(raw.applications as Record<string, unknown>[])[0]!.state = 'auto_rejected'
+    for (const application of raw.applications as Record<string, unknown>[]) {
+      delete application.outcome
+      delete application.archived_at
+      for (const entry of application.state_history as Record<string, unknown>[]) delete entry.outcome
+    }
+    ;(raw.applications as Record<string, unknown>[])[0]!.state_history = [
+      { state: 'auto_rejected', at: AT },
+    ]
+
+    expect(needsMigration(raw)).toBe(true)
+    const parsed = parseTrackerDocument(JSON.stringify(raw))
+    expect(parsed.applications[0]!.state).toBe('applied')
+    expect(parsed.applications[0]!.outcome).toBe('rejected')
+    expect(needsMigration(parsed)).toBe(false)
+  })
+
+  it('files notes, invites and messages against the stage their state named', () => {
+    const application = legacyApplication({
+      state_events: [{
+        id: 'event-1', state: 'interview_1_rejected', summary: 'Debrief',
+        starts_at: LATER, created_at: AT, updated_at: AT,
+      }],
+      correspondence: [{
+        id: 'message-1', state: 'interview_1_rejected', direction: 'received', body: 'Thanks, but no.',
+        at: LATER, created_at: LATER, updated_at: LATER,
+      }],
+    })
+    const parsed = parseTrackerDocument(JSON.stringify({ schema_version: 1, applications: [application] }))
+
+    expect(parsed.applications[0]!.state_events[0]!.state).toBe('interview_1')
+    expect(parsed.applications[0]!.correspondence[0]!.state).toBe('interview_1')
+  })
+
+  it('joins a stage note and its rejection note into one, losing nothing', () => {
+    const application = legacyApplication({
+      stage_notes: [
+        {
+          state: 'interview_1',
+          body: 'Lead with the migration story.',
+          heard: [{ id: 'heard-1', body: 'Team of six', at: AT }],
+          created_at: AT,
+          updated_at: AT,
+        },
+        {
+          state: 'interview_1_rejected',
+          body: 'Feedback: wanted more system design.',
+          heard: [{ id: 'heard-2', body: 'Would reapply in a year', at: LATER }],
+          created_at: LATER,
+          updated_at: LATER,
+        },
+      ],
+    })
+    const parsed = parseTrackerDocument(JSON.stringify({ schema_version: 1, applications: [application] }))
+    const notes = parsed.applications[0]!.stage_notes
+
+    expect(notes).toHaveLength(1)
+    expect(notes[0]!.state).toBe('interview_1')
+    expect(notes[0]!.body).toBe('Lead with the migration story.\n\nFeedback: wanted more system design.')
+    expect(notes[0]!.heard.map(({ id }) => id)).toEqual(['heard-1', 'heard-2'])
+    expect(notes[0]!.created_at).toBe(AT)
+    expect(notes[0]!.updated_at).toBe(LATER)
+  })
+
+  it('moves version 2\'s accepted outcome to the Accepted stage, history included', () => {
+    const application = {
+      id: '018f24c0-0000-7000-8000-000000000002',
+      company: 'Took It Co',
+      state: 'offer',
+      outcome: 'accepted',
+      state_history: [
+        { state: 'offer', outcome: 'active', at: AT },
+        { state: 'offer', outcome: 'accepted', at: LATER },
+      ],
+      archived_at: null,
+      created_at: AT,
+      updated_at: LATER,
+    }
+    const raw = { schema_version: 2, applications: [application] }
+
+    expect(needsMigration(raw)).toBe(true)
+    const parsed = parseTrackerDocument(JSON.stringify(raw))
+    expect(parsed.schema_version).toBe(DATA_VERSION)
+    expect(parsed.applications[0]).toMatchObject({ state: 'accepted', outcome: 'active' })
+    expect(parsed.applications[0]!.state_history).toEqual([
+      { state: 'offer', outcome: 'active', at: AT },
+      { state: 'accepted', outcome: 'active', at: LATER },
+    ])
+  })
+
+  it('carries a version-2 document with nothing to change forward as it is', () => {
+    const current = JSON.parse(JSON.stringify(createDemoDocument(REFERENCE))) as Record<string, unknown>
+    const parsed = parseTrackerDocument(JSON.stringify({ ...current, schema_version: 2 }))
+
+    expect(parsed.schema_version).toBe(DATA_VERSION)
+    expect(parsed.applications).toEqual(createDemoDocument(REFERENCE).applications)
+  })
+
+  it('leaves a current document alone', () => {
+    const document = createDemoDocument(REFERENCE)
+    const raw = JSON.parse(JSON.stringify(document)) as Record<string, unknown>
+
+    expect(needsMigration(raw)).toBe(false)
+    expect(migrateDocument(raw)).toBe(raw)
+  })
+
+  it('refuses a version-2 document that still uses a version-1 state', () => {
+    const result = validateTrackerDocument({
+      schema_version: DATA_VERSION,
+      applications: [{ ...legacyApplication(), outcome: 'rejected' }],
+    })
+
+    expect(result.ok).toBe(false)
   })
 })

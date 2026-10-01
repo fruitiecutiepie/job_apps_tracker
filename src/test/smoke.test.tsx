@@ -44,7 +44,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   const contextBar = () =>
     within(screen.getByRole('region', { name: 'View context and filters' }))
 
-  expect(contextBar().getByText('19 of 19 applications shown')).toBeInTheDocument()
+  expect(contextBar().getByText('18 of 19 applications shown')).toBeInTheDocument()
   expect(readSavedDocument().applications).toHaveLength(19)
 
   /*
@@ -73,16 +73,19 @@ it('completes the primary tracker journey and persists it across reloads', async
   await user.type(within(addDialog).getByLabelText('Company'), 'Smoke Test Co')
   await user.type(within(addDialog).getByLabelText('Role'), 'Product Designer')
   await user.type(within(addDialog).getByLabelText('Source'), 'Referral')
-  await user.selectOptions(within(addDialog).getByLabelText('State'), 'applied')
+  await user.selectOptions(within(addDialog).getByLabelText('Stage'), 'applied')
   await user.type(within(addDialog).getByLabelText('Next action'), 'Send portfolio')
   await user.click(within(addDialog).getByRole('button', { name: 'Add application' }))
   expect(screen.getByRole('status')).toHaveTextContent('Application added.')
   await user.type(contextBar().getByRole('searchbox'), 'Smoke Test Co')
+  // One press to the next stage, from the card itself.
+  await user.click(screen.getByRole('button', { name: 'Move Smoke Test Co to Recruiter messaged' }))
+  expect(screen.getByRole('status')).toHaveTextContent('Smoke Test Co moved to Recruiter messaged.')
   await user.click(
     screen.getByRole('button', { name: 'Open Smoke Test Co, Product Designer' }),
   )
   const editDialog = screen.getByRole('dialog', { name: 'Edit application' })
-  await user.selectOptions(within(editDialog).getByLabelText('State'), 'offer')
+  await user.selectOptions(within(editDialog).getByLabelText('Stage'), 'offer')
   await user.click(within(editDialog).getByRole('button', { name: 'Save changes' }))
   expect(screen.getByRole('status')).toHaveTextContent('Application updated.')
 
@@ -112,8 +115,10 @@ it('completes the primary tracker journey and persists it across reloads', async
   expect(savedAfterEdit.applications).toHaveLength(20)
   expect(smokeApplication?.state).toBe('offer')
   expect(smokeApplication?.source).toBe('Referral')
+  expect(smokeApplication?.outcome).toBe('active')
   expect(smokeApplication?.state_history.map((entry) => entry.state)).toEqual([
     'applied',
+    'recruiter_messaged',
     'offer',
   ])
   expect(smokeApplication?.stage_notes).toEqual([

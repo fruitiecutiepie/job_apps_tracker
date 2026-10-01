@@ -79,7 +79,7 @@ export function urgencyBandFor(
   application: Application,
   today: Date = new Date(),
 ): BandPlacement {
-  if (classifyLifecycle(application.state) !== "live") {
+  if (classifyLifecycle(application) !== "live") {
     return {
       band: application.next_action?.trim() ? "outstanding" : "closed",
       days: null,

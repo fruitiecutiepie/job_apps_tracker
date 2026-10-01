@@ -1,11 +1,10 @@
-import { STATE_CONFIG } from './domain'
-import type { StateHistoryEntry, StateId } from './domain'
+import { statusLabel } from './domain'
+import type { OutcomeId, StateHistoryEntry, StateId } from './domain'
 import { localDayNumber, parseTimestamp } from './views/viewUtils'
-
-const LABELS = new Map<StateId, string>(STATE_CONFIG.map(({ id, label }) => [id, label]))
 
 export interface TimelineEntry {
   state: StateId
+  outcome: OutcomeId
   label: string
   at: string
   /** Whole local days between this move and the next one, or `null` when a timestamp is unreadable. */
@@ -31,7 +30,8 @@ export function stateTimeline(
     const to = next === undefined ? now : parseTimestamp(next.at)
     return {
       state: entry.state,
-      label: LABELS.get(entry.state) ?? entry.state,
+      outcome: entry.outcome,
+      label: statusLabel(entry),
       at: entry.at,
       days: daysBetween(entry.at, to),
       current: next === undefined,

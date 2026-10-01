@@ -7,7 +7,8 @@ import {
 } from './compensation'
 import { isCorrespondenceDirection } from './correspondence'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
-import { isStateId, stateRank } from './states'
+import { DATA_VERSION, documentVersion, isOlderVersion, migrateDocument } from './migrate'
+import { isOutcomeId, isStateId, stateRank } from './states'
 import type {
   Application,
   Attachment,
@@ -109,10 +110,11 @@ function historyValue(
   value: unknown,
   path: string,
   state: Application['state'],
+  outcome: Application['outcome'],
   createdAt: string,
   errors: ValidationError[],
 ): StateHistoryEntry[] {
-  if (value === undefined) return [{ state, at: createdAt }]
+  if (value === undefined) return [{ state, outcome, at: createdAt }]
   if (!Array.isArray(value) || value.length === 0) {
     addError(errors, path, 'must be a non-empty array')
     return []
@@ -124,13 +126,17 @@ function historyValue(
       return
     }
     if (!isStateId(entry.state)) addError(errors, `${path}[${index}].state`, 'is invalid')
+    if (!isOutcomeId(entry.outcome)) addError(errors, `${path}[${index}].outcome`, 'is invalid')
     if (!validTimestamp(entry.at)) {
       addError(errors, `${path}[${index}].at`, 'must be a timezone-qualified ISO-8601 timestamp')
     }
-    if (isStateId(entry.state) && validTimestamp(entry.at)) history.push({ state: entry.state, at: entry.at })
+    if (isStateId(entry.state) && isOutcomeId(entry.outcome) && validTimestamp(entry.at)) {
+      history.push({ state: entry.state, outcome: entry.outcome, at: entry.at })
+    }
   })
-  if (history.length > 0 && history[history.length - 1].state !== state) {
-    addError(errors, path, "must end in the application's current state")
+  const last = history[history.length - 1]
+  if (last && (last.state !== state || last.outcome !== outcome)) {
+    addError(errors, path, "must end in the application's current stage and outcome")
   }
   return history
 }
@@ -674,13 +680,24 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
   if (!nonBlank(value.id)) addError(errors, `${path}.id`, 'is required')
   if (!nonBlank(value.company)) addError(errors, `${path}.company`, 'is required')
   if (!isStateId(value.state)) addError(errors, `${path}.state`, 'is invalid')
+  if (!isOutcomeId(value.outcome)) addError(errors, `${path}.outcome`, 'is invalid')
   if (!validTimestamp(value.created_at)) {
     addError(errors, `${path}.created_at`, 'must be a timezone-qualified ISO-8601 timestamp')
   }
   if (!validTimestamp(value.updated_at)) {
     addError(errors, `${path}.updated_at`, 'must be a timezone-qualified ISO-8601 timestamp')
   }
-  if (!nonBlank(value.id) || !nonBlank(value.company) || !isStateId(value.state) || !validTimestamp(value.created_at) || !validTimestamp(value.updated_at)) return null
+  if (!nonBlank(value.id) || !nonBlank(value.company) || !isStateId(value.state) || !isOutcomeId(value.outcome) || !validTimestamp(value.created_at) || !validTimestamp(value.updated_at)) return null
+
+  // Absent is not archived, which is what every application written before archiving was.
+  let archivedAt: string | null = null
+  if (value.archived_at !== undefined && value.archived_at !== null) {
+    if (validTimestamp(value.archived_at)) {
+      archivedAt = value.archived_at
+    } else {
+      addError(errors, `${path}.archived_at`, 'must be a timezone-qualified ISO-8601 timestamp or null')
+    }
+  }
 
   const nextAction = nullableText(value.next_action, `${path}.next_action`, errors)
   let nextActionAt: string | null = null
@@ -708,7 +725,16 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     url: urlValue(value.url, `${path}.url`, errors),
     source: nullableText(value.source, `${path}.source`, errors),
     state: value.state,
-    state_history: historyValue(value.state_history, `${path}.state_history`, value.state, value.created_at, errors),
+    outcome: value.outcome,
+    state_history: historyValue(
+      value.state_history,
+      `${path}.state_history`,
+      value.state,
+      value.outcome,
+      value.created_at,
+      errors,
+    ),
+    archived_at: archivedAt,
     next_action: nextAction,
     next_action_at: nextAction ? nextActionAt : null,
     deadline_at: deadlineAt,
@@ -750,13 +776,18 @@ function validateApplications(value: unknown, errors: ValidationError[]): Applic
   return applications
 }
 
-export function validateTrackerDocument(value: unknown): ValidationResult {
+export function validateTrackerDocument(raw: unknown): ValidationResult {
   const errors: ValidationError[] = []
-  if (!isRecord(value)) return { ok: false, errors: [{ path: '$', message: 'must be a JSON object' }] }
+  if (!isRecord(raw)) return { ok: false, errors: [{ path: '$', message: 'must be a JSON object' }] }
 
-  if ('schema_version' in value && value.schema_version !== 1) {
-    addError(errors, 'schema_version', 'must be 1')
+  const version = documentVersion(raw)
+  if (!isOlderVersion(version) && version !== DATA_VERSION) {
+    addError(errors, 'schema_version', `must be 1, 2 or ${DATA_VERSION}`)
+    return { ok: false, errors }
   }
+  // An older document is rewritten in the current layout first, so that everything below
+  // checks one layout rather than several.
+  const value = migrateDocument(raw)
 
   const applications = validateApplications(value.applications, errors)
   if (!applications) return { ok: false, errors }

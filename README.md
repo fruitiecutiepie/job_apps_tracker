@@ -2,7 +2,7 @@
 
 A polished, local-first job search organizer built with React and TypeScript. It keeps every application in one JSON file that you hold, and provides focused views for tracking progress, upcoming work, and pipeline statistics — without an account, a backend, or a synchronization service.
 
-**[Try the demo](https://fruitiecutiepie.com/job_apps_tracker/demo/)** — nineteen fictional applications, one in every stage, nothing to install. **[Open the tracker](https://fruitiecutiepie.com/job_apps_tracker/)** when you want to enter your own.
+**[Try the demo](https://fruitiecutiepie.com/job_apps_tracker/demo/)** — nineteen fictional applications, one still running at every stage and the rest ended every way there is, nothing to install. **[Open the tracker](https://fruitiecutiepie.com/job_apps_tracker/)** when you want to enter your own.
 
 ## Start here
 
@@ -16,7 +16,7 @@ The catch worth knowing up front: without a connected folder, your data lives on
 
 ## Features
 
-- Kanban board with 11 stage columns pairing live and rejected states, drag-and-drop, the next upcoming invite and attachment filenames on cards, a state-selector fallback, and muted styling with an `Idle 30 days` label for live applications that have not changed stage in 30 days
+- Kanban board with a column per stage, a running lane in each and a lane for every way something ended there, drag-and-drop, the next upcoming invite and attachment filenames on cards, one-press moves and a stage-selector fallback, and muted styling with an `Idle 30 days` label for live applications that have not changed stage in 30 days
 - Stage prep notes per application, one set per pipeline stage, written in Markdown and read as a foldable outline, opened from a Kanban card or table row with the current stage first — and **Prep notes** is a view of its own, holding notes from several applications at once in panes you can split, arranged the way you left it the last time you had it open
 - Captured lines per stage, recording what an interviewer tells you as you are told it, stored the moment they are entered and pinned on screen under the prep note however far it scrolls
 - Optional deadline per application, recording an external closing or decision date separately from your own next action
@@ -26,11 +26,13 @@ The catch worth knowing up front: without a connected folder, your data lives on
 - Sortable and filterable table with invites, deadline, urgency, preference, compensation, and attachments columns, where sorting by invite sorts by what is next, and opening on urgency bands the rows under headings — what is dated, what is live but undated, what is finished with a task still on it, and what is finished
 - A **Done** control on the Kanban card and in the table's next action cell that clears a finished task and records it as a dated completed action, kept apart from your notes
 - Calendar invites imported from the `.ics` a recruiter sends, filed against a stage, with a rescheduled invite replacing the one it supersedes
-- A one-click **Reject** on every live table row, moving it to the current state's counterpart
+- Where an application stands is two things, kept apart: the **stage** it got to, and its **outcome** — still running, rejected by them, withdrawn by you, or closed by them without a rejection (the role was filled, pulled or frozen, or they went silent)
+- One-press moves on every card and table row: back a stage, on a stage, **End** (Rejected, I withdrew, Employer closed), and once ended, **Reopen** or **Archive**
+- **Archive** to start the next job search clean: archived applications keep their outcome and history but drop out of every view until the Archive filter asks for them, and **Archive all ended** in More actions puts away everything that was rejected, withdrawn or closed at once
 - Outcome statistics derived from application history: how many replied, how long they took, how far applications got before they ended, and how each source worked out
-- Global company, role, notes, stage prep note, and invite search plus state and activity filtering, where the state filter also takes whole outcomes: still live, rejected, or not rejected
+- Global company, role, notes, stage prep note, and invite search plus stage, outcome, archive and activity filtering, where the outcome filter also takes **Ended, any way**
 - Add, edit, delete, import, and export controls, plus confirmed demo-data reset in the demo profile
-- Append-only state history whenever an application actually changes state
+- Append-only history whenever an application actually changes stage or outcome
 - Responsive layouts, keyboard-accessible forms and dialogs, and keyboard shortcuts for splitting, finding, and navigating the stage notes panel
 
 ## Running it yourself
@@ -45,7 +47,7 @@ pnpm dev
 
 Open the local address printed by Vite. The tracker reads and writes `data/tracker.json` in the project directory through the dev server, creating an empty one on first launch.
 
-To work with the 19 fictional examples instead — exactly one in each configured state:
+To work with the 19 fictional examples instead — one still running at every stage, every outcome at least once, and one archived:
 
 ```sh
 pnpm dev:demo
@@ -84,12 +86,12 @@ actions**, a dated record kept separately from Notes, and the next action clears
 is left alone, since a closing date is not something you complete, and finishing a task is not
 a stage change, so no history entry is added.
 
-Moving an application into a rejected state clears an outstanding next action for you, and the
-notice for the move says so. A rejection ends the application, so the follow-up you had planned
+Ending an application as **Rejected** or **Withdrawn** clears an outstanding next action for you, and the
+notice for the move says so. Either ends the work, so the follow-up you had planned
 is work that will not happen, and left in place it sits on your plan forever because nothing
 asks about it again. It is dropped rather than recorded under Completed actions, since you never
-did it. Accepted and No openings are left alone: nobody turned either down, and a task on an
-offer you accepted is real work. If a rejection does leave you something to do, such as asking
+did it. **Closed** is left alone, and so is moving to **Accepted**, the last stage: a task on a job you took is real work,
+and a role the employer closed may still be worth checking back on. If a rejection does leave you something to do, such as asking
 for feedback, write it as a new next action afterwards. Applications with nothing left to do fall into the
 table's **Live, nothing dated** band, which is where you decide what is next.
 
@@ -104,7 +106,13 @@ row as the next action and its date there, so you can finish a task while editin
 does not put the task back on your plan — undoing the record is not the same as undoing the
 work, and the app does not guess which you meant.
 
-Open an existing application from any view to edit or delete it. Moving to another state adds a timestamped history entry. You can move a Kanban card by dragging it or by using its state selector, which also works for keyboard and touch interaction.
+Open an existing application from any view to edit or delete it. The form has a **Stage** and an **Outcome** select, which together reach every combination, and an **Archived** checkbox. Any change to the stage or the outcome adds a timestamped history entry.
+
+The card and the table row carry the moves you make most, one press each. While an application is running: **←** back a stage, **→** on to the next (from an offer, that is **Accepted** — taking the job is the last stage, not a special button), **End**, which asks how it ended — **Rejected**, **I withdrew**, or **Employer closed** — and **Archive**, which puts it away as it stands. Once it has ended: **Reopen** puts it back to running at the stage it stopped, and **Archive** puts it away. The stage select beside them changes only the stage, keeping the outcome, so it can also correct where something ended without reopening it. You can also drag a Kanban card onto any lane — dropping it on "Interview 1 — Rejected" is the same move End makes.
+
+Archived applications keep everything, outcome included, and drop out of every view, the count and Statistics. The **Archive** filter shows them again — with a dashed outline and an **Archived** badge, so they stand apart from the current search shown beside them — and **Unarchive** brings one back. **Archive all ended** under More actions archives everything you ended — rejected, withdrawn or closed — at once, after saying how many of each, which is how a new search starts without the last one's leftovers. Anything still active is left where it is, an accepted job included; archive that one from its own **Archive** when you are ready.
+
+Files written by earlier versions, which kept how an application ended inside its state (`interview_1_rejected`), are migrated on load. The dev server keeps the original in `data/backups/` first, and a connected folder on the hosted app gets a `tracker.before-v3.json` beside the file.
 
 ### Attach a file
 
@@ -337,11 +345,11 @@ Offered by name.
 
 ### Find the right view
 
-- **Kanban** shows 11 stage columns with a labelled lane for each visible state. Live stages pair with their rejected counterpart in the same column. Attachment filenames, a preference score for rated applications, and a prep notes button appear on cards, and you can move applications by drag-and-drop or the state selector. A live application that has not changed stage for 30 days or more is greyed out and labelled `Idle 30 days`; it stays in its own lane with its history, and still moves wherever any other application can. Silence is measured from the last stage change rather than the last edit, so annotating a card or importing an invite does not reset it. Rejected, accepted, and no-openings applications are finished rather than idle and are never labelled.
-- **Table** answers "what should I do next". It opens sorted by urgency, descending, which bands the rows under four headings: **Dated, soonest first** for anything with an invite, deadline, or dated action ahead or behind; **Live, nothing dated** for what is still running with no invite, deadline or dated action; **Finished, action outstanding** for a task left on an application that ended; and **Finished** for the rest. A band holding nothing prints no heading, and sorting any other column takes the bands away, because they would then separate rows on a rule the visible order does not follow. Inside a band the urgency score orders the rows, except in the dated band, which reads by date as its heading says, with preference breaking ties the date and the score have both left level. Every live row carries a **Reject** button beside its state select, moving it straight to that state's rejected counterpart — the shortcut the Stale view used to hold, for the most common move there is. It also sorts and column-filters by company, role, source, state, activity, next action, deadline, urgency, preference, compensation, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—activity, deadline, invites, preference, compensation—keep the rows without one last in either sort direction. The Activity column carries the same `Idle N days` text the board shows and filters on it, and reads `—` for an application that is not idle. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Rejected, accepted, and no-openings applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, state, activity, company, and source filters still apply across views.
-- **Statistics** answers "how is the search going", which no row and no board can. It opens on five figures: applications, how many are still live, how many ever heard back, how many got past the stage they started in, and the median days to a first reply. **Stages** then gives one row per live stage anything has reached, separating three counts that the old single column confused — how many **Reached** it, how many are **Here now**, and how many **Ended here**, meaning they finished and got no further. Stages nothing has reached are left out rather than printed as zeros, and rejected states never get rows of their own: a rejection is an outcome of the live stage it followed. **Sources** reports each source against what came of it, so a source that brings replies but no progress is distinguishable from one that brings neither. Finally the **Ratings** table summarises how you judge roles at all: one row per dimension showing what you judged, what you could not tell, what you never assessed, and the mean of the judgements.
+- **Kanban** shows a column per stage. Each has a lane for what is still running there, and a lane for each way something in view ended there — Interview 1 — Rejected, Offer — Withdrawn — drawn once something ended that way. Attachment filenames, a preference score for rated applications, and a prep notes button appear on cards, and you can move applications by drag-and-drop, the move buttons, or the stage selector. A live application that has not changed stage for 30 days or more is greyed out and labelled `Idle 30 days`; it stays in its own lane with its history, and still moves wherever any other application can. Silence is measured from the last stage change rather than the last edit, so annotating a card or importing an invite does not reset it. Ended applications are finished rather than idle and are never labelled.
+- **Table** answers "what should I do next". It opens sorted by urgency, descending, which bands the rows under four headings: **Dated, soonest first** for anything with an invite, deadline, or dated action ahead or behind; **Live, nothing dated** for what is still running with no invite, deadline or dated action; **Finished, action outstanding** for a task left on an application that ended; and **Finished** for the rest. A band holding nothing prints no heading, and sorting any other column takes the bands away, because they would then separate rows on a rule the visible order does not follow. Inside a band the urgency score orders the rows, except in the dated band, which reads by date as its heading says, with preference breaking ties the date and the score have both left level. Every row carries the same move buttons as the card beside its stage select, with the outcome named beside the select once it has ended. It also sorts and column-filters by company, role, source, stage, activity, next action, deadline, urgency, preference, compensation, attachments, created date, or last update, and gives each row a prep notes button. Columns whose value can be missing—activity, deadline, invites, preference, compensation—keep the rows without one last in either sort direction. The Activity column carries the same `Idle N days` text the board shows and filters on it, and reads `—` for an application that is not idle. The urgency column shows why an application ranks where it does—`Deadline in 3 days`, `Action overdue 2 days`, `No change for 21 days`—and filtering it matches that text. Ended applications are not ranked and show `—`. Column filters only affect the table and are not saved. Global search, stage, outcome, archive, activity, company, and source filters still apply across views.
+- **Statistics** answers "how is the search going", which no row and no board can. It opens on five figures: applications, how many are still live, how many ever heard back, how many got past the stage they started in, and the median days to a first reply. **Stages** then gives one row per stage anything has reached, separating three counts that the old single column confused — how many **Reached** it, how many are **Here now**, and how many **Ended here**, meaning they finished and got no further. Stages nothing has reached are left out rather than printed as zeros. **Sources** reports each source against what came of it, so a source that brings replies but no progress is distinguishable from one that brings neither. Finally the **Ratings** table summarises how you judge roles at all: one row per dimension showing what you judged, what you could not tell, what you never assessed, and the mean of the judgements.
 
-The global search, state, activity, company, and source filters apply across views. Activity takes **Idle** or **Active**, which are complements rather than a pair of thresholds—a finished application counts as Active because it is not idle. It is a separate control from the state filter because idleness qualifies a stage without changing it, so "Interview 1 and idle" is a question worth asking. The state filter also takes an outcome—**Rejected** or **Not rejected**—which stands for every rejection at once, or everything that is not one. Neither `Accepted` nor `No openings` counts as a rejection: they are outcomes of their own rather than somebody turning the application down. **Copy roles** puts the roles of whatever is showing on the clipboard, one per line and without repeats—so filtering to Applied at one company from LinkedIn and pressing it copies exactly those roles. Dates, calendar days, and overdue status use your browser's timezone.
+The global search, stage, outcome, archive, activity, company, and source filters apply across views. Activity takes **Idle** or **Active**, which are complements rather than a pair of thresholds—a finished application counts as Active because it is not idle. Stage, outcome and activity are three controls because each qualifies the others without changing them, so "Interview 1, rejected" and "Interview 1 and idle" are both questions worth asking. The outcome filter also takes **Ended, any way**. The archive filter starts on **Current search**; **Archived** shows only what you put away, and **Current and archived** both. **Copy roles** puts the roles of whatever is showing on the clipboard, one per line and without repeats—so filtering to Applied at one company from LinkedIn and pressing it copies exactly those roles. Dates, calendar days, and overdue status use your browser's timezone.
 
 ### Back up or replace data
 
@@ -383,7 +391,7 @@ Durability follows from that: a connected folder is a file you own, and browser 
 
 ### The demo
 
-<https://fruitiecutiepie.com/job_apps_tracker/demo/> is a second build of the same app under the demo profile: the 19 fictional examples, one in each configured state, seeded on a first visit. **Reset demo data** restores them and exists only there.
+<https://fruitiecutiepie.com/job_apps_tracker/demo/> is a second build of the same app under the demo profile: the 19 fictional examples, one still running at every stage and the rest ended every way there is, seeded on a first visit. **Reset demo data** restores them and exists only there.
 
 It is the same origin as the tracker, so the one thing keeping them apart is that each gets its own IndexedDB database. Emptying the demo sticks — it is not reseeded on every load — and a standing banner says whose data it is, with a link back.
 

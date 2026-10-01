@@ -62,22 +62,26 @@ describe('table band heading', () => {
   })
 })
 
-describe('reject shortcut', () => {
-  it('sits quieter than the state select it shortcuts, in tokens only', () => {
-    const body = ruleBody('.reject-button')
+describe('move controls', () => {
+  it('sit quieter than the stage select they shortcut, in tokens only', () => {
+    const body = ruleBody('.move-controls__button')
+    const table = ruleBody('.move-controls--table .move-controls__button')
     const select = ruleBody('.table-state-select')
 
-    // Same row height as the select above it, so the cell does not look ragged.
-    expect(body).toMatch(/min-height:\s*28px/)
+    // In the table, the same row height as the select beside them, so the cell does not
+    // look ragged; on a card, the control height every other card control has.
+    expect(table).toMatch(/min-height:\s*28px/)
     expect(select).toMatch(/min-height:\s*28px/)
-    // Quieter: the select carries the row's state in full ink, this is a shortcut.
+    expect(body).toMatch(/min-height:\s*var\(--control\)/)
+    // Quieter: the select carries the row's stage in full ink, these are shortcuts.
     expect(body).toMatch(/color:\s*var\(--ink-2\)/)
     expect(select).toMatch(/color:\s*var\(--ink\)/)
-    // Rejecting is an ordinary move, not a destructive act: no danger colour.
+    // Ending an application is an ordinary move, not a destructive act: no danger colour.
     expect(body).not.toMatch(/--danger|--accent/)
     expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    expect(body).not.toMatch(/\d+px/)
     // The 28px control height is the table's own convention; nothing else is raw.
-    expect(body.replace(/28px/g, '')).not.toMatch(/\d+px/)
+    expect(table.replace(/28px/g, '')).not.toMatch(/\d+px/)
   })
 })
 
@@ -520,5 +524,26 @@ describe('stage pill in the title bar', () => {
     expect(ruleBody('.panel__subject')).toMatch(/flex:\s*0 1000 auto/)
     expect(ruleBody('.panel__subject-stage')).toMatch(/flex:\s*0 1 auto/)
     expect(ruleBody('.panel__subject-open')).toMatch(/flex:\s*none/)
+  })
+})
+
+describe('context bar filters', () => {
+  it('are one fixed width each, so setting one never moves the rest', () => {
+    // Every top-level rule reaching these selects — unindented, so not the media queries
+    // that take over at narrow widths. `.context-bar select` also shares one with the input.
+    const bodies = [...css.matchAll(/\n\.context-bar select \{([^}]*)\}/g)].map((match) => match[1]!)
+    const sizing = bodies.find((body) => /var\(--filter\)/.test(body))
+    expect(sizing).toMatch(/flex:\s*none/)
+    for (const body of bodies) expect(body).not.toMatch(/min-width|max-width|flex-basis|flex:\s*[01] /)
+  })
+})
+
+describe('archived applications', () => {
+  it('read apart by a dashed outline, in tokens only', () => {
+    for (const selector of ['.application-card--archived', '.outcome-badge--archived']) {
+      const body = ruleBody(selector)
+      expect(body).toMatch(/dashed/)
+      expect(body).not.toMatch(/#[0-9a-fA-F]{3,8}/)
+    }
   })
 })

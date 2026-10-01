@@ -1,6 +1,6 @@
 export { CompareNotesView } from "./CompareNotesView";
 export { CompleteActionButton } from "./CompleteActionButton";
-export { RejectButton } from "./RejectButton";
+export { ArchivedBadge, MoveControls, OutcomeBadge } from "./MoveControls";
 export { InviteSummaries } from "./InviteSummaries";
 export { KanbanView } from "./KanbanView";
 export { MessagesButton } from "./MessagesButton";

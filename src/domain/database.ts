@@ -1,5 +1,6 @@
 import { rebuildIndexes, indexesAreStale } from './indexes'
 import { TRACKER_JSON_SCHEMA } from './jsonSchema'
+import { DATA_VERSION } from './migrate'
 import type { Application, JsonSchemaObject, TrackerDatabase } from './types'
 
 function cloneSchema(): JsonSchemaObject {
@@ -8,6 +9,7 @@ function cloneSchema(): JsonSchemaObject {
 
 export function prepareTrackerDatabase(applications: Application[]): TrackerDatabase {
   return {
+    schema_version: DATA_VERSION,
     schema: cloneSchema(),
     applications,
     indexes: rebuildIndexes(applications),
@@ -29,6 +31,7 @@ export function ensureFreshIndexes(database: TrackerDatabase): TrackerDatabase {
 
   return {
     ...database,
+    schema_version: DATA_VERSION,
     schema: cloneSchema(),
   }
 }

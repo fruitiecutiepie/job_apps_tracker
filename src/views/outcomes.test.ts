@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { emptyCompensation } from '../domain'
-import type { Application, StateEvent, StateId } from '../domain'
+import { emptyCompensation, legacyStatus } from '../domain'
+import type { Application, StateEvent, StateHistoryEntry } from '../domain'
 import {
   advanced,
   daysToFirstReply,
@@ -21,14 +21,18 @@ function at(daysFromToday: number, hour = 9): string {
   return date.toISOString()
 }
 
-/** A history built from `[state, daysAgo]` pairs, oldest first. */
-function history(entries: readonly (readonly [StateId, number])[]) {
-  return entries.map(([state, daysAgo]) => ({ state, at: at(-daysAgo) }))
+/**
+ * A history built from `[status, daysAgo]` pairs, oldest first. A status is written the way a
+ * reader says it — `auto_rejected`, `recruiter_interview_rejected` — and read through the
+ * same table that migrates old files, so the tables below stay one word per move.
+ */
+function history(entries: readonly (readonly [string, number])[]): StateHistoryEntry[] {
+  return entries.map(([status, daysAgo]) => ({ ...legacyStatus(status)!, at: at(-daysAgo) }))
 }
 
 function application(
   company: string,
-  entries: readonly (readonly [StateId, number])[],
+  entries: readonly (readonly [string, number])[],
   overrides: Partial<Application> = {},
 ): Application {
   const trail = history(entries)
@@ -42,7 +46,9 @@ function application(
     url: null,
     source: null,
     state: last?.state ?? 'applied',
+    outcome: last?.outcome ?? 'active',
     state_history: trail,
+    archived_at: null,
     next_action: null,
     next_action_at: null,
     deadline_at: null,
@@ -88,9 +94,9 @@ describe('hearing back', () => {
 
   it('reads two moves on one day as no days, like every other span', () => {
     const sameDay = application('Fast Co', [])
-    const trail = [
-      { state: 'applied' as StateId, at: at(-3, 9) },
-      { state: 'auto_rejected' as StateId, at: at(-3, 17) },
+    const trail: StateHistoryEntry[] = [
+      { state: 'applied', outcome: 'active', at: at(-3, 9) },
+      { state: 'applied', outcome: 'rejected', at: at(-3, 17) },
     ]
 
     expect(daysToFirstReply({ ...sameDay, state_history: trail })).toBe(0)
@@ -98,9 +104,9 @@ describe('hearing back', () => {
 
   it('reads history in time order rather than trusting the stored order', () => {
     const scrambled = application('Jumbled Co', [])
-    const trail = [
-      { state: 'recruiter_messaged' as StateId, at: at(-10) },
-      { state: 'applied' as StateId, at: at(-20) },
+    const trail: StateHistoryEntry[] = [
+      { state: 'recruiter_messaged', outcome: 'active', at: at(-10) },
+      { state: 'applied', outcome: 'active', at: at(-20) },
     ]
 
     expect(daysToFirstReply({ ...scrambled, state_history: trail })).toBe(10)
@@ -158,7 +164,7 @@ describe('the furthest live stage reached', () => {
     ).toBe('interview_1')
   })
 
-  it('ignores rejected states, which are not stages of their own', () => {
+  it('reads a rejection as the stage it happened at', () => {
     expect(
       furthestLiveState(application('Turned Down Co', [
         ['applied', 30],
@@ -168,11 +174,15 @@ describe('the furthest live stage reached', () => {
     ).toBe('recruiter_interview')
   })
 
-  it('is null for an application that has only ever been rejected', () => {
-    const trail = [{ state: 'auto_rejected' as StateId, at: at(-5) }]
+  it('is the stage an application was filed at when it was rejected there', () => {
+    const trail: StateHistoryEntry[] = [{ state: 'applied', outcome: 'rejected', at: at(-5) }]
     expect(
       furthestLiveState({ ...application('Filed Closed Co', []), state_history: trail }),
-    ).toBeNull()
+    ).toBe('applied')
+  })
+
+  it('is null for an application with no history', () => {
+    expect(furthestLiveState(application('Historyless Co', []))).toBeNull()
   })
 })
 

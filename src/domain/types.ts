@@ -1,23 +1,35 @@
+/**
+ * How far an application has got: the stage it is at, or was at when it ended. It says
+ * nothing about whether it is still running — that is `OutcomeId`, a second field beside it —
+ * so every stage has one id however the application ends, and a prep note, an invite or a
+ * message is filed against the conversation it belongs to rather than against how that
+ * conversation turned out.
+ */
 export type StateId =
   | 'headhunted'
-  | 'no_openings'
   | 'applied'
-  | 'auto_rejected'
   | 'recruiter_messaged'
-  | 'recruiter_messaged_rejected'
   | 'online_assessment'
-  | 'online_assessment_rejected'
   | 'recruiter_interview'
-  | 'recruiter_interview_rejected'
   | 'take_home_assessment'
-  | 'take_home_assessment_rejected'
   | 'interview_1'
-  | 'interview_1_rejected'
   | 'interview_2'
-  | 'interview_2_rejected'
   | 'offer'
-  | 'offer_rejected'
   | 'accepted'
+
+/**
+ * Whether an application is still running and, when it is not, who ended it. `withdrawn` is
+ * you pulling out; `closed` is the employer ending it without turning you down — the role was
+ * filled, pulled or frozen, or they went silent; `rejected` is them turning you down. Taking
+ * the job is not an outcome: it is the last stage, Accepted.
+ */
+export type OutcomeId = 'active' | 'rejected' | 'withdrawn' | 'closed'
+
+/** Where an application stands: its stage and how that stage is going. */
+export interface Status {
+  state: StateId
+  outcome: OutcomeId
+}
 
 export type RatingDimensionId = 'work' | 'growth' | 'people' | 'company'
 
@@ -25,6 +37,7 @@ export type CompensationStageId = 'advertised' | 'expected' | 'offered'
 
 export interface StateHistoryEntry {
   state: StateId
+  outcome: OutcomeId
   at: string
 }
 
@@ -253,7 +266,14 @@ export interface Application {
   url: string | null
   source: string | null
   state: StateId
+  outcome: OutcomeId
   state_history: StateHistoryEntry[]
+  /**
+   * When the application was put away, or null. A visibility flag rather than an outcome:
+   * archiving keeps how it ended, and hides it so the next job search does not start among
+   * the last one's leftovers.
+   */
+  archived_at: string | null
   next_action: string | null
   next_action_at: string | null
   deadline_at: string | null
@@ -283,6 +303,7 @@ export interface TrackerIndexes {
   by_deadline_at: string[]
   with_next_action: string[]
   unscheduled_next_actions: string[]
+  by_outcome: Record<OutcomeId, string[]>
   ever_reached: Record<StateId, string[]>
   search_text: Record<string, string>
   stats_current: Record<StateId, number>
@@ -290,6 +311,8 @@ export interface TrackerIndexes {
 }
 
 export interface TrackerDatabase {
+  /** The document layout this file is written in; see `DATA_VERSION`. */
+  schema_version: 3
   schema: JsonSchemaObject
   applications: Application[]
   indexes: TrackerIndexes
@@ -298,9 +321,10 @@ export interface TrackerDatabase {
 /** Canonical persisted tracker document (JSON file database). */
 export type TrackerDocument = TrackerDatabase
 
+/** An export from before the document embedded its schema. Migrated on import. */
 export interface LegacyTrackerDocument {
   schema_version: 1
-  applications: Application[]
+  applications: unknown[]
 }
 
 export interface ApplicationInput {
@@ -309,6 +333,7 @@ export interface ApplicationInput {
   url?: string | null
   source?: string | null
   state?: StateId
+  outcome?: OutcomeId
   next_action?: string | null
   next_action_at?: string | null
   deadline_at?: string | null

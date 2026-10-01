@@ -105,6 +105,11 @@
      a fraction of whatever the pane happens to be. */
   --capture-max: 70%;
 
+  /* Every filter in the context bar is this wide, whatever it holds or is set to, so
+     choosing an option never moves the controls beside it. Wide enough for the longest
+     label any of them carries ("Current and archived", "Take-home assessment"). */
+  --filter: 12rem;
+
   /* Page gutter */
   --gutter: clamp(var(--s4), 2vw, var(--s6));
 
@@ -661,8 +666,23 @@ p {
   text-align: left;
 }
 
-.actions-menu__item:hover {
+/* One line each in More actions, however long the label: the panel grows to the widest
+   item rather than an item wrapping inside the panel's floor. The End menu shares the item
+   style but keeps its wrap, its items being a label over a sentence of hint. */
+.actions-menu .actions-menu__item {
+  white-space: nowrap;
+}
+
+.actions-menu__item:hover:not(:disabled) {
   background: var(--surface-2);
+}
+
+/* Unavailable reads as unavailable: greyed, and no hover to suggest a press would do
+   anything. Kept in the menu rather than hidden, so the action is still findable before
+   there is anything for it to act on. */
+.actions-menu__item:disabled {
+  color: var(--ink-3);
+  cursor: default;
 }
 
 .actions-menu__item svg {
@@ -700,18 +720,16 @@ p {
 }
 
 /*
- * One row, always: the three filters and the button that copies from them. They are read
- * and set as a group, so the group is what wraps — below the title when the bar is tight —
- * rather than the controls splitting across lines among themselves.
- *
- * That means the controls give up width instead. Each keeps a floor it will not shrink
- * past, which is also what gives this row a min-content width to wrap at; under it the
- * narrow-width rules below let the row break again rather than crush what is in it.
+ * The filters, Copy roles and Clear filters, read and set as a group, so the group is what
+ * moves below the title when the bar is tight. Inside it the controls keep their widths and
+ * wrap instead of giving width up: a control that shrank with the row moved every time the
+ * row changed, which is the layout shift this exists to prevent.
  */
 .context-bar__filters {
   display: flex;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--s2);
   margin-left: auto;
 }
@@ -748,10 +766,15 @@ p {
   font-size: var(--t3);
 }
 
+/*
+ * One fixed width for every filter. A select sized by the row shrank and grew as the row
+ * did — when Clear filters came and went, when the count changed length — and one sized by
+ * its content changed width as its value did. Fixed, the row only reflows when the window
+ * does, and wraps as a whole row of equal controls rather than squeezing them.
+ */
 .context-bar select {
-  flex: 0 1 12rem;
-  min-width: 6rem;
-  max-width: 12rem;
+  flex: none;
+  width: var(--filter);
 }
 
 /*
@@ -945,11 +968,15 @@ p {
     background 120ms ease;
 }
 
-.kanban-lane--rejected {
+/*
+ * Every way of ending reads the same quiet shade: the lane heading says which way it
+ * was, and four tints would make the board read as a legend to decode.
+ */
+.kanban-lane--ended {
   background: var(--surface-3);
 }
 
-.kanban-lane--rejected .kanban-lane__header h3 {
+.kanban-lane--ended .kanban-lane__header h3 {
   color: var(--ink-2);
 }
 
@@ -1133,8 +1160,8 @@ p {
 }
 
 /*
- * "Move" control. The card already sits in its state's lane, so showing that
- * same state again is redundant. The native select is kept — it is the
+ * "Stage" control. The card already sits in its stage's column, so showing that
+ * same stage again is redundant. The native select is kept — it is the
  * accessible and touch fallback for drag-and-drop — but laid over a compact
  * "Move" trigger at zero opacity, so it stays focusable and operable while
  * the card reads cleanly.
@@ -2150,18 +2177,151 @@ tbody tr:hover {
 }
 
 /*
- * Sits under the state select in the same cell, the way Done sits under the action text.
- * Quieter than the select above it: the select is how a row's state is read, this is only
- * a shortcut to one of its options.
+ * The quick moves: back, on, End and Archive, or Reopen and Archive once it has ended.
+ * Quieter than the select beside them — the select is how a row's stage is read, these are
+ * shortcuts — and one line that does not wrap: buttons stacked down a table cell made
+ * every row several lines tall.
  */
-.reject-button {
+/*
+ * `contain: inline-size` keeps the row out of the width calculation above it. Without it a
+ * row that cannot wrap reports its whole text as a minimum, and one long stage name widens
+ * the card, then the lane, then the column, over the one beside it — `min-width: 0` stops
+ * the shrinking floor but not that intrinsic minimum.
+ */
+.move-controls {
+  display: flex;
+  align-items: center;
   gap: var(--s2);
-  min-height: 28px;
+  min-width: 0;
+  contain: inline-size;
+}
+
+.move-controls--table {
   margin-top: var(--s2);
+}
+
+.move-controls__button {
+  gap: var(--s2);
+  min-height: var(--control);
   padding: 0 var(--s3);
   color: var(--ink-2);
   font-size: var(--t2);
   white-space: nowrap;
+}
+
+/* The table's own control height, the one the stage select beside them keeps. */
+.move-controls--table .move-controls__button {
+  min-height: 28px;
+  padding: 0 var(--s2);
+}
+
+.move-controls__back {
+  padding: 0 var(--s2);
+}
+
+.move-controls__next,
+.move-controls__archive {
+  padding: 0 var(--s2);
+}
+
+/*
+ * A table cell holds Reopen and Archive side by side only as icons; with their words on
+ * they ran past the column's edge. The words stay on the card, which has the room, and in
+ * both places in the tooltip and the accessible name.
+ */
+.move-controls--table .move-controls__label {
+  display: none;
+}
+
+.move-controls__end {
+  position: relative;
+}
+
+.move-controls__panel {
+  right: auto;
+  left: 0;
+}
+
+.move-controls__item {
+  display: grid;
+  gap: var(--s1);
+  padding: var(--s2) var(--s3);
+}
+
+.move-controls__item-hint {
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+/* The stage select and what became of it, read together as one value. */
+.table-state {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.outcome-badges {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--s2);
+}
+
+.outcome-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  padding: var(--s1) var(--s3);
+  border-radius: var(--pill);
+  color: var(--ink-2);
+  background: var(--surface-3);
+  font-size: var(--t1);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/*
+ * Archived reads apart from everything else at a glance, with both on screen: a dashed
+ * outline where every other badge and card has a solid one or none. Dashed rather than a
+ * colour, because teal is the only accent here and a fading of the card would read as
+ * Idle, which already uses the muted surface.
+ */
+.outcome-badge--archived {
+  border: 1px dashed var(--ink-3);
+  background: transparent;
+}
+
+.application-card__archived {
+  margin: 0;
+}
+
+.application-card--archived {
+  border-style: dashed;
+  border-color: var(--ink-3);
+  background: transparent;
+}
+
+.table-row--archived > th,
+.table-row--archived > td {
+  background: var(--surface-2);
+}
+
+.table-row--archived > th:first-child {
+  box-shadow: inset 2px 0 0 var(--ink-3);
+}
+
+
+/* A checkbox and its words on one line, where a field puts its label above its control. */
+.field--check {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+}
+
+.field--check input {
+  width: auto;
+  min-height: 0;
 }
 
 .stage-note {
@@ -4571,7 +4731,8 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .table-col-header input,
   .table-col-header select,
   .table-state-select,
-  .reject-button,
+  .move-controls__button,
+  .move-controls--table .move-controls__button,
   .stage-notes-button--table,
   .complete-action-button--table,
   .stage-note__mode {

@@ -7,7 +7,7 @@ import {
 import { isCorrespondenceDirection } from './correspondence'
 import { createUuidV7 } from './id'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
-import { isRejectedState, isStateId, stateRank } from './states'
+import { isOutcomeId, isStateId, outcomeAbandonsTask, stateRank } from './states'
 import { safeAttachmentFilename } from './attachmentPaths'
 import type {
   Application,
@@ -29,6 +29,7 @@ import type {
   StateEvent,
   StateEventDraft,
   StateId,
+  Status,
   TrackerDocument,
 } from './types'
 
@@ -128,6 +129,8 @@ export function createApplication(
   const createdAt = timestamp(at)
   const state = input.state ?? 'applied'
   if (!isStateId(state)) throw new TypeError('State is invalid')
+  const outcome = input.outcome ?? 'active'
+  if (!isOutcomeId(outcome)) throw new TypeError('Outcome is invalid')
   const nextAction = optionalText(input.next_action)
 
   return {
@@ -137,7 +140,9 @@ export function createApplication(
     url: checkedUrl(input.url),
     source: optionalText(input.source),
     state,
-    state_history: [{ state, at: createdAt }],
+    outcome,
+    state_history: [{ state, outcome, at: createdAt }],
+    archived_at: null,
     next_action: nextAction,
     next_action_at: nextAction ? optionalTimestamp(input.next_action_at) : null,
     deadline_at: optionalTimestamp(input.deadline_at),
@@ -797,37 +802,63 @@ export function removeAttachment(
 }
 
 /**
- * A rejection ends the application, so a task still sitting on it is work that will not
- * happen. The move drops it rather than leaving it to be cleared by hand, which is what
- * otherwise accumulates: the rejection arrives, the stage moves, and the follow-up stays
- * on the plan forever because nothing ever asks about it again.
+ * Moves an application along either axis: `state` is how far it got, `outcome` is whether it
+ * is still running. Whatever the change leaves out is kept, so the stage select can correct
+ * where an application ended without reopening it, and End can close it where it stands.
+ *
+ * A rejection or a withdrawal ends the work, so a task still sitting on the application is
+ * work that will not happen. The move drops it rather than leaving it to be cleared by hand,
+ * which is what otherwise accumulates: the rejection arrives, the outcome changes, and the
+ * follow-up stays on the plan forever because nothing ever asks about it again.
  *
  * It is dropped, never recorded through `completeNextAction`. An abandoned task was not
  * carried out, and `completed_actions` means carried out. The history entry for the move
  * is the record of why it went, and `deadline_at` is untouched for the same reason it
  * survives a completion: an external closing date is not the task.
  *
- * Only rejected states, not every ending. `accepted` is an outcome you act on — sign the
- * contract, give notice — so a task there is live work, and `no_openings` is close enough
- * to a rejection to be tempting but is a state you may still be working, since nothing was
- * turned down. Widening this would mean guessing, and guessing wrong deletes a task.
+ * Not every ending. A role the employer `closed` may still be worth "check back in March",
+ * and reaching the Accepted stage is a move of stage, never of outcome — a task there
+ * (sign the contract, give notice) is live work. Widening this would mean guessing, and guessing wrong deletes a task.
  */
-export function moveApplicationState(
+export function moveApplicationStatus(
   application: Application,
-  state: StateId,
+  change: Partial<Status>,
   at: Date | string = new Date(),
 ): Application {
+  const state = change.state ?? application.state
+  const outcome = change.outcome ?? application.outcome
   if (!isStateId(state)) throw new TypeError('State is invalid')
-  if (application.state === state) return application
+  if (!isOutcomeId(outcome)) throw new TypeError('Outcome is invalid')
+  if (application.state === state && application.outcome === outcome) return application
   const updatedAt = timestamp(at)
-  const abandonsNextAction = isRejectedState(state) && Boolean(optionalText(application.next_action))
+  const abandonsNextAction =
+    outcome !== application.outcome
+    && outcomeAbandonsTask(outcome)
+    && Boolean(optionalText(application.next_action))
   return {
     ...application,
     state,
+    outcome,
     ...(abandonsNextAction ? { next_action: null, next_action_at: null } : null),
-    state_history: [...application.state_history, { state, at: updatedAt }],
+    state_history: [...application.state_history, { state, outcome, at: updatedAt }],
     updated_at: updatedAt,
   }
+}
+
+/**
+ * Puts an application away, or brings it back. Archiving is a visibility flag rather than a
+ * move: the outcome and the history stay exactly as they were, so an archived rejection is
+ * still a rejection when Statistics counts the searches it covers. It appends no history,
+ * since nothing about the application's progress changed.
+ */
+export function setApplicationArchived(
+  application: Application,
+  archived: boolean,
+  at: Date | string = new Date(),
+): Application {
+  if ((application.archived_at !== null) === archived) return application
+  const updatedAt = timestamp(at)
+  return { ...application, archived_at: archived ? updatedAt : null, updated_at: updatedAt }
 }
 
 /**
@@ -1044,17 +1075,65 @@ export function addApplicationStateEvent(
 export function moveApplication(
   document: TrackerDocument,
   id: string,
-  state: StateId,
+  change: Partial<Status>,
   at: Date | string = new Date(),
 ): TrackerDocument {
-  if (!isStateId(state)) throw new TypeError('State is invalid')
   const application = document.applications.find((item) => item.id === id)
-  if (!application || application.state === state) return document
+  if (!application) return document
+  const updated = moveApplicationStatus(application, change, at)
+  if (updated === application) return document
 
   return {
     ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+export function archiveApplication(
+  document: TrackerDocument,
+  id: string,
+  archived: boolean,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = setApplicationArchived(application, archived, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+/**
+ * The applications Archive all ended would put away: ended — rejected, withdrawn or closed,
+ * the outcomes End records — and not already archived. "Ended" means exactly what the End
+ * menu does, so an accepted job, which nobody ended, stays: it is the job you have, and
+ * its own Archive puts it away when the next search starts.
+ */
+export function archivableApplications(document: TrackerDocument): Application[] {
+  return document.applications.filter(
+    (application) => application.outcome !== 'active' && application.archived_at === null,
+  )
+}
+
+/**
+ * Archives every application that has ended, which is how a new job search starts clean.
+ * Anything still active is left out even from a bulk clear — one still running belongs to
+ * the search you are starting as much as to the last, and an accepted job is archived on
+ * its own when you are ready to.
+ */
+export function archiveEndedApplications(
+  document: TrackerDocument,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const archivable = new Set(archivableApplications(document).map((application) => application.id))
+  if (archivable.size === 0) return document
+  return {
+    ...document,
     applications: document.applications.map((application) =>
-      application.id === id ? moveApplicationState(application, state, at) : application,
+      archivable.has(application.id) ? setApplicationArchived(application, true, at) : application,
     ),
   }
 }

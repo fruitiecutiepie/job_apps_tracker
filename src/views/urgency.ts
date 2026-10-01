@@ -1,4 +1,4 @@
-import { LIVE_STATE_IDS, classifyLifecycle } from "../domain";
+import { FINAL_STATE, STATE_IDS, classifyLifecycle, stateRank } from "../domain";
 import type { Application, StateId } from "../domain";
 import {
   applicationAgeInDays,
@@ -17,14 +17,6 @@ import {
  * definitions of "still running" would let what a view shows drift from what it ranks.
  */
 export { classifyLifecycle, type Lifecycle } from "../domain";
-
-/**
- * Position within the live stages only. The configured order interleaves live and
- * rejected states, so the raw STATE_CONFIG index is not a progress measure.
- */
-const LIVE_STATE_ORDER = new Map<StateId, number>(
-  LIVE_STATE_IDS.map((id, index) => [id, index]),
-);
 
 /**
  * Horizons encode confidence, not importance: every dated term peaks at 1 on its own day,
@@ -77,10 +69,14 @@ interface PressureTerm {
 
 const NO_PRESSURE: PressureTerm = { pressure: 0, detail: "", kind: "none", dueAt: null };
 
+/**
+ * Further along weighs more: the first stage is 1/9, an offer is 1. Counted over the stages
+ * an application can be ranked at, which leaves out Accepted — reached, the search is done.
+ */
+const RANKED_STAGES = STATE_IDS.filter((state) => state !== FINAL_STATE).length;
+
 function stageWeight(state: StateId): number {
-  const ordinal = LIVE_STATE_ORDER.get(state);
-  if (ordinal === undefined) return 0;
-  return (ordinal + 1) / LIVE_STATE_ORDER.size;
+  return Math.min(1, (stateRank(state) + 1) / RANKED_STAGES);
 }
 
 /** Whole browser-local calendar days from today, so a time earlier today is still day 0. */
@@ -190,7 +186,7 @@ function stalenessPressure(application: Application, today: Date): PressureTerm 
  * are finished, so they stay out of the ranking entirely.
  */
 export function urgencyFor(application: Application, today: Date = new Date()): UrgencyRanking | null {
-  if (classifyLifecycle(application.state) !== "live") return null;
+  if (classifyLifecycle(application) !== "live") return null;
 
   // Ordered by precedence, so an equal-pressure tie resolves to the firmest fact first.
   const terms = [

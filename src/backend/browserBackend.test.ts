@@ -4,10 +4,10 @@ import { createApplication } from '../domain/mutations'
 import { prepareTrackerDatabase } from '../domain/database'
 import { MAX_ATTACHMENT_BYTES } from '../domain/attachmentPaths'
 import type { TrackerDatabase } from '../domain/types'
-import { browserBackend, TRACKER_FILENAME } from './browserBackend'
+import { browserBackend, MIGRATION_BACKUP_FILENAME, TRACKER_FILENAME } from './browserBackend'
 import { FakeDirectory } from './fakeDirectory'
 import { idbName, memoryStore, type KeyValueStore } from './idb'
-import type { DirectoryHandleLike } from './fileSystem'
+import { writeFileIn, type DirectoryHandleLike } from './fileSystem'
 
 const APPLICATION_ID = '11111111-1111-7111-8111-111111111111'
 const ATTACHMENT_ID = '22222222-2222-7222-8222-222222222222'
@@ -200,6 +200,39 @@ describe('browser backend, with a folder connected', () => {
     expect(loaded.applications.map((application) => application.company)).toEqual([
       'Already in the folder',
     ])
+  })
+
+  it('keeps a pre-split file aside before anything writes the migrated one over it', async () => {
+    const legacy = JSON.stringify({
+      applications: [{
+        id: APPLICATION_ID,
+        company: 'Old File Co',
+        state: 'auto_rejected',
+        created_at: '2026-07-01T09:00:00.000Z',
+        updated_at: '2026-07-01T09:00:00.000Z',
+      }],
+    })
+    await writeFileIn(folder, TRACKER_FILENAME, legacy)
+
+    const backend = connected(store, folder)
+    await backend.storage!.connect()
+    const loaded = await backend.loadDocument()
+    expect(loaded.applications[0]).toMatchObject({ state: 'applied', outcome: 'rejected' })
+    expect(folder.readText(MIGRATION_BACKUP_FILENAME)).toBe(legacy)
+
+    await backend.saveDocument(loaded)
+    expect(folder.readText(TRACKER_FILENAME)).toContain('"outcome": "rejected"')
+    // Once only: the backup is the original, not a copy of whatever was there last.
+    expect(folder.readText(MIGRATION_BACKUP_FILENAME)).toBe(legacy)
+  })
+
+  it('writes no backup for a file already in the current layout', async () => {
+    const backend = connected(store, folder)
+    await backend.storage!.connect()
+    await backend.saveDocument(withApplication())
+    await backend.loadDocument()
+
+    expect(folder.read(MIGRATION_BACKUP_FILENAME)).toBeNull()
   })
 
   it('seeds an empty folder with what the page already had', async () => {

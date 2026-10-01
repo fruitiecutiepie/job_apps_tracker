@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { STATE_IDS, emptyCompensation, stateFilterMatches } from '../domain'
-import type { Application, StateEvent, StateId } from '../domain'
+import { OUTCOME_IDS, STATE_IDS, emptyCompensation, outcomeFilterMatches } from '../domain'
+import type { Application, OutcomeId, StateEvent, StateId } from '../domain'
 import {
   ACTION_HORIZON_DAYS,
   DEADLINE_HORIZON_DAYS,
@@ -31,8 +31,10 @@ function application(company: string, overrides: Partial<Application> = {}): App
     url: null,
     source: null,
     state,
+    outcome: 'active',
     // Moved recently, so fixtures start with no silence pressure.
-    state_history: [{ state, at: at(-1) }],
+    state_history: [{ state, outcome: 'active', at: at(-1) }],
+    archived_at: null,
     next_action: null,
     next_action_at: null,
     deadline_at: null,
@@ -71,7 +73,7 @@ function invite(daysFromToday: number, overrides: Partial<StateEvent> = {}): Sta
 
 function movedDaysAgo(days: number): Pick<Application, 'state_history' | 'updated_at'> {
   // updated_at stays fresh on purpose: an edit must not count as movement.
-  return { state_history: [{ state: 'applied', at: at(-days) }], updated_at: at(0) }
+  return { state_history: [{ state: 'applied', outcome: 'active', at: at(-days) }], updated_at: at(0) }
 }
 
 function score(overrides: Partial<Application>): number {
@@ -83,58 +85,55 @@ function reason(overrides: Partial<Application>): string {
 }
 
 describe('lifecycle classification', () => {
-  it('separates live stages from rejected and closed outcomes', () => {
-    expect(classifyLifecycle('applied')).toBe('live')
-    expect(classifyLifecycle('headhunted')).toBe('live')
-    expect(classifyLifecycle('offer')).toBe('live')
-
-    expect(classifyLifecycle('auto_rejected')).toBe('rejected')
-    expect(classifyLifecycle('interview_2_rejected')).toBe('rejected')
-    expect(classifyLifecycle('offer_rejected')).toBe('rejected')
-
-    expect(classifyLifecycle('accepted')).toBe('closed')
-    expect(classifyLifecycle('no_openings')).toBe('closed')
+  it('separates the running outcome from rejected and closed ones', () => {
+    expect(classifyLifecycle({ state: 'applied', outcome: 'active' })).toBe('live')
+    expect(classifyLifecycle({ state: 'applied', outcome: 'rejected' })).toBe('rejected')
+    expect(classifyLifecycle({ state: 'accepted', outcome: 'active' })).toBe('closed')
+    expect(classifyLifecycle({ state: 'applied', outcome: 'withdrawn' })).toBe('closed')
+    expect(classifyLifecycle({ state: 'applied', outcome: 'closed' })).toBe('closed')
   })
 
   it('leaves rejected and closed applications out of the ranking', () => {
+    const ended = (company: string, state: StateId, outcome: OutcomeId) =>
+      application(company, { state, outcome, state_history: [{ state, outcome, at: at(-3) }] })
     const applications = [
       application('Live Co'),
-      application('Rejected Co', {
-        state: 'interview_1_rejected',
-        state_history: [{ state: 'interview_1_rejected', at: at(-3) }],
-      }),
-      application('Accepted Co', {
-        state: 'accepted',
-        state_history: [{ state: 'accepted', at: at(-3) }],
-      }),
-      application('Closed Co', {
-        state: 'no_openings',
-        state_history: [{ state: 'no_openings', at: at(-3) }],
-      }),
+      ended('Rejected Co', 'interview_1', 'rejected'),
+      ended('Accepted Co', 'accepted', 'active'),
+      ended('Closed Co', 'headhunted', 'closed'),
+      ended('Withdrawn Co', 'interview_2', 'withdrawn'),
     ]
 
-    expect(urgencyFor(applications[1], today)).toBeNull()
-    expect(urgencyFor(applications[2], today)).toBeNull()
-    expect(urgencyFor(applications[3], today)).toBeNull()
+    for (const finished of applications.slice(1)) expect(urgencyFor(finished, today)).toBeNull()
     expect(rankByUrgency(applications, today).map(({ application: item }) => item.company)).toEqual([
       'Live Co',
     ])
   })
 })
 
-describe('the live filter and the ranking share one definition', () => {
-  it('ranks exactly the states the live filter admits', () => {
-    const applications: Application[] = STATE_IDS.map((state) =>
-      application(`${state} Co`, { state, state_history: [{ state, at: at(-3) }] }),
+describe('the outcome filter and the ranking share one definition', () => {
+  it('ranks exactly the running applications, at every stage short of Accepted', () => {
+    const applications: Application[] = STATE_IDS.flatMap((state) =>
+      OUTCOME_IDS.map((outcome) =>
+        application(`${state} ${outcome} Co`, {
+          state,
+          outcome,
+          state_history: [{ state, outcome, at: at(-3) }],
+        }),
+      ),
     )
 
-    const ranked = rankByUrgency(applications, today).map(({ application: item }) => item.state)
-    const admitted = STATE_IDS.filter((state) => stateFilterMatches('live', state))
+    const ranked = rankByUrgency(applications, today).map(({ application: item }) => item)
 
-    expect(ranked.slice().sort()).toEqual(admitted.slice().sort())
-    expect(applications.filter((item) => urgencyFor(item, today) !== null)).toHaveLength(
-      admitted.length,
+    expect(new Set(ranked.map(({ outcome }) => outcome))).toEqual(
+      new Set(OUTCOME_IDS.filter((outcome) => outcomeFilterMatches('active', outcome))),
     )
+    // Every stage but the last: an accepted job is active as an application and finished
+    // for the search, so it has nothing left to rank for.
+    expect(ranked.map(({ state }) => state)).toEqual(
+      expect.arrayContaining(STATE_IDS.filter((state) => state !== 'accepted')),
+    )
+    expect(ranked).toHaveLength(STATE_IDS.length - 1)
   })
 })
 
@@ -294,13 +293,13 @@ describe('score composition', () => {
   it('ranks later stages above earlier ones under equal pressure', () => {
     const offer = score({
       state: 'offer',
-      state_history: [{ state: 'offer', at: at(-3) }],
+      state_history: [{ state: 'offer', outcome: 'active', at: at(-3) }],
       deadline_at: at(2),
     })
     const applied = score({ deadline_at: at(2) })
     const headhunted = score({
       state: 'headhunted',
-      state_history: [{ state: 'headhunted', at: at(-3) }],
+      state_history: [{ state: 'headhunted', outcome: 'active', at: at(-3) }],
       deadline_at: at(2),
     })
 
@@ -393,14 +392,14 @@ describe('ranking order', () => {
     // 6/7 x 7/9 and 1 x 2/3 are the same number reached two ways, so these tie in practice.
     const soon = application('Soon Co', {
       state: 'recruiter_interview',
-      state_history: [{ state: 'recruiter_interview', at: at(-2) }],
+      state_history: [{ state: 'recruiter_interview', outcome: 'active', at: at(-2) }],
       next_action: 'Prepare',
       next_action_at: at(1),
       updated_at: at(-2),
     })
     const late = application('Late Co', {
       state: 'recruiter_messaged',
-      state_history: [{ state: 'recruiter_messaged', at: at(-3) }],
+      state_history: [{ state: 'recruiter_messaged', outcome: 'active', at: at(-3) }],
       next_action: 'Send availability',
       next_action_at: at(-1),
       updated_at: at(-3),

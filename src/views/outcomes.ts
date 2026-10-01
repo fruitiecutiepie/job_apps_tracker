@@ -1,4 +1,4 @@
-import { LIVE_STATE_IDS, classifyLifecycle } from "../domain";
+import { classifyLifecycle, stateRank } from "../domain";
 import type { Application, StateId } from "../domain";
 import { localDayNumber, parseTimestamp } from "./viewUtils";
 
@@ -12,15 +12,13 @@ import { localDayNumber, parseTimestamp } from "./viewUtils";
  * over the document, derived on render like every other view value.
  */
 
-const LIVE_ORDER = new Map<StateId, number>(LIVE_STATE_IDS.map((id, index) => [id, index]));
-
 /** Ordered oldest first, so the first entry is where the application started. */
 function historyInOrder(application: Application) {
   return [...application.state_history].sort((left, right) => left.at.localeCompare(right.at));
 }
 
 /**
- * Whether anything was recorded after the state the application started in.
+ * Whether anything was recorded after the stage and outcome the application started in.
  *
  * This is the closest honest reading of "did they reply" the document supports, and it is
  * named for what it measures rather than for what it is used as: a second recorded state
@@ -50,31 +48,29 @@ export function daysToFirstReply(application: Application): number | null {
 }
 
 /**
- * Whether the application ever reached a live stage later than the one it started in.
+ * Whether the application ever reached a stage later than the one it started in.
  *
- * Stage order comes from `LIVE_STATE_IDS`, so a move that skips stages still counts and a
- * move backwards does not. Reaching a rejected state is not progress, which is what
- * separates this from `heardBack`.
+ * Stage order comes from `STATE_CONFIG`, so a move that skips stages still counts and a
+ * move backwards does not. Being turned down is not progress — it changes the outcome and
+ * leaves the stage where it was — which is what separates this from `heardBack`.
  */
 export function advanced(application: Application): boolean {
   const history = historyInOrder(application);
-  const start = LIVE_ORDER.get(history[0]?.state as StateId);
-  if (start === undefined) return false;
+  const first = history[0];
+  if (!first) return false;
+  const start = stateRank(first.state);
 
-  return history.slice(1).some((entry) => {
-    const rank = LIVE_ORDER.get(entry.state);
-    return rank !== undefined && rank > start;
-  });
+  return history.slice(1).some((entry) => stateRank(entry.state) > start);
 }
 
-/** The furthest live stage an application ever reached, or null if it never held one. */
+/** The furthest stage an application ever reached, or null if it has no history. */
 export function furthestLiveState(application: Application): StateId | null {
   let furthest: StateId | null = null;
   let best = -1;
 
   for (const entry of application.state_history) {
-    const rank = LIVE_ORDER.get(entry.state);
-    if (rank !== undefined && rank > best) {
+    const rank = stateRank(entry.state);
+    if (rank > best) {
       best = rank;
       furthest = entry.state;
     }
@@ -85,16 +81,16 @@ export function furthestLiveState(application: Application): StateId | null {
 
 export interface StageOutcomeRow {
   state: StateId;
-  /** Applications whose history holds this state, whether or not they are still in it. */
+  /** Applications whose history holds this stage, whether or not they are still in it. */
   reached: number;
-  /** Applications sitting in it now. */
+  /** Applications still running in it now. */
   here: number;
   /** Finished applications that got no further than this. */
   ended: number;
 }
 
 /**
- * One row per live stage that something has actually reached.
+ * One row per stage that something has actually reached.
  *
  * Deliberately not called a funnel, and deliberately not asserted to fall away down the
  * list: any state may move to any other, so an application can skip a stage entirely and
@@ -113,10 +109,10 @@ export function stageOutcomes(applications: Application[]): StageOutcomeRow[] {
 
   for (const application of applications) {
     for (const state of new Set(application.state_history.map((entry) => entry.state))) {
-      if (LIVE_ORDER.has(state)) rowFor(state).reached += 1;
+      rowFor(state).reached += 1;
     }
 
-    if (classifyLifecycle(application.state) === "live") {
+    if (classifyLifecycle(application) === "live") {
       rowFor(application.state).here += 1;
       continue;
     }
@@ -126,7 +122,7 @@ export function stageOutcomes(applications: Application[]): StageOutcomeRow[] {
   }
 
   return [...rows.values()].sort(
-    (left, right) => LIVE_ORDER.get(left.state)! - LIVE_ORDER.get(right.state)!,
+    (left, right) => stateRank(left.state) - stateRank(right.state),
   );
 }
 
@@ -192,7 +188,7 @@ export function outcomeSummary(applications: Application[]): OutcomeSummary {
 
   return {
     total: applications.length,
-    live: applications.filter((item) => classifyLifecycle(item.state) === "live").length,
+    live: applications.filter((item) => classifyLifecycle(item) === "live").length,
     heardBack: applications.filter(heardBack).length,
     advanced: applications.filter(advanced).length,
     medianDaysToFirstReply: median(replies),
