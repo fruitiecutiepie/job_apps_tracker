@@ -31,6 +31,7 @@ import {
   deleteApplication,
   deleteApplicationAttachmentFolder,
   downloadTrackerArchive,
+  downloadArchive,
   formatFileSize,
   importTrackerArchive,
   describeImportErrors,
@@ -71,7 +72,7 @@ import {
   type TrackerDocument,
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
-import { backend, isBrowserBackend, type StorageConnection } from './backend'
+import { backend, isBrowserBackend, type StorageConnection, type TrackerSummary } from './backend'
 import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
 import { ReplaceTrackerDialog, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
 import { useStorageState } from './useStorageState'
@@ -755,6 +756,8 @@ export default function App() {
   const [pendingReplace, setPendingReplace] = useState<{
     replacement: TrackerReplacement
     proceed: () => Promise<void>
+    /** Downloads the tracker about to be replaced or removed, which need not be this one. */
+    saveCopy: () => Promise<void>
   } | null>(null)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
@@ -903,6 +906,7 @@ export default function App() {
           folder: connection?.kind === 'connected' ? connection.name : null,
         },
         proceed: () => applyImport(result.document, result.files, file.name),
+        saveCopy: saveCurrentCopy,
       })
     } catch (error) {
       setNotice(`Import failed: ${errorMessage(error)}`)
@@ -932,12 +936,42 @@ export default function App() {
    * folder's files are never touched — they are the viewer's — which is why a folder
    * counts as the copy here when it does not for an import, which writes into it.
    */
-  const removeTracker = async () => {
+  const saveCurrentCopy = async () => {
+    const current = trackerRef.current
+    if (current) await downloadTrackerArchive(current, new Date(), storageState?.tracker?.name)
+  }
+
+  /*
+   * Removes a tracker from browser storage. Removing the one this tab holds opens the next;
+   * removing another leaves this tab where it is, and any tab holding that one is moved on
+   * by the backend.
+   */
+  const removeTracker = async (target: TrackerSummary) => {
     try {
-      const next = await backend.storage!.removeTracker()
-      navigation.open(trackerHref(next?.id ?? NEW_TRACKER))
+      const next = await backend.storage!.removeTracker(target.id)
+      if (target.id === storageState?.tracker?.id) {
+        navigation.open(trackerHref(next?.id ?? NEW_TRACKER))
+      } else {
+        setNotice(`Removed ${target.name} from this browser.`)
+      }
     } catch (error) {
-      setNotice(`Could not remove the tracker: ${errorMessage(error)}`)
+      setNotice(`Could not remove ${target.name}: ${errorMessage(error)}`)
+    }
+  }
+
+  /*
+   * The tracker this tab holds is renamed through its document like any edit. Another one
+   * is renamed by the backend, which writes its document — and its folder, if it has one.
+   */
+  const renameTrackerById = async (target: TrackerSummary, name: string) => {
+    try {
+      if (target.id === storageState?.tracker?.id) {
+        await commit((current) => renameTracker(current, name))
+      } else {
+        await backend.storage!.renameOtherTracker(target.id, name)
+      }
+    } catch (error) {
+      setNotice(`Could not rename ${target.name}: ${errorMessage(error)}`)
     }
   }
 
@@ -968,37 +1002,49 @@ export default function App() {
     }
   }
 
-  const askToRemoveTracker = () => {
-    const current = trackerRef.current?.applications.length ?? 0
+  /*
+   * The same question an import asks, about whichever tracker is being removed: the one
+   * this tab holds is measured from what is on screen, another from what its listing says.
+   */
+  const askToRemoveTracker = (target: TrackerSummary) => {
+    const holding = target.id === storageState?.tracker?.id
     const connection = storageState?.connection ?? null
-    const folder = connection?.kind === 'connected' ? connection.name : null
+    const current = holding ? (trackerRef.current?.applications.length ?? 0) : target.applications
+    const folder = holding
+      ? (connection?.kind === 'connected' ? connection.name : null)
+      : (target.folder ?? null)
+    const unbacked = holding ? (storageState?.unbackedSince ?? null) : (target.unbackedSince ?? null)
     // An empty tracker has nothing to lose, so there is nothing to ask.
     if (current === 0) {
-      void removeTracker()
+      void removeTracker(target)
       return
     }
     setPendingReplace({
       replacement: {
         kind: 'remove',
-        name: storageState?.tracker?.name ?? 'this tracker',
+        name: target.name,
         current,
-        backedUp:
-          folder !== null
-          || (connection !== null && storageState?.unbackedSince === null),
+        backedUp: folder !== null || (connection !== null && unbacked === null),
         folder,
       },
-      proceed: removeTracker,
+      proceed: () => removeTracker(target),
+      saveCopy: holding
+        ? saveCurrentCopy
+        : async () => {
+          const { document, files } = await backend.storage!.readTracker(target.id)
+          downloadArchive(document, files, new Date(), target.name)
+        },
     })
   }
+
 
   const answerReplace = async (choice: ReplaceChoice) => {
     const pending = pendingReplace
     setPendingReplace(null)
     if (!pending || choice === 'cancel') return
     if (choice === 'save-then-proceed') {
-      const current = trackerRef.current
       try {
-        if (current) await downloadTrackerArchive(current, new Date(), storageState?.tracker?.name)
+        await pending.saveCopy()
       } catch (error) {
         // No copy, no replacement: the viewer asked for the two together.
         setNotice(`Nothing was replaced, because saving a copy failed: ${errorMessage(error)}`)
@@ -1396,15 +1442,11 @@ export default function App() {
               current={storageState.tracker}
               listTrackers={listTrackers}
               onRemove={askToRemoveTracker}
+              onRename={renameTrackerById}
               onNewFromFolder={
                 storageState.connection.kind === 'unsupported' ? null : () => void newTrackerFromFolder()
               }
               onNewFromFile={() => newTrackerInputRef.current?.click()}
-              onRename={async (name) => {
-                // A mutation like any other: the name is the document's, so it reaches
-                // the folder, the other tabs, and the next export the way an edit does.
-                await commit((current) => renameTracker(current, name))
-              }}
             />
           )}
         </div>

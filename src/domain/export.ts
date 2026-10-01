@@ -50,7 +50,19 @@ export async function downloadTrackerArchive(
   at: Date = new Date(),
   name?: string,
 ): Promise<void> {
-  const files = await collectArchiveFiles(document)
+  downloadArchive(document, await collectArchiveFiles(document), at, name)
+}
+
+/**
+ * Downloads a document with attachment bytes already in hand — a tracker this tab is not
+ * holding, whose bytes `collectArchiveFiles` cannot reach through the open backend.
+ */
+export function downloadArchive(
+  document: TrackerDatabase,
+  files: ArchiveAttachmentFile[],
+  at: Date = new Date(),
+  name?: string,
+): void {
   const archiveBytes = packTrackerArchive(document, files)
   const blob = new Blob([archiveBytes as BlobPart], { type: 'application/zip' })
   const url = URL.createObjectURL(blob)

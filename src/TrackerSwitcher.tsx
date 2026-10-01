@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, FilePlus2, FolderOpen, Pencil, Trash2, Upload } from 'lucide-react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { Check, ChevronDown, FilePlus2, FolderOpen, Pencil, Trash2, Upload, X } from 'lucide-react'
 
 import type { TrackerSummary } from './backend'
 import { NEW_TRACKER, trackerHref } from './backend/trackerAddress'
@@ -7,9 +7,9 @@ import { NEW_TRACKER, trackerHref } from './backend/trackerAddress'
 export interface TrackerSwitcherProps {
   current: { id: string; name: string }
   listTrackers: () => Promise<TrackerSummary[]>
-  /** Asks before removing this tab's tracker from the browser. */
-  onRemove: () => void
-  onRename: (name: string) => Promise<void>
+  /** Asks before removing a tracker from the browser — this tab's or another. */
+  onRemove: (tracker: TrackerSummary) => void
+  onRename: (tracker: TrackerSummary, name: string) => Promise<void>
   /** Starts a new tracker from a folder; absent where the browser cannot open one. */
   onNewFromFolder: (() => void) | null
   /** Starts a new tracker from an exported file. */
@@ -27,9 +27,11 @@ function describeCount(count: number): string {
  *
  * Every tracker is a link rather than a button, because switching is a navigation: a
  * plain click opens it here, and a middle click or a modified one opens it in a tab of
- * its own, which is how two are worked on at once. New tracker is a link for the same
- * reason. Like More actions it is a disclosure of plain controls, not an ARIA menu, so
- * Tab alone reaches everything in it.
+ * its own, which is how two are worked on at once. Rename and Remove sit at the end of
+ * each row as icons, acting on that row's tracker, so a tracker can be tidied without
+ * opening it first; each names its tracker to a screen reader and on hover, since an icon
+ * alone does not say which row it belongs to. Like More actions it is a disclosure of
+ * plain controls, not an ARIA menu, so Tab alone reaches everything in it.
  */
 export function TrackerSwitcher({
   current,
@@ -41,14 +43,18 @@ export function TrackerSwitcher({
 }: TrackerSwitcherProps) {
   const [open, setOpen] = useState(false)
   /*
-   * Renaming happens in the panel rather than in a dialog of its own: it is one field, and
-   * the list it renames a row of is the context that makes the new name mean something.
+   * Renaming happens on the row being renamed rather than in a dialog: it is one field,
+   * and the list around it is the context that makes the new name mean something.
    */
-  const [renaming, setRenaming] = useState(false)
+  const [renamingId, setRenamingId] = useState<string | null>(null)
   const [draftName, setDraftName] = useState('')
   const [trackers, setTrackers] = useState<TrackerSummary[] | null>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+
+  const refresh = useCallback(async () => {
+    setTrackers(await listTrackers())
+  }, [listTrackers])
 
   useEffect(() => {
     if (!open) return
@@ -70,22 +76,22 @@ export function TrackerSwitcher({
     document.addEventListener('pointerdown', onPointerDown)
     return () => {
       cancelled = true
-      setRenaming(false)
+      setRenamingId(null)
       document.removeEventListener('keydown', onKeyDown)
       document.removeEventListener('pointerdown', onPointerDown)
     }
   }, [open, listTrackers])
 
-  const close = () => {
-    setOpen(false)
-    triggerRef.current?.focus()
-  }
-
   // A tracker never saved is not in the list yet, but it is the one on screen.
   const listed = trackers ?? []
-  const rows = listed.some((tracker) => tracker.id === current.id)
+  const rows: TrackerSummary[] = listed.some((tracker) => tracker.id === current.id)
     ? listed
     : [{ id: current.id, name: current.name, applications: 0, openedAt: '' }, ...listed]
+
+  const startRenaming = (tracker: TrackerSummary) => {
+    setDraftName(tracker.name)
+    setRenamingId(tracker.id)
+  }
 
   return (
     <div className="actions-menu tracker-switcher" ref={containerRef}>
@@ -102,39 +108,7 @@ export function TrackerSwitcher({
         <span className="tracker-switcher__name">{current.name}</span>
         <ChevronDown aria-hidden="true" size={14} />
       </button>
-      {open && renaming && (
-        <form
-          className="actions-menu__panel tracker-switcher__panel tracker-switcher__rename"
-          onSubmit={(event) => {
-            event.preventDefault()
-            if (!draftName.trim()) return
-            void onRename(draftName).then(close)
-          }}
-        >
-          <label className="field">
-            <span>Tracker name</span>
-            <input
-              autoFocus
-              onChange={(event) => setDraftName(event.target.value)}
-              onFocus={(event) => event.currentTarget.select()}
-              value={draftName}
-            />
-          </label>
-          <p className="tracker-switcher__caption">
-            Names this tracker here and in the tab. A connected folder keeps its own name on
-            disk.
-          </p>
-          <div className="tracker-switcher__rename-actions">
-            <button className="button button--primary" disabled={!draftName.trim()} type="submit">
-              Rename
-            </button>
-            <button className="button" onClick={() => setRenaming(false)} type="button">
-              Cancel
-            </button>
-          </div>
-        </form>
-      )}
-      {open && !renaming && (
+      {open && (
         <div className="actions-menu__panel tracker-switcher__panel">
           <p className="tracker-switcher__caption" id="tracker-switcher-caption">
             Trackers in this browser. Open one in a new tab to work in two at once.
@@ -142,8 +116,58 @@ export function TrackerSwitcher({
           <ul aria-labelledby="tracker-switcher-caption" className="tracker-switcher__list">
             {rows.map((tracker) => {
               const isCurrent = tracker.id === current.id
+              if (tracker.id === renamingId) {
+                return (
+                  <li key={tracker.id}>
+                    <form
+                      className="tracker-switcher__row tracker-switcher__rename"
+                      onSubmit={(event) => {
+                        event.preventDefault()
+                        if (!draftName.trim()) return
+                        void onRename(tracker, draftName).then(async () => {
+                          setRenamingId(null)
+                          await refresh()
+                        })
+                      }}
+                    >
+                      <input
+                        aria-label={`New name for ${tracker.name}`}
+                        autoFocus
+                        className="tracker-switcher__input"
+                        onChange={(event) => setDraftName(event.target.value)}
+                        onFocus={(event) => event.currentTarget.select()}
+                        onKeyDown={(event) => {
+                          // Escape backs out of the rename, not out of the whole panel.
+                          if (event.key !== 'Escape') return
+                          event.stopPropagation()
+                          setRenamingId(null)
+                        }}
+                        value={draftName}
+                      />
+                      <button
+                        aria-label={`Save the name for ${tracker.name}`}
+                        className="icon-button tracker-switcher__action"
+                        disabled={!draftName.trim()}
+                        title="Save name"
+                        type="submit"
+                      >
+                        <Check aria-hidden="true" size={16} />
+                      </button>
+                      <button
+                        aria-label={`Keep the name ${tracker.name}`}
+                        className="icon-button tracker-switcher__action"
+                        onClick={() => setRenamingId(null)}
+                        title="Cancel"
+                        type="button"
+                      >
+                        <X aria-hidden="true" size={16} />
+                      </button>
+                    </form>
+                  </li>
+                )
+              }
               return (
-                <li key={tracker.id}>
+                <li className="tracker-switcher__row" key={tracker.id}>
                   <a
                     aria-current={isCurrent ? 'page' : undefined}
                     className="actions-menu__item tracker-switcher__item"
@@ -155,6 +179,27 @@ export function TrackerSwitcher({
                       <small>{describeCount(tracker.applications)}</small>
                     </span>
                   </a>
+                  <button
+                    aria-label={`Rename ${tracker.name}`}
+                    className="icon-button tracker-switcher__action"
+                    onClick={() => startRenaming(tracker)}
+                    title={`Rename ${tracker.name}`}
+                    type="button"
+                  >
+                    <Pencil aria-hidden="true" size={15} />
+                  </button>
+                  <button
+                    aria-label={`Remove ${tracker.name} from this browser`}
+                    className="icon-button tracker-switcher__action tracker-switcher__action--remove"
+                    onClick={() => {
+                      setOpen(false)
+                      onRemove(tracker)
+                    }}
+                    title={`Remove ${tracker.name} from this browser`}
+                    type="button"
+                  >
+                    <Trash2 aria-hidden="true" size={15} />
+                  </button>
                 </li>
               )
             })}
@@ -192,27 +237,6 @@ export function TrackerSwitcher({
               <Upload aria-hidden="true" size={16} /> From a file…
             </button>
           </div>
-          <div className="tracker-switcher__divider" />
-          <button
-            className="actions-menu__item"
-            onClick={() => {
-              setDraftName(current.name)
-              setRenaming(true)
-            }}
-            type="button"
-          >
-            <Pencil aria-hidden="true" size={16} /> Rename this tracker
-          </button>
-          <button
-            className="actions-menu__item"
-            onClick={() => {
-              setOpen(false)
-              onRemove()
-            }}
-            type="button"
-          >
-            <Trash2 aria-hidden="true" size={16} /> Remove this tracker
-          </button>
         </div>
       )}
     </div>

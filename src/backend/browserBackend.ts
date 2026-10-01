@@ -2,6 +2,7 @@ import { isSafeAttachmentId, MAX_ATTACHMENT_BYTES } from '../domain/attachmentPa
 import { createEmptyDocument, ensureFreshIndexes, refreshTrackerDatabase } from '../domain/database'
 import { createDemoDocument } from '../domain/demo'
 import { createUuidV7 } from '../domain/id'
+import { renameTracker } from '../domain/mutations'
 import { isDemoTrackerProfile, trackerProfile } from '../domain/trackerProfile'
 import type { TrackerDatabase } from '../domain/types'
 import { assertTrackerDocument, parseTrackerDocument } from '../domain/validation'
@@ -276,6 +277,27 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
 
   function post(message: TabMessage): void {
     channel?.post(message)
+  }
+
+  /* Tells the tabs holding some tracker, this tab's or another. */
+  function postTo(tracker: string, message: TabMessage): void {
+    if (tracker === trackerId) {
+      post(message)
+      return
+    }
+    const other = openChannel(`${idbName(trackerProfile())}:${tracker}`)
+    other?.post(message)
+    other?.close?.()
+  }
+
+  /*
+   * A critical section on any tracker: this tab's own goes through `exclusive`; another's
+   * takes that tracker's lock, so it never lands between the halves of a write made by a
+   * tab holding it.
+   */
+  function onTracker<T>(tracker: string, run: () => Promise<T>): Promise<T> {
+    if (tracker === trackerId) return exclusive(run)
+    return serialized(() => locks.run(`${idbName(trackerProfile())}:${tracker}`, run))
   }
 
   /** A write's critical section: in this tab's queue, then under the tracker's lock. */
@@ -703,27 +725,85 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
 
     async listTrackers(): Promise<TrackerSummary[]> {
       await ready()
-      return listMetas()
+      const metas = await listMetas()
+      return Promise.all(metas.map(async (summary) => {
+        const handle = (await store.get('state', directoryKey(summary.id))) as DirectoryHandleLike | null
+        const backlog = (await store.get('state', backlogKey(summary.id))) as string | null
+        return { ...summary, folder: handle?.name ?? null, unbackedSince: backlog }
+      }))
     },
 
-    async removeTracker(): Promise<TrackerSummary | null> {
+    async removeTracker(removing: string): Promise<TrackerSummary | null> {
       await ready()
-      return exclusive(async () => {
-        const removing = id()
+      const holding = removing === id()
+      return onTracker(removing, async () => {
         await deleteAttachmentsWithPrefix(`${removing}/`)
         await store.delete('state', documentKey(removing))
         await store.delete('state', directoryKey(removing))
         await store.delete('state', backlogKey(removing))
         await store.delete('state', revisionKey(removing))
         await store.delete('state', metaKey(removing))
-        directory = null
-        meta = null
-        unbackedSince = null
+        if (holding) {
+          directory = null
+          meta = null
+          unbackedSince = null
+        }
         const next = (await listMetas())[0] ?? null
-        // Every other tab on it goes where this one goes, rather than writing it back.
-        post({ type: 'removed', next: next?.id ?? null })
+        // Every tab on it goes where this one would, rather than writing it back.
+        postTo(removing, { type: 'removed', next: next?.id ?? null })
         return next
       })
+    },
+
+    async renameOtherTracker(renaming: string, name: string): Promise<void> {
+      await ready()
+      if (renaming === id()) throw new Error('The open tracker is renamed through its document')
+      return onTracker(renaming, async () => {
+        const stored = (await store.get('state', metaKey(renaming))) as TrackerSummary | null
+        if (!stored) return
+        const text = (await store.get('state', documentKey(renaming))) as string | null
+        const document = text === null ? createEmptyDocument() : ensureFreshIndexes(parseTrackerDocument(text))
+        const renamed = renameTracker(document, name)
+        if (renamed === document) return
+        const written = serialize(renamed)
+        /*
+         * The folder's file is the copy that tracker reads first when it opens, so a name
+         * written only to browser storage would be undone the next time it did. Rewritten
+         * before anything is stored, so a refused permission leaves both copies agreeing.
+         */
+        const handle = (await store.get('state', directoryKey(renaming))) as DirectoryHandleLike | null
+        if (handle) {
+          if ((await permissionFor(handle, true)) !== 'granted') {
+            throw new Error(`${stored.name} keeps its name in the ${handle.name} folder, which this page was not allowed to write to`)
+          }
+          await writeFileIn(handle, TRACKER_FILENAME, written)
+        }
+        await store.put('state', documentKey(renaming), written)
+        await store.put('state', metaKey(renaming), {
+          ...stored,
+          name: renamed.name ?? stored.fallbackName ?? stored.name,
+        })
+        const revision = (((await store.get('state', revisionKey(renaming))) as number | null) ?? 0) + 1
+        await store.put('state', revisionKey(renaming), revision)
+        postTo(renaming, { type: 'document' })
+      })
+    },
+
+    async readTracker(reading: string) {
+      await ready()
+      const text = (await store.get('state', documentKey(reading))) as string | null
+      const document = text === null ? createEmptyDocument() : ensureFreshIndexes(parseTrackerDocument(text))
+      const prefix = `${reading}/`
+      const files: Array<{ applicationId: string; attachmentId: string; data: Uint8Array }> = []
+      for (const key of await store.keys('attachments')) {
+        if (!key.startsWith(prefix)) continue
+        const [applicationId, attachmentId] = key.slice(prefix.length).split('/')
+        const bytes = (await store.get('attachments', key)) as ArrayBuffer | null
+        if (applicationId && attachmentId && bytes) {
+          files.push({ applicationId, attachmentId, data: new Uint8Array(bytes) })
+        }
+      }
+      return { document, files }
     },
 
     subscribe(listener): () => void {

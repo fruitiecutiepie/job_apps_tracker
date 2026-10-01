@@ -22,6 +22,8 @@ export type TabMessage =
 export interface TabChannel {
   post(message: TabMessage): void
   listen(listener: (message: TabMessage) => void): () => void
+  /** Lets go of a channel opened only to say one thing. */
+  close?(): void
 }
 
 /*
@@ -40,6 +42,7 @@ export function broadcastChannel(name: string): TabChannel | null {
   const channel = new BroadcastChannel(name)
   return {
     post: (message) => channel.postMessage(message),
+    close: () => channel.close(),
     listen(listener) {
       const onMessage = (event: MessageEvent) => listener(event.data as TabMessage)
       channel.addEventListener('message', onMessage)

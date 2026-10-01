@@ -757,6 +757,46 @@ describe('several trackers in one browser', () => {
     })
   })
 
+  /*
+   * The name is the document's, and a connected folder's file is what that tracker reads
+   * first when it opens; renaming it from elsewhere has to write the folder too, or the
+   * old name would come back the next time it did.
+   */
+  it('renames another tracker in its folder as well, or not at all', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const other = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+    await other.loadDocument()
+    await other.storage!.connect()
+    const otherId = other.storage!.state().tracker!.id
+    const { backend } = tab(NEW_TRACKER, { supportsFolders: true })
+    await backend.loadDocument()
+
+    await backend.storage!.renameOtherTracker(otherId, 'Autumn search')
+    expect(JSON.parse(folder.readText(TRACKER_FILENAME)!).name).toBe('Autumn search')
+
+    folder.permission = 'prompt'
+    folder.grantOnRequest = false
+    await expect(backend.storage!.renameOtherTracker(otherId, 'Spring search')).rejects.toThrow(/job-apps folder/)
+    expect(JSON.parse(folder.readText(TRACKER_FILENAME)!).name).toBe('Autumn search')
+    const listed = await backend.storage!.listTrackers()
+    expect(listed.find((tracker) => tracker.id === otherId)?.name).toBe('Autumn search')
+  })
+
+  it('reads another tracker whole, so it can be exported before it is removed', async () => {
+    const { backend } = tab(NEW_TRACKER)
+    const imported = withApplication('Imported')
+    const applicationId = imported.applications[0].id
+    const created = await backend.storage!.createTracker(
+      imported,
+      [{ applicationId, attachmentId: ATTACHMENT_ID, data: new TextEncoder().encode('resume') }],
+      'last-year.json',
+    )
+
+    const { document, files } = await backend.storage!.readTracker(created.id)
+    expect(document.applications[0].company).toBe('Imported')
+    expect(files.map((file) => new TextDecoder().decode(file.data))).toEqual(['resume'])
+  })
+
   it('stores an imported file as a new tracker, attachments and all, beside this one', async () => {
     const { backend } = tab(NEW_TRACKER)
     await backend.saveDocument(withApplication('Stays here'))
@@ -808,7 +848,7 @@ describe('several trackers in one browser', () => {
     await removed.writeAttachment(APPLICATION_ID, ATTACHMENT_ID, new Blob(['resume']), null)
     const removedId = removed.storage!.state().tracker!.id
 
-    expect(await removed.storage!.removeTracker()).toMatchObject({ id: keptId })
+    expect(await removed.storage!.removeTracker(removedId)).toMatchObject({ id: keptId })
     expect((await store.keys('state')).filter((key) => key.includes(removedId))).toEqual([])
     expect((await store.keys('attachments')).filter((key) => key.startsWith(removedId))).toEqual([])
     expect(folder.readText(TRACKER_FILENAME)).toContain('Removed')
@@ -1014,8 +1054,34 @@ describe('one tracker open in two tabs', () => {
     const heard: ExternalChange[] = []
     second.subscribeChanges!((change) => heard.push(change))
 
-    await first.storage!.removeTracker()
+    await first.storage!.removeTracker(first.storage!.state().tracker!.id)
     await vi.waitFor(() => expect(heard).toEqual([{ kind: 'removed', next: expect.objectContaining({ id: keptId }) }]))
+  })
+
+  /*
+   * A tracker can be removed or renamed from another tab's switcher. Any tab holding it
+   * hears about it, the same as if one of its own had done it.
+   */
+  it('tells the tabs holding a tracker when another tab removes it', async () => {
+    const { first, second } = await twoTabs()
+    const heard: ExternalChange[] = []
+    second.subscribeChanges!((change) => heard.push(change))
+    const elsewhere = tab(NEW_TRACKER)
+    await elsewhere.saveDocument(withApplication('Elsewhere'))
+
+    await elsewhere.storage!.removeTracker(first.storage!.state().tracker!.id)
+    await vi.waitFor(() => expect(heard).toEqual([{ kind: 'removed', next: expect.objectContaining({ name: 'Untitled tracker 2' }) }]))
+  })
+
+  it('renames a tracker another tab holds, and that tab shows it', async () => {
+    const { first, second } = await twoTabs()
+    const elsewhere = tab(NEW_TRACKER)
+    await elsewhere.loadDocument()
+
+    await elsewhere.storage!.renameOtherTracker(first.storage!.state().tracker!.id, 'Autumn search')
+    await vi.waitFor(() => expect(second.storage!.state().tracker!.name).toBe('Autumn search'))
+    const listed = await elsewhere.storage!.listTrackers()
+    expect(listed.find((tracker) => tracker.id === first.storage!.state().tracker!.id)?.name).toBe('Autumn search')
   })
 })
 

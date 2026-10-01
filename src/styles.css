@@ -422,27 +422,56 @@ p {
   font-size: var(--t1);
 }
 
-.tracker-switcher__rename {
-  gap: var(--s3);
-  padding: var(--s3);
-}
-
-.tracker-switcher__rename .tracker-switcher__caption {
-  padding: 0;
-}
-
-.tracker-switcher__rename-actions {
-  display: flex;
-  gap: var(--s2);
-}
-
 .tracker-switcher__group {
   display: grid;
 }
 
-.tracker-switcher__divider {
-  margin: var(--s2) 0;
-  border-top: 1px solid var(--line);
+/*
+ * A row is the tracker's link, which takes the width, and its two actions at the end.
+ * The actions are quiet until reached for, like the panel's own title-bar icons, and
+ * Remove warms to the danger colour only under the pointer or focus.
+ */
+.tracker-switcher__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.tracker-switcher__row .tracker-switcher__item {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Both classes: `.icon-button` is defined later in the file and would otherwise box these. */
+.icon-button.tracker-switcher__action {
+  flex-shrink: 0;
+  border-color: transparent;
+  color: var(--ink-3);
+  background: transparent;
+}
+
+.icon-button.tracker-switcher__action:hover,
+.icon-button.tracker-switcher__action:focus-visible {
+  border-color: transparent;
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.icon-button.tracker-switcher__action--remove:hover,
+.icon-button.tracker-switcher__action--remove:focus-visible {
+  color: var(--danger);
+}
+
+.tracker-switcher__input {
+  flex: 1;
+  min-width: 0;
+  height: var(--control);
+  padding: 0 var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--surface);
+  font-size: var(--t3);
 }
 
 .tracker-switcher__spacer {

@@ -88,6 +88,10 @@ export interface TrackerSummary {
    * chose lives in the document itself and outranks this; `name` is whichever applies.
    */
   fallbackName?: string
+  /** The connected folder's name, as `listTrackers` reports it; null when none. */
+  folder?: string | null
+  /** As `StorageState.unbackedSince`, for a tracker this tab is not holding. */
+  unbackedSince?: string | null
 }
 
 /**
@@ -170,10 +174,23 @@ export interface ConnectableStorage {
   /** Every tracker this browser holds, most recently opened first. */
   listTrackers(): Promise<TrackerSummary[]>
   /**
-   * Deletes this tab's tracker from browser storage — never a connected folder's files,
-   * which are the viewer's — and returns the tracker to open next, or null for none.
+   * Deletes a tracker from browser storage — never a connected folder's files, which are
+   * the viewer's — and returns the tracker to open next, or null for none. Any tab holding
+   * it is sent there too, so none writes it back.
    */
-  removeTracker(): Promise<TrackerSummary | null>
+  removeTracker(id: string): Promise<TrackerSummary | null>
+  /**
+   * Renames a tracker this tab is not holding. (The one it holds is renamed through its
+   * document, like any edit.) The name is the document's, so where that tracker saves to a
+   * folder the folder's file is rewritten as well, asking for the folder's permission if
+   * this tab lacks it; refused, nothing is renamed.
+   */
+  renameOtherTracker(id: string, name: string): Promise<void>
+  /** A tracker's document and attachment bytes, to export one this tab is not holding. */
+  readTracker(id: string): Promise<{
+    document: TrackerDatabase
+    files: Array<{ applicationId: string; attachmentId: string; data: Uint8Array }>
+  }>
   /** Fires whenever the connection, the backlog or the tracker changes. */
   subscribe(listener: (state: StorageState) => void): () => void
 }

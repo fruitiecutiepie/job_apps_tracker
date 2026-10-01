@@ -211,15 +211,17 @@ describe('the static build', () => {
     await addApplication(user, 'Northwind')
 
     await user.click(within(topbar()).getByRole('button', { name: /^Tracker: Untitled tracker/ }))
-    await user.click(screen.getByRole('button', { name: 'Rename this tracker' }))
-    const field = screen.getByRole('textbox', { name: 'Tracker name' })
+    // The pencil at the end of the row, named for the tracker it renames.
+    await user.click(screen.getByRole('button', { name: 'Rename Untitled tracker' }))
+    const field = screen.getByRole('textbox', { name: 'New name for Untitled tracker' })
     expect(field).toHaveValue('Untitled tracker')
     await user.clear(field)
-    expect(screen.getByRole('button', { name: 'Rename' })).toBeDisabled()
+    expect(screen.getByRole('button', { name: 'Save the name for Untitled tracker' })).toBeDisabled()
     await user.type(field, 'Autumn search{Enter}')
 
     await waitFor(() => expect(document.title).toBe('Autumn search — Job applications'))
-    expect(within(topbar()).getByRole('button', { name: /^Tracker: Autumn search/ })).toHaveFocus()
+    const list = screen.getByRole('list', { name: /Trackers in this browser/ })
+    await waitFor(() => expect(within(list).getByRole('link', { name: /Autumn search/ })).toBeInTheDocument())
 
     const objectUrls = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL }
     URL.createObjectURL = vi.fn(() => 'blob:tracker')
@@ -260,6 +262,36 @@ describe('the static build', () => {
     const listed = await backend.storage!.listTrackers()
     expect(listed.map((tracker) => tracker.name).sort()).toEqual(['Untitled tracker', 'last-year'])
     expect(screen.getByText('1 of 1 applications shown')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open Stays here/ })).toBeInTheDocument()
+  })
+
+  /*
+   * Each row carries its own Rename and Remove, so a tracker can be tidied without being
+   * opened. Removing one this tab is not holding leaves the tab where it is.
+   */
+  it('removes another tracker from its row, staying in this one', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    await addApplication(user, 'Stays here')
+    const { navigation } = await import('../backend/trackerAddress')
+    const { backend } = await import('../backend')
+    const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+    await user.click(screen.getByRole('button', { name: /From a file/ }))
+    const inputs = document.querySelectorAll<HTMLInputElement>('input[type="file"]')
+    await user.upload(inputs[inputs.length - 1], trackerFile('last-year'))
+    await waitFor(() => expect(open).toHaveBeenCalled())
+    open.mockClear()
+
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+    await user.click(await screen.findByRole('button', { name: 'Remove last-year from this browser' }))
+    // It came from a file the viewer holds, so the question is a plain one.
+    const question = await screen.findByRole('alertdialog', { name: 'Remove last-year from this browser?' })
+    await user.click(within(question).getByRole('button', { name: 'Remove' }))
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Removed last-year from this browser.'))
+    expect(open).not.toHaveBeenCalled()
+    expect((await backend.storage!.listTrackers()).map((tracker) => tracker.name)).toEqual(['Untitled tracker'])
     expect(screen.getByRole('button', { name: /Open Stays here/ })).toBeInTheDocument()
   })
 
@@ -373,7 +405,7 @@ describe('the static build, in a browser that can write a folder', () => {
     await within(topbar()).findByRole('button', { name: 'Saved to job-apps' })
 
     await user.click(within(topbar()).getByRole('button', { name: /^Tracker: job-apps/ }))
-    await user.click(screen.getByRole('button', { name: 'Remove this tracker' }))
+    await user.click(screen.getByRole('button', { name: 'Remove job-apps from this browser' }))
     const question = await screen.findByRole('alertdialog', { name: 'Remove job-apps from this browser?' })
     expect(question).toHaveTextContent('Your job-apps folder keeps its file.')
     expect(within(question).queryByRole('button', { name: /Discard/ })).not.toBeInTheDocument()
