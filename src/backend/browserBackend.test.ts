@@ -183,6 +183,31 @@ describe('browser backend, with a folder connected', () => {
     expect(await cachedDocument(store, backend)).toBe(onDisk)
   })
 
+  /*
+   * The topbar says "Saving" only while a write is in flight. One label for the whole
+   * connection read as a save that never finished.
+   */
+  it('says it is saving only while a write is in flight', async () => {
+    const backend = connected(store, folder)
+    await backend.storage!.connect()
+    const seen: boolean[] = []
+    backend.storage!.subscribe((state) => seen.push(state.saving))
+
+    await backend.saveDocument(withApplication())
+    expect(changes(seen)).toEqual([false, true, false])
+    expect(backend.storage!.state().saving).toBe(false)
+  })
+
+  it('stops saying it is saving when a write fails', async () => {
+    const backend = connected(store, folder)
+    await backend.storage!.connect()
+    folder.permission = 'denied'
+    vi.spyOn(folder, 'getFileHandle').mockRejectedValue(new DOMException('gone', 'NotAllowedError'))
+
+    await expect(backend.saveDocument(withApplication())).rejects.toThrow()
+    expect(backend.storage!.state().saving).toBe(false)
+  })
+
   it('mirrors attachments into attachments/<application>/<attachment>', async () => {
     const backend = connected(store, folder)
     await backend.storage!.connect()

@@ -337,9 +337,11 @@ describe('the static build, in a browser that can write a folder', () => {
     const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
 
     await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
-    await within(topbar()).findByRole('button', { name: 'Saving to job-apps' })
+    await within(topbar()).findByRole('button', { name: 'Saved to job-apps' })
     await addApplication(user, 'Northwind')
     await waitFor(() => expect(folder.readText('tracker.json')).toContain('Northwind'))
+    // The change has landed, so the pill says so rather than still reading as in progress.
+    await within(topbar()).findByRole('button', { name: 'Saved to job-apps' })
 
     await user.click(within(topbar()).getByRole('button', { name: /^Tracker: job-apps/ }))
     await user.click(screen.getByRole('button', { name: 'Remove this tracker' }))

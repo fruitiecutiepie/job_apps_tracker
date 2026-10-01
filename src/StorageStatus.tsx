@@ -4,10 +4,12 @@ import type { StorageConnection, StorageState } from './backend'
 import { demoSiteUrl, trackerSiteUrl } from './siteLinks'
 import { formatShortDate } from './views/viewUtils'
 
-function describe({ connection, unbackedSince }: StorageState): string {
+function describe({ connection, unbackedSince, saving }: StorageState): string {
   switch (connection.kind) {
     case 'connected':
-      return `Saving to ${connection.name}`
+      // Present tense only while a write is in flight: a label that always said "Saving"
+      // read as a save that never finished.
+      return saving ? `Saving to ${connection.name}…` : `Saved to ${connection.name}`
     case 'needs-permission':
       return `Reconnect ${connection.name}`
     case 'disconnected':

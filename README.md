@@ -381,7 +381,8 @@ The top bar always says which of these you have:
 | --- | --- |
 | *Saved in this browser* | Nothing is only in the browser yet: the tracker is empty, or your last export or import has everything in it. Click it in Chrome or Edge to save to a folder anyway. |
 | **Save to a folder** | Chrome or Edge, with changes only in the browser. Click to pick a folder; hover it to see since when. |
-| *Saving to `<folder>`* | Both copies are current. Click to switch folders. |
+| *Saved to `<folder>`* | Both copies are current. Click to switch folders. |
+| *Saving to `<folder>`…* | A change is being written right now; it reads *Saved* again as soon as it lands. |
 | **Reconnect `<folder>`** | The folder is still yours but its permission lapsed, which browsers do. Edits are still being saved to browser storage; click to grant it again and the folder catches up. |
 | **Export a backup** | Firefox or Safari, which cannot write to a folder, with changes your last export does not have. Click to export; hover it to see since when. An import counts as a backup too, since you are holding the file you imported. |
 

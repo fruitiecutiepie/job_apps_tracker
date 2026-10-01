@@ -130,6 +130,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
   let directory: DirectoryHandleLike | null = null
   let connection: StorageConnection = canConnect ? { kind: 'disconnected' } : { kind: 'unsupported' }
   let unbackedSince: string | null = null
+  let writing = 0
   let restored: Promise<void> | null = null
   const listeners = new Set<(state: StorageState) => void>()
 
@@ -167,6 +168,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     return {
       connection,
       unbackedSince,
+      saving: writing > 0,
       tracker: trackerId === null ? null : { id: trackerId, name: trackerName },
     }
   }
@@ -495,9 +497,16 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
   }
 
   async function writeDocument(document: TrackerDatabase): Promise<void> {
-    const text = await cacheDocument(document)
-    if (directory) await writeFileIn(directory, TRACKER_FILENAME, text)
-    else await noteUnbacked()
+    writing += 1
+    announce()
+    try {
+      const text = await cacheDocument(document)
+      if (directory) await writeFileIn(directory, TRACKER_FILENAME, text)
+      else await noteUnbacked()
+    } finally {
+      writing -= 1
+      announce()
+    }
   }
 
   /*

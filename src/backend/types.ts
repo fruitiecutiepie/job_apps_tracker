@@ -105,6 +105,11 @@ export interface TrackerSummary {
 export interface StorageState {
   connection: StorageConnection
   unbackedSince: string | null
+  /**
+   * A write of the document is in flight. What lets the topbar say "Saving" only while
+   * that is true and "Saved" once it lands, rather than one label that reads as either.
+   */
+  saving: boolean
   tracker: { id: string; name: string } | null
 }
 
