@@ -13,6 +13,18 @@ export interface TrackerBackend {
 
   loadDocument(): Promise<TrackerDatabase>
   saveDocument(document: TrackerDatabase): Promise<TrackerDatabase>
+  /**
+   * Applies a mutation to the newest stored document and stores the result. Present where
+   * more than one tab can write the same document: the mutation is run on whatever another
+   * tab last stored rather than on `current`, which may be behind it, so two tabs editing
+   * at once both keep their edits. `wrote` is false when the mutation had nothing to do.
+   */
+  updateDocument?(
+    current: TrackerDatabase,
+    mutate: (document: TrackerDatabase) => TrackerDatabase,
+  ): Promise<{ document: TrackerDatabase; wrote: boolean }>
+  /** Hears about changes another tab made to this tab's tracker. */
+  subscribeChanges?(listener: (change: ExternalChange) => void): () => void
   resetDocument(): Promise<TrackerDatabase>
 
   /** Null rather than throwing when the file is simply not there. */
@@ -35,6 +47,12 @@ export interface TrackerBackend {
   /* Present only when `capabilities.connectableStorage` is true. */
   storage?: ConnectableStorage
 }
+
+export type ExternalChange =
+  /** Another tab stored a newer document for this tracker. */
+  | { kind: 'document'; document: TrackerDatabase }
+  /** Another tab removed this tracker; `next` is the one it opened instead. */
+  | { kind: 'removed'; next: TrackerSummary | null }
 
 export interface BackendCapabilities {
   /** Whether a stage note can be handed to an editor process on this machine. */

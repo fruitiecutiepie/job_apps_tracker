@@ -1,12 +1,13 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { createApplication } from '../domain/mutations'
+import { addApplication, createApplication } from '../domain/mutations'
 import { prepareTrackerDatabase } from '../domain/database'
 import { MAX_ATTACHMENT_BYTES } from '../domain/attachmentPaths'
 import type { TrackerDatabase } from '../domain/types'
-import type { TrackerBackend } from './types'
+import type { ExternalChange, TrackerBackend } from './types'
 import { browserBackend, TRACKER_FILENAME, type BrowserBackendOptions } from './browserBackend'
 import { NEW_TRACKER } from './trackerAddress'
+import type { TabChannel, TabLock, TabMessage } from './tabSync'
 import { FakeDirectory } from './fakeDirectory'
 import { idbName, memoryStore, type KeyValueStore } from './idb'
 import type { DirectoryHandleLike } from './fileSystem'
@@ -629,6 +630,176 @@ describe('several trackers in one browser', () => {
     vi.stubEnv('VITE_TRACKER_PROFILE', 'demo')
     expect((await tab(null).backend.loadDocument()).applications).toHaveLength(19)
     expect((await tab(NEW_TRACKER).backend.loadDocument()).applications).toEqual([])
+  })
+})
+
+/*
+ * Two tabs holding one tracker. A tab cannot be opened in a test, so these are two
+ * backends sharing one store, one lock and one channel hub — what two tabs share.
+ */
+function fakeTabs() {
+  const held = new Map<string, Promise<unknown>>()
+  const locks: TabLock = {
+    run(name, task) {
+      const previous = held.get(name) ?? Promise.resolve()
+      const result = previous.then(task)
+      held.set(name, result.catch(() => undefined))
+      return result
+    },
+  }
+  const hub = new Map<string, Set<(message: TabMessage) => void>>()
+  let delivering = true
+  const channel = (name: string): TabChannel => {
+    const mine = new Set<(message: TabMessage) => void>()
+    const everyone = hub.get(name) ?? new Set()
+    hub.set(name, everyone)
+    return {
+      post(message) {
+        if (!delivering) return
+        for (const listener of everyone) {
+          // Delivered later, like a real channel, and never back to the tab that posted.
+          if (!mine.has(listener)) setTimeout(() => listener(message), 0)
+        }
+      },
+      listen(listener) {
+        mine.add(listener)
+        everyone.add(listener)
+        return () => {
+          mine.delete(listener)
+          everyone.delete(listener)
+        }
+      },
+    }
+  }
+  return { locks, channel, mute: () => void (delivering = false) }
+}
+
+function adding(company: string) {
+  return (document: TrackerDatabase) =>
+    addApplication(document, {
+      company,
+      role: '',
+      url: '',
+      source: '',
+      state: 'applied',
+      next_action: '',
+      next_action_at: null,
+      deadline_at: null,
+      notes: '',
+    })
+}
+
+describe('one tracker open in two tabs', () => {
+  let store: KeyValueStore
+  let tabs: ReturnType<typeof fakeTabs>
+
+  beforeEach(() => {
+    store = memoryStore()
+    tabs = fakeTabs()
+  })
+
+  function tab(requested: string | null, extra: Partial<BrowserBackendOptions> = {}) {
+    return browserBackend({
+      store,
+      supportsFolders: false,
+      persist: async () => true,
+      address: { requested: () => requested, show: () => {} },
+      locks: tabs.locks,
+      channel: tabs.channel,
+      ...extra,
+    })
+  }
+
+  async function twoTabs(extra: Partial<BrowserBackendOptions> = {}) {
+    const first = tab(NEW_TRACKER, extra)
+    await first.saveDocument(withApplication('Northwind'))
+    const id = first.storage!.state().tracker!.id
+    const second = tab(id, extra)
+    return { first, second, firstDocument: await first.loadDocument(), secondDocument: await second.loadDocument() }
+  }
+
+  it('shows the other tab what one tab wrote, without a reload', async () => {
+    const { first, second, firstDocument } = await twoTabs()
+    const heard: ExternalChange[] = []
+    second.subscribeChanges!((change) => heard.push(change))
+
+    await first.updateDocument!(firstDocument, adding('Halcyon'))
+
+    await vi.waitFor(() => expect(heard).toHaveLength(1))
+    const change = heard[0]
+    expect(change.kind === 'document' && change.document.applications.map((item) => item.company))
+      .toEqual(expect.arrayContaining(['Northwind', 'Halcyon']))
+  })
+
+  /*
+   * The case the whole arrangement exists for: both tabs edit from the same snapshot at
+   * the same moment. Saving documents, the slower would undo the faster.
+   */
+  it('keeps both tabs\' edits when they write at the same moment', async () => {
+    const { first, second, firstDocument, secondDocument } = await twoTabs()
+
+    await Promise.all([
+      first.updateDocument!(firstDocument, adding('From the first tab')),
+      second.updateDocument!(secondDocument, adding('From the second tab')),
+    ])
+
+    const stored = await tab(first.storage!.state().tracker!.id).loadDocument()
+    expect(stored.applications.map((item) => item.company).sort()).toEqual([
+      'From the first tab',
+      'From the second tab',
+      'Northwind',
+    ])
+  })
+
+  /*
+   * A message can be late, or never arrive. The revision checked inside the lock is what
+   * catches a tab that has not heard: it reads what the other stored before it writes.
+   */
+  it('catches up from storage even when the other tab\'s message never arrives', async () => {
+    const { first, second, firstDocument, secondDocument } = await twoTabs()
+    tabs.mute()
+
+    await first.updateDocument!(firstDocument, adding('Halcyon'))
+    const { document } = await second.updateDocument!(secondDocument, adding('Paper Kite'))
+
+    expect(document.applications.map((item) => item.company).sort()).toEqual([
+      'Halcyon',
+      'Northwind',
+      'Paper Kite',
+    ])
+  })
+
+  it('hands back the newer document without writing when the mutation has nothing to do', async () => {
+    const { first, second, firstDocument, secondDocument } = await twoTabs()
+    tabs.mute()
+    await first.updateDocument!(firstDocument, adding('Halcyon'))
+
+    const result = await second.updateDocument!(secondDocument, (document) => document)
+    expect(result.wrote).toBe(false)
+    expect(result.document.applications.map((item) => item.company)).toContain('Halcyon')
+  })
+
+  it('follows a folder the other tab connected', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const { first, second } = await twoTabs({ supportsFolders: true, pick: async () => folder })
+
+    await first.storage!.connect()
+    await vi.waitFor(() =>
+      expect(second.storage!.connection()).toEqual({ kind: 'connected', name: 'job-apps' }),
+    )
+    expect(second.storage!.state().tracker!.name).toBe('job-apps')
+  })
+
+  it('is told where to go when the other tab removes the tracker', async () => {
+    const kept = tab(NEW_TRACKER)
+    await kept.saveDocument(withApplication('Kept'))
+    const keptId = kept.storage!.state().tracker!.id
+    const { first, second } = await twoTabs()
+    const heard: ExternalChange[] = []
+    second.subscribeChanges!((change) => heard.push(change))
+
+    await first.storage!.removeTracker()
+    await vi.waitFor(() => expect(heard).toEqual([{ kind: 'removed', next: expect.objectContaining({ id: keptId }) }]))
   })
 })
 

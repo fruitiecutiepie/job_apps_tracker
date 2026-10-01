@@ -43,6 +43,8 @@ import {
   readFileAsUint8Array,
   resetTrackerDatabase,
   saveTrackerDatabase,
+  subscribeTrackerChanges,
+  updateTrackerDatabase,
   tryLoadLegacyLocalStorage,
   clearApplicationRating,
   updateApplication,
@@ -711,6 +713,21 @@ export default function App() {
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
   const storageState = useStorageState()
+
+  /*
+   * Another tab holding this tracker wrote it, or removed it. A newer document replaces
+   * what is on screen at once, so the two tabs never show different trackers under one
+   * name; a removal sends this tab where the removing one went, rather than letting its
+   * next keystroke write the tracker back.
+   */
+  useEffect(() => subscribeTrackerChanges((change) => {
+    if (change.kind === 'removed') {
+      navigation.open(trackerHref(change.next?.id ?? NEW_TRACKER))
+      return
+    }
+    trackerRef.current = change.document
+    setTracker(change.document)
+  }), [])
   const listTrackers = useCallback(() => backend.storage!.listTrackers(), [])
 
   /*
@@ -821,16 +838,19 @@ export default function App() {
       const current = trackerRef.current
       if (!current) return false
 
-      const next = mutate(current)
-      // Every mutation returns the document it was given when there is nothing to do, so
-      // this is also what keeps a no-op move or an unchanged draft off the disk.
-      if (next === current) return true
-
       try {
-        const saved = await saveTrackerDatabase(next)
-        trackerRef.current = saved
-        setTracker(saved)
-        if (message) setNotice(message)
+        /*
+         * The mutation, not the document, goes to storage: where another tab holds this
+         * tracker too, it is run there on whatever that tab last stored. Every mutation
+         * returns the document it was given when there is nothing to do, which is also
+         * what keeps a no-op move or an unchanged draft off the disk.
+         */
+        const { document: saved, wrote } = await updateTrackerDatabase(current, mutate)
+        if (saved !== trackerRef.current) {
+          trackerRef.current = saved
+          setTracker(saved)
+        }
+        if (wrote && message) setNotice(message)
         return true
       } catch (error) {
         setNotice(`Save failed: ${errorMessage(error)}`)
