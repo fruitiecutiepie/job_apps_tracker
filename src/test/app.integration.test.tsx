@@ -171,6 +171,29 @@ describe('job applications tracker', () => {
     expect(new Date().toISOString()).toBe(DEFAULT_DEMO_REFERENCE)
   })
 
+  it('moves the Idle line on the board when the quiet threshold changes on Statistics', async () => {
+    seedFullDemo()
+    await renderLoadedApp()
+    const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
+
+    // Northstar Labs is the demo's one idle application, 34 days without a stage change.
+    expect(screen.getByText('Idle 34 days')).toBeInTheDocument()
+
+    await userEvent.click(views.getByRole('button', { name: 'Statistics' }))
+    const ghosting = screen.getByRole('region', { name: 'Am I being ghosted?' })
+    fireEvent.change(
+      within(ghosting).getByRole('spinbutton', {
+        name: 'Days without a stage change before an application counts as quiet',
+      }),
+      { target: { value: '60' } },
+    )
+    expect(within(ghosting).getByText('Nothing live has gone 60 days without a stage change.')).toBeInTheDocument()
+
+    // One threshold, not two: the board reads the same number Statistics was given.
+    await userEvent.click(views.getByRole('button', { name: 'Kanban' }))
+    expect(screen.queryByText(/^Idle \d+ days$/)).not.toBeInTheDocument()
+  })
+
   it('starts with every configured state represented in the Kanban', async () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()
