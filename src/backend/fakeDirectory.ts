@@ -47,6 +47,10 @@ export class FakeDirectory implements DirectoryHandleLike {
     yield* this.directories.keys()
   }
 
+  async isSameEntry(other: DirectoryHandleLike): Promise<boolean> {
+    return other === this
+  }
+
   async queryPermission(): Promise<PermissionState> {
     return this.permission
   }

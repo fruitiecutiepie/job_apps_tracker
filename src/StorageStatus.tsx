@@ -1,63 +1,91 @@
-import { FlaskConical, FolderOpen, HardDrive, TriangleAlert, Upload } from 'lucide-react'
+import { Download, FlaskConical, FolderOpen, HardDrive, Plus, TriangleAlert, Upload } from 'lucide-react'
 
-import type { StorageConnection } from './backend'
+import type { StorageConnection, StorageState } from './backend'
 import { demoSiteUrl, trackerSiteUrl } from './siteLinks'
+import { formatShortDate } from './views/viewUtils'
 
-function describe(connection: StorageConnection): string {
+function describe({ connection, unbackedSince }: StorageState): string {
   switch (connection.kind) {
     case 'connected':
       return `Saving to ${connection.name}`
     case 'needs-permission':
       return `Reconnect ${connection.name}`
     case 'disconnected':
-      return 'Choose a folder'
+      return unbackedSince === null ? 'Saved in this browser' : 'Save to a folder'
     case 'unsupported':
-      return 'Saved in this browser'
+      return unbackedSince === null ? 'Saved in this browser' : 'Export a backup'
+  }
+}
+
+function explain({ connection, unbackedSince }: StorageState): string {
+  const backlog = unbackedSince === null
+    ? null
+    : `Changes since ${formatShortDate(unbackedSince)} are only in this browser, and clearing your browsing data would delete them.`
+  switch (connection.kind) {
+    case 'connected':
+      return `Every change is saved to ${connection.name}. Click to pick a different folder.`
+    case 'needs-permission':
+      return [backlog, `Click to keep saving to ${connection.name}.`].filter(Boolean).join(' ')
+    case 'disconnected':
+      return [backlog, 'Click to save to a folder on your computer as well.']
+        .filter(Boolean)
+        .join(' ')
+    case 'unsupported':
+      return backlog === null
+        ? 'Everything is saved in this browser.'
+        : `${backlog} Click to download a copy.`
   }
 }
 
 export interface StorageStatusProps {
-  connection: StorageConnection
+  state: StorageState
   onConnect: () => void
   onReconnect: () => void
+  onExport: () => void
 }
 
 /**
  * The topbar control. Its job is to make the one thing that matters legible at a glance:
- * whether what you type is reaching a folder you can find again, or only this browser.
+ * whether what you type is reaching a file you can find again, or only this browser.
+ *
+ * It stays quiet while nothing is at risk and asks for attention only once a change exists
+ * only here — the backlog — offering whichever fix this browser has: a folder where one can
+ * be written, and an export where it cannot. Asking before there is anything to lose
+ * would be asking someone who came to track job applications to think about storage first.
  */
-export function StorageStatus({ connection, onConnect, onReconnect }: StorageStatusProps) {
-  const label = describe(connection)
+export function StorageStatus({ state, onConnect, onReconnect, onExport }: StorageStatusProps) {
+  const { connection, unbackedSince } = state
+  const label = describe(state)
+  const title = explain(state)
 
-  if (connection.kind === 'unsupported') {
+  if (connection.kind === 'unsupported' && unbackedSince === null) {
     return (
-      <p
-        className="storage-status storage-status--inert"
-        title="This browser cannot save into a folder. Export a file to keep a copy."
-      >
+      <p className="storage-status storage-status--inert" title={title}>
         <HardDrive aria-hidden="true" size={16} />
         <span>{label}</span>
       </p>
     )
   }
 
-  const needsAttention = connection.kind !== 'connected'
+  const onClick = connection.kind === 'unsupported'
+    ? onExport
+    : connection.kind === 'needs-permission' ? onReconnect : onConnect
+  const needsAttention = connection.kind === 'needs-permission' || unbackedSince !== null
+  const icon = connection.kind === 'unsupported'
+    ? <Download aria-hidden="true" size={16} />
+    : needsAttention
+      ? <TriangleAlert aria-hidden="true" size={16} />
+      : connection.kind === 'connected'
+        ? <FolderOpen aria-hidden="true" size={16} />
+        : <HardDrive aria-hidden="true" size={16} />
   return (
     <button
       className={`storage-status${needsAttention ? ' storage-status--attention' : ''}`}
-      onClick={connection.kind === 'needs-permission' ? onReconnect : onConnect}
-      title={
-        connection.kind === 'connected'
-          ? `Every change is written to ${connection.name}. Click to pick a different folder.`
-          : 'Pick a folder so every change is written to it as well as to this browser.'
-      }
+      onClick={onClick}
+      title={title}
       type="button"
     >
-      {needsAttention ? (
-        <TriangleAlert aria-hidden="true" size={16} />
-      ) : (
-        <FolderOpen aria-hidden="true" size={16} />
-      )}
+      {icon}
       <span>{label}</span>
     </button>
   )
@@ -86,48 +114,62 @@ export function DemoBanner() {
 
 export interface StorageIntroProps {
   connection: StorageConnection
+  /** Opens the add form, exactly as the topbar's Add application does. */
+  onAdd: (opener: HTMLButtonElement) => void
   onConnect: () => void
   onImport: () => void
-  onDismiss: () => void
   /** Absent on the demo site, which is already the thing the link would lead to. */
   showDemoLink: boolean
 }
 
-/** The first thing a visitor sees, before there is any data to look at. */
+/**
+ * The empty tracker's first screen. Someone arriving here came to track job applications,
+ * so that is the one thing it offers up front. A folder is an option where the browser
+ * can write one, never the price of starting — but an option is only worth taking if the
+ * reason for it is on screen, so the one way this data can be lost is said in a line of
+ * its own before anything is asked.
+ *
+ * It has no dismiss: it is what an empty tracker looks like, and it goes when the first
+ * application arrives.
+ */
 export function StorageIntro({
   connection,
+  onAdd,
   onConnect,
   onImport,
-  onDismiss,
   showDemoLink,
 }: StorageIntroProps) {
+  const canConnect = connection.kind !== 'unsupported'
   return (
     <section aria-labelledby="storage-intro-heading" className="storage-intro">
-      <h2 id="storage-intro-heading">Your applications, on your machine</h2>
+      <h2 id="storage-intro-heading">Track your job applications</h2>
       <p>
-        Nothing here is uploaded anywhere. Every change is saved in this browser straight
-        away
-        {connection.kind === 'unsupported'
-          ? '. This browser cannot write to a folder, so export a file when you want a copy you can keep.'
-          : ', and into a folder you choose as well, so the data stays yours when the browser forgets it.'}
+        Nothing is uploaded and there is no account: your applications are saved in this
+        browser. Clearing your browsing data or closing a private window deletes them,{' '}
+        {canConnect
+          ? 'so save to a folder to keep a copy on your computer.'
+          : 'so export a backup now and then — the top bar will remind you.'}
       </p>
       <div className="storage-intro__actions">
-        {connection.kind !== 'unsupported' && (
-          <button className="button button--primary" onClick={onConnect} type="button">
-            <FolderOpen aria-hidden="true" size={16} /> Choose a folder
-          </button>
-        )}
+        <button
+          className="button button--primary"
+          onClick={(event) => onAdd(event.currentTarget)}
+          type="button"
+        >
+          <Plus aria-hidden="true" size={16} /> Add your first application
+        </button>
         <button className="button" onClick={onImport} type="button">
           <Upload aria-hidden="true" size={16} /> Import a file
         </button>
-        <button className="button button--quiet" onClick={onDismiss} type="button">
-          Start fresh
-        </button>
+        {canConnect && (
+          <button className="button button--quiet" onClick={onConnect} type="button">
+            <FolderOpen aria-hidden="true" size={16} /> Save to a folder
+          </button>
+        )}
       </div>
       {showDemoLink && (
         <p className="storage-intro__aside">
-          Not sure yet? <a href={demoSiteUrl()}>Look around the demo</a> — nineteen
-          fictional applications, kept well away from this one.
+          Just looking? <a href={demoSiteUrl()}>Try the demo</a>.
         </p>
       )}
     </section>

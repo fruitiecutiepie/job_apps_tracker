@@ -6,11 +6,13 @@ A polished, local-first job search organizer built with React and TypeScript. It
 
 ## Start here
 
-**Use the hosted app.** Open [the tracker](https://fruitiecutiepie.com/job_apps_tracker/) and it starts empty, with three ways in: choose a folder, import a file you already have, or just start typing. Every change saves as you make it — there is no Save button anywhere in this app.
+**Use the hosted app.** Open [the tracker](https://fruitiecutiepie.com/job_apps_tracker/) and it starts empty. Every change saves as you make it — there is no Save button anywhere in this app.
 
-Choosing a folder is the one worth doing first. It puts a real `tracker.json` on your disk that you can back up, sync, or open in any text editor, and the app writes to it on every change. Chrome and Edge support this; Firefox and Safari do not, and there the top bar says *Saved in this browser* and **Export** is how you get a copy out. Either way nothing is uploaded — the site is static files, with no account and nowhere to send anything.
+Press **Add your first application** and start. Everything is kept in the browser to begin with, and the top bar does the remembering for you: the moment a change exists only in the browser, it asks you to keep a copy, and it goes on asking — across reloads — until you have one.
 
-The catch worth knowing up front: without a connected folder, your data lives only in that browser profile. Clearing site data takes it with it. Connect a folder, or export regularly. See [Where your data lives](#where-your-data-lives).
+In Chrome and Edge that copy is a folder. **Save to a folder** puts a real `tracker.json` on your disk that you can back up, sync, or open in any text editor, written on every change; if you already have one, choose the folder it is in. A page cannot write anywhere you have not pointed it, so there is no folder it could pick for you, but the picker opens in Documents. Firefox and Safari cannot write to a folder at all, so there the top bar offers **Export a backup** instead. Either way nothing is uploaded — the site is static files, with no account and nowhere to send anything.
+
+The catch worth knowing up front: without a connected folder, your data lives only in that browser profile. Clearing site data takes it with it. See [Where your data lives](#where-your-data-lives).
 
 **Run it yourself** if you would rather the file sat in a project directory you control, or you want to write stage notes in your own editor — the one feature the hosted app cannot offer, because it needs a machine to start the editor on. See [Running it yourself](#running-it-yourself).
 
@@ -346,12 +348,13 @@ The global search, state, activity, company, and source filters apply across vie
 ### Back up or replace data
 
 - **Export** downloads a zip archive with `tracker.json` and any attachment files. This is a complete copy: it is what you import into another browser, another machine, or a fresh checkout.
+
 - **Import** accepts zip archives or legacy JSON. You can also **drop a file anywhere on the window**, or paste one you have copied — the button, the drop and the paste are the same import. On the hosted app, importing is also offered on the first visit, before there is anything to look at.
 
   Whichever way the file arrives it is parsed into the domain model and checked against the schema and its invariants *before* you are asked to replace anything, so a hand-edited export that no longer holds together names the field that broke rather than half-replacing your data. A file that is not a tracker export is refused with what it is you can drop. Dragging a Kanban card or a notes tab is untouched: only a drag carrying files from outside the page is an import.
 - **Reset demo data** appears only in the demo — `pnpm dev:demo`, `pnpm start:demo`, or the [hosted demo](https://fruitiecutiepie.com/job_apps_tracker/demo/). It asks for confirmation and restores the original 19 examples.
 
-Import **replaces everything**. It does not merge, so exporting first is the only way back.
+Import **replaces everything**. It does not merge. When the tracker you are replacing is not saved anywhere else — which includes a connected folder, since the import writes into it — it offers to download a copy first, or to discard it, before anything changes. An empty tracker is simply replaced.
 
 How often to export depends on where your data already is. With a connected folder, or running it
 yourself, you have a real file on disk and exports are for moving between machines. With neither —
@@ -368,18 +371,21 @@ On first launch after upgrading from the browser-storage era, a valid legacy `lo
 
 **The hosted app** has no server to write that file, so the browser does it. Every change goes into the browser's own storage immediately, and into your connected folder as well when there is one. Those are not alternatives: the folder is the copy that outlives the browser profile, and the browser copy is what survives a folder permission the browser decided to withdraw.
 
+**Several trackers, one per tab.** The hosted app can hold more than one tracker in the same browser — a folder in one tab, an imported file in another. Each is named after its folder, or the file it was imported from, and that name is the browser tab's title and the switcher beside the logo. **Rename this tracker** in the switcher gives it a name of your own. The name is saved inside `tracker.json`, so it goes wherever the tracker goes — into your connected folder, into every export, and into another browser when you import there — and it sticks over the folder's or the file's name. The folder itself keeps its name on disk. Exports are named after the tracker and the day, like `Autumn search 2026-10-01.zip`. The switcher lists them all: click one to open it, or Cmd/Ctrl-click to open it in a new tab. **New tracker** starts an empty one and leaves the one you were in exactly as it was. **Remove this tracker** deletes it from the browser — after offering to save a copy if nothing else holds it — and never touches a connected folder's files. A folder can belong to one tracker at a time: pick one that another tracker already uses and that tracker opens instead. The same tracker open in two tabs stays in step: a change in one shows in the other straight away, and two changes made at the same moment are both kept.
+
 A connected folder gets the same layout the dev server writes — `tracker.json` at the top, attachments under `attachments/{applicationId}/{attachmentId}` — so one folder opens in either build. Point the hosted app at your checkout's `data/` directory and both are looking at the same file.
 
 The top bar always says which of these you have:
 
 | It says | What that means |
 | --- | --- |
-| **Choose a folder** | Browser storage only, so far. Click to pick a folder. |
+| *Saved in this browser* | Nothing is only in the browser yet: the tracker is empty, or your last export or import has everything in it. Click it in Chrome or Edge to save to a folder anyway. |
+| **Save to a folder** | Chrome or Edge, with changes only in the browser. Click to pick a folder; hover it to see since when. |
 | *Saving to `<folder>`* | Both copies are current. Click to switch folders. |
 | **Reconnect `<folder>`** | The folder is still yours but its permission lapsed, which browsers do. Edits are still being saved to browser storage; click to grant it again and the folder catches up. |
-| *Saved in this browser* | This browser has no File System Access API — Firefox and Safari. Nothing is wrong, but **Export** is the only way a copy leaves. |
+| **Export a backup** | Firefox or Safari, which cannot write to a folder, with changes your last export does not have. Click to export; hover it to see since when. An import counts as a backup too, since you are holding the file you imported. |
 
-Durability follows from that: a connected folder is a file you own, and browser storage is only as durable as the browser profile. Nothing is uploaded in either build — the hosted app is static files, with no account and no endpoint to send anything to.
+Durability follows from that: a connected folder is a file you own, and browser storage is only as durable as the browser profile. The first time a change lands only in browser storage, the app asks the browser to keep that storage persistent, which makes it less likely to be cleared to free up space; Firefox may ask you to allow it. That makes the browser copy harder to lose, but it is still not a file you hold, so the reminder does not go away because of it. Nothing is uploaded in either build — the hosted app is static files, with no account and no endpoint to send anything to.
 
 ### The demo
 

@@ -23,12 +23,18 @@ export interface DirectoryHandleLike {
   getDirectoryHandle(name: string, options?: { create?: boolean }): Promise<DirectoryHandleLike>
   removeEntry(name: string, options?: { recursive?: boolean }): Promise<void>
   keys(): AsyncIterableIterator<string>
+  /** Whether two handles are the same folder on disk, however each was obtained. */
+  isSameEntry?(other: DirectoryHandleLike): Promise<boolean>
   queryPermission?(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
   requestPermission?(descriptor: { mode: 'read' | 'readwrite' }): Promise<PermissionState>
 }
 
 interface PickerWindow {
-  showDirectoryPicker?: (options?: { mode?: 'read' | 'readwrite' }) => Promise<DirectoryHandleLike>
+  showDirectoryPicker?: (options?: {
+    id?: string
+    mode?: 'read' | 'readwrite'
+    startIn?: 'desktop' | 'documents' | 'downloads'
+  }) => Promise<DirectoryHandleLike>
 }
 
 export function supportsDirectoryPicker(): boolean {
@@ -39,7 +45,13 @@ export async function pickDirectory(): Promise<DirectoryHandleLike | null> {
   const picker = (window as PickerWindow).showDirectoryPicker
   if (!picker) throw new Error('This browser cannot open a folder')
   try {
-    return await picker({ mode: 'readwrite' })
+    /*
+     * A page cannot write to disk anywhere the viewer has not pointed it, so there is no
+     * default folder to fall back on. Opening in Documents is the nearest thing: the
+     * common answer is one click away, and the `id` has the browser come back to wherever
+     * they chose last time.
+     */
+    return await picker({ id: 'tracker', mode: 'readwrite', startIn: 'documents' })
   } catch (error) {
     // Dismissing the picker is a decision, not a failure.
     if (error instanceof DOMException && error.name === 'AbortError') return null
