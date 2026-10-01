@@ -105,6 +105,7 @@ import {
   type InviteRow,
 } from './invites'
 import type { StageNoteDraftBatch } from './StageNotesPanel'
+import { rebaseDraft } from './domain/mergeText'
 import { postingRef, stageRef, type NoteRequest } from './notesLayout'
 import { PostingField } from './PostingField'
 import { formatShortDate } from './views/viewUtils'
@@ -1123,15 +1124,34 @@ export default function App() {
     // No notice: the panel writes while it is being typed into, and a toast per pause
     // would sit permanently over the notes it is describing. The panel's status bar says
     // the same thing where the writing is already being watched.
+    //
+    // Each draft is the note's whole body, begun from `base`. Where the stored note has
+    // moved on since — another tab holding this tracker wrote it — the two are merged here,
+    // inside the mutation, so it is done against the newest stored document and under the
+    // cross-tab lock rather than against a copy one tab happened to have.
     const at = new Date()
     return commit((current) =>
       batches.reduce((document, batch) => {
-        const next = updateApplicationStageNotes(document, batch.applicationId, batch.drafts, at)
+        const application = document.applications.find((item) => item.id === batch.applicationId)
+        const drafts = batch.drafts.map(({ state, body, base }) => ({
+          state,
+          body: rebaseDraft(
+            base,
+            body,
+            application?.stage_notes.find((note) => note.state === state)?.body ?? '',
+          ),
+        }))
+        const next = updateApplicationStageNotes(document, batch.applicationId, drafts, at)
         // `revise` rather than `set`: typing in the pane corrects the posting you captured,
         // it does not capture it again, so `captured_at` stays where it was.
         return batch.posting === undefined
           ? next
-          : reviseApplicationPosting(next, batch.applicationId, batch.posting, at)
+          : reviseApplicationPosting(
+            next,
+            batch.applicationId,
+            rebaseDraft(batch.postingBase ?? '', batch.posting, application?.posting?.body ?? ''),
+            at,
+          )
       }, current),
     )
   }

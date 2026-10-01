@@ -21,6 +21,7 @@ import { QuickOpen, type QuickOpenEntry } from './QuickOpen'
 import { tabLabels } from './notesTabLabel'
 import { PANEL_SHORTCUTS, shortcutKeys, shortcutLabel } from './shortcuts'
 import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
+import { rebaseDraft } from './domain/mergeText'
 import {
   capturedMarkdown,
   correspondenceMarkdown,
@@ -154,13 +155,19 @@ const CLOSE_TAB_SHORTCUT = byKey('X', 'shift')
  */
 export interface StageNoteDraftBatch {
   applicationId: string
-  drafts: StageNoteDraft[]
+  /**
+   * Each with `base`, the text it was begun from — what this panel last read or wrote. A
+   * draft is the whole body, so storing it as it is would undo anything another tab wrote
+   * to the note since; with the base the save can tell, and merge the two instead.
+   */
+  drafts: Array<StageNoteDraft & { base: string }>
   /**
    * The application's posting text, when that is what changed. On the same batch as the
    * stage notes so an application whose note and posting were both edited is still one
    * write, which is what `pendingBatches` groups by application for.
    */
   posting?: string
+  postingBase?: string
 }
 
 interface StageNotesPanelProps {
@@ -896,10 +903,15 @@ export function StageNotesPanel({
    * seeded and write that back over the newer one on the next keystroke, which is how an
    * edit made elsewhere disappears without anything reporting a failure.
    *
-   * Adopting is gated on the panel having nothing unsaved for that note — `draft` still
-   * equal to what was last written from here. Where it has, the keystrokes that have not
-   * been written yet win, since dropping them is the one thing worse than showing a stale
-   * body. That is the same choice a compare card makes while it holds focus.
+   * Where the panel has nothing unsaved for that note — `draft` still equal to what was
+   * last written from here — the newer body simply replaces it. Where it has keystrokes
+   * not yet written, the two are merged: another tab holding the same tracker writes the
+   * same note, and keeping only this tab's keystrokes would show a stale body here and
+   * then write it over the other tab's edit at the next pause. The save merges again
+   * against whatever is stored by then, so nothing rests on this one being on time.
+   *
+   * A body equal to what was stored here, trimmed, is this panel's own write coming back
+   * — `applyStageNotes` trims — and is not an edit from anywhere else.
    */
   useEffect(() => {
     const nextDrafts = { ...draftsRef.current }
@@ -924,11 +936,11 @@ export function StageNotesPanel({
         continue
       }
 
-      if (storedRef.current[key] !== body && draft === storedRef.current[key]) {
-        nextDrafts[key] = body
-        nextStored[key] = body
-        changed = true
-      }
+      const last = storedRef.current[key] ?? ''
+      if (body === last || body === last.trim()) continue
+      nextDrafts[key] = draft === last ? body : rebaseDraft(last, draft, body)
+      nextStored[key] = body
+      changed = true
     }
 
     if (!changed) return
@@ -956,15 +968,22 @@ export function StageNotesPanel({
 
   /** The open notes and postings whose text differs from what was last written, by application. */
   const pendingBatches = (): StageNoteDraftBatch[] => {
-    const byApplication = new Map<string, { drafts: StageNoteDraft[]; posting?: string }>()
+    const byApplication = new Map<string, {
+      drafts: Array<StageNoteDraft & { base: string }>
+      posting?: string
+      postingBase?: string
+    }>()
     for (const ref of orderedRefs(layoutRef.current)) {
       const key = noteRefKey(ref)
       const body = draftsRef.current[key]
       if (body === undefined || body === storedRef.current[key]) continue
       const batch = byApplication.get(ref.applicationId) ?? { drafts: [] }
+      const base = storedRef.current[key] ?? ''
       // A posting names no stage, so it cannot be a draft in the list beside them.
-      if (ref.kind === 'posting') batch.posting = body
-      else batch.drafts.push({ state: ref.state, body })
+      if (ref.kind === 'posting') {
+        batch.posting = body
+        batch.postingBase = base
+      } else batch.drafts.push({ state: ref.state, body, base })
       byApplication.set(ref.applicationId, batch)
     }
     return [...byApplication].map(([applicationId, batch]) => ({ applicationId, ...batch }))
