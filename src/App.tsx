@@ -106,6 +106,7 @@ import { firstPostingProblem, postingDraftFrom, postingRowFor, type PostingRow }
 import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
+import { useStatsSettings } from './statsSettings'
 import {
   CompareNotesView,
   KanbanView,
@@ -710,6 +711,9 @@ export default function App() {
   const [introDismissed, setIntroDismissed] = useState(false)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
+  // Read by every view, not only Statistics: its quiet threshold is the board's and the
+  // table's Idle threshold too, and the activity filter reads it.
+  const [statsSettings, changeStatsSetting] = useStatsSettings()
 
   useEffect(() => {
     let cancelled = false
@@ -877,13 +881,13 @@ export default function App() {
     const searchText = tracker?.indexes.search_text ?? {}
     return applications.filter((application) => {
       if (!stateFilterMatches(stateFilter, application.state)) return false
-      if (!idleFilterMatches(idleFilter, application)) return false
+      if (!idleFilterMatches(idleFilter, application, new Date(), statsSettings.quietDays)) return false
       if (companyFilter !== 'all' && application.company !== companyFilter) return false
       if (sourceFilter !== 'all' && application.source?.trim() !== sourceFilter) return false
       if (!query) return true
       return searchText[application.id]?.includes(query) ?? false
     })
-  }, [companyFilter, idleFilter, search, sourceFilter, stateFilter, tracker?.applications, tracker?.indexes])
+  }, [companyFilter, idleFilter, search, sourceFilter, stateFilter, statsSettings.quietDays, tracker?.applications, tracker?.indexes])
 
   /**
    * The roles of what is showing, one per line. Repeats are dropped: two applications to the
@@ -1143,12 +1147,20 @@ export default function App() {
       onOpenPosting: openPosting,
       onOpenMessages: openApplication,
       onCompleteAction: completeAction,
+      quietDays: statsSettings.quietDays,
     }
     switch (activeView) {
       case 'table':
         return <TableView {...shared} onMove={move} />
       case 'statistics':
-        return <StatisticsView applications={filteredApplications} />
+        return (
+          <StatisticsView
+            applications={filteredApplications}
+            onOpen={openApplication}
+            onSettingChange={changeStatsSetting}
+            settings={statsSettings}
+          />
+        )
       case 'compare':
         return (
           <CompareNotesView

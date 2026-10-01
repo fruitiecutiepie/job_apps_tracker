@@ -5,11 +5,15 @@ import type { Application, StateEvent, StateId } from '../domain'
 import {
   advanced,
   daysToFirstReply,
-  furthestLiveState,
   heardBack,
-  outcomeSummary,
+  median,
+  replyWaits,
   sourceOutcomes,
-  stageOutcomes,
+  finishDurations,
+  stageMoveKind,
+  stageMoves,
+  stagePassRates,
+  weeklyActivity,
 } from './outcomes'
 
 const today = new Date(2026, 7, 14, 12)
@@ -148,96 +152,6 @@ describe('advancing', () => {
   })
 })
 
-describe('the furthest live stage reached', () => {
-  it('is the latest in live order, not the last recorded', () => {
-    expect(
-      furthestLiveState(application('Wound Back Co', [
-        ['applied', 30],
-        ['interview_1', 20],
-        ['applied', 10],
-      ])),
-    ).toBe('interview_1')
-  })
-
-  it('ignores rejected states, which are not stages of their own', () => {
-    expect(
-      furthestLiveState(application('Turned Down Co', [
-        ['applied', 30],
-        ['recruiter_interview', 20],
-        ['recruiter_interview_rejected', 10],
-      ])),
-    ).toBe('recruiter_interview')
-  })
-
-  it('is null for an application that has only ever been rejected', () => {
-    const trail = [{ state: 'auto_rejected' as StateId, at: at(-5) }]
-    expect(
-      furthestLiveState({ ...application('Filed Closed Co', []), state_history: trail }),
-    ).toBeNull()
-  })
-})
-
-describe('stage outcomes', () => {
-  const applications = [
-    application('Waiting Co', [['applied', 20]]),
-    application('Also Waiting Co', [['applied', 18]]),
-    application('Bounced Co', [
-      ['applied', 30],
-      ['auto_rejected', 28],
-    ]),
-    application('Talking Co', [
-      ['applied', 25],
-      ['recruiter_interview', 12],
-    ]),
-    application('Nearly Co', [
-      ['applied', 40],
-      ['recruiter_interview', 30],
-      ['recruiter_interview_rejected', 20],
-    ]),
-  ]
-
-  it('counts reaching a stage apart from sitting in it and apart from ending there', () => {
-    expect(stageOutcomes(applications)).toEqual([
-      { state: 'applied', reached: 5, here: 2, ended: 1 },
-      { state: 'recruiter_interview', reached: 2, here: 1, ended: 1 },
-    ])
-  })
-
-  it('leaves out a stage nothing has reached rather than printing a row of zeros', () => {
-    expect(stageOutcomes(applications).map(({ state }) => state)).not.toContain('offer')
-  })
-
-  it('orders rows by live stage, not by how many reached them', () => {
-    expect(stageOutcomes(applications).map(({ state }) => state)).toEqual([
-      'applied',
-      'recruiter_interview',
-    ])
-  })
-
-  it('counts a stage once for an application that passed through it twice', () => {
-    const revisited = [
-      application('Back Again Co', [
-        ['applied', 30],
-        ['recruiter_interview', 20],
-        ['applied', 10],
-      ]),
-    ]
-
-    expect(stageOutcomes(revisited)).toEqual([
-      { state: 'applied', reached: 1, here: 1, ended: 0 },
-      { state: 'recruiter_interview', reached: 1, here: 0, ended: 0 },
-    ])
-  })
-
-  it('accounts for every application exactly once across here and ended', () => {
-    const rows = stageOutcomes(applications)
-    const here = rows.reduce((sum, row) => sum + row.here, 0)
-    const ended = rows.reduce((sum, row) => sum + row.ended, 0)
-
-    expect(here + ended).toBe(applications.length)
-  })
-})
-
 describe('source outcomes', () => {
   const applications = [
     application('A', [['applied', 20]], { source: 'LinkedIn' }),
@@ -284,20 +198,8 @@ describe('source outcomes', () => {
   })
 })
 
-describe('the summary as a whole', () => {
-  it('reports zeros and nulls for an empty collection rather than throwing', () => {
-    expect(outcomeSummary([])).toEqual({
-      total: 0,
-      live: 0,
-      heardBack: 0,
-      advanced: 0,
-      medianDaysToFirstReply: null,
-      stages: [],
-      sources: [],
-    })
-  })
-
-  it('takes the median over the applications that have a reply to measure', () => {
+describe('replyWaits', () => {
+  it('measures each reply and counts the live applications still waiting', () => {
     const applications = [
       application('Silent Co', [['applied', 20]]),
       application('Quick Co', [['applied', 20], ['auto_rejected', 19]]),
@@ -305,27 +207,149 @@ describe('the summary as a whole', () => {
       application('Middling Co', [['applied', 20], ['recruiter_messaged', 15]]),
     ]
 
-    // 1, 5 and 10 days; the silent one is absent rather than counted as zero.
-    expect(outcomeSummary(applications).medianDaysToFirstReply).toBe(5)
+    const waits = replyWaits(applications)
+    expect([...waits.replied].sort((a, b) => a - b)).toEqual([1, 5, 10])
+    expect(waits.waiting).toBe(1)
+    // The silent one is absent from the median rather than counted as zero.
+    expect(median(waits.replied)).toBe(5)
   })
 
+  it('does not count a finished application as waiting', () => {
+    const closed = application('Closed Co', [['no_openings', 5]])
+    expect(replyWaits([closed]).waiting).toBe(0)
+  })
+})
+
+describe('median', () => {
   it('takes the lower middle on an even count, so the figure is one something took', () => {
+    // 2 and 10 days: 2, not 6, which no application waited.
+    expect(median([10, 2])).toBe(2)
+  })
+
+  it('is null with nothing to measure', () => {
+    expect(median([])).toBeNull()
+  })
+})
+
+describe('stageMoves', () => {
+  it('counts each consecutive pair of history entries as one move', () => {
     const applications = [
-      application('Quick Co', [['applied', 20], ['auto_rejected', 18]]),
-      application('Slow Co', [['applied', 30], ['recruiter_messaged', 20]]),
+      application('One Co', [['applied', 20], ['recruiter_interview', 10], ['interview_1', 5]]),
+      application('Two Co', [['applied', 20], ['recruiter_interview', 12]]),
+      application('Three Co', [['applied', 20], ['auto_rejected', 18]]),
     ]
 
-    // 2 and 10 days: 2, not 6, which no application waited.
-    expect(outcomeSummary(applications).medianDaysToFirstReply).toBe(2)
+    // In configured state order on both ends: Auto-rejected sits right after Applied.
+    expect(stageMoves(applications)).toEqual([
+      { from: 'applied', to: 'auto_rejected', count: 1 },
+      { from: 'applied', to: 'recruiter_interview', count: 2 },
+      { from: 'recruiter_interview', to: 'interview_1', count: 1 },
+    ])
   })
 
-  it('counts live separately from heard back, which overlap but are not the same', () => {
-    const summary = outcomeSummary([
-      application('Waiting Co', [['applied', 20]]),
-      application('Talking Co', [['applied', 25], ['recruiter_interview', 12]]),
-      application('Bounced Co', [['applied', 30], ['auto_rejected', 28]]),
+  it('counts a stage crossed twice as two moves, backwards included', () => {
+    const revisited = application('Back Co', [
+      ['recruiter_interview', 30],
+      ['applied', 20],
+      ['recruiter_interview', 10],
     ])
 
-    expect(summary).toMatchObject({ total: 3, live: 2, heardBack: 2, advanced: 1 })
+    expect(stageMoves([revisited])).toEqual([
+      { from: 'applied', to: 'recruiter_interview', count: 1 },
+      { from: 'recruiter_interview', to: 'applied', count: 1 },
+    ])
+  })
+
+  it('reads history in time order, not in the order it was stored', () => {
+    const shuffled = application('Shuffled Co', [], {
+      state: 'recruiter_interview',
+      state_history: [
+        { state: 'recruiter_interview', at: at(-5) },
+        { state: 'applied', at: at(-10) },
+      ],
+    })
+
+    expect(stageMoves([shuffled])).toEqual([
+      { from: 'applied', to: 'recruiter_interview', count: 1 },
+    ])
+  })
+})
+
+describe('stageMoveKind', () => {
+  it('calls a move further only when it lands on a later live stage', () => {
+    expect(stageMoveKind({ from: 'applied', to: 'interview_1' })).toBe('further')
+    expect(stageMoveKind({ from: 'interview_1', to: 'applied' })).toBe('other')
+  })
+
+  it('names a rejection as one, and a close without one as neither', () => {
+    expect(stageMoveKind({ from: 'applied', to: 'auto_rejected' })).toBe('rejected')
+    expect(stageMoveKind({ from: 'offer', to: 'accepted' })).toBe('other')
+    expect(stageMoveKind({ from: 'applied', to: 'no_openings' })).toBe('other')
+  })
+})
+
+describe('stagePassRates', () => {
+  it('leaves the applications still in a stage out of its rate', () => {
+    const rows = stagePassRates([
+      application('Through Co', [['applied', 20], ['recruiter_interview', 10]]),
+      application('Stopped Co', [['applied', 20], ['auto_rejected', 15]]),
+      application('Waiting Co', [['applied', 5]]),
+    ])
+
+    expect(rows.find((row) => row.state === 'applied')).toEqual({
+      state: 'applied',
+      decided: 2,
+      passed: 1,
+      pending: 1,
+    })
+  })
+
+  it('counts a skipped stage as passing the one before it', () => {
+    const skipped = application('Skipped Co', [['applied', 20], ['interview_1', 10]])
+    expect(stagePassRates([skipped])[0]).toEqual({ state: 'applied', decided: 1, passed: 1, pending: 0 })
+  })
+
+  it('does not count going back as passing, and counts accepting as passing Offer', () => {
+    const rows = stagePassRates([
+      application('Back Co', [['recruiter_interview', 20], ['applied', 10]]),
+      application('Hired Co', [['offer', 10], ['accepted', 5]]),
+    ])
+
+    expect(rows.find((row) => row.state === 'recruiter_interview')).toMatchObject({ decided: 1, passed: 0 })
+    expect(rows.find((row) => row.state === 'offer')).toMatchObject({ decided: 1, passed: 1 })
+  })
+})
+
+describe('weeklyActivity', () => {
+  it('counts starts and first replies in the local week they happened, Monday first', () => {
+    // 14 August 2026 is a Friday, so this week began on Monday the 10th.
+    const weeks = weeklyActivity(
+      [
+        application('This Week Co', [['applied', 4], ['recruiter_messaged', 1]]),
+        application('Last Week Co', [['applied', 5]]),
+        application('Old Co', [['applied', 200]]),
+      ],
+      today,
+      3,
+    )
+
+    expect(weeks.map((week) => week.start.getDate())).toEqual([27, 3, 10])
+    expect(weeks.map(({ started, replies }) => [started, replies])).toEqual([
+      [0, 0],
+      [1, 0],
+      [1, 1],
+    ])
+  })
+})
+
+describe('finishDurations', () => {
+  it('times a rejection to the rejection and an offer to first reaching Offer', () => {
+    expect(
+      finishDurations([
+        application('Turned Down Co', [['applied', 30], ['recruiter_interview', 20], ['recruiter_interview_rejected', 10]]),
+        application('Offered Co', [['applied', 40], ['offer', 5], ['accepted', 1]]),
+        application('Live Co', [['applied', 10]]),
+      ]),
+    ).toEqual({ toRejection: [20], toOffer: [35] })
   })
 })

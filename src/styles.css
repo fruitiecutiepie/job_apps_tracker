@@ -34,6 +34,12 @@
   --danger: #b3261e;
   --danger-weak: #fdecea;
 
+  /* Statistics bars: an ordered ramp of the accent, most to least, ending in a neutral for
+     the part where nothing further happened. Steps checked for colour-blind separation. */
+  --chart-strong: var(--accent);
+  --chart-mid: #5fa8a0;
+  --chart-rest: var(--line-strong);
+
   /* Code block syntax highlighting — the one place besides accent/danger with hue,
      scoped to .markdown__token so it never leaks into the rest of the interface */
   --syntax-keyword: #9333ea;
@@ -119,6 +125,19 @@
   --compare-card: 26rem;
   --compare-card-max: 44rem;
   --compare-card-height: min(34rem, 72dvh);
+  /* Statistics bars: the widest a row label grows before it ellipses, and the widest the
+     whole chart runs, past which a bar is too long to compare against the one above it. */
+  --chart-label: 12rem;
+  --chart-max: 48rem;
+  /* The narrowest a statistics section gets before the sections stack instead. */
+  --chart-column: 26rem;
+  /* The tallest a rating column is drawn, and the height the mean's marker spans. */
+  --chart-scale: 20px;
+  /* The weekly columns' height, and how far a stacked duration dot sits above the last. */
+  --chart-scale-tall: 64px;
+  --chart-dot-step: 6px;
+  /* Room kept at the end of the longest bar for its figure, wide enough for "13 of 14". */
+  --chart-value: 4.5rem;
 
   color: var(--ink);
   background: var(--bg);
@@ -157,6 +176,8 @@
     --danger: #f2867e;
     --danger-weak: #3a1c1a;
 
+    --chart-mid: #1c8378;
+
     --syntax-keyword: #c084fc;
     --syntax-string: #4ade80;
     --syntax-number: #fbbf24;
@@ -187,6 +208,8 @@
 
   --danger: #f2867e;
   --danger-weak: #3a1c1a;
+
+  --chart-mid: #1c8378;
 
   --syntax-keyword: #c084fc;
   --syntax-string: #4ade80;
@@ -1388,61 +1411,608 @@ tbody tr:hover {
 
 /* ---------------------------------------------------------- statistics --- */
 
-/* Headline figures sit on one baseline and wrap rather than shrink. */
-.statistics__totals {
+/*
+ * The questions in as many columns as the width holds, flowing down each column rather
+ * than across rows. Cards differ in height by several times — a pass rate with its flow
+ * diagram against a sentence and a list — and a grid lines them up by row, leaving the
+ * short ones a column of empty space beside the tall one. Down the columns, the most
+ * actionable question is still the first thing read, top left. A column width is a
+ * target, never wider than the view, so a phone gets one column rather than a scroll —
+ * and it takes no percentage, so wrapping it in `min(100%, …)` voids the declaration.
+ */
+.statistics__groups {
+  columns: var(--chart-column);
+  column-gap: var(--s4);
+}
+
+/*
+ * Each question is a box of its own, edged on all four sides with space between it and
+ * the next. A hairline over each card was tried first and could not be told from the
+ * hairlines inside one — the lists, the axes and the bars draw their own — so a card's top
+ * edge read as one more line in the card above it, and nothing said where a question
+ * ended. The box costs a frame inside the view's frame; not knowing where an answer
+ * belongs costs more.
+ */
+.question-card {
+  min-width: 0;
+  margin-bottom: var(--s4);
+  padding: var(--s4);
+  break-inside: avoid;
+  border: 1px solid var(--line);
+  border-radius: var(--r2);
+}
+
+/* The question is the heading, set small: it is what the card is about, not the news. */
+.question-card__question {
+  margin: 0;
+  color: var(--ink-2);
+  font-size: var(--t3);
+  font-weight: 500;
+}
+
+/* The answer is the largest text on the card, because it is the reason to read it. */
+.question-card__answer {
+  margin: var(--s1) 0 var(--s4);
+  color: var(--ink);
+  font-size: var(--t5);
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.question-card__step {
+  margin: var(--s3) 0 0;
+  color: var(--ink);
+  font-size: var(--t3);
+}
+
+.question-card__step::before {
+  content: "→ ";
+  color: var(--ink-3);
+}
+
+/* How the answer was counted: on the card, quiet, and never in a tooltip. */
+.question-card__method {
+  margin: var(--s3) 0 0;
+  color: var(--ink-3);
+  font-size: var(--t2);
+  line-height: 1.6;
+}
+
+/* A setting sits in the sentence that states it, at the height of the text around it. */
+.setting-field {
+  width: calc(4ch + var(--s4));
+  padding: 0 var(--s1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--surface);
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.setting-field:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: var(--focus);
+}
+
+.setting-reset {
+  padding: 0;
+  border: 0;
+  color: var(--accent);
+  background: none;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The ghosted list is the answer itself, so each row opens what it names. */
+.quiet-list,
+.pay-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border-bottom: 1px solid var(--line);
+}
+
+.quiet-list li,
+.pay-list li {
+  border-top: 1px solid var(--line);
+}
+
+.quiet-list__item {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--s4);
+  width: 100%;
+  padding: var(--s2) 0;
+  border: 0;
+  color: var(--ink);
+  background: none;
+  font: inherit;
+  font-size: var(--t3);
+  text-align: left;
+  cursor: pointer;
+}
+
+.quiet-list__item:hover .quiet-list__name {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.quiet-list__item:focus-visible {
+  outline: none;
+  box-shadow: var(--focus);
+}
+
+.quiet-list__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quiet-list__days,
+.pay-list__verdict {
+  flex: none;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.pay-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: var(--s4);
+  padding: var(--s2) 0;
+  font-size: var(--t3);
+}
+
+.pay-list__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pay-list__figure {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Applications and replies per week. The current week carries a tint behind its pair,
+ * because it is what the answer reads out and the rest are there to read it against.
+ */
+.weekly-columns__plot {
+  display: grid;
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
+  gap: var(--s2);
+  height: var(--chart-scale-tall);
+  max-width: var(--chart-max);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.weekly-columns__week {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: var(--s1);
+  border-radius: var(--r1) var(--r1) 0 0;
+}
+
+.weekly-columns__week--current {
+  background: var(--accent-weak);
+}
+
+.weekly-columns__column {
+  flex: 1 1 0;
+  max-width: var(--s4);
+  border-radius: var(--r1) var(--r1) 0 0;
+}
+
+.weekly-columns__column--strong {
+  background: var(--chart-strong);
+}
+
+.weekly-columns__column--mid {
+  background: var(--chart-mid);
+}
+
+.weekly-columns__axis {
+  display: flex;
+  justify-content: space-between;
+  max-width: var(--chart-max);
+  margin-top: var(--s1);
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
+/* One dot per application on a shared days axis, a row per outcome. */
+.duration-dots__rows {
+  display: grid;
+  grid-template-columns: fit-content(var(--chart-label)) minmax(0, 1fr);
+  column-gap: var(--s4);
+  row-gap: var(--s3);
+  align-items: end;
+  max-width: var(--chart-max);
+}
+
+.duration-dots__row {
+  display: contents;
+}
+
+.duration-dots__label {
+  grid-column: 1;
+  color: var(--ink);
+  font-size: var(--t3);
+  white-space: nowrap;
+}
+
+.duration-dots__plot {
+  position: relative;
+  height: var(--s6);
+  margin: 0 var(--s2);
+  border-bottom: 1px solid var(--line-strong);
+}
+
+/* A ring of the surface keeps two touching dots countable as two. */
+.duration-dots__dot {
+  position: absolute;
+  width: var(--s3);
+  height: var(--s3);
+  margin-bottom: var(--s1);
+  transform: translateX(-50%);
+  border-radius: var(--pill);
+  box-shadow: 0 0 0 var(--s1) var(--surface);
+}
+
+.duration-dots__dot--strong {
+  background: var(--chart-strong);
+}
+
+.duration-dots__dot--rest {
+  background: var(--ink-3);
+}
+
+.duration-dots__none {
+  position: absolute;
+  bottom: var(--s1);
+  left: 0;
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+.duration-dots__axis {
+  display: flex;
+  grid-column: 2;
+  justify-content: space-between;
+  margin: calc(-1 * var(--s2)) var(--s2) 0;
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
+/*
+ * One stacked bar per row. The rows share one grid, so every label column and every bar
+ * starts at the same x and lengths compare down the chart; the detail line sits under the
+ * bar it describes rather than in a column of its own, which keeps the bar wide at any width.
+ */
+.chart-key {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: var(--s6);
-}
-
-.statistics__total {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s2);
-  margin: 0;
+  gap: var(--s2) var(--s5);
+  margin-bottom: var(--s3);
   color: var(--ink-2);
   font-size: var(--t2);
 }
 
-.statistics__total strong {
-  color: var(--ink);
-  font-size: var(--t6);
-  font-weight: 600;
-  line-height: 1.1;
+.chart-key__caption {
+  color: var(--ink-3);
 }
 
-/* The share a figure is out of its total, quieter than the label it follows. */
-.statistics__total small,
-.statistics td small {
+.chart-key__legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--s2) var(--s4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chart-key__legend li {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+}
+
+.chart-key__swatch {
+  width: var(--s4);
+  height: var(--s4);
+  border-radius: var(--r1);
+}
+
+/* The mean's marker: the same thin ink line the chart draws it with. */
+.chart-key__swatch--line {
+  width: var(--s1);
+  border-radius: 0;
+  background: var(--ink);
+}
+
+.outcome-bars__rows {
+  display: grid;
+  grid-template-columns: fit-content(var(--chart-label)) minmax(0, 1fr);
+  column-gap: var(--s4);
+  row-gap: var(--s3);
+  align-items: center;
+  max-width: var(--chart-max);
+}
+
+.outcome-bars__row {
+  display: contents;
+}
+
+.outcome-bars__label {
+  overflow: hidden;
+  color: var(--ink);
+  font-size: var(--t3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* A row's bar is its share of `max`, with its figure following it at the tip. */
+.outcome-bars__track {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+/* Surface gaps between segments, a rounded end, and a square baseline. */
+.outcome-bars__bar {
+  display: flex;
+  flex: none;
+  gap: var(--s1);
+  height: var(--s4);
+  overflow: hidden;
+  border-radius: 0 var(--r1) var(--r1) 0;
+}
+
+.outcome-bars__segment {
+  flex-basis: 0;
+  min-width: var(--s1);
+}
+
+.outcome-bars__segment--strong,
+.chart-key__swatch--strong {
+  background: var(--chart-strong);
+}
+
+.outcome-bars__segment--mid,
+.chart-key__swatch--mid {
+  background: var(--chart-mid);
+}
+
+.outcome-bars__segment--rest,
+.chart-key__swatch--rest {
+  background: var(--chart-rest);
+}
+
+/* The row the answer names, so the claim can be found in the chart at a glance. */
+.outcome-bars__row--emphasis .outcome-bars__label,
+.outcome-bars__row--emphasis .outcome-bars__value {
+  font-weight: 600;
+}
+
+/* Too few to compare: present, but drawn back so it does not read as counted. */
+.outcome-bars__row--quiet .outcome-bars__label,
+.outcome-bars__row--quiet .outcome-bars__value {
+  color: var(--ink-3);
+}
+
+.outcome-bars__row--quiet .outcome-bars__bar {
+  opacity: 0.4;
+}
+
+.outcome-bars__value {
+  color: var(--ink);
+  font-size: var(--t3);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.outcome-bars__detail {
+  grid-column: 2;
+  margin-top: calc(-1 * var(--s2));
   color: var(--ink-3);
   font-size: var(--t2);
 }
 
 /*
- * The preference means sit under their table as a sentence rather than as more headline
- * figures: they describe that table, and promoting them would put two kinds of number on
- * one baseline at the top.
+ * Where applications went: the stages something left on the left, where it arrived on the
+ * right, and bands between them. Node positions are computed in pixels by `StageFlow`, so
+ * a label's line height has to match its `LABEL` constant or a one-move node's label
+ * would run into the one below.
  */
-.statistics__note {
-  margin: var(--s3) 0 0;
-  color: var(--ink-2);
-  font-size: var(--t2);
+.stage-flow__plot {
+  display: grid;
+  /* More room on the arriving side, which is where the long rejected labels land. */
+  grid-template-columns: minmax(0, 0.9fr) minmax(var(--s6), 0.7fr) minmax(0, 1.4fr);
+  max-width: var(--chart-max);
 }
 
-.statistics__table {
-  min-width: 30rem;
+.stage-flow__side {
+  position: relative;
+  min-width: 0;
+}
+
+.stage-flow__node {
+  position: absolute;
+  right: 0;
+  left: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+  color: var(--ink);
+  font-size: var(--t2);
+  line-height: 1.5;
+}
+
+/* The leaving side hugs the bands: its bar is on the inner edge, its name before it. */
+.stage-flow__side--from .stage-flow__node {
+  justify-content: flex-end;
+}
+
+.stage-flow__side--from .stage-flow__name {
+  order: 1;
+}
+
+.stage-flow__side--from .stage-flow__count {
+  order: 2;
+}
+
+.stage-flow__side--from .stage-flow__bar {
+  order: 3;
+}
+
+.stage-flow__bar {
+  flex: none;
+  width: var(--s2);
+  background: var(--ink-3);
+}
+
+.stage-flow__name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stage-flow__count {
+  flex: none;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.stage-flow__links {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* Translucent so a band crossing another still shows both; solid under the pointer. */
+.stage-flow__link {
+  opacity: 0.75;
+}
+
+.stage-flow__link:hover {
+  opacity: 1;
+}
+
+.stage-flow__link--strong {
+  fill: var(--chart-strong);
+}
+
+.stage-flow__link--mid {
+  fill: var(--chart-mid);
+}
+
+.stage-flow__link--rest {
+  fill: var(--chart-rest);
 }
 
 /*
- * The view's own h2 is sr-only, so this is the only visible heading on the page.
- * It reads at the same weight as a view heading elsewhere.
+ * Ratings on a 1-5 scale: a column per score, the mean as a line among them, and one axis
+ * under every row rather than one per row. The plot keeps room above the tallest column
+ * for the count printed on it.
  */
-.statistics__section {
-  margin: var(--s5) 0 var(--s3);
+.rating-scales__rows {
+  display: grid;
+  grid-template-columns: fit-content(var(--chart-label)) minmax(0, 1fr) max-content;
+  column-gap: var(--s4);
+  row-gap: var(--s3);
+  align-items: end;
+  max-width: var(--chart-max);
+}
+
+.rating-scales__row {
+  display: contents;
+}
+
+/* Placed explicitly: the detail line under each plot would otherwise leave the next row's
+   label to be auto-placed into the column after it. */
+.rating-scales__label {
+  grid-column: 1;
+  overflow: hidden;
   color: var(--ink);
-  font-size: var(--t4);
+  font-size: var(--t3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rating-scales__plot {
+  position: relative;
+  height: calc(var(--chart-scale) + var(--t1) + var(--s1));
+  border-bottom: 1px solid var(--line-strong);
+}
+
+.rating-scales__column {
+  position: absolute;
+  bottom: 0;
+  width: var(--s4);
+  transform: translateX(-50%);
+  border-radius: var(--r1) var(--r1) 0 0;
+  background: var(--chart-strong);
+}
+
+.rating-scales__count {
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  padding-bottom: var(--s1);
+  transform: translateX(-50%);
+  color: var(--ink-2);
+  font-size: var(--t1);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.rating-scales__mean {
+  position: absolute;
+  bottom: 0;
+  width: var(--s1);
+  height: var(--chart-scale);
+  transform: translateX(-50%);
+  background: var(--ink);
+}
+
+.rating-scales__value {
+  color: var(--ink);
+  font-size: var(--t3);
+  font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+.rating-scales__detail {
+  grid-column: 2 / -1;
+  margin-top: calc(-1 * var(--s2));
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+.rating-scales__axis {
+  position: relative;
+  grid-column: 2 / 3;
+  height: var(--s4);
+  margin-top: calc(-1 * var(--s2));
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
+.rating-scales__axis span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  line-height: 1;
 }
 
 /*
@@ -4985,6 +5555,47 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .dialog__actions-spacer {
     display: none;
+  }
+
+  /* A label column beside the bars leaves them too short to compare, so each label goes
+     above its bar and the bars take the whole width. */
+  .outcome-bars__rows {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--s2);
+  }
+
+  .outcome-bars__label {
+    margin-top: var(--s2);
+  }
+
+  .outcome-bars__detail {
+    grid-column: 1;
+    margin-top: 0;
+  }
+
+  .rating-scales__rows {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    row-gap: var(--s2);
+  }
+
+  .rating-scales__label {
+    grid-column: 1 / -1;
+    margin-top: var(--s2);
+  }
+
+  .rating-scales__detail,
+  .rating-scales__axis {
+    grid-column: 1;
+    margin-top: 0;
+  }
+
+  .duration-dots__rows {
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: var(--s2);
+  }
+
+  .duration-dots__axis {
+    grid-column: 1;
   }
 }
 

@@ -20,6 +20,7 @@ export function KanbanView({
   onCompleteAction,
   onMove,
   visibleStates,
+  quietDays,
 }: MovableApplicationsViewProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const columnGroups = useMemo(() => kanbanColumnGroups(visibleStates), [visibleStates]);
@@ -106,7 +107,7 @@ export function KanbanView({
                       {stateApplications.map((application) => {
                         // Silence since the last stage change, not since the last edit: a
                         // card you annotated yesterday can still have gone quiet for weeks.
-                        const idle = idleStatusFor(application);
+                        const idle = idleStatusFor(application, new Date(), quietDays);
                         const invite = upcomingStateEvent(application);
                         // The board's one non-derivable fact about the role itself: how you
                         // judged it. Shown with the weakest judgement and what is missing,
