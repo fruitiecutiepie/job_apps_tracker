@@ -15,6 +15,11 @@ export const TRACKER_JSON_SCHEMA = {
       type: 'object',
       description: 'Embedded JSON Schema describing the canonical database shape.',
     },
+    name: {
+      type: 'string',
+      minLength: 1,
+      description: 'What the reader called this tracker. Absent until they name it.',
+    },
     applications: {
       type: 'array',
       items: { $ref: '#/$defs/application' },

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { addApplication, createApplication } from '../domain/mutations'
+import { addApplication, createApplication, renameTracker } from '../domain/mutations'
 import { prepareTrackerDatabase } from '../domain/database'
 import { MAX_ATTACHMENT_BYTES } from '../domain/attachmentPaths'
 import type { TrackerDatabase } from '../domain/types'
@@ -559,15 +559,18 @@ describe('several trackers in one browser', () => {
     expect(third.storage!.state().tracker!.name).toBe('Untitled tracker 2')
   })
 
+  async function rename(backend: TrackerBackend, name: string): Promise<void> {
+    await backend.updateDocument!(await backend.loadDocument(), (document) => renameTracker(document, name))
+  }
+
   /*
-   * A chosen name outranks the folder's and the file's, which are only guesses at what to
-   * call it, so connecting a folder or importing afterwards does not replace it.
+   * A chosen name lives in the document, so it outranks the folder's and the file's —
+   * which are only guesses — and connecting a folder or importing afterwards keeps it.
    */
   it('keeps a name the reader chose, over a folder and an import alike', async () => {
     const folder = new FakeDirectory('job-apps')
     const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })
-    await backend.loadDocument()
-    await backend.storage!.rename('  Autumn search  ')
+    await rename(backend, '  Autumn search  ')
     await backend.storage!.connect()
     await backend.storage!.nameAfterFile('someone-elses.json')
     expect(backend.storage!.state().tracker!.name).toBe('Autumn search')
@@ -576,21 +579,42 @@ describe('several trackers in one browser', () => {
     const reopened = tab(id).backend
     await reopened.loadDocument()
     expect(reopened.storage!.state().tracker!.name).toBe('Autumn search')
-    expect(folder.name).toBe('job-apps')
+  })
+
+  /*
+   * The point of keeping the name in the document: browser storage can be cleared, and
+   * the folder is what outlives it. Pointing a fresh browser at the folder brings the
+   * name back with the applications.
+   */
+  it('gets its name back from the folder after browser storage is cleared', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const first = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+    await first.loadDocument()
+    await first.storage!.connect()
+    await rename(first, 'Autumn search')
+    expect(JSON.parse(folder.readText(TRACKER_FILENAME)!).name).toBe('Autumn search')
+
+    store = memoryStore()
+    const fresh = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+    await fresh.loadDocument()
+    await fresh.storage!.connect()
+    expect(fresh.storage!.state().tracker!.name).toBe('Autumn search')
+    expect((await fresh.storage!.listTrackers())[0].name).toBe('Autumn search')
   })
 
   it('keeps a tracker that was named before anything was saved in it', async () => {
     const { backend } = tab(NEW_TRACKER)
-    await backend.loadDocument()
-    await backend.storage!.rename('Next year')
+    await rename(backend, 'Next year')
     expect((await backend.storage!.listTrackers()).map((tracker) => tracker.name)).toEqual(['Next year'])
   })
 
-  it('ignores a blank name rather than storing one', async () => {
+  it('goes back to what it was called before once the name is cleared', async () => {
     const { backend } = tab(NEW_TRACKER)
     await backend.saveDocument(withApplication())
-    await backend.storage!.rename('   ')
-    expect(backend.storage!.state().tracker!.name).toBe('Untitled tracker')
+    await backend.storage!.nameAfterFile('imported.json')
+    await rename(backend, 'Autumn search')
+    await rename(backend, '   ')
+    expect(backend.storage!.state().tracker!.name).toBe('imported')
   })
 
   it('names a tracker imported from an export after the tracker, not the export\'s date', () => {
@@ -823,8 +847,8 @@ describe('one tracker open in two tabs', () => {
   })
 
   it('shows a name chosen in the other tab', async () => {
-    const { first, second } = await twoTabs()
-    await first.storage!.rename('Autumn search')
+    const { first, second, firstDocument } = await twoTabs()
+    await first.updateDocument!(firstDocument, (document) => renameTracker(document, 'Autumn search'))
     await vi.waitFor(() => expect(second.storage!.state().tracker!.name).toBe('Autumn search'))
   })
 

@@ -139,8 +139,12 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
    * and closed without typing leaves nothing behind to list.
    */
   let trackerId: string | null = null
+  /*
+   * The name shown is the document's own when the reader gave it one — stored in the file,
+   * so it travels with the folder and every export — and `fallbackName` otherwise.
+   */
   let trackerName = UNTITLED_TRACKER
-  let renamed = false
+  let fallbackName = UNTITLED_TRACKER
   let meta: TrackerSummary | null = null
   /* No tracker existed anywhere when this one was opened: the demo seeds only then. */
   let firstEver = false
@@ -193,9 +197,9 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     meta = {
       id: id(),
       name: trackerName,
+      fallbackName,
       applications,
       openedAt: meta?.openedAt ?? now().toISOString(),
-      ...(renamed ? { renamed } : {}),
     }
     await store.put('state', metaKey(meta.id), meta)
   }
@@ -250,14 +254,15 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     if (found) {
       trackerId = found.id
       trackerName = found.name
-      renamed = found.renamed ?? false
+      fallbackName = found.fallbackName ?? found.name
       meta = { ...found, openedAt: now().toISOString() }
       await store.put('state', metaKey(found.id), meta)
     } else {
       trackerId = createUuidV7(now())
-      trackerName = isDemoTrackerProfile() && firstEver
+      fallbackName = isDemoTrackerProfile() && firstEver
         ? 'Demo'
         : untitledName(metas.map((candidate) => candidate.name))
+      trackerName = fallbackName
       meta = null
     }
     address.show(trackerId)
@@ -286,7 +291,16 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     const text = (await store.get('state', documentKey(id()))) as string | null
     if (text === null) return null
     knownDocument = ensureFreshIndexes(parseTrackerDocument(text))
+    syncName()
     return knownDocument
+  }
+
+  /** The document's own name when it has one; the fallback otherwise. */
+  function syncName(): void {
+    const next = knownDocument?.name ?? fallbackName
+    if (next === trackerName) return
+    trackerName = next
+    announce()
   }
 
   /*
@@ -320,7 +334,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     if (stored) {
       meta = { ...stored, openedAt: meta?.openedAt ?? stored.openedAt }
       trackerName = stored.name
-      renamed = stored.renamed ?? false
+      fallbackName = stored.fallbackName ?? fallbackName
     }
     const backlog = (await store.get('state', backlogKey(id()))) as string | null
     unbackedSince = isDemoTrackerProfile() ? null : backlog
@@ -470,10 +484,12 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
   async function cacheDocument(document: TrackerDatabase): Promise<string> {
     const text = serialize(document)
     await store.put('state', documentKey(id()), text)
+    knownDocument = document
+    // Before the listing entry is written, so it lists the name the document now gives.
+    syncName()
     await writeMeta(document.applications.length)
     knownRevision = (((await store.get('state', revisionKey(id()))) as number | null) ?? 0) + 1
     await store.put('state', revisionKey(id()), knownRevision)
-    knownDocument = document
     post({ type: 'document' })
     return text
   }
@@ -508,7 +524,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
 
       return exclusive(async () => {
         directory = picked
-        if (!renamed) trackerName = picked.name
+        fallbackName = picked.name
         await store.put('state', directoryKey(id()), picked)
         /*
          * Connecting a folder adopts whatever is already in it. Someone pointing the site
@@ -580,23 +596,10 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     async nameAfterFile(filename: string): Promise<void> {
       await ready()
       return exclusive(async () => {
-        if (directory || renamed) return
-        trackerName = trackerNameFromFile(filename)
+        if (directory) return
+        fallbackName = trackerNameFromFile(filename)
+        syncName()
         if (meta) await writeMeta(meta.applications)
-        post({ type: 'storage' })
-        announce()
-      })
-    },
-
-    async rename(name: string): Promise<void> {
-      const chosen = name.trim()
-      if (!chosen) return
-      await ready()
-      return exclusive(async () => {
-        trackerName = chosen
-        renamed = true
-        // Written even before the first save: naming a tracker is reason enough to keep it.
-        await writeMeta(meta?.applications ?? 0)
         post({ type: 'storage' })
         announce()
       })
@@ -670,6 +673,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
         }
         const parsed = ensureFreshIndexes(parseTrackerDocument(cached))
         knownDocument = parsed
+        syncName()
         knownRevision = ((await store.get('state', revisionKey(id()))) as number | null) ?? 0
         if (directory) await writeFileIn(directory, TRACKER_FILENAME, serialize(parsed))
         return parsed

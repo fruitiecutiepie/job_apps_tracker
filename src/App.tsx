@@ -45,6 +45,7 @@ import {
   saveTrackerDatabase,
   subscribeTrackerChanges,
   updateTrackerDatabase,
+  renameTracker,
   tryLoadLegacyLocalStorage,
   clearApplicationRating,
   updateApplication,
@@ -1366,7 +1367,11 @@ export default function App() {
               current={storageState.tracker}
               listTrackers={listTrackers}
               onRemove={askToRemoveTracker}
-              onRename={(name) => backend.storage!.rename(name)}
+              onRename={async (name) => {
+                // A mutation like any other: the name is the document's, so it reaches
+                // the folder, the other tabs, and the next export the way an edit does.
+                await commit((current) => renameTracker(current, name))
+              }}
             />
           )}
         </div>

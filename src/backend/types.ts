@@ -83,10 +83,11 @@ export interface TrackerSummary {
   /** When a tab last opened it: a new tab opens the most recent. */
   openedAt: string
   /**
-   * The reader named it. A chosen name outranks the folder's and the imported file's,
-   * which are only ever guesses at what to call it, so neither replaces it afterwards.
+   * What it is called while its document names nothing: the connected folder's name, else
+   * the file it was imported from, else a numbered "Untitled tracker". A name the reader
+   * chose lives in the document itself and outranks this; `name` is whichever applies.
    */
-  renamed?: boolean
+  fallbackName?: string
 }
 
 /**
@@ -134,16 +135,10 @@ export interface ConnectableStorage {
    */
   markBackedUp(): Promise<void>
   /**
-   * Names this tracker after the file it was imported from. Ignored while a folder is
-   * connected, whose name is the one that says where the data is.
+   * Names this tracker after the file it was imported from, while its document names
+   * nothing. Ignored while a folder is connected, whose name says where the data is.
    */
   nameAfterFile(filename: string): Promise<void>
-  /**
-   * Gives this tracker a name of the reader's choosing. Only the name in this browser: a
-   * connected folder keeps its own on disk, which a page has no reliable way to change.
-   * A blank name is ignored rather than stored.
-   */
-  rename(name: string): Promise<void>
   /** Every tracker this browser holds, most recently opened first. */
   listTrackers(): Promise<TrackerSummary[]>
   /**
