@@ -758,6 +758,8 @@ export default function App() {
     proceed: () => Promise<void>
     /** Downloads the tracker about to be replaced or removed, which need not be this one. */
     saveCopy: () => Promise<void>
+    /** Opens an imported file as a tracker of its own, where a browser can hold several. */
+    openAsNew?: () => Promise<void>
   } | null>(null)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
@@ -904,9 +906,14 @@ export default function App() {
             && connection.kind !== 'connected'
             && storageState?.unbackedSince === null,
           folder: connection?.kind === 'connected' ? connection.name : null,
+          openAsNewBeside: storageState?.tracker?.name ?? null,
         },
         proceed: () => applyImport(result.document, result.files, file.name),
         saveCopy: saveCurrentCopy,
+        openAsNew: async () => {
+          const created = await backend.storage!.createTracker(result.document, result.files, file.name)
+          navigation.open(trackerHref(created.id))
+        },
       })
     } catch (error) {
       setNotice(`Import failed: ${errorMessage(error)}`)
@@ -1054,6 +1061,14 @@ export default function App() {
     const pending = pendingReplace
     setPendingReplace(null)
     if (!pending || choice === 'cancel') return
+    if (choice === 'open-new') {
+      try {
+        await pending.openAsNew?.()
+      } catch (error) {
+        setNotice(`Import failed: ${errorMessage(error)}`)
+      }
+      return
+    }
     if (choice === 'save-then-proceed') {
       try {
         await pending.saveCopy()

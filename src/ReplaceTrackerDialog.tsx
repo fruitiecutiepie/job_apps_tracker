@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { useDialogKeyboard } from './useDialogKeyboard'
 
 /**
- * What is about to replace the tracker, what it holds now, and where else that lives —
- * the things that decide whether going ahead can lose anything.
+ * What is about to replace or remove a tracker, what it holds now, and where else that
+ * lives — the things that decide whether going ahead can lose anything.
  */
 export type TrackerReplacement =
   | {
@@ -22,6 +22,11 @@ export type TrackerReplacement =
       backedUp: boolean
       /** The folder the import will overwrite, when one is connected. */
       folder: string | null
+      /**
+       * The tracker on screen, when the file could instead open as a tracker of its own —
+       * wherever a browser holds several. Null on the dev server, which holds one file.
+       */
+      openAsNewBeside: string | null
     }
   | {
       kind: 'remove'
@@ -38,8 +43,11 @@ export type TrackerReplacement =
       folder: string | null
     }
 
-/** `proceed` is the import or the removal; `save-then-proceed` downloads a copy first. */
-export type ReplaceChoice = 'save-then-proceed' | 'proceed' | 'cancel'
+/**
+ * `proceed` is the import or the removal; `save-then-proceed` downloads a copy first;
+ * `open-new` opens an imported file as a tracker of its own instead of replacing anything.
+ */
+export type ReplaceChoice = 'save-then-proceed' | 'proceed' | 'open-new' | 'cancel'
 
 export interface ReplaceTrackerDialogProps {
   replacement: TrackerReplacement
@@ -52,9 +60,8 @@ function plural(count: number, noun: string): string {
 
 function describe(replacement: TrackerReplacement): { title: string; body: string; verb: string } {
   const { current, backedUp, folder } = replacement
-  const kept = backedUp
-    ? 'Your last backup already has them.'
-    : 'They are not saved anywhere else, so save a copy first if you might want them back.'
+  const are = current === 1 ? 'is' : 'are'
+  const them = current === 1 ? 'it' : 'them'
 
   /*
    * Removing means different things depending on where the tracker lives, so the body
@@ -64,8 +71,6 @@ function describe(replacement: TrackerReplacement): { title: string; body: strin
   if (replacement.kind === 'remove') {
     const { name } = replacement
     const applications = plural(current, 'application')
-    const are = current === 1 ? 'is' : 'are'
-    const them = current === 1 ? 'it' : 'them'
     const body = folder
       ? `${name} stays in your ${folder} folder, with its ${applications}. Removing it only takes it off this browser's list, and From a folder… opens it again.`
       : backedUp
@@ -77,35 +82,109 @@ function describe(replacement: TrackerReplacement): { title: string; body: strin
   const bringing = replacement.attachments > 0
     ? `${plural(replacement.incoming, 'application')} and ${plural(replacement.attachments, 'attachment')}`
     : plural(replacement.incoming, 'application')
-  const where = folder ? `, here and in your ${folder} folder` : ''
-  return {
-    title: 'Replace your tracker?',
-    body: `The file has ${bringing}. Importing it replaces the ${plural(current, 'application')} you have now${where}. ${kept}`,
-    verb: 'import',
-  }
+  /*
+   * With a folder connected the applications are not only in this browser, so saying they
+   * are "not saved anywhere else" would be false. What is true is that the import writes
+   * into that folder too, so afterwards neither copy has them.
+   */
+  const replaces = `Importing it replaces the ${plural(current, 'application')} you have now`
+  const Them = current === 1 ? 'It' : 'They'
+  const outcome = folder
+    ? `${replaces}, here and in your ${folder} folder, so neither keeps the old ${current === 1 ? 'one' : 'ones'}. Save a copy first if you might want ${them} back.`
+    : backedUp
+      ? `${replaces}. The file you last exported or imported already has ${them}.`
+      : replacement.openAsNewBeside === null
+        // The dev server: one file on disk, which the import overwrites.
+        ? `${replaces}. Nothing else holds ${them}, so save a copy first if you might want ${them} back.`
+        : `${replaces}. ${Them} ${are} only in this browser, so save a copy first if you might want ${them} back.`
+  const verb = replacement.openAsNewBeside ? 'replace' : 'import'
+  return { title: 'Replace your tracker?', body: `The file has ${bringing}. ${outcome}`, verb }
 }
 
 /**
  * The question asked before anything replaces or removes a whole tracker — an import, or
- * removing a tracker from the browser. It is a dialog rather than `window.confirm` because the answer has three parts,
- * not two: someone who is about to lose applications no file holds should be offered the
- * copy, not only a yes or a no. When a file already holds everything the copy is not
- * offered — there is nothing it would keep — and the question goes back to a plain one.
+ * removing a tracker from the browser. It is a dialog rather than `window.confirm` because
+ * the answer has more than two parts: someone who is about to lose applications no file
+ * holds should be offered the copy, not only a yes or a no. When a file already holds
+ * everything the copy is not offered — there is nothing it would keep.
+ *
+ * Where a browser holds several trackers, an imported file need not replace anything: it
+ * can open as a tracker of its own. That is asked first, as the main answer, and replacing
+ * is the second; only choosing to replace leads on to the copy, and only when something
+ * would be lost. Asking about a copy before anyone has chosen to replace would be asking
+ * the wrong question first.
  */
 export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDialogProps) {
   const dialogRef = useRef<HTMLElement>(null)
   const primaryRef = useRef<HTMLButtonElement>(null)
   const cancel = useCallback(() => onChoose('cancel'), [onChoose])
   useDialogKeyboard(dialogRef, cancel)
+  const beside = replacement.kind === 'import' ? replacement.openAsNewBeside : null
+  const [replacing, setReplacing] = useState(beside === null)
 
   // Focus goes back to whatever held it, which is usually the control that asked.
   useEffect(() => {
     const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
-    primaryRef.current?.focus()
     return () => {
       if (opener?.isConnected) opener.focus()
     }
   }, [])
+
+  // On to the main answer of whichever step is showing.
+  useEffect(() => {
+    primaryRef.current?.focus()
+  }, [replacing])
+
+  if (beside !== null && !replacing && replacement.kind === 'import') {
+    const bringing = replacement.attachments > 0
+      ? `${plural(replacement.incoming, 'application')} and ${plural(replacement.attachments, 'attachment')}`
+      : plural(replacement.incoming, 'application')
+    return (
+      <div
+        className="dialog-backdrop"
+        onMouseDown={(event) => event.currentTarget === event.target && cancel()}
+      >
+        <section
+          aria-describedby="replace-tracker-body"
+          aria-labelledby="replace-tracker-title"
+          aria-modal="true"
+          className="dialog dialog--compact"
+          ref={dialogRef}
+          role="alertdialog"
+          tabIndex={-1}
+        >
+          <div className="dialog__header">
+            <h2 id="replace-tracker-title">Open this file?</h2>
+          </div>
+          <p className="dialog__body" id="replace-tracker-body">
+            The file has {bringing}. Open it as a tracker of its own beside {beside}, or replace
+            what {beside} holds with it.
+          </p>
+          <div className="dialog__actions">
+            <button
+              className="button button--primary"
+              onClick={() => onChoose('open-new')}
+              ref={primaryRef}
+              type="button"
+            >
+              Open as a new tracker
+            </button>
+            <button
+              className="button"
+              onClick={() => (replacement.backedUp ? onChoose('proceed') : setReplacing(true))}
+              type="button"
+            >
+              Replace {beside}
+            </button>
+            <span className="dialog__actions-spacer" />
+            <button className="button" onClick={cancel} type="button">
+              Cancel
+            </button>
+          </div>
+        </section>
+      </div>
+    )
+  }
 
   const { title, body, verb } = describe(replacement)
   const capitalised = verb.charAt(0).toUpperCase() + verb.slice(1)

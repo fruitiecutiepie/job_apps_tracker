@@ -32,3 +32,26 @@ describe('the question before removing a tracker', () => {
     )
   })
 })
+
+describe('the question before an import replaces a tracker', () => {
+  /*
+   * With a folder connected the applications are in the folder too, so "not saved anywhere
+   * else" would be false. What is true is that the import overwrites the folder as well.
+   */
+  it('says a connected folder is overwritten too, not that nothing else holds the data', () => {
+    const text = body({
+      kind: 'import', incoming: 1, attachments: 0, current: 1, backedUp: false, folder: 'test_job', openAsNewBeside: null,
+    })
+    expect(text).toBe(
+      'The file has 1 application. Importing it replaces the 1 application you have now, here and in your test_job folder, so neither keeps the old one. Save a copy first if you might want it back.',
+    )
+  })
+
+  it('says the dev server\'s file is the only copy, not the browser', () => {
+    expect(body({
+      kind: 'import', incoming: 2, attachments: 1, current: 19, backedUp: false, folder: null, openAsNewBeside: null,
+    })).toBe(
+      'The file has 2 applications and 1 attachment. Importing it replaces the 19 applications you have now. Nothing else holds them, so save a copy first if you might want them back.',
+    )
+  })
+})

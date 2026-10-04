@@ -158,27 +158,49 @@ describe('the static build', () => {
    * holds only what the last import brought is backed up by that file, so the question is
    * a plain one; add something after it and the copy is offered again.
    */
-  it('asks about replacing only as much as there is to lose', async () => {
+  /*
+   * An empty tracker has nothing to lose, so an import there simply happens. Over one that
+   * holds applications, the file is first offered as a tracker of its own; replacing is
+   * the second answer, and leads on to the copy only when something would be lost.
+   */
+  it('offers a dropped file as a new tracker first, and asks about a copy only to replace', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
     const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    const { navigation } = await import('../backend/trackerAddress')
+    const { backend } = await import('../backend')
+    const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
 
     await user.upload(input, trackerFile('Imported Ltd'))
     await waitFor(() => expect(screen.getByText('1 of 1 applications shown')).toBeInTheDocument())
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
 
+    // Everything here is in the file it came from, so replacing needs no second question.
     await user.upload(input, trackerFile('Second Import'))
-    let question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
-    expect(question).toHaveTextContent('Your last backup already has them.')
-    expect(within(question).queryByRole('button', { name: 'Discard and import' })).not.toBeInTheDocument()
-    await user.click(within(question).getByRole('button', { name: 'Cancel' }))
+    let question = await screen.findByRole('alertdialog', { name: 'Open this file?' })
+    expect(within(question).getAllByRole('button').map((button) => button.textContent)).toEqual([
+      'Open as a new tracker',
+      'Replace Imported Ltd',
+      'Cancel',
+    ])
+    expect(within(question).getByRole('button', { name: 'Open as a new tracker' })).toHaveFocus()
+    await user.click(within(question).getByRole('button', { name: 'Open as a new tracker' }))
+    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\?tracker=/)))
+    expect((await backend.storage!.listTrackers()).map((tracker) => tracker.name).sort())
+      .toEqual(['Imported Ltd', 'Second Import'])
+    expect(screen.getByRole('button', { name: /Open Imported Ltd/ })).toBeInTheDocument()
 
+    // Something typed since is only in this browser: replacing it asks about a copy.
     await addApplication(user, 'Typed Since')
     await within(topbar()).findByRole('button', { name: 'Export a backup' })
-    await user.upload(input, trackerFile('Second Import'))
+    await user.upload(input, trackerFile('Third Import'))
+    question = await screen.findByRole('alertdialog', { name: 'Open this file?' })
+    await user.click(within(question).getByRole('button', { name: 'Replace Imported Ltd' }))
     question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
-    expect(question).toHaveTextContent('They are not saved anywhere else')
-    expect(within(question).getByRole('button', { name: 'Discard and import' })).toBeInTheDocument()
+    expect(question).toHaveTextContent('They are only in this browser, so save a copy first')
+    expect(within(question).getByRole('button', { name: 'Save a copy, then replace' })).toHaveFocus()
+    await user.click(within(question).getByRole('button', { name: 'Discard and replace' }))
+    await waitFor(() => expect(screen.getByRole('button', { name: /Open Third Import/ })).toBeInTheDocument())
   })
 
   /*
