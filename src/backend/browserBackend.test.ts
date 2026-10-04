@@ -1191,6 +1191,48 @@ describe('one tracker open in two tabs', () => {
    * A message can be late, or never arrive. The revision checked inside the lock is what
    * catches a tab that has not heard: it reads what the other stored before it writes.
    */
+  /*
+   * Without the Web Locks API a tab can only take turns with itself, so the revision is all
+   * that stands between two tabs' writes. Taking turns, each still reads what the other
+   * stored before writing; at the same moment, neither may undo the other.
+   */
+  describe('in a browser without Web Locks', () => {
+    const noLocks = { locks: { run: <T,>(_name: string, task: () => Promise<T>) => task() } }
+
+    it('reads what the other tab stored before writing, when they take turns', async () => {
+      const { first, second, firstDocument, secondDocument } = await twoTabs(noLocks)
+      tabs.mute()
+
+      await first.updateDocument!(firstDocument, adding('Halcyon'))
+      const { document } = await second.updateDocument!(secondDocument, adding('Paper Kite'))
+      expect(document.applications.map((item) => item.company).sort()).toEqual(['Halcyon', 'Northwind', 'Paper Kite'])
+    })
+
+    /*
+     * Known gap, kept as a failing expectation so it is fixed on purpose rather than found.
+     * The revision is read before the mutation and written after it, with no check between,
+     * so two tabs that both read it before either writes each store their own document and
+     * the later one undoes the earlier. Every current browser has Web Locks, which is what
+     * keeps this off the real path; closing it here needs a compare-and-set in the store.
+     */
+    it.fails('keeps both tabs\' edits when they write at the same moment', async () => {
+      const { first, second, firstDocument, secondDocument } = await twoTabs(noLocks)
+      tabs.mute()
+
+      await Promise.all([
+        first.updateDocument!(firstDocument, adding('From the first tab')),
+        second.updateDocument!(secondDocument, adding('From the second tab')),
+      ])
+
+      const stored = await tab(first.storage!.state().tracker!.id).loadDocument()
+      expect(stored.applications.map((item) => item.company).sort()).toEqual([
+        'From the first tab',
+        'From the second tab',
+        'Northwind',
+      ])
+    })
+  })
+
   it('catches up from storage even when the other tab\'s message never arrives', async () => {
     const { first, second, firstDocument, secondDocument } = await twoTabs()
     tabs.mute()

@@ -447,6 +447,137 @@ describe('the static build', () => {
     expect(open).toHaveBeenCalledWith(`?tracker=${earlier.id}`)
   })
 
+  /*
+   * Where the browser has its own file picker (Chrome, Edge), From a file… goes through it,
+   * because the picker hands back a handle on the file, and the handle is what lets the same
+   * file be recognised when it is picked or dropped again.
+   */
+  describe('from a file, through the browser\'s file picker', () => {
+    afterEach(() => {
+      Reflect.deleteProperty(window, 'showOpenFilePicker')
+    })
+
+    async function pickFromFile(user: ReturnType<typeof userEvent.setup>) {
+      await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+      await user.click(screen.getByRole('button', { name: /From a file/ }))
+    }
+
+    it('opens the picked file as a tracker that knows which file it came from', async () => {
+      const user = userEvent.setup()
+      await renderStaticApp()
+      await addApplication(user, 'Stays here')
+      const { backend } = await import('../backend')
+      const { navigation } = await import('../backend/trackerAddress')
+      const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
+      const picked = looseFile('last-year.json', await trackerFile('last-year').text())
+      const picker = vi.fn(async () => [picked])
+      Object.assign(window, { showOpenFilePicker: picker })
+      const inputClick = vi.spyOn(HTMLInputElement.prototype, 'click')
+
+      await pickFromFile(user)
+
+      await waitFor(() => expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\?tracker=/)))
+      expect(inputClick).not.toHaveBeenCalled()
+      const created = await backend.storage!.findTrackerForFile(picked)
+      expect(created).toMatchObject({ name: 'last-year', folder: null })
+      expect(open).toHaveBeenCalledWith(`?tracker=${created!.id}`)
+      inputClick.mockRestore()
+    })
+
+    it('offers to switch to the tracker the picked file already is', async () => {
+      const user = userEvent.setup()
+      await renderStaticApp()
+      await addApplication(user, 'Stays here')
+      const { backend } = await import('../backend')
+      const exported = await trackerFile('last-year').text()
+      const picked = looseFile('last-year.json', exported)
+      const result = readTrackerImport(new TextEncoder().encode(exported))
+      if (!result.ok) throw new Error('fixture')
+      await backend.storage!.createTracker(result.document, [], 'last-year.json', picked)
+      Object.assign(window, { showOpenFilePicker: vi.fn(async () => [picked]) })
+
+      await pickFromFile(user)
+
+      const question = await screen.findByRole('alertdialog', { name: 'last-year is already in this browser' })
+      expect(within(question).getByRole('button', { name: 'Switch to last-year' })).toBeInTheDocument()
+      expect(await backend.storage!.listTrackers()).toHaveLength(2)
+    })
+
+    it('does nothing, and says nothing, when the picker is dismissed', async () => {
+      const user = userEvent.setup()
+      await renderStaticApp()
+      await addApplication(user, 'Stays here')
+      const { backend } = await import('../backend')
+      const picker = vi.fn(async () => {
+        throw new DOMException('The user aborted a request.', 'AbortError')
+      })
+      Object.assign(window, { showOpenFilePicker: picker })
+
+      await pickFromFile(user)
+
+      await waitFor(() => expect(picker).toHaveBeenCalled())
+      expect(screen.queryByText(/Import failed/)).not.toBeInTheDocument()
+      expect(await backend.storage!.listTrackers()).toHaveLength(1)
+    })
+  })
+
+  /*
+   * Replace creates the file's tracker before it closes the one here, so a failure part way
+   * leaves the old one where it was rather than leaving neither — and says so, rather than
+   * moving the tab anywhere.
+   */
+  describe('when replacing fails part way', () => {
+    async function replaceWithSomethingToLose(user: ReturnType<typeof userEvent.setup>) {
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, trackerFile('Imported Ltd'))
+      await waitFor(() => expect(screen.getByText('1 of 1 applications shown')).toBeInTheDocument())
+      await addApplication(user, 'Typed Since')
+      await within(topbar()).findByRole('button', { name: 'Export a backup' })
+      await user.upload(input, trackerFile('Next Import'))
+      let question = await screen.findByRole('alertdialog', { name: 'Open Next Import.json?' })
+      await user.click(within(question).getByRole('button', { name: 'Replace Imported Ltd' }))
+      question = await screen.findByRole('alertdialog', { name: 'Remove Imported Ltd from this browser?' })
+      await user.click(within(question).getByRole('button', { name: 'Discard and replace' }))
+    }
+
+    it('keeps this tracker when the old one cannot be closed', async () => {
+      const user = userEvent.setup()
+      await renderStaticApp()
+      const { backend } = await import('../backend')
+      const { navigation } = await import('../backend/trackerAddress')
+      const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
+      const here = backend.storage!.state().tracker!.id
+      vi.spyOn(backend.storage!, 'removeTracker').mockRejectedValue(new Error('storage is busy'))
+
+      await replaceWithSomethingToLose(user)
+
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Import failed: storage is busy'))
+      expect(open).not.toHaveBeenCalled()
+      const listed = await backend.storage!.listTrackers()
+      // Nothing is lost: the tracker here stays, and the file's is there to switch to.
+      expect(listed.map((tracker) => tracker.name).sort()).toEqual(['Imported Ltd', 'Next Import'])
+      expect(listed.some((tracker) => tracker.id === here)).toBe(true)
+      expect(screen.getByRole('button', { name: /Open Typed Since/ })).toBeInTheDocument()
+    })
+
+    it('closes nothing when the file\'s tracker cannot be created', async () => {
+      const user = userEvent.setup()
+      await renderStaticApp()
+      const { backend } = await import('../backend')
+      const { navigation } = await import('../backend/trackerAddress')
+      const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
+      vi.spyOn(backend.storage!, 'createTracker').mockRejectedValue(new Error('quota exceeded'))
+      const remove = vi.spyOn(backend.storage!, 'removeTracker')
+
+      await replaceWithSomethingToLose(user)
+
+      await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Import failed: quota exceeded'))
+      expect(remove).not.toHaveBeenCalled()
+      expect(open).not.toHaveBeenCalled()
+      expect((await backend.storage!.listTrackers()).map((tracker) => tracker.name)).toEqual(['Imported Ltd'])
+    })
+  })
+
   it('says where each tracker lives, so two of one name can be told apart', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
