@@ -72,7 +72,9 @@ pnpm build:pages-demo
 pnpm preview:pages
 ```
 
-`build:pages-demo` writes the demo under `dist/demo/`, so one artifact serves both. Preview shows the tracker at the base path and the demo at `/demo/`.
+`build:pages-demo` writes the demo under `dist/demo/`, so one artifact serves both. Preview shows the tracker at the base path and the demo at `/demo/`. `pnpm preview:site` runs all three.
+
+This is the only local setup where the demo's **Open my tracker** and the tracker's **Try the demo** links go anywhere. Each link works out the other build's address from its own base path, and a dev server — `pnpm dev:demo`, or `VITE_TRACKER_BACKEND=browser pnpm dev` — serves one build at `/`, so there each link points back at the page it is on.
 
 ## Using the app
 
