@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
+  Archive,
   CircleCheck,
   ChartNoAxesColumnIncreasing,
   ClipboardCopy,
@@ -16,14 +17,22 @@ import {
   X,
 } from 'lucide-react'
 import {
+  OUTCOME_CONFIG,
   SOURCE_SUGGESTIONS,
   STATE_CONFIG,
+  DEMO_APPLICATION_COUNT,
+  archiveApplication,
+  archivableApplications,
+  archiveEndedApplications,
+  archiveFilterMatches,
+  outcomeAbandonsTask,
+  outcomeFilterMatches,
+  outcomesForFilter,
   statesForFilter,
   stateFilterMatches,
-  STATE_LABELS,
+  statusLabel,
   addApplication,
   clearLegacyLocalStorage,
-  isRejectedState,
   completeApplicationNextAction,
   updateApplicationCompletedActions,
   createAttachmentMetadata,
@@ -65,9 +74,13 @@ import {
   type CompletedActionDraft,
   type PostingDraft,
   type CorrespondenceDraft,
+  type ArchiveFilter,
+  type OutcomeFilter,
+  type OutcomeId,
   type StateEventDraft,
   type StateFilter,
   type StateId,
+  type Status,
   type TrackerDocument,
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
@@ -79,6 +92,8 @@ import { useStorageState } from './useStorageState'
 import { TrackerSwitcher } from './TrackerSwitcher'
 import { navigation, NEW_TRACKER, trackerHref } from './backend/trackerAddress'
 import { useFileImport } from './useFileImport'
+import { DisclosureMenu } from './DisclosureMenu'
+import { ARCHIVE_BULK_NOTHING, archiveBulkConfirmation, archiveBulkLabel, archiveBulkNotice } from './archiveCopy'
 import { ThemeMenu } from './ThemeMenu'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
 import { RatingFields } from './RatingFields'
@@ -115,6 +130,7 @@ import { firstPostingProblem, postingDraftFrom, postingRowFor, type PostingRow }
 import { StageNotesButton } from './views/StageNotesButton'
 import { useDialogKeyboard } from './useDialogKeyboard'
 import { idleFilterMatches, type IdleFilter } from './views/idle'
+import { useStatsSettings } from './statsSettings'
 import {
   CompareNotesView,
   KanbanView,
@@ -158,55 +174,16 @@ const NOTES_VIEW = { label: 'Prep', icon: NotebookPen } as const
  * item can close the panel after acting.
  */
 function MoreActionsMenu({ children }: { children: ReactNode }) {
-  const [open, setOpen] = useState(false)
-  const containerRef = useRef<HTMLDivElement>(null)
-  const triggerRef = useRef<HTMLButtonElement>(null)
-
-  useEffect(() => {
-    if (!open) return
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.stopPropagation()
-        setOpen(false)
-        triggerRef.current?.focus()
-      }
-    }
-    const onPointerDown = (event: PointerEvent) => {
-      if (!containerRef.current?.contains(event.target as Node)) setOpen(false)
-    }
-    document.addEventListener('keydown', onKeyDown)
-    document.addEventListener('pointerdown', onPointerDown)
-    return () => {
-      document.removeEventListener('keydown', onKeyDown)
-      document.removeEventListener('pointerdown', onPointerDown)
-    }
-  }, [open])
-
   return (
-    <div className="actions-menu" ref={containerRef}>
-      <button
-        aria-expanded={open}
-        aria-haspopup="true"
-        aria-label="More actions"
-        className="icon-button"
-        onClick={() => setOpen((value) => !value)}
-        ref={triggerRef}
-        type="button"
-      >
-        <MoreHorizontal aria-hidden="true" size={18} />
-      </button>
-      {open && (
-        <div
-          className="actions-menu__panel"
-          onClick={() => {
-            setOpen(false)
-            triggerRef.current?.focus()
-          }}
-        >
-          {children}
-        </div>
-      )}
-    </div>
+    <DisclosureMenu
+      ariaLabel="More actions"
+      className="actions-menu"
+      label={<MoreHorizontal aria-hidden="true" size={18} />}
+      panelClassName="actions-menu__panel"
+      triggerClassName="icon-button"
+    >
+      {children}
+    </DisclosureMenu>
   )
 }
 
@@ -245,6 +222,8 @@ interface EditorValues {
   url: string
   source: string
   state: StateId
+  outcome: OutcomeId
+  archived: boolean
   nextAction: string
   nextActionAt: string
   deadlineAt: string
@@ -291,6 +270,8 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
     url: application?.url ?? '',
     source: application?.source ?? '',
     state: application?.state ?? 'applied',
+    outcome: application?.outcome ?? 'active',
+    archived: application ? application.archived_at !== null : false,
     nextAction: application?.next_action ?? '',
     nextActionAt: toDateTimeInput(application?.next_action_at ?? null),
     deadlineAt: toDateTimeInput(application?.deadline_at ?? null),
@@ -482,14 +463,39 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
               onChange={setPosting}
               row={posting}
             />
-            <label className="field field--wide">
-              <span>State</span>
+            {/*
+              * Two selects, because they are two questions: how far it got, and whether it
+              * is still going. Every pair is reachable here, which is what lets the quick
+              * controls on the card and the row offer only the likely moves.
+              */}
+            <label className="field">
+              <span>Stage</span>
               <select onChange={(event) => update('state', event.target.value as StateId)} value={values.state}>
                 {STATE_CONFIG.map((state) => (
                   <option key={state.id} value={state.id}>{state.label}</option>
                 ))}
               </select>
             </label>
+            <label className="field">
+              <span>Outcome</span>
+              <select onChange={(event) => update('outcome', event.target.value as OutcomeId)} value={values.outcome}>
+                {OUTCOME_CONFIG.map((outcome) => (
+                  <option key={outcome.id} value={outcome.id}>
+                    {outcome.label} — {outcome.description}
+                  </option>
+                ))}
+              </select>
+            </label>
+            {isEditing && (
+              <label className="field field--wide field--check">
+                <input
+                  checked={values.archived}
+                  onChange={(event) => update('archived', event.target.checked)}
+                  type="checkbox"
+                />
+                <span>Archived — kept, but hidden from the current search</span>
+              </label>
+            )}
             {/* The saved record, so a state picked but not yet saved is deliberately absent. */}
             {application && <StateHistory history={application.state_history} />}
             <label className="field field--wide">
@@ -692,6 +698,8 @@ export default function App() {
   const [search, setSearch] = useState('')
   const [stateFilter, setStateFilter] = useState<StateFilter>('all')
   const [idleFilter, setIdleFilter] = useState<IdleFilter>('all')
+  const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all')
+  const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>('current')
   const [companyFilter, setCompanyFilter] = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
   /*
@@ -765,6 +773,9 @@ export default function App() {
   } | null>(null)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
+  // Read by every view, not only Statistics: its quiet threshold is the board's and the
+  // table's Idle threshold too, and the activity filter reads it.
+  const [statsSettings, changeStatsSetting] = useStatsSettings()
 
   useEffect(() => {
     let cancelled = false
@@ -1210,14 +1221,16 @@ export default function App() {
     const applications = tracker?.applications ?? []
     const searchText = tracker?.indexes.search_text ?? {}
     return applications.filter((application) => {
+      if (!archiveFilterMatches(archiveFilter, application.archived_at)) return false
       if (!stateFilterMatches(stateFilter, application.state)) return false
-      if (!idleFilterMatches(idleFilter, application)) return false
+      if (!outcomeFilterMatches(outcomeFilter, application.outcome)) return false
+      if (!idleFilterMatches(idleFilter, application, new Date(), statsSettings.quietDays)) return false
       if (companyFilter !== 'all' && application.company !== companyFilter) return false
       if (sourceFilter !== 'all' && application.source?.trim() !== sourceFilter) return false
       if (!query) return true
       return searchText[application.id]?.includes(query) ?? false
     })
-  }, [companyFilter, idleFilter, search, sourceFilter, stateFilter, tracker?.applications, tracker?.indexes])
+  }, [archiveFilter, companyFilter, idleFilter, outcomeFilter, search, sourceFilter, stateFilter, statsSettings.quietDays, tracker?.applications, tracker?.indexes])
 
   /**
    * The roles of what is showing, one per line. Repeats are dropped: two applications to the
@@ -1454,19 +1467,39 @@ export default function App() {
 
   const closeEditor = () => setEditor(null)
 
-  const move = (id: string, state: StateId) => {
+  const move = (id: string, change: Partial<Status>) => {
     const moving = tracker.applications.find((application) => application.id === id)
-    // A rejection drops an outstanding next action, so the notice says so rather than
-    // leaving the task to vanish quietly off the plan.
-    const clearing = Boolean(moving?.next_action?.trim()) && isRejectedState(state)
-    // A move to the state it already holds returns the same document, and `commit` reads
+    if (!moving) return
+    const target: Status = { state: change.state ?? moving.state, outcome: change.outcome ?? moving.outcome }
+    // A rejection or a withdrawal drops an outstanding next action, so the notice says so
+    // rather than leaving the task to vanish quietly off the plan.
+    const clearing =
+      Boolean(moving.next_action?.trim())
+      && target.outcome !== moving.outcome
+      && outcomeAbandonsTask(target.outcome)
+    // A move to where it already stands returns the same document, and `commit` reads
     // that as nothing to write, so no notice is shown for it either.
     commit(
-      (current) => moveApplication(current, id, state),
-      `${moving?.company ?? 'Application'} moved to ${STATE_LABELS[state]}.${
-        clearing ? ' Next action cleared.' : ''
-      }`,
+      (current) => moveApplication(current, id, change),
+      `${moving.company} moved to ${statusLabel(target)}.${clearing ? ' Next action cleared.' : ''}`,
     )
+  }
+
+  const archive = (id: string, archived: boolean) => {
+    const company = tracker.applications.find((application) => application.id === id)?.company ?? 'Application'
+    commit(
+      (current) => archiveApplication(current, id, archived),
+      archived ? `${company} archived.` : `${company} is back in the current search.`,
+    )
+  }
+
+  const archivableList = archivableApplications(tracker)
+  const archivable = archivableList.length
+
+  const archiveEnded = () => {
+    if (archivable === 0) return
+    if (!window.confirm(archiveBulkConfirmation(tracker.applications, archivableList))) return
+    commit((current) => archiveEndedApplications(current), archiveBulkNotice(archivable))
   }
 
   const completeAction = (id: string) => {
@@ -1503,12 +1536,20 @@ export default function App() {
       onOpenPosting: openPosting,
       onOpenMessages: openApplication,
       onCompleteAction: completeAction,
+      quietDays: statsSettings.quietDays,
     }
     switch (activeView) {
       case 'table':
-        return <TableView {...shared} onMove={move} />
+        return <TableView {...shared} onArchive={archive} onMove={move} />
       case 'statistics':
-        return <StatisticsView applications={filteredApplications} />
+        return (
+          <StatisticsView
+            applications={filteredApplications}
+            onOpen={openApplication}
+            onSettingChange={changeStatsSetting}
+            settings={statsSettings}
+          />
+        )
       case 'compare':
         return (
           <CompareNotesView
@@ -1523,7 +1564,9 @@ export default function App() {
         return (
           <KanbanView
             {...shared}
+            onArchive={archive}
             onMove={move}
+            visibleOutcomes={outcomesForFilter(outcomeFilter)}
             visibleStates={statesForFilter(stateFilter)}
           />
         )
@@ -1640,9 +1683,9 @@ export default function App() {
             * Where a browser holds several trackers, Import and Export belong to each one —
             * they are on its row in the switcher — and a menu offering them here would act
             * on one of several without saying which. The dev server holds one file, so it
-            * keeps them; the demo keeps the menu for its reset. Nothing left, no menu.
+            * keeps them. Archive all ended and the demo's reset act on the tracker on
+            * screen, so the menu stays for them everywhere.
             */}
-          {(!storageState?.tracker || isDemoTrackerProfile()) && (
           <MoreActionsMenu>
             {!storageState?.tracker && (
               <>
@@ -1662,17 +1705,35 @@ export default function App() {
                 </button>
               </>
             )}
-
+            {/*
+              * How a new job search starts clean. Exactly what End records — rejected,
+              * withdrawn, closed — and never without asking: it touches every one of them
+              * at once. With nothing ended it
+              * stays, disabled and saying why, rather than vanishing: an action that is only
+              * there some of the time is one nobody learns is there.
+              */}
+            <button
+              className="actions-menu__item"
+              disabled={archivable === 0}
+              onClick={archiveEnded}
+              title={archivable === 0 ? ARCHIVE_BULK_NOTHING : undefined}
+              type="button"
+            >
+              <Archive aria-hidden="true" size={16} />
+              {archiveBulkLabel(archivable)}
+            </button>
             {isDemoTrackerProfile() && (
               <button
                 className="actions-menu__item"
                 onClick={async () => {
-                  if (window.confirm('Reset the tracker to the original 19 demo applications? This replaces your current data.')) {
+                  if (window.confirm(`Reset the tracker to the original ${DEMO_APPLICATION_COUNT} demo applications? This replaces your current data.`)) {
                     try {
                       const next = await resetTrackerDatabase()
                       setTracker(next)
                       setSearch('')
                       setStateFilter('all')
+                      setOutcomeFilter('all')
+                      setArchiveFilter('current')
                       setCompanyFilter('all')
                       setSourceFilter('all')
                       setNotice('Demo data restored.')
@@ -1687,7 +1748,6 @@ export default function App() {
               </button>
             )}
           </MoreActionsMenu>
-          )}
         </div>
       </header>
 
@@ -1782,30 +1842,41 @@ export default function App() {
             </div>
 
             <div className="context-bar__filters">
+              {/*
+                * Stage and outcome are two selects because they are two questions, and
+                * every pairing of them is one somebody asks: "Interview 1, rejected".
+                */}
               <select
-                aria-label="Filter by state"
+                aria-label="Filter by stage"
                 onChange={(event) => setStateFilter(event.target.value as StateFilter)}
                 value={stateFilter}
               >
-                <option value="all">All states</option>
-                {/*
-                  * The outcome groups share this control rather than adding one beside
-                  * it: they answer the same question a single state does, so a bar holding
-                  * both would offer combinations — Offer and rejected — that select nothing.
-                  * Grouped so "Rejected" is not read as a twentieth state.
-                  *
-                  * Still live sits beside Not rejected rather than replacing it: the two
-                  * differ over Accepted and No openings, which nobody turned down and
-                  * nobody is still working, so each answers a question the other cannot.
-                  */}
-                <optgroup label="By outcome">
-                  <option value="live">Still live</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="not_rejected">Not rejected</option>
-                </optgroup>
-                <optgroup label="By state">
-                  {STATE_CONFIG.map((state) => <option key={state.id} value={state.id}>{state.label}</option>)}
-                </optgroup>
+                <option value="all">All stages</option>
+                {STATE_CONFIG.map((state) => <option key={state.id} value={state.id}>{state.label}</option>)}
+              </select>
+              <select
+                aria-label="Filter by outcome"
+                onChange={(event) => setOutcomeFilter(event.target.value as OutcomeFilter)}
+                value={outcomeFilter}
+              >
+                <option value="all">All outcomes</option>
+                <option value="ended">Ended, any way</option>
+                {OUTCOME_CONFIG.map((outcome) => (
+                  <option key={outcome.id} value={outcome.id}>{outcome.label}</option>
+                ))}
+              </select>
+              {/*
+                * Archived applications are out of sight by default, which is the point of
+                * archiving them; this is how you look back.
+                */}
+              <select
+                aria-label="Filter by archive"
+                onChange={(event) => setArchiveFilter(event.target.value as ArchiveFilter)}
+                value={archiveFilter}
+              >
+                <option value="current">Current search</option>
+                <option value="archived">Archived</option>
+                <option value="all">Current and archived</option>
               </select>
               {/*
                 * Activity gets its own control rather than joining the state select's
@@ -1858,12 +1929,19 @@ export default function App() {
                   <ClipboardCopy aria-hidden="true" size={15} /> Copy roles
                 </button>
               </div>
-              {(search || stateFilter !== 'all' || idleFilter !== 'all' || companyFilter !== 'all' || sourceFilter !== 'all') && (
-                <button
+              {/*
+                * Always drawn, and disabled when there is nothing to clear. Appearing only
+                * once a filter was set, it pushed the row about under the pointer the moment
+                * the first filter changed.
+                */}
+              <button
                   className="button button--quiet"
+                  disabled={!(search || stateFilter !== 'all' || outcomeFilter !== 'all' || archiveFilter !== 'current' || idleFilter !== 'all' || companyFilter !== 'all' || sourceFilter !== 'all')}
                   onClick={() => {
                     setSearch('')
                     setStateFilter('all')
+                    setOutcomeFilter('all')
+                    setArchiveFilter('current')
                     setIdleFilter('all')
                     setCompanyFilter('all')
                     setSourceFilter('all')
@@ -1872,7 +1950,6 @@ export default function App() {
                 >
                   Clear filters
                 </button>
-              )}
             </div>
             </>
           </section>
@@ -1940,6 +2017,7 @@ export default function App() {
               url: values.url || null,
               source: values.source || null,
               state: values.state,
+              outcome: values.outcome,
               next_action: values.nextAction || null,
               next_action_at: values.nextAction.trim() ? fromDateTimeInput(values.nextActionAt) : null,
               deadline_at: fromDateTimeInput(values.deadlineAt),
@@ -1988,7 +2066,8 @@ export default function App() {
                 for (const dimension of clearedRatingDimensions(editingApplication, values.ratings)) {
                   next = clearApplicationRating(next, editor.id, dimension, now)
                 }
-                return moveApplication(next, editor.id, values.state, now)
+                next = moveApplication(next, editor.id, { state: values.state, outcome: values.outcome }, now)
+                return archiveApplication(next, editor.id, values.archived, now)
               }, 'Application updated.')
             }
             closeEditor()

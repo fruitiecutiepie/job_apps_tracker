@@ -744,7 +744,7 @@ describe('the stage pill in the title bar', () => {
      * off, because a pill held to 9rem spent the value to buy the width. jsdom cannot
      * answer either half: it lays nothing out and every box measures zero.
      */
-    for (const state of ['interview_2', 'recruiter_interview_rejected'] as const) {
+    for (const state of ['interview_2', 'take_home_assessment'] as const) {
       await userEvent.selectOptions(pill, stateLabel(state))
       expect(pill.getBoundingClientRect().width).toBeGreaterThanOrEqual(needed(pill) - 1)
     }
@@ -753,7 +753,7 @@ describe('the stage pill in the title bar', () => {
   it('spends the name before it touches the stage', async () => {
     renderPanel()
     const pill = document.querySelector<HTMLSelectElement>('.panel__stage-select')!
-    await userEvent.selectOptions(pill, stateLabel('recruiter_interview_rejected'))
+    await userEvent.selectOptions(pill, stateLabel('take_home_assessment'))
     const name = document.querySelector<HTMLElement>('.panel__subject')!
 
     // Narrow enough that the two cannot both be written out. The name is the half that

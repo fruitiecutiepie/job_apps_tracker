@@ -22,7 +22,7 @@ export interface CompareStage {
  * now — a rejected application's Interview 1 prep is still the thing to reread before the
  * next Interview 1 — or when it is live and at that stage now with nothing written, which
  * is the gap worth seeing. A live application with no note for some *other* stage is not a
- * gap: every application lacks notes for most of the nineteen, and listing them all is how
+ * gap: every application lacks notes for most of the ten, and listing them all is how
  * the board used to fill with empty editors for stages nobody was heading into.
  *
  * Within a stage, the applications there now come first, since those are what is being
@@ -38,7 +38,7 @@ export function compareStages(applications: readonly Application[]): CompareStag
       }))
       .filter(
         (entry) =>
-          entry.hasNote || (entry.isHere && classifyLifecycle(entry.application.state) === "live"),
+          entry.hasNote || (entry.isHere && classifyLifecycle(entry.application) === "live"),
       )
       .sort(
         (left, right) =>

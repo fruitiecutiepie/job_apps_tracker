@@ -4,6 +4,7 @@ import { createDemoDocument } from '../domain/demo'
 import { createUuidV7 } from '../domain/id'
 import { renameTracker } from '../domain/mutations'
 import { isDemoTrackerProfile, trackerProfile } from '../domain/trackerProfile'
+import { DATA_VERSION, needsMigration } from '../domain/migrate'
 import type { TrackerDatabase } from '../domain/types'
 import { assertTrackerDocument, parseTrackerDocument } from '../domain/validation'
 import {
@@ -33,7 +34,27 @@ import type {
 
 /** Mirrors the layout the dev server writes, so the same folder opens in either build. */
 export const TRACKER_FILENAME = 'tracker.json'
+
+/** Where a folder's older-layout file is kept before the first save rewrites it. */
+export const MIGRATION_BACKUP_FILENAME = `tracker.before-v${DATA_VERSION}.json`
 export const ATTACHMENTS_DIRNAME = 'attachments'
+
+/**
+ * Keeps a folder's file aside when it is in the older layout, before anything writes the
+ * migrated document over it. Once only: a backup already there is the original, and a
+ * second would be a copy of a copy.
+ */
+async function backUpBeforeMigrating(directory: DirectoryHandleLike, text: string): Promise<void> {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return
+  }
+  if (!needsMigration(raw)) return
+  if (await readFileIn(directory, MIGRATION_BACKUP_FILENAME)) return
+  await writeFileIn(directory, MIGRATION_BACKUP_FILENAME, text)
+}
 
 /*
  * Every tracker this browser holds lives under keys carrying its id, so two tabs holding
@@ -665,9 +686,12 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
          * folder opens as a tracker of its own.
          */
         const existing = await readFileIn(picked, TRACKER_FILENAME)
-        const parsedExisting = existing
-          ? ensureFreshIndexes(parseTrackerDocument(await existing.text()))
-          : null
+        const existingText = existing ? await existing.text() : null
+        const parsedExisting = existingText === null
+          ? null
+          : ensureFreshIndexes(parseTrackerDocument(existingText))
+        // Whichever tracker it opens as, the next write replaces a file in an older layout.
+        if (existingText !== null) await backUpBeforeMigrating(picked, existingText)
         const cachedText = (await store.get('state', documentKey(id()))) as string | null
         if (parsedExisting && cachedText !== null && countApplications(cachedText) > 0) {
           return {
@@ -883,7 +907,10 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
         const renamed = renameTracker(document, name)
         if (renamed === document) return
         const written = serialize(renamed)
-        if (handle) await writeFileIn(handle, TRACKER_FILENAME, written)
+        if (handle) {
+          if (file && text !== null) await backUpBeforeMigrating(handle, text)
+          await writeFileIn(handle, TRACKER_FILENAME, written)
+        }
         await store.put('state', documentKey(renaming), written)
         await store.put('state', metaKey(renaming), {
           ...stored,
@@ -929,7 +956,10 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
         if (directory) {
           const file = await readFileIn(directory, TRACKER_FILENAME)
           if (file) {
-            const parsed = ensureFreshIndexes(parseTrackerDocument(await file.text()))
+            const text = await file.text()
+            const parsed = ensureFreshIndexes(parseTrackerDocument(text))
+            // Kept aside first when it is in an older layout: the next write replaces it.
+            await backUpBeforeMigrating(directory, text)
             /*
              * Stored only when it differs from the browser's copy: storing moves the
              * revision on and tells every other tab on this tracker to read it again, which

@@ -16,11 +16,15 @@ import {
   writeTestEditorNote,
 } from './noteEditStore'
 
-const states = [
+/**
+ * The lanes the demo board draws: a running lane for every stage, and an ending lane for
+ * each way something in the current search ended. Copperline's auto-rejection is archived,
+ * so its lane is not among them.
+ */
+const lanes = [
   'Headhunted',
   'No openings',
   'Applied',
-  'Auto-rejected',
   'Recruiter messaged',
   'Recruiter messaged — Rejected',
   'Online assessment',
@@ -34,7 +38,7 @@ const states = [
   'Interview 2',
   'Interview 2 — Rejected',
   'Offer',
-  'Offer — Rejected',
+  'Offer — Withdrawn',
   'Accepted',
 ] as const
 
@@ -172,20 +176,70 @@ describe('job applications tracker', () => {
     expect(new Date().toISOString()).toBe(DEFAULT_DEMO_REFERENCE)
   })
 
-  it('starts with every configured state represented in the Kanban', async () => {
+  it('moves the Idle line on the board when the quiet threshold changes on Statistics', async () => {
+    seedFullDemo()
+    await renderLoadedApp()
+    const views = within(screen.getByRole('navigation', { name: 'Tracker views' }))
+
+    // Northstar Labs is the demo's one idle application, 34 days without a stage change.
+    expect(screen.getByText('Idle 34 days')).toBeInTheDocument()
+
+    await userEvent.click(views.getByRole('button', { name: 'Statistics' }))
+    const ghosting = screen.getByRole('region', { name: 'Am I being ghosted?' })
+    fireEvent.change(
+      within(ghosting).getByRole('spinbutton', {
+        name: 'Days without a stage change before an application counts as quiet',
+      }),
+      { target: { value: '60' } },
+    )
+    expect(within(ghosting).getByText('Nothing live has gone 60 days without a stage change.')).toBeInTheDocument()
+
+    // One threshold, not two: the board reads the same number Statistics was given.
+    await userEvent.click(views.getByRole('button', { name: 'Kanban' }))
+    expect(screen.queryByText(/^Idle \d+ days$/)).not.toBeInTheDocument()
+  })
+
+  it('starts with a lane for every stage, and one for each way something ended', async () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()
     await renderLoadedApp()
 
-    for (const state of states) {
-      expect(screen.getByRole('heading', { name: state })).toBeInTheDocument()
-    }
+    const board = screen.getByRole('region', { name: 'Applications board' })
+    expect(within(board).getAllByRole('heading', { level: 3 }).map((heading) => heading.textContent)).toEqual([
+      ...lanes,
+    ])
+    // Archived, so out of the current search: the lane it would have drawn is not drawn.
+    expect(within(board).queryByRole('heading', { name: 'Auto-rejected' })).not.toBeInTheDocument()
+    expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
 
     const savedDocument = readSavedDocument()
     expect(savedDocument.applications).toHaveLength(19)
     expect(savedDocument.schema).toBeDefined()
     expect(savedDocument.indexes.by_id).toBeDefined()
-    expect(new Set(savedDocument.applications.map((application) => application.state)).size).toBe(19)
+  })
+
+  it('opens a file written before stages and outcomes split, in the new layout', async () => {
+    const legacy = {
+      schema_version: 1,
+      applications: [{
+        id: '018f24c0-0000-7000-8000-000000000001',
+        company: 'Old File Co',
+        state: 'interview_1_rejected',
+        state_history: [
+          { state: 'applied', at: '2026-07-01T09:00:00.000Z' },
+          { state: 'interview_1_rejected', at: '2026-07-20T09:00:00.000Z' },
+        ],
+        created_at: '2026-07-01T09:00:00.000Z',
+        updated_at: '2026-07-20T09:00:00.000Z',
+      }],
+    }
+    testTrackerStore.setItem('job-applications-tracker:v1', JSON.stringify(legacy))
+    await renderLoadedApp()
+
+    expect(screen.getByRole('heading', { name: 'Interview 1 — Rejected' })).toBeInTheDocument()
+    const saved = readSavedDocument()
+    expect(saved.schema_version).toBe(3)
+    expect(saved.applications[0]).toMatchObject({ state: 'interview_1', outcome: 'rejected' })
   })
 
   it('shows an error when saved data is unreadable and leaves storage untouched', async () => {
@@ -228,7 +282,7 @@ describe('job applications tracker', () => {
     await user.type(within(dialog).getByLabelText('Company'), 'Paper Kite Labs')
     await user.type(within(dialog).getByLabelText('Role'), 'Design systems engineer')
     await user.type(within(dialog).getByLabelText('Source'), 'LinkedIn')
-    await user.selectOptions(within(dialog).getByLabelText('State'), 'applied')
+    await user.selectOptions(within(dialog).getByLabelText('Stage'), 'applied')
     await user.type(within(dialog).getByLabelText('Next action'), 'Send portfolio follow-up')
     await user.click(within(dialog).getByRole('button', { name: /save|add application/i }))
 
@@ -256,65 +310,109 @@ describe('job applications tracker', () => {
     )
   })
 
-  it('filters the Kanban by state without changing saved applications', async () => {
+  it('filters the Kanban by stage without changing saved applications', async () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
-    await user.selectOptions(screen.getByLabelText('Filter by state'), 'accepted')
+    await user.selectOptions(screen.getByLabelText('Filter by stage'), 'offer')
 
-    expect(screen.getByRole('heading', { name: 'Accepted' })).toBeInTheDocument()
+    // One stage, every way it went: still running, and turned down by you. The job taken
+    // is the next stage, Accepted, so it is not among them.
+    expect(screen.getByRole('heading', { name: 'Offer' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Offer — Withdrawn' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Accepted' })).not.toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Applied' })).not.toBeInTheDocument()
 
     const savedDocument = readSavedDocument()
     expect(savedDocument.applications).toHaveLength(19)
   })
 
-  it('filters to every rejection at once, and to everything that is not one', async () => {
+  it('filters by outcome apart from stage, so a pair of the two is one question', async () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
-    const stateFilter = screen.getByLabelText('Filter by state')
+    const outcomeFilter = screen.getByLabelText('Filter by outcome')
 
-    await user.selectOptions(stateFilter, 'rejected')
-    // Eight states record a rejection, one application in each.
+    await user.selectOptions(outcomeFilter, 'rejected')
+    // Seven rejections in the demo, one of them archived.
+    expect(screen.getByText('6 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Interview 2 — Rejected' })).toBeInTheDocument()
+    expect(screen.queryByRole('heading', { name: 'Interview 2' })).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText('Filter by stage'), 'interview_2')
+    expect(screen.getByText('1 of 19 applications shown')).toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Filter by stage'), 'all')
+
+    await user.selectOptions(outcomeFilter, 'ended')
+    // The six rejections, plus No openings and the withdrawn offer.
     expect(screen.getByText('8 of 19 applications shown')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Offer — Rejected' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'No openings' })).toBeInTheDocument()
     expect(screen.queryByRole('heading', { name: 'Offer' })).not.toBeInTheDocument()
 
-    await user.selectOptions(stateFilter, 'not_rejected')
-    expect(screen.getByText('11 of 19 applications shown')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Offer' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Offer — Rejected' })).not.toBeInTheDocument()
-    // Neither is a rejection, so both survive a filter that only removes them.
+    await user.selectOptions(outcomeFilter, 'active')
+    // One running application at each of the ten stages, the job taken among them.
+    expect(screen.getByText('10 of 19 applications shown')).toBeInTheDocument()
     expect(screen.getByRole('heading', { name: 'Accepted' })).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'No openings' })).toBeInTheDocument()
 
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
-  it('filters to what is still running, which keeps less than everything not rejected', async () => {
+  it('keeps archived applications out of view until they are asked for', async () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
-    await user.selectOptions(screen.getByLabelText('Filter by state'), 'live')
+    expect(screen.queryByRole('button', { name: /^Open Copperline Health/ })).not.toBeInTheDocument()
 
-    // Nine live stages, one application in each: the eleven that are not rejections, less
-    // Accepted and No openings.
-    expect(screen.getByText('9 of 19 applications shown')).toBeInTheDocument()
-    expect(screen.getByRole('heading', { name: 'Offer' })).toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'Offer — Rejected' })).not.toBeInTheDocument()
-    // The pair that separates this filter from Not rejected: neither was turned down, and
-    // neither is still in play.
-    expect(screen.queryByRole('heading', { name: 'Accepted' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('heading', { name: 'No openings' })).not.toBeInTheDocument()
+    await user.selectOptions(screen.getByLabelText('Filter by archive'), 'archived')
+    expect(screen.getByText('1 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Auto-rejected' })).toBeInTheDocument()
 
-    expect(readSavedDocument().applications).toHaveLength(19)
+    await user.click(screen.getByRole('button', { name: 'Unarchive Copperline Health' }))
+    const saved = readSavedDocument().applications.find((item) => item.company === 'Copperline Health')!
+    expect(saved.archived_at).toBeNull()
+    // Coming back is not a move: it is still the rejection it was.
+    expect(saved.outcome).toBe('rejected')
+    expect(await screen.findByText('Copperline Health is back in the current search.')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'Clear filters' }))
+    expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+  })
+
+  it('archives everything that ended, after saying what that is', async () => {
+    // Reads the whole corpus rather than a member of it, so it takes the demo entire.
+    seedFullDemo()
+    const user = userEvent.setup()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    // What End records — rejected, withdrawn, closed — and nothing else.
+    await user.click(screen.getByRole('button', { name: 'Archive all ended (8)' }))
+    expect(confirm).toHaveBeenLastCalledWith(
+      expect.stringMatching(/^Archive 8 ended applications — 6 rejected, 1 withdrawn and 1 closed\?\n\nThe 10 still active stay where they are\./),
+    )
+    expect(readSavedDocument().applications.filter(({ archived_at }) => archived_at !== null)).toHaveLength(1)
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    await user.click(screen.getByRole('button', { name: 'Archive all ended (8)' }))
+    const saved = readSavedDocument().applications
+    expect(saved.filter(({ archived_at }) => archived_at !== null)).toHaveLength(9)
+    // Nobody ended the accepted job, so it stays; its own Archive puts it away.
+    expect(saved.find(({ company }) => company === 'Saffron Systems')!.archived_at).toBeNull()
+    // Everything active is untouched: the new search starts with it.
+    expect(saved.filter((item) => item.outcome === 'active' && item.archived_at !== null)).toEqual([])
+    expect(screen.getByText('10 of 19 applications shown')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    // Still offered, greyed, with no count to read as a number of anything.
+    expect(screen.getByRole('button', { name: 'Archive all ended' })).toBeDisabled()
+    confirm.mockRestore()
   })
 
   it('filters to the applications that have gone quiet, whatever stage they sit at', async () => {
@@ -334,24 +432,27 @@ describe('job applications tracker', () => {
     expect(screen.getByRole('heading', { name: 'Headhunted' })).toBeInTheDocument()
 
     await user.selectOptions(activityFilter, 'not_idle')
-    expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByText('17 of 19 applications shown')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /^Open Northstar Labs/ })).not.toBeInTheDocument()
 
     await user.click(screen.getByRole('button', { name: 'Clear filters' }))
-    expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+    // Still there, so the row does not move; only unable to clear what is already clear.
+    expect(screen.getByRole('button', { name: 'Clear filters' })).toBeDisabled()
+    // The archived one stays archived: clearing the filters is back to the current search.
+    expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
 
     // Filtering is a view: nothing about the application was written.
     const saved = readSavedDocument().applications.find((a) => a.company === 'Northstar Labs')!
     expect(saved.state).toBe('headhunted')
   })
 
-  it('copies the roles of a whole outcome, not just one state', async () => {
+  it('copies the roles of a whole outcome, not just one stage', async () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()
     const user = userEvent.setup()
     await renderLoadedApp()
 
-    await user.selectOptions(screen.getByLabelText('Filter by state'), 'rejected')
+    await user.selectOptions(screen.getByLabelText('Filter by outcome'), 'rejected')
     await user.selectOptions(screen.getByLabelText('Filter by source'), 'LinkedIn')
     await user.click(screen.getByRole('button', { name: 'Copy roles' }))
 
@@ -393,7 +494,7 @@ describe('job applications tracker', () => {
     seedFullDemo()
     await renderLoadedApp()
 
-    const count = screen.getByText('19 of 19 applications shown')
+    const count = screen.getByText('18 of 19 applications shown')
     const search = screen.getByRole('searchbox', { name: 'Search applications' })
 
     expect(count.nextElementSibling).toBe(search.parentElement)
@@ -417,7 +518,7 @@ describe('job applications tracker', () => {
     await renderLoadedApp()
 
     await user.selectOptions(screen.getByLabelText('Filter by source'), 'LinkedIn')
-    await user.selectOptions(screen.getByLabelText('Filter by state'), 'applied')
+    await user.selectOptions(screen.getByLabelText('Filter by stage'), 'applied')
     await user.click(screen.getByRole('button', { name: 'Copy roles' }))
 
     expect(await navigator.clipboard.readText()).toBe('Product Manager')
@@ -462,7 +563,7 @@ describe('job applications tracker', () => {
     const company = within(dialog).getByLabelText('Company')
     await user.clear(company)
     await user.type(company, 'Saffron Systems International')
-    await user.selectOptions(within(dialog).getByLabelText('State'), 'interview_2')
+    await user.selectOptions(within(dialog).getByLabelText('Stage'), 'interview_2')
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
 
     const after = readSavedDocument().applications.find(
@@ -470,8 +571,10 @@ describe('job applications tracker', () => {
     )!
     expect(after.company).toBe('Saffron Systems International')
     expect(after.state).toBe('interview_2')
+    // The stage moved and the outcome did not.
+    expect(after.outcome).toBe('active')
     expect(after.state_history).toHaveLength(before.state_history.length + 1)
-    expect(after.state_history.at(-1)?.state).toBe('interview_2')
+    expect(after.state_history.at(-1)).toMatchObject({ state: 'interview_2', outcome: 'active' })
 
     unmount()
     await renderLoadedApp()
@@ -536,13 +639,12 @@ describe('job applications tracker', () => {
     )!
     expect(before.next_action).toBe('Follow up on the application')
 
-    await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Move Marble & Finch to state' }),
-      'auto_rejected',
-    )
+    await user.click(screen.getByRole('button', { name: 'End Marble & Finch' }))
+    await user.click(screen.getByRole('button', { name: 'Move Marble & Finch to Auto-rejected' }))
 
     const after = readSavedDocument().applications.find((item) => item.id === before.id)!
-    expect(after.state).toBe('auto_rejected')
+    expect(after.state).toBe('applied')
+    expect(after.outcome).toBe('rejected')
     expect(after.next_action).toBeNull()
     expect(after.next_action_at).toBeNull()
     // Abandoned, not carried out, so it leaves no record of having been done.
@@ -570,7 +672,7 @@ describe('job applications tracker', () => {
     )!
 
     await user.selectOptions(
-      screen.getByRole('combobox', { name: 'Move Marble & Finch to state' }),
+      screen.getByRole('combobox', { name: 'Move Marble & Finch to stage' }),
       'recruiter_messaged',
     )
 
@@ -1025,7 +1127,9 @@ describe('job applications tracker', () => {
     // a count of what is "shown" here would be saying something untrue.
     expect(screen.queryByRole('searchbox', { name: 'Search applications' })).not.toBeInTheDocument()
     expect(screen.queryByRole('combobox', { name: 'Filter by company' })).not.toBeInTheDocument()
-    expect(screen.queryByRole('combobox', { name: 'Filter by state' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Filter by stage' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Filter by outcome' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('combobox', { name: 'Filter by archive' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: /Copy roles/ })).not.toBeInTheDocument()
     expect(screen.queryByText(/applications shown/)).not.toBeInTheDocument()
   })
@@ -2687,7 +2791,7 @@ describe('job applications tracker', () => {
     expect(halcyonRole).toBeInTheDocument()
     const halcyonOtherStages = () =>
       choices().getByRole('combobox', { name: 'Other stages for Halcyon Maps, Engineering Manager' })
-    expect(within(halcyonOtherStages()).getAllByRole('option')).toHaveLength(20) // + placeholder
+    expect(within(halcyonOtherStages()).getAllByRole('option')).toHaveLength(11) // + placeholder
     expect(
       choices().getByRole('combobox', {
         name: 'Other stages for Echo Robotics, Human Factors Researcher',
@@ -3343,7 +3447,7 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(20)
 
     const search = screen.getByRole('searchbox', { name: 'Search applications' })
-    const stateFilter = screen.getByLabelText('Filter by state')
+    const stateFilter = screen.getByLabelText('Filter by stage')
     const companyFilter = screen.getByLabelText('Filter by company')
     await user.type(search, 'Reset Me')
     await user.selectOptions(stateFilter, 'applied')
@@ -3357,7 +3461,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'More actions' }))
     await user.click(screen.getByRole('button', { name: 'Reset demo data' }))
     expect(readSavedDocument().applications).toHaveLength(19)
-    expect(new Set(readSavedDocument().applications.map((application) => application.state)).size).toBe(19)
+    expect(new Set(readSavedDocument().applications.map((application) => application.state)).size).toBe(10)
     expect(search).toHaveValue('')
     expect(stateFilter).toHaveValue('all')
     expect(screen.getByLabelText('Filter by company')).toHaveValue('all')
@@ -3460,7 +3564,7 @@ describe('job applications tracker', () => {
     const before = JSON.stringify(readSavedDocument())
 
     const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
-    await user.upload(input, jsonFile('{"schema_version":2,"applications":[]}'))
+    await user.upload(input, jsonFile('{"schema_version":4,"applications":[]}'))
 
     expect(await screen.findByRole('status')).toHaveTextContent(/Import failed:.*schema/i)
     expect(JSON.stringify(readSavedDocument())).toBe(before)

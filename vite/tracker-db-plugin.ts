@@ -8,6 +8,7 @@ import { MAX_STAGE_NOTE_BYTES, NOTE_EDIT_ROUTE } from '../src/domain/noteEditing
 import { createEmptyDocument, refreshTrackerDatabase } from '../src/domain/database'
 import { createDemoDocument } from '../src/domain/demo'
 import type { TrackerDatabase } from '../src/domain/types'
+import { DATA_VERSION, needsMigration } from '../src/domain/migrate'
 import { assertTrackerDocument, parseTrackerDocument } from '../src/domain/validation'
 import {
   removeAttachmentsRoot,
@@ -24,6 +25,25 @@ function writeDatabaseAtomic(dbPath: string, tmpPath: string, database: TrackerD
   const payload = `${JSON.stringify(database, null, 2)}\n`
   fs.writeFileSync(tmpPath, payload, 'utf8')
   fs.renameSync(tmpPath, dbPath)
+}
+
+/**
+ * Copies a file written in an older layout aside before it is rewritten in the current one,
+ * so the migration is never the only copy of what was there. Under the backups folder the
+ * Cursor hook already writes to, and named for why it is there.
+ */
+function backUpBeforeMigrating(dataDir: string, text: string): void {
+  let raw: unknown
+  try {
+    raw = JSON.parse(text)
+  } catch {
+    return
+  }
+  if (!needsMigration(raw)) return
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-')
+  const dir = path.join(dataDir, 'backups', `${stamp}-before-v${DATA_VERSION}`)
+  fs.mkdirSync(dir, { recursive: true })
+  fs.writeFileSync(path.join(dir, 'tracker.json'), text, 'utf8')
 }
 
 function readDatabaseFile(dbPath: string): TrackerDatabase {
@@ -94,6 +114,7 @@ function handleTrackerDb(root: string, profile: TrackerProfile, req: IncomingMes
       const existing = fs.readFileSync(dbPath, 'utf8')
       const serialized = `${JSON.stringify(refreshed, null, 2)}\n`
       if (serialized !== existing) {
+        backUpBeforeMigrating(dataDir, existing)
         writeDatabaseAtomic(dbPath, tmpPath, refreshed)
       }
       sendJson(res, 200, refreshed)

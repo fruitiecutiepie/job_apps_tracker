@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { emptyCompensation } from '../domain'
-import type { Application, StateId } from '../domain'
+import type { Application, OutcomeId, StateId } from '../domain'
 import { IDLE_THRESHOLD_DAYS, describeIdle, idleFilterMatches, idleStatusFor } from './idle'
 
 const today = new Date(2026, 7, 14, 12)
@@ -15,8 +15,9 @@ function at(daysFromToday: number, hour = 9): string {
 
 function application(
   company: string,
-  { state = 'applied' as StateId, movedDaysAgo = 1, ...overrides }: Partial<Application> & {
+  { state = 'applied' as StateId, outcome = 'active' as OutcomeId, movedDaysAgo = 1, ...overrides }: Partial<Application> & {
     state?: StateId
+    outcome?: OutcomeId
     movedDaysAgo?: number
   } = {},
 ): Application {
@@ -27,7 +28,9 @@ function application(
     url: null,
     source: null,
     state,
-    state_history: [{ state, at: at(-movedDaysAgo) }],
+    outcome,
+    state_history: [{ state, outcome, at: at(-movedDaysAgo) }],
+    archived_at: null,
     next_action: null,
     next_action_at: null,
     deadline_at: null,
@@ -76,8 +79,8 @@ describe('idleStatusFor', () => {
   })
 
   it('leaves rejected and closed applications out, however long they have sat', () => {
-    for (const state of ['auto_rejected', 'accepted', 'no_openings'] as StateId[]) {
-      const app = application(`Finished ${state}`, { state, movedDaysAgo: 60 })
+    for (const outcome of ['rejected', 'accepted', 'withdrawn', 'closed'] as OutcomeId[]) {
+      const app = application(`Finished ${outcome}`, { outcome, movedDaysAgo: 60 })
       expect(idleStatusFor(app, today)).toBeNull()
     }
   })
@@ -103,7 +106,7 @@ describe('describeIdle', () => {
 describe('idleFilterMatches', () => {
   const idle = application('Quiet', { movedDaysAgo: 40 })
   const active = application('Moving', { movedDaysAgo: 2 })
-  const rejected = application('Turned down', { state: 'auto_rejected', movedDaysAgo: 60 })
+  const rejected = application('Turned down', { outcome: 'rejected', movedDaysAgo: 60 })
 
   it('admits everything when unset', () => {
     for (const app of [idle, active, rejected]) {
@@ -122,5 +125,17 @@ describe('idleFilterMatches', () => {
     expect(idleFilterMatches('not_idle', idle, today)).toBe(false)
     expect(idleFilterMatches('not_idle', active, today)).toBe(true)
     expect(idleFilterMatches('not_idle', rejected, today)).toBe(true)
+  })
+})
+
+describe('a threshold the reader chose', () => {
+  it('moves the line for the status and the filter alike', () => {
+    const twenty = application('Twenty Co', { movedDaysAgo: 20 })
+
+    expect(idleStatusFor(twenty, today)).toBeNull()
+    expect(idleStatusFor(twenty, today, 20)).toEqual({ days: 20 })
+    expect(idleStatusFor(twenty, today, 21)).toBeNull()
+    expect(idleFilterMatches('idle', twenty, today, 20)).toBe(true)
+    expect(idleFilterMatches('idle', twenty, today)).toBe(false)
   })
 })

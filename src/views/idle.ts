@@ -7,6 +7,10 @@ import { classifyLifecycle, daysSinceLastMove } from "./urgency";
  * still moves wherever any other application can. Like urgency, it is derived view
  * state and never persisted — it depends on browser-local "today".
  */
+/**
+ * The default: a reader can change it on Statistics, where it is also the ghosting
+ * threshold, and every caller passes the reader's value through as `thresholdDays`.
+ */
 export const IDLE_THRESHOLD_DAYS = 30;
 
 export interface IdleStatus {
@@ -20,16 +24,20 @@ export interface IdleStatus {
  *
  * Silence is measured from the last stage change, never `updated_at`: any edit refreshes
  * that, so saving an invite or fixing a typo would reset the very quiet this names. The
- * threshold is inclusive, so exactly 30 days qualifies.
+ * threshold is inclusive, so an application exactly `thresholdDays` quiet qualifies.
  */
-export function idleStatusFor(application: Application, today: Date = new Date()): IdleStatus | null {
+export function idleStatusFor(
+  application: Application,
+  today: Date = new Date(),
+  thresholdDays: number = IDLE_THRESHOLD_DAYS,
+): IdleStatus | null {
   // Rejected and closed applications are finished, not idle. Counting them would mark
   // every old rejection and swamp the signal this exists to give.
-  if (classifyLifecycle(application.state) !== "live") return null;
+  if (classifyLifecycle(application) !== "live") return null;
   if (application.state_history.length === 0) return null;
 
   const days = daysSinceLastMove(application, today);
-  return days >= IDLE_THRESHOLD_DAYS ? { days } : null;
+  return days >= thresholdDays ? { days } : null;
 }
 
 /**
@@ -49,8 +57,9 @@ export function idleFilterMatches(
   filter: IdleFilter,
   application: Application,
   today: Date = new Date(),
+  thresholdDays: number = IDLE_THRESHOLD_DAYS,
 ): boolean {
   if (filter === "all") return true;
-  const idle = idleStatusFor(application, today) !== null;
+  const idle = idleStatusFor(application, today, thresholdDays) !== null;
   return filter === "idle" ? idle : !idle;
 }

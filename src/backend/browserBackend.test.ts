@@ -5,13 +5,13 @@ import { prepareTrackerDatabase } from '../domain/database'
 import { MAX_ATTACHMENT_BYTES } from '../domain/attachmentPaths'
 import type { TrackerDatabase } from '../domain/types'
 import type { ExternalChange, TrackerBackend } from './types'
-import { browserBackend, TRACKER_FILENAME, trackerNameFromFile, type BrowserBackendOptions } from './browserBackend'
+import { browserBackend, MIGRATION_BACKUP_FILENAME, TRACKER_FILENAME, trackerNameFromFile, type BrowserBackendOptions } from './browserBackend'
 import { exportFilename } from '../domain/export'
 import { NEW_TRACKER } from './trackerAddress'
 import type { TabChannel, TabLock, TabMessage } from './tabSync'
 import { FakeDirectory, looseFile } from './fakeDirectory'
 import { idbName, memoryStore, type KeyValueStore } from './idb'
-import type { DirectoryHandleLike } from './fileSystem'
+import { writeFileIn, type DirectoryHandleLike } from './fileSystem'
 
 const APPLICATION_ID = '11111111-1111-7111-8111-111111111111'
 const ATTACHMENT_ID = '22222222-2222-7222-8222-222222222222'
@@ -246,6 +246,39 @@ describe('browser backend, with a folder connected', () => {
     expect(await backend.storage!.connect()).toMatchObject({ outcome: 'opened' })
     expect((await backend.loadDocument()).applications[0].company).toBe('Typed before connecting')
     expect(folder.readText(TRACKER_FILENAME)).toContain('Already in the folder')
+  })
+
+  it('keeps a pre-split file aside before anything writes the migrated one over it', async () => {
+    const legacy = JSON.stringify({
+      applications: [{
+        id: APPLICATION_ID,
+        company: 'Old File Co',
+        state: 'auto_rejected',
+        created_at: '2026-07-01T09:00:00.000Z',
+        updated_at: '2026-07-01T09:00:00.000Z',
+      }],
+    })
+    await writeFileIn(folder, TRACKER_FILENAME, legacy)
+
+    const backend = connected(store, folder)
+    await backend.storage!.connect()
+    const loaded = await backend.loadDocument()
+    expect(loaded.applications[0]).toMatchObject({ state: 'applied', outcome: 'rejected' })
+    expect(folder.readText(MIGRATION_BACKUP_FILENAME)).toBe(legacy)
+
+    await backend.saveDocument(loaded)
+    expect(folder.readText(TRACKER_FILENAME)).toContain('"outcome": "rejected"')
+    // Once only: the backup is the original, not a copy of whatever was there last.
+    expect(folder.readText(MIGRATION_BACKUP_FILENAME)).toBe(legacy)
+  })
+
+  it('writes no backup for a file already in the current layout', async () => {
+    const backend = connected(store, folder)
+    await backend.storage!.connect()
+    await backend.saveDocument(withApplication())
+    await backend.loadDocument()
+
+    expect(folder.read(MIGRATION_BACKUP_FILENAME)).toBeNull()
   })
 
   it('seeds an empty folder with what the page already had', async () => {
@@ -805,6 +838,37 @@ describe('several trackers in one browser', () => {
    * A folder write that fails leaves the change in this browser alone, which is what the
    * backlog is for; the pill then asks to reconnect rather than saying it is saved there.
    */
+  /*
+   * A tracker not opened since the upgrade can still hold its folder file in the older
+   * layout. Renaming it from another tab writes the migrated document there, so the
+   * original is kept aside first, as loading it would have done.
+   */
+  it('keeps an older-layout folder file aside before renaming another tracker', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const other = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+    await other.loadDocument()
+    await other.storage!.connect()
+    const otherId = other.storage!.state().tracker!.id
+    const legacy = JSON.stringify({
+      applications: [{
+        id: APPLICATION_ID,
+        company: 'Old File Co',
+        state: 'auto_rejected',
+        created_at: '2026-07-01T09:00:00.000Z',
+        updated_at: '2026-07-01T09:00:00.000Z',
+      }],
+    })
+    const writable = await (await folder.getFileHandle(TRACKER_FILENAME)).createWritable()
+    await writable.write(legacy)
+    await writable.close()
+    const { backend } = tab(NEW_TRACKER, { supportsFolders: true })
+    await backend.loadDocument()
+
+    await backend.storage!.renameOtherTracker(otherId, 'Autumn search')
+    expect(folder.readText(MIGRATION_BACKUP_FILENAME)).toBe(legacy)
+    expect(JSON.parse(folder.readText(TRACKER_FILENAME)!)).toMatchObject({ name: 'Autumn search' })
+  })
+
   it('starts the backlog when a write cannot reach the folder', async () => {
     const folder = new FakeDirectory('job-apps')
     const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })

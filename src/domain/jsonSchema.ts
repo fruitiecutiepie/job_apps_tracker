@@ -1,16 +1,23 @@
 import { COMPENSATION_STAGE_IDS } from './compensation'
 import { CORRESPONDENCE_DIRECTION_IDS } from './correspondence'
 import { MAX_RATING_SCORE, MIN_RATING_SCORE, RATING_IDS } from './ratings'
-import { STATE_IDS } from './states'
+import { OUTCOME_IDS, STATE_IDS } from './states'
 
 export const TRACKER_JSON_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
   $id: 'job-applications-tracker/database',
   title: 'Job Applications Tracker Database',
   type: 'object',
-  required: ['schema', 'applications', 'indexes'],
+  required: ['schema_version', 'schema', 'applications', 'indexes'],
   additionalProperties: false,
   properties: {
+    schema_version: {
+      const: 3,
+      description:
+        'The layout this file is written in. Files with no version are version 1, which kept '
+        + 'how an application ended inside its state; version 2 had taking the job as an '
+        + 'outcome rather than the last stage. Both are migrated on load.',
+    },
     schema: {
       type: 'object',
       description: 'Embedded JSON Schema describing the canonical database shape.',
@@ -36,7 +43,9 @@ export const TRACKER_JSON_SCHEMA = {
         'url',
         'source',
         'state',
+        'outcome',
         'state_history',
+        'archived_at',
         'next_action',
         'next_action_at',
         'deadline_at',
@@ -59,19 +68,36 @@ export const TRACKER_JSON_SCHEMA = {
         role: { type: ['string', 'null'] },
         url: { type: ['string', 'null'] },
         source: { type: ['string', 'null'] },
-        state: { type: 'string', enum: [...STATE_IDS] },
+        state: {
+          type: 'string',
+          enum: [...STATE_IDS],
+          description: 'The stage the application is at, or was at when it ended.',
+        },
+        outcome: {
+          type: 'string',
+          enum: [...OUTCOME_IDS],
+          description:
+            'Whether the stage is still running (`active`) or who ended it: `rejected` by them, '
+            + '`withdrawn` by you, or `closed` by them without a rejection. Taking the job is the '
+            + 'last stage, `accepted`, not an outcome.',
+        },
         state_history: {
           type: 'array',
           minItems: 1,
           items: {
             type: 'object',
-            required: ['state', 'at'],
+            required: ['state', 'outcome', 'at'],
             additionalProperties: false,
             properties: {
               state: { type: 'string', enum: [...STATE_IDS] },
+              outcome: { type: 'string', enum: [...OUTCOME_IDS] },
               at: { type: 'string' },
             },
           },
+        },
+        archived_at: {
+          type: ['string', 'null'],
+          description: 'When the application was put away, or null. Hides it; keeps its outcome.',
         },
         next_action: { type: ['string', 'null'] },
         next_action_at: { type: ['string', 'null'] },
@@ -325,6 +351,7 @@ export const TRACKER_JSON_SCHEMA = {
         'by_deadline_at',
         'with_next_action',
         'unscheduled_next_actions',
+        'by_outcome',
         'ever_reached',
         'search_text',
         'stats_current',
@@ -356,6 +383,13 @@ export const TRACKER_JSON_SCHEMA = {
         by_deadline_at: { type: 'array', items: { type: 'string' } },
         with_next_action: { type: 'array', items: { type: 'string' } },
         unscheduled_next_actions: { type: 'array', items: { type: 'string' } },
+        by_outcome: {
+          type: 'object',
+          additionalProperties: {
+            type: 'array',
+            items: { type: 'string' },
+          },
+        },
         ever_reached: {
           type: 'object',
           additionalProperties: {

@@ -7,9 +7,9 @@ interface StateHistoryProps {
 }
 
 /**
- * Every state this application has moved through, oldest first: the order is the story,
- * so the list is an `<ol>` and the current state sits last, next to the State select that
- * changes it. It is a record, not a field — nothing here is editable, and the spans are
+ * Every stage and outcome this application has moved through, oldest first: the order is
+ * the story, so the list is an `<ol>` and where it stands now sits last, next to the Stage
+ * and Outcome selects that change it. It is a record, not a field — nothing here is editable, and the spans are
  * derived on render rather than stored.
  */
 export function StateHistory({ history }: StateHistoryProps) {
@@ -26,7 +26,7 @@ export function StateHistory({ history }: StateHistoryProps) {
           return (
             <li
               className={`state-history__entry${entry.current ? ' state-history__entry--current' : ''}`}
-              key={`${entry.at}-${entry.state}`}
+              key={`${entry.at}-${entry.state}-${entry.outcome}`}
             >
               <span className="state-history__state">{entry.label}</span>
               <time className="state-history__date" dateTime={entry.at}>

@@ -364,14 +364,19 @@ describe('the static build', () => {
 
   /*
    * Export is on each tracker's row, and a file comes in as a tracker of its own, so the
-   * topbar's menu — which would act on one of several without saying which — has nothing
-   * left to offer here. There is no Import on a row: replacing one tracker of several
-   * from a file was hard to predict.
+   * topbar's menu — which would act on one of several without saying which — offers
+   * neither. It stays for Archive all ended, which acts on the tracker on screen. There is
+   * no Import on a row: replacing one tracker of several from a file was hard to predict.
    */
-  it('keeps Export on the tracker rows, with no Import there and no topbar menu', async () => {
+  it('keeps Export on the tracker rows, with no Import there or in the topbar menu', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
-    expect(within(topbar()).queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument()
+    await user.click(within(topbar()).getByRole('button', { name: 'More actions' }))
+    const menu = within(topbar())
+    expect(menu.getByRole('button', { name: /^Archive all ended/ })).toBeInTheDocument()
+    expect(menu.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument()
+    expect(menu.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument()
+    await user.keyboard('{Escape}')
 
     await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
     const row = screen.getByRole('link', { name: /Untitled tracker/ }).closest('li')!
@@ -857,7 +862,7 @@ describe('the hosted demo', () => {
 
   it('opens on the nineteen examples rather than on nothing', async () => {
     await renderStaticApp('demo')
-    expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
   })
 
   it('says what it is, and offers the way out', async () => {

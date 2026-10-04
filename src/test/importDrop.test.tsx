@@ -77,7 +77,7 @@ afterEach(() => {
 describe('dropping a file on the app', () => {
   it('replaces the tracker and re-renders it, without touching the Import button', async () => {
     await renderLoadedApp()
-    expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
 
     drop([jsonFile(exportedJson('Dropped Industries'))])
     await answerReplace('Discard and import')
@@ -94,7 +94,7 @@ describe('dropping a file on the app', () => {
     await answerReplace('Cancel')
 
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
-    expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
   })
 
   it('takes a zip archive with its attachments', async () => {
@@ -128,7 +128,7 @@ describe('dropping a file on the app', () => {
     drop([jsonFile('{ not json at all', 'broken.json')])
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/Import failed/))
-    expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
@@ -138,7 +138,7 @@ describe('dropping a file on the app', () => {
     drop([new File(['hello'], 'notes.txt', { type: 'text/plain' })])
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/\.json or \.zip/))
-    expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument()
+    expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
   })
 
   it('shows a drop target while a file is over the page, and takes it away after', async () => {
@@ -163,7 +163,7 @@ describe('dropping a file on the app', () => {
     expect(screen.queryByText(/Drop to import/)).not.toBeInTheDocument()
 
     fireEvent.drop(window, { dataTransfer: { types: ['text/plain'], files: [] } })
-    await waitFor(() => expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument())
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 })
@@ -190,7 +190,7 @@ describe('pasting a file into the app', () => {
       clipboardData: { files: [], getData: () => exportedJson('Pasted Ltd') },
     })
 
-    await waitFor(() => expect(screen.getByText('19 of 19 applications shown')).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument())
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 })

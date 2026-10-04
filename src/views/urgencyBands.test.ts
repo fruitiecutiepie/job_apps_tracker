@@ -22,7 +22,9 @@ function application(company: string, overrides: Partial<Application> = {}): App
     url: null,
     source: null,
     state,
-    state_history: [{ state, at: at(-1) }],
+    outcome: 'active',
+    state_history: [{ state, outcome: 'active', at: at(-1) }],
+    archived_at: null,
     next_action: null,
     next_action_at: null,
     deadline_at: null,
@@ -147,8 +149,8 @@ describe('band membership', () => {
 
   it('separates a finished application that still carries a task from one that does not', () => {
     const rejected = {
-      state: 'auto_rejected' as StateId,
-      state_history: [{ state: 'auto_rejected' as StateId, at: at(-2) }],
+      outcome: 'rejected' as const,
+      state_history: [{ state: 'applied' as StateId, outcome: 'rejected' as const, at: at(-2) }],
     }
 
     expect(
@@ -162,7 +164,8 @@ describe('band membership', () => {
     const placement = urgencyBandFor(
       application('Ended Co', {
         state: 'accepted',
-        state_history: [{ state: 'accepted', at: at(-2) }],
+        outcome: 'active',
+        state_history: [{ state: 'accepted', outcome: 'active', at: at(-2) }],
         deadline_at: at(1),
       }),
       today,
