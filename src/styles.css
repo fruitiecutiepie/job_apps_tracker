@@ -429,8 +429,7 @@ p {
 
 /*
  * A row is the tracker's link, which takes the width, and its two actions at the end.
- * The actions are quiet until reached for, like the panel's own title-bar icons, and
- * Remove warms to the danger colour only under the pointer or focus.
+ * The actions are quiet until reached for, like the panel's own title-bar icons.
  */
 .tracker-switcher__row {
   display: flex;
@@ -456,11 +455,6 @@ p {
   border-color: transparent;
   color: var(--ink);
   background: var(--surface-2);
-}
-
-.icon-button.tracker-switcher__action--remove:hover,
-.icon-button.tracker-switcher__action--remove:focus-visible {
-  color: var(--danger);
 }
 
 .tracker-switcher__input {

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Check, ChevronDown, Download, FilePlus2, FolderOpen, Pencil, Trash2, Upload, X } from 'lucide-react'
+import { Check, ChevronDown, Download, FilePlus2, FolderOpen, Pencil, Upload, X } from 'lucide-react'
 
 import type { TrackerSummary } from './backend'
 import { NEW_TRACKER, trackerHref } from './backend/trackerAddress'
@@ -12,8 +12,6 @@ export interface TrackerSwitcherProps {
   onRename: (tracker: TrackerSummary, name: string) => Promise<void>
   /** Downloads a tracker as an export file — this tab's or another. */
   onExport: (tracker: TrackerSummary) => void
-  /** Replaces a tracker's contents from an export file, after the import question. */
-  onImport: (tracker: TrackerSummary) => void
   /** Starts a new tracker from a folder; absent where the browser cannot open one. */
   onNewFromFolder: (() => void) | null
   /** Starts a new tracker from an exported file. */
@@ -31,10 +29,17 @@ function describeCount(count: number): string {
  *
  * Every tracker is a link rather than a button, because switching is a navigation: a
  * plain click opens it here, and a middle click or a modified one opens it in a tab of
- * its own, which is how two are worked on at once. Rename, Export, Import and Remove sit
- * at the end of each row as icons, acting on that row's tracker, so a tracker can be tidied without
- * opening it first; each names its tracker to a screen reader and on hover, since an icon
- * alone does not say which row it belongs to. Like More actions it is a disclosure of
+ * its own, which is how two are worked on at once. Rename, Export and Remove sit at the
+ * end of each row as icons, acting on that row's tracker, so a tracker can be tidied
+ * without opening it first; each names its tracker to a screen reader and on hover, since
+ * an icon alone does not say which row it belongs to. Remove is a cross rather than a bin
+ * and is never painted in the danger colour: taking a tracker off this browser's list is
+ * an ordinary act — a folder keeps its files — and the question it asks before anything
+ * is lost is the place for the warning, not the icon.
+ *
+ * There is no Import on a row. Replacing one tracker's contents from a file, picked from a
+ * list of several, was hard to predict; From a file… makes the file a tracker of its own,
+ * and the old one can be removed beside it. Like More actions it is a disclosure of
  * plain controls, not an ARIA menu, so Tab alone reaches everything in it.
  */
 export function TrackerSwitcher({
@@ -43,7 +48,6 @@ export function TrackerSwitcher({
   onRemove,
   onRename,
   onExport,
-  onImport,
   onNewFromFolder,
   onNewFromFile,
 }: TrackerSwitcherProps) {
@@ -207,20 +211,8 @@ export function TrackerSwitcher({
                     <Download aria-hidden="true" size={15} />
                   </button>
                   <button
-                    aria-label={`Import a file into ${tracker.name}`}
-                    className="icon-button tracker-switcher__action"
-                    onClick={() => {
-                      setOpen(false)
-                      onImport(tracker)
-                    }}
-                    title={`Import a file into ${tracker.name}, replacing what it holds`}
-                    type="button"
-                  >
-                    <Upload aria-hidden="true" size={15} />
-                  </button>
-                  <button
                     aria-label={`Remove ${tracker.name} from this browser`}
-                    className="icon-button tracker-switcher__action tracker-switcher__action--remove"
+                    className="icon-button tracker-switcher__action"
                     onClick={() => {
                       setOpen(false)
                       onRemove(tracker)
@@ -228,7 +220,7 @@ export function TrackerSwitcher({
                     title={`Remove ${tracker.name} from this browser`}
                     type="button"
                   >
-                    <Trash2 aria-hidden="true" size={15} />
+                    <X aria-hidden="true" size={16} />
                   </button>
                 </li>
               )
@@ -240,7 +232,7 @@ export function TrackerSwitcher({
             * is answering. Each opens beside this tracker, never over it.
             */}
           <div aria-labelledby="tracker-switcher-new" className="tracker-switcher__group" role="group">
-            <p className="tracker-switcher__caption" id="tracker-switcher-new">New tracker</p>
+            <p className="tracker-switcher__caption" id="tracker-switcher-new">New or existing tracker</p>
             <a className="actions-menu__item" href={trackerHref(NEW_TRACKER)}>
               <FilePlus2 aria-hidden="true" size={16} /> Blank tracker
             </a>

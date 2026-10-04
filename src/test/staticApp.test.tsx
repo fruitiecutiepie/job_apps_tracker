@@ -198,7 +198,7 @@ describe('the static build', () => {
     const current = within(list).getByRole('link', { name: /job-search-2026/ })
     expect(current).toHaveAttribute('aria-current', 'page')
     expect(current).toHaveTextContent('1 application')
-    const starting = screen.getByRole('group', { name: 'New tracker' })
+    const starting = screen.getByRole('group', { name: 'New or existing tracker' })
     expect(within(starting).getByRole('link', { name: 'Blank tracker' })).toHaveAttribute('href', '?tracker=new')
     // No folder in a browser that cannot open one; a file works everywhere.
     expect(within(starting).queryByRole('button', { name: /From a folder/ })).not.toBeInTheDocument()
@@ -296,20 +296,26 @@ describe('the static build', () => {
   })
 
   /*
-   * Import and Export are on each tracker's row, so the topbar's menu, which would act on
-   * one of several without saying which, has nothing left to offer here.
+   * Export is on each tracker's row, and a file comes in as a tracker of its own, so the
+   * topbar's menu — which would act on one of several without saying which — has nothing
+   * left to offer here. There is no Import on a row: replacing one tracker of several
+   * from a file was hard to predict.
    */
-  it('keeps Import and Export on the tracker rows rather than in a topbar menu', async () => {
+  it('keeps Export on the tracker rows, with no Import there and no topbar menu', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
     expect(within(topbar()).queryByRole('button', { name: 'More actions' })).not.toBeInTheDocument()
 
     await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
-    expect(screen.getByRole('button', { name: 'Export Untitled tracker' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Import a file into Untitled tracker' })).toBeInTheDocument()
+    const row = screen.getByRole('link', { name: /Untitled tracker/ }).closest('li')!
+    expect(within(row).getAllByRole('button').map((button) => button.getAttribute('aria-label'))).toEqual([
+      'Rename Untitled tracker',
+      'Export Untitled tracker',
+      'Remove Untitled tracker from this browser',
+    ])
   })
 
-  it('imports into and exports another tracker from its row, staying in this one', async () => {
+  it('exports another tracker from its row, staying in this one', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
     await addApplication(user, 'Stays here')
@@ -322,15 +328,7 @@ describe('the static build', () => {
     await user.upload(inputs()[inputs().length - 1], trackerFile('last-year'))
     await waitFor(async () => expect(await backend.storage!.listTrackers()).toHaveLength(2))
 
-    // Into it: the file came from somewhere the viewer holds, so the question is plain.
-    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
-    await user.click(await screen.findByRole('button', { name: 'Import a file into last-year' }))
-    await user.upload(inputs()[inputs().length - 1], trackerFile('Replacement'))
-    const question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
-    await user.click(within(question).getByRole('button', { name: 'Import' }))
-    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent('Imported 1 application into Replacement.'))
-    const replaced = (await backend.storage!.listTrackers()).find((tracker) => tracker.name !== 'Untitled tracker')!
-    expect((await backend.storage!.readTracker(replaced.id)).document.applications[0].company).toBe('Replacement')
+    const other = (await backend.storage!.listTrackers()).find((tracker) => tracker.name === 'last-year')!
 
     // And out of it, under its own name, while this tab stays where it is.
     const objectUrls = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL }
@@ -342,9 +340,9 @@ describe('the static build', () => {
     })
     try {
       await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
-      await user.click(await screen.findByRole('button', { name: `Export ${replaced.name}` }))
+      await user.click(await screen.findByRole('button', { name: `Export ${other.name}` }))
       await waitFor(() => expect(downloads).toHaveLength(1))
-      expect(downloads[0]).toMatch(new RegExp(`^${replaced.name} \\d{4}-\\d{2}-\\d{2}\\.zip$`))
+      expect(downloads[0]).toMatch(/^last-year \d{4}-\d{2}-\d{2}\.zip$/)
     } finally {
       click.mockRestore()
       Object.assign(URL, objectUrls)
@@ -497,7 +495,7 @@ describe('the static build, in a browser that can write a folder', () => {
     const user = userEvent.setup()
     await renderStaticApp()
     await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
-    const starting = screen.getByRole('group', { name: 'New tracker' })
+    const starting = screen.getByRole('group', { name: 'New or existing tracker' })
     expect(within(starting).getAllByRole('link').concat(within(starting).getAllByRole('button')).map((item) => item.textContent?.trim()))
       .toEqual(['Blank tracker', 'From a folder…', 'From a file…'])
   })

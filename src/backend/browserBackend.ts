@@ -720,55 +720,6 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       })
     },
 
-    async replaceOtherTracker(replacing, document, files, filename): Promise<TrackerSummary> {
-      await ready()
-      if (replacing === id()) throw new Error('The open tracker is replaced through an import')
-      return onTracker(replacing, async () => {
-        const stored = (await store.get('state', metaKey(replacing))) as TrackerSummary | null
-        if (!stored) throw new Error('That tracker is no longer in this browser')
-        const refreshed = refreshTrackerDatabase(document)
-        const written = serialize(refreshed)
-        /*
-         * The folder first, for the reason renaming writes it first: it is what that
-         * tracker reads when it opens, so contents stored only in the browser would be
-         * replaced by the folder's old ones the next time it did.
-         */
-        const handle = (await store.get('state', directoryKey(replacing))) as DirectoryHandleLike | null
-        if (handle) {
-          if ((await permissionFor(handle, true)) !== 'granted') {
-            throw new Error(`${stored.name} saves to the ${handle.name} folder, which this page was not allowed to write to`)
-          }
-          await writeFileIn(handle, TRACKER_FILENAME, written)
-          await removeEntryIn(handle, ATTACHMENTS_DIRNAME, true)
-          for (const file of files) {
-            const attachments = await subdirectory(handle, ATTACHMENTS_DIRNAME, true)
-            const application = attachments && await subdirectory(attachments, file.applicationId, true)
-            if (application) await writeFileIn(application, file.attachmentId, file.data.slice().buffer)
-          }
-        }
-        await deleteAttachmentsWithPrefix(`${replacing}/`)
-        for (const file of files) {
-          if (!isSafeAttachmentId(file.applicationId) || !isSafeAttachmentId(file.attachmentId)) continue
-          await store.put('attachments', `${replacing}/${file.applicationId}/${file.attachmentId}`, file.data.slice().buffer)
-        }
-        await store.put('state', documentKey(replacing), written)
-        // The viewer holds the file it came from, so nothing in it is waiting on a backup.
-        await store.delete('state', backlogKey(replacing))
-        const fallback = handle ? (stored.fallbackName ?? stored.name) : trackerNameFromFile(filename)
-        const summary: TrackerSummary = {
-          ...stored,
-          name: refreshed.name ?? fallback,
-          fallbackName: fallback,
-          applications: refreshed.applications.length,
-        }
-        await store.put('state', metaKey(replacing), summary)
-        const revision = (((await store.get('state', revisionKey(replacing))) as number | null) ?? 0) + 1
-        await store.put('state', revisionKey(replacing), revision)
-        postTo(replacing, { type: 'document' })
-        return summary
-      })
-    },
-
     async nameAfterFile(filename: string): Promise<void> {
       await ready()
       return exclusive(async () => {

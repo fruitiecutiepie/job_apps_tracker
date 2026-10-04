@@ -715,13 +715,8 @@ export default function App() {
   const dialogOpenerRef = useRef<HTMLElement | null>(null)
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
-  /*
-   * Kept apart from the import input, which replaces the tracker on screen: this one is
-   * for a file going somewhere else — a new tracker, or another tracker's row — and says
-   * which through `fileTargetRef`, set just before it is opened.
-   */
+  /* Kept apart from the import input: that one replaces this tracker, this one starts another. */
   const otherTrackerInputRef = useRef<HTMLInputElement>(null)
-  const fileTargetRef = useRef<TrackerSummary | null>(null)
   const storageState = useStorageState()
 
   /*
@@ -1026,63 +1021,6 @@ export default function App() {
     saveOtherCopy(target).catch((error) => {
       setNotice(`Export failed: ${errorMessage(error)}`)
     })
-  }
-
-  /* Import from a row: into the tracker on screen through the import it always had. */
-  const importIntoTracker = (target: TrackerSummary) => {
-    if (target.id === storageState?.tracker?.id) {
-      importInputRef.current?.click()
-      return
-    }
-    fileTargetRef.current = target
-    otherTrackerInputRef.current?.click()
-  }
-
-  /*
-   * An import into a tracker this tab is not holding asks the question an import here
-   * asks, measured from that tracker's listing. A folder it saves to is not a copy, since
-   * the import writes into that folder.
-   */
-  const importIntoOtherTracker = async (file: File, target: TrackerSummary) => {
-    try {
-      const result = readTrackerImport(await readFileAsUint8Array(file))
-      if (!result.ok) {
-        setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
-        return
-      }
-      const replace = async () => {
-        try {
-          const replaced = await backend.storage!.replaceOtherTracker(
-            target.id,
-            result.document,
-            result.files,
-            file.name,
-          )
-          const count = replaced.applications
-          setNotice(`Imported ${count} application${count === 1 ? '' : 's'} into ${replaced.name}.`)
-        } catch (error) {
-          setNotice(`Import failed: ${errorMessage(error)}`)
-        }
-      }
-      if (target.applications === 0) {
-        await replace()
-        return
-      }
-      setPendingReplace({
-        replacement: {
-          kind: 'import',
-          incoming: result.document.applications.length,
-          attachments: result.files.length,
-          current: target.applications,
-          backedUp: (target.folder ?? null) === null && (target.unbackedSince ?? null) === null,
-          folder: target.folder ?? null,
-        },
-        proceed: replace,
-        saveCopy: () => saveOtherCopy(target),
-      })
-    } catch (error) {
-      setNotice(`Import failed: ${errorMessage(error)}`)
-    }
   }
 
   const askToRemoveTracker = (target: TrackerSummary) => {
@@ -1520,12 +1458,8 @@ export default function App() {
               onNewFromFolder={
                 storageState.connection.kind === 'unsupported' ? null : () => void newTrackerFromFolder()
               }
-              onNewFromFile={() => {
-                fileTargetRef.current = null
-                otherTrackerInputRef.current?.click()
-              }}
+              onNewFromFile={() => otherTrackerInputRef.current?.click()}
               onExport={exportTrackerById}
-              onImport={importIntoTracker}
             />
           )}
         </div>
@@ -1686,9 +1620,7 @@ export default function App() {
         onChange={(event) => {
           const file = event.target.files?.[0]
           event.target.value = ''
-          const target = fileTargetRef.current
-          fileTargetRef.current = null
-          if (file) void (target ? importIntoOtherTracker(file, target) : newTrackerFromFile(file))
+          if (file) void newTrackerFromFile(file)
         }}
         ref={otherTrackerInputRef}
         tabIndex={-1}
