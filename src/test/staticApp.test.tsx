@@ -6,7 +6,8 @@ import type { ComponentType } from 'react'
 import { prepareTrackerDatabase } from '../domain/database'
 import { serializeTrackerDocument } from '../domain/export'
 import { createApplication } from '../domain/mutations'
-import { FakeDirectory } from '../backend/fakeDirectory'
+import { FakeDirectory, looseFile } from '../backend/fakeDirectory'
+import type { FileHandleLike } from '../backend/fileSystem'
 import { readTrackerImport } from '../domain/import'
 
 /**
@@ -60,6 +61,22 @@ function trackerFile(company: string): File {
     }),
   ])
   return new File([serializeTrackerDocument(document)], `${company}.json`, { type: 'application/json' })
+}
+
+/*
+ * A drop the way Chrome and Edge deliver one: the file, and on its transfer item a way to
+ * ask for the browser's handle on it — which is what lets the app tell the same file on
+ * disk from one that merely reads alike.
+ */
+function dropWithHandle(handle: FileHandleLike, contents: string, name = handle.name): void {
+  const file = new File([contents], name, { type: 'application/json' })
+  const dataTransfer = {
+    types: ['Files'],
+    files: [file],
+    items: [{ kind: 'file', getAsFileSystemHandle: async () => handle }],
+  }
+  fireEvent.dragEnter(window, { dataTransfer })
+  fireEvent.drop(window, { dataTransfer })
 }
 
 /** Looked up where it is used: the app remounts across a reload. */
@@ -393,6 +410,51 @@ describe('the static build', () => {
     expect(screen.getByRole('button', { name: /Open Stays here/ })).toBeInTheDocument()
   })
 
+  /*
+   * A file another tracker here was opened from is offered as that tracker: switching to it
+   * is the likelier meaning, and opening it again as a new one is still there.
+   */
+  it('offers to switch to the tracker a dropped file was opened from', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    await addApplication(user, 'Stays here')
+    const { backend } = await import('../backend')
+    const { navigation } = await import('../backend/trackerAddress')
+    const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
+    const exported = await trackerFile('last-year').text()
+    const original = looseFile('last-year.json', exported)
+    const result = readTrackerImport(new TextEncoder().encode(exported))
+    if (!result.ok) throw new Error('fixture')
+    const earlier = await backend.storage!.createTracker(result.document, [], 'last-year.json', original)
+
+    dropWithHandle(original, exported, 'last-year.json')
+    const question = await screen.findByRole('alertdialog', { name: 'last-year is already in this browser' })
+    expect(question).toHaveTextContent('last-year.json is the file last-year was opened from.')
+    expect(within(question).getByRole('button', { name: 'Switch to last-year' })).toHaveFocus()
+    await user.click(within(question).getByRole('button', { name: 'Switch to last-year' }))
+    expect(open).toHaveBeenCalledWith(`?tracker=${earlier.id}`)
+  })
+
+  it('says where each tracker lives, so two of one name can be told apart', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    await addApplication(user, 'Stays here')
+    const { backend } = await import('../backend')
+    const exported = await trackerFile('Autumn search').text()
+    const result = readTrackerImport(new TextEncoder().encode(exported))
+    if (!result.ok) throw new Error('fixture')
+    await backend.storage!.createTracker(result.document, [], 'Autumn search.json')
+    await backend.storage!.createTracker(result.document, [], 'Autumn search 2026-10-01.zip')
+
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+    const list = screen.getByRole('list', { name: /Trackers in this browser/ })
+    await waitFor(() => expect(within(list).getAllByRole('link')).toHaveLength(3))
+    const lines = within(list).getAllByRole('link').map((link) => link.textContent)
+    expect(lines).toContain('Autumn search1 application · from Autumn search.json')
+    expect(lines).toContain('Autumn search1 application · from Autumn search 2026-10-01.zip')
+    expect(lines).toContain('Untitled tracker1 application · only in this browser')
+  })
+
   it('keeps reminding after a reload, since forgetting happens between visits', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
@@ -600,10 +662,11 @@ describe('the static build, in a browser that can write a folder', () => {
   })
 
   /*
-   * Dragging a tracker's own tracker.json back onto it would change nothing, so there is
-   * nothing to ask about adding or replacing.
+   * A file is matched by being the same file on disk — the browser compares the two —
+   * never by reading alike. Dropping a folder-saved tracker's own tracker.json back onto it
+   * changes nothing, so nothing is asked.
    */
-  it('does nothing with a file holding exactly what the tracker already has', async () => {
+  it('does nothing with a drop of the file this tracker saves to', async () => {
     const user = userEvent.setup()
     const folder = new FakeDirectory('test_job')
     Object.assign(window, { showDirectoryPicker: vi.fn(async () => folder) })
@@ -613,13 +676,26 @@ describe('the static build, in a browser that can write a folder', () => {
     await addApplication(user, 'Northwind')
     await waitFor(() => expect(folder.readText('tracker.json')).toContain('Northwind'))
 
-    const own = new File([folder.readText('tracker.json')!], 'tracker.json', { type: 'application/json' })
-    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!, own)
-
+    dropWithHandle(await folder.getFileHandle('tracker.json'), folder.readText('tracker.json')!)
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(
-      'tracker.json holds exactly what this tracker already has, so there is nothing to import.',
+      'tracker.json is the file test_job already saves to, so there is nothing to import.',
     ))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+  })
+
+  it('asks as usual about a different file that merely reads the same', async () => {
+    const user = userEvent.setup()
+    const folder = new FakeDirectory('test_job')
+    Object.assign(window, { showDirectoryPicker: vi.fn(async () => folder) })
+    await renderStaticApp()
+    await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
+    await within(topbar()).findByRole('button', { name: 'Saved to test_job' })
+    await addApplication(user, 'Northwind')
+    await waitFor(() => expect(folder.readText('tracker.json')).toContain('Northwind'))
+
+    const sameWords = folder.readText('tracker.json')!
+    dropWithHandle(looseFile('copy-of-tracker.json', sameWords), sameWords)
+    expect(await screen.findByRole('alertdialog', { name: 'Open this file?' })).toBeInTheDocument()
   })
 
   it('says nothing when the folder picker is dismissed', async () => {

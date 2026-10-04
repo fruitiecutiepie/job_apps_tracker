@@ -9,6 +9,11 @@ export interface FileHandleLike {
   readonly name: string
   getFile(): Promise<File>
   createWritable(): Promise<WritableStreamLike>
+  /**
+   * Whether two handles are the same file on disk. The only way a page can ask "is this
+   * the same file" at all: it is never told a file's path, only given handles to compare.
+   */
+  isSameEntry?(other: FileHandleLike): Promise<boolean>
 }
 
 export interface WritableStreamLike {

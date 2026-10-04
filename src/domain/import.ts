@@ -4,7 +4,6 @@ import {
   type ArchiveAttachmentFile,
 } from './archive'
 import type { TrackerDatabase } from './types'
-import { refreshTrackerDatabase } from './database'
 import { validateTrackerDocument, type ValidationError } from './validation'
 
 export interface TrackerImportSuccess {
@@ -77,18 +76,4 @@ export function describeImportErrors(errors: ValidationError[], limit = 3): stri
 
 function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
-}
-
-/**
- * Whether an imported document holds exactly the applications a tracker already holds —
- * what dropping a tracker's own `tracker.json` back onto it gives. Importing that would
- * change nothing, so there is nothing to ask. Compared in canonical form, which is how
- * both were last written, and on the applications alone: a name is not something a file
- * dropped back onto its own tracker needs asking about.
- */
-export function holdsTheSameApplications(imported: TrackerDatabase, current: TrackerDatabase): boolean {
-  if (imported.applications.length !== current.applications.length) return false
-  const canonical = (document: TrackerDatabase) =>
-    JSON.stringify(refreshTrackerDatabase({ ...document, name: undefined }).applications)
-  return canonical(imported) === canonical(current)
 }

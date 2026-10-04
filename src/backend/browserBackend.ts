@@ -15,6 +15,7 @@ import {
   supportsDirectoryPicker,
   writeFileIn,
   type DirectoryHandleLike,
+  type FileHandleLike,
 } from './fileSystem'
 import { idbName, indexedDbStore, memoryStore, type KeyValueStore } from './idb'
 import { broadcastChannel, webLocks, type TabChannel, type TabLock, type TabMessage } from './tabSync'
@@ -49,6 +50,8 @@ const directoryKey = (id: string) => `directory:${id}`
 const backlogKey = (id: string) => `backlog:${id}`
 const revisionKey = (id: string) => `revision:${id}`
 const metaKey = (id: string) => `${META_PREFIX}${id}`
+/* The handle of the file a tracker came from, kept so a later drop of it can be matched. */
+const sourceKey = (id: string) => `source:${id}`
 
 export const UNTITLED_TRACKER = 'Untitled tracker'
 
@@ -148,6 +151,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
    */
   let trackerName = UNTITLED_TRACKER
   let fallbackName = UNTITLED_TRACKER
+  let sourceFile: string | null = null
   let meta: TrackerSummary | null = null
   /* No tracker existed anywhere when this one was opened: the demo seeds only then. */
   let firstEver = false
@@ -171,7 +175,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       connection,
       unbackedSince,
       saving: writing > 0,
-      tracker: trackerId === null ? null : { id: trackerId, name: trackerName },
+      tracker: trackerId === null ? null : { id: trackerId, name: trackerName, sourceFile },
     }
   }
 
@@ -204,6 +208,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       fallbackName,
       applications,
       openedAt: meta?.openedAt ?? now().toISOString(),
+      ...(sourceFile ? { sourceFile } : {}),
     }
     await store.put('state', metaKey(meta.id), meta)
   }
@@ -259,6 +264,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       trackerId = found.id
       trackerName = found.name
       fallbackName = found.fallbackName ?? found.name
+      sourceFile = found.sourceFile ?? null
       meta = { ...found, openedAt: now().toISOString() }
       await store.put('state', metaKey(found.id), meta)
     } else {
@@ -360,6 +366,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       meta = { ...stored, openedAt: meta?.openedAt ?? stored.openedAt }
       trackerName = stored.name
       fallbackName = stored.fallbackName ?? fallbackName
+      sourceFile = stored.sourceFile ?? null
     }
     const backlog = (await store.get('state', backlogKey(id()))) as string | null
     unbackedSince = isDemoTrackerProfile() ? null : backlog
@@ -541,10 +548,12 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     document: TrackerDatabase,
     fallback: string,
     files: Array<{ applicationId: string; attachmentId: string; data: Uint8Array }> = [],
+    source: { name: string; handle: FileHandleLike | null } | null = null,
   ): Promise<TrackerSummary> {
     const created = createUuidV7(now())
     await store.put('state', documentKey(created), serialize(document))
     if (folder) await store.put('state', directoryKey(created), folder)
+    if (source?.handle) await store.put('state', sourceKey(created), source.handle)
     await store.put('state', revisionKey(created), 1)
     for (const file of files) {
       if (!isSafeAttachmentId(file.applicationId) || !isSafeAttachmentId(file.attachmentId)) continue
@@ -557,9 +566,35 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       fallbackName: fallback,
       applications: document.applications.length,
       openedAt: now().toISOString(),
+      ...(source ? { sourceFile: source.name } : {}),
     }
     await store.put('state', metaKey(created), summary)
     return summary
+  }
+
+  /* Whether a dropped or picked file is one some tracker reads from or came from. */
+  async function belongsTo(
+    summary: TrackerSummary,
+    file: FileHandleLike,
+  ): Promise<{ folder: string } | { source: true } | null> {
+    if (!file.isSameEntry) return null
+    const folder = summary.id === trackerId
+      ? directory
+      : (await store.get('state', directoryKey(summary.id))) as DirectoryHandleLike | null
+    /*
+     * A folder this tab has no permission for cannot be looked inside without asking, and
+     * there is no gesture to ask in. It is passed over rather than prompted for.
+     */
+    if (folder && (await permissionFor(folder, false)) === 'granted') {
+      try {
+        const own = await folder.getFileHandle(TRACKER_FILENAME)
+        if (await file.isSameEntry(own)) return { folder: folder.name }
+      } catch {
+        // No tracker.json there yet, or the folder went away: not this one.
+      }
+    }
+    const source = (await store.get('state', sourceKey(summary.id))) as FileHandleLike | null
+    return source && (await file.isSameEntry(source)) ? { source: true } : null
   }
 
   /* Another tracker in this browser already writing to the folder just picked, if any. */
@@ -662,11 +697,30 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
      * nothing to replace and nothing to ask. The viewer holds the file it came from, so it
      * starts with nothing waiting on a backup.
      */
-    async createTracker(document, files, filename): Promise<TrackerSummary> {
+    async createTracker(document, files, filename, source = null): Promise<TrackerSummary> {
       await ready()
       return serialized(() =>
-        storeAsNewTracker(null, refreshTrackerDatabase(document), trackerNameFromFile(filename), files),
+        storeAsNewTracker(
+          null,
+          refreshTrackerDatabase(document),
+          trackerNameFromFile(filename),
+          files,
+          { name: filename, handle: source },
+        ),
       )
+    },
+
+    async findTrackerForFile(file: FileHandleLike): Promise<TrackerSummary | null> {
+      await ready()
+      const metas = await listMetas()
+      // This tab's tracker first, so a file it holds is never offered as another's.
+      const ordered = [...metas.filter((item) => item.id === trackerId), ...metas.filter((item) => item.id !== trackerId)]
+      for (const summary of ordered) {
+        const how = await belongsTo(summary, file)
+        // `folder` set when the file is that folder's tracker.json; null when it is the source.
+        if (how !== null) return { ...summary, folder: 'folder' in how ? how.folder : null }
+      }
+      return null
     },
 
     async reconnect(): Promise<StorageConnection> {
@@ -731,11 +785,14 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       })
     },
 
-    async nameAfterFile(filename: string): Promise<void> {
+    async nameAfterFile(filename: string, source: FileHandleLike | null = null): Promise<void> {
       await ready()
       return exclusive(async () => {
         if (directory) return
         fallbackName = trackerNameFromFile(filename)
+        sourceFile = filename
+        if (source) await store.put('state', sourceKey(id()), source)
+        else await store.delete('state', sourceKey(id()))
         syncName()
         if (meta) await writeMeta(meta.applications)
         post({ type: 'storage' })
@@ -762,6 +819,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
         await store.delete('state', directoryKey(removing))
         await store.delete('state', backlogKey(removing))
         await store.delete('state', revisionKey(removing))
+        await store.delete('state', sourceKey(removing))
         await store.delete('state', metaKey(removing))
         if (holding) {
           directory = null

@@ -1,5 +1,6 @@
 import type { StageNoteEditContents, StageNoteEditSession } from '../domain/noteEditing'
 import type { TrackerDatabase } from '../domain/types'
+import type { FileHandleLike } from './fileSystem'
 import type { StateId } from '../domain/types'
 
 /**
@@ -92,6 +93,11 @@ export interface TrackerSummary {
   folder?: string | null
   /** As `StorageState.unbackedSince`, for a tracker this tab is not holding. */
   unbackedSince?: string | null
+  /**
+   * The name of the file it was last created or imported from, if any. A page is never
+   * told a file's path, so the name is as near to "where it came from" as it can say.
+   */
+  sourceFile?: string
 }
 
 /**
@@ -114,7 +120,7 @@ export interface StorageState {
    * that is true and "Saved" once it lands, rather than one label that reads as either.
    */
   saving: boolean
-  tracker: { id: string; name: string } | null
+  tracker: { id: string; name: string; sourceFile: string | null } | null
 }
 
 export type ConnectResult =
@@ -155,6 +161,7 @@ export interface ConnectableStorage {
     document: TrackerDatabase,
     files: Array<{ applicationId: string; attachmentId: string; data: Uint8Array }>,
     filename: string,
+    source?: FileHandleLike | null,
   ): Promise<TrackerSummary>
   /** Re-asks for permission on the folder already stored. Must be called from a gesture. */
   reconnect(): Promise<StorageConnection>
@@ -178,7 +185,14 @@ export interface ConnectableStorage {
    * Names this tracker after the file it was imported from, while its document names
    * nothing. Ignored while a folder is connected, whose name says where the data is.
    */
-  nameAfterFile(filename: string): Promise<void>
+  nameAfterFile(filename: string, source?: FileHandleLike | null): Promise<void>
+  /**
+   * The tracker in this browser that a file on disk belongs to: one whose folder's
+   * `tracker.json` it is, or one created or last imported from it. Matched by the browser's
+   * own comparison of the two files, never by what they hold. Null where nothing matches,
+   * and wherever the browser cannot compare files at all.
+   */
+  findTrackerForFile(file: FileHandleLike): Promise<TrackerSummary | null>
   /** Every tracker this browser holds, most recently opened first. */
   listTrackers(): Promise<TrackerSummary[]>
   /**

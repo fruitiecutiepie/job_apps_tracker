@@ -9,7 +9,7 @@ import { browserBackend, TRACKER_FILENAME, trackerNameFromFile, type BrowserBack
 import { exportFilename } from '../domain/export'
 import { NEW_TRACKER } from './trackerAddress'
 import type { TabChannel, TabLock, TabMessage } from './tabSync'
-import { FakeDirectory } from './fakeDirectory'
+import { FakeDirectory, looseFile } from './fakeDirectory'
 import { idbName, memoryStore, type KeyValueStore } from './idb'
 import type { DirectoryHandleLike } from './fileSystem'
 
@@ -807,6 +807,60 @@ describe('several trackers in one browser', () => {
     const { document, files } = await backend.storage!.readTracker(created.id)
     expect(document.applications[0].company).toBe('Imported')
     expect(files.map((file) => new TextDecoder().decode(file.data))).toEqual(['resume'])
+  })
+
+  /*
+   * Which tracker a file on disk belongs to is decided by the browser comparing the two
+   * files, never by reading them: a copy that reads the same is a different file.
+   */
+  describe('finding the tracker a file belongs to', () => {
+    it('finds a folder-saved tracker by its own tracker.json, and says which folder', async () => {
+      const folder = new FakeDirectory('test_job')
+      const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })
+      await backend.loadDocument()
+      await backend.storage!.connect()
+
+      const found = await backend.storage!.findTrackerForFile(await folder.getFileHandle(TRACKER_FILENAME))
+      expect(found).toMatchObject({ id: backend.storage!.state().tracker!.id, folder: 'test_job' })
+    })
+
+    it('finds a tracker by the file it was opened from, and not by a copy reading the same', async () => {
+      const { backend } = tab(NEW_TRACKER)
+      await backend.loadDocument()
+      const original = looseFile('last-year.json', 'same words')
+      const created = await backend.storage!.createTracker(withApplication('From the file'), [], 'last-year.json', original)
+
+      expect(await backend.storage!.findTrackerForFile(original)).toMatchObject({ id: created.id, folder: null })
+      expect(await backend.storage!.findTrackerForFile(looseFile('last-year.json', 'same words'))).toBeNull()
+      expect((await backend.storage!.listTrackers()).find((item) => item.id === created.id)?.sourceFile)
+        .toBe('last-year.json')
+    })
+
+    it('finds a tracker by the file last imported into it, and forgets one it was removed with', async () => {
+      const { backend } = tab(NEW_TRACKER)
+      await backend.saveDocument(withApplication())
+      const imported = looseFile('backup.json', 'words')
+      await backend.storage!.nameAfterFile('backup.json', imported)
+      const id = backend.storage!.state().tracker!.id
+      expect(backend.storage!.state().tracker).toMatchObject({ sourceFile: 'backup.json' })
+      expect(await backend.storage!.findTrackerForFile(imported)).toMatchObject({ id })
+
+      await backend.storage!.removeTracker(id)
+      expect(await backend.storage!.findTrackerForFile(imported)).toBeNull()
+    })
+
+    it('passes over a folder it has no permission to look inside, rather than asking', async () => {
+      const folder = new FakeDirectory('test_job')
+      const holder = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+      await holder.loadDocument()
+      await holder.storage!.connect()
+      const ownFile = await folder.getFileHandle(TRACKER_FILENAME)
+      folder.permission = 'prompt'
+
+      const { backend } = tab(NEW_TRACKER, { supportsFolders: true })
+      await backend.loadDocument()
+      expect(await backend.storage!.findTrackerForFile(ownFile)).toBeNull()
+    })
   })
 
   it('stores an imported file as a new tracker, attachments and all, beside this one', async () => {

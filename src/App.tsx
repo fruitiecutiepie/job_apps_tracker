@@ -36,7 +36,6 @@ import {
   importTrackerArchive,
   describeImportErrors,
   readTrackerImport,
-  holdsTheSameApplications,
   collectArchiveFiles,
   exportFilename,
   packTrackerArchive,
@@ -77,7 +76,8 @@ import {
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
 import { backend, isBrowserBackend, type StorageConnection, type TrackerSummary } from './backend'
 import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
-import { ReplaceTrackerDialog, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
+import { ReplaceTrackerDialog, type ExistingTracker, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
+import type { FileHandleLike } from './backend/fileSystem'
 import { useStorageState } from './useStorageState'
 import { TrackerSwitcher } from './TrackerSwitcher'
 import { navigation, NEW_TRACKER, trackerHref } from './backend/trackerAddress'
@@ -757,12 +757,14 @@ export default function App() {
    * way of replacing the tracker the other does not ask about.
    */
   const [pendingReplace, setPendingReplace] = useState<{
-    replacement: TrackerReplacement
+    replacement: TrackerReplacement | ExistingTracker
     proceed: () => Promise<void>
     /** Downloads the tracker about to be replaced or removed, which need not be this one. */
     saveCopy: () => Promise<void>
     /** Opens an imported file as a tracker of its own, where a browser can hold several. */
     openAsNew?: () => Promise<void>
+    /** Goes to the tracker a file already belongs to. */
+    switchTo?: () => void
   } | null>(null)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
@@ -882,24 +884,22 @@ export default function App() {
    * question names what is actually in the file. A file that cannot be read never gets as
    * far as asking, and says why instead.
    */
-  const importFile = async (file: File) => {
+  const importFile = async (file: File, handle: Promise<FileHandleLike | null> | null = null) => {
     try {
       const result = readTrackerImport(await readFileAsUint8Array(file))
       if (!result.ok) {
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
       }
+      const source = handle ? await handle : null
+
+      // A file that already is a tracker here: this one is left alone, another is offered.
+      if (await answeredAsExisting(file, source, result)) return
 
       // An empty tracker has nothing to replace, so there is nothing to ask.
       const current = trackerRef.current?.applications.length ?? 0
       if (current === 0) {
-        await applyImport(result.document, result.files, file.name)
-        return
-      }
-
-      // The tracker's own file dropped back onto it: importing would change nothing.
-      if (trackerRef.current && holdsTheSameApplications(result.document, trackerRef.current)) {
-        setNotice(`${file.name} holds exactly what this tracker already has, so there is nothing to import.`)
+        await applyImport(result.document, result.files, file.name, source)
         return
       }
 
@@ -932,29 +932,67 @@ export default function App() {
               return
             }
           }
-          await applyImport(result.document, result.files, file.name)
+          await applyImport(result.document, result.files, file.name, source)
         },
         saveCopy: saveCurrentCopy,
-        openAsNew: async () => {
-          const created = await backend.storage!.createTracker(result.document, result.files, file.name)
-          navigation.open(trackerHref(created.id))
-        },
+        openAsNew: () => openAsTracker(result, file.name, source),
       })
     } catch (error) {
       setNotice(`Import failed: ${errorMessage(error)}`)
     }
   }
 
+  /*
+   * Whether a file is one this browser already holds as a tracker — the tracker.json of a
+   * folder one saves to, or the file one was opened from — and if so, answers for it.
+   * Matched by the browser comparing the two files on disk, never by what they hold: two
+   * files that read alike are still two files, and opening the second as a tracker of its
+   * own is a fair thing to want. Where the browser offers no handle on the file (a paste,
+   * Firefox, Safari), nothing matches and the ordinary question is asked.
+   */
+  const answeredAsExisting = async (
+    file: File,
+    source: FileHandleLike | null,
+    result: TrackerImportSuccess,
+  ): Promise<boolean> => {
+    if (!source || !backend.storage) return false
+    const match = await backend.storage.findTrackerForFile(source)
+    if (!match) return false
+    if (match.id === storageState?.tracker?.id) {
+      setNotice(
+        match.folder
+          ? `${file.name} is the file ${match.name} already saves to, so there is nothing to import.`
+          : `${match.name} was opened from ${file.name} already, so there is nothing to import.`,
+      )
+      return true
+    }
+    setPendingReplace({
+      replacement: { kind: 'existing', name: match.name, file: file.name, folder: match.folder ?? null },
+      proceed: async () => {},
+      saveCopy: async () => {},
+      openAsNew: () => openAsTracker(result, file.name, source),
+      switchTo: () => navigation.open(trackerHref(match.id)),
+    })
+    return true
+  }
+
+  /* A file as a tracker of its own, remembering which file, so it can be recognised again. */
+  const openAsTracker = async (result: TrackerImportSuccess, filename: string, source: FileHandleLike | null) => {
+    const created = await backend.storage!.createTracker(result.document, result.files, filename, source)
+    navigation.open(trackerHref(created.id))
+  }
+
   const applyImport = async (
     document: TrackerImportSuccess['document'],
     files: TrackerImportSuccess['files'],
     filename: string,
+    source: FileHandleLike | null = null,
   ) => {
     try {
       const saved = await importTrackerArchive(document, files)
       // What was just imported is a file the viewer already holds, and names the tracker.
       await backend.storage?.markBackedUp()
-      await backend.storage?.nameAfterFile(filename)
+      await backend.storage?.nameAfterFile(filename, source)
       trackerRef.current = saved
       setTracker(saved)
       setNotice(`Imported ${saved.applications.length} applications.`)
@@ -1029,16 +1067,40 @@ export default function App() {
    * The same reading and validating an import does, so an unreadable file says why rather
    * than becoming an empty tracker; then the document goes beside this tracker, not over it.
    */
-  const newTrackerFromFile = async (file: File) => {
+  const newTrackerFromFile = async (file: File, source: FileHandleLike | null = null) => {
     try {
       const result = readTrackerImport(await readFileAsUint8Array(file))
       if (!result.ok) {
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
       }
-      const created = await backend.storage!.createTracker(result.document, result.files, file.name)
-      navigation.open(trackerHref(created.id))
+      if (await answeredAsExisting(file, source, result)) return
+      await openAsTracker(result, file.name, source)
     } catch (error) {
+      setNotice(`Import failed: ${errorMessage(error)}`)
+    }
+  }
+
+  /*
+   * From a file…: through the browser's file picker where it has one, which hands back a
+   * handle on the file and so lets it be recognised later; through a plain file input
+   * everywhere else, which gives only the file.
+   */
+  const pickFileForNewTracker = async () => {
+    const picker = (window as { showOpenFilePicker?: (options: unknown) => Promise<FileHandleLike[]> })
+      .showOpenFilePicker
+    if (!picker) {
+      otherTrackerInputRef.current?.click()
+      return
+    }
+    try {
+      const [handle] = await picker({
+        types: [{ description: 'Tracker export', accept: { 'application/json': ['.json'], 'application/zip': ['.zip'] } }],
+      })
+      if (handle) await newTrackerFromFile(await handle.getFile(), handle)
+    } catch (error) {
+      // Dismissing the picker is a decision, not a failure.
+      if (error instanceof DOMException && error.name === 'AbortError') return
       setNotice(`Import failed: ${errorMessage(error)}`)
     }
   }
@@ -1095,6 +1157,10 @@ export default function App() {
     const pending = pendingReplace
     setPendingReplace(null)
     if (!pending || choice === 'cancel') return
+    if (choice === 'switch') {
+      pending.switchTo?.()
+      return
+    }
     if (choice === 'open-new') {
       try {
         await pending.openAsNew?.()
@@ -1116,7 +1182,7 @@ export default function App() {
   }
 
   const dragging = useFileImport({
-    onFile: (file) => void importFile(file),
+    onFile: (file, handle) => void importFile(file, handle),
     onRefused: setNotice,
   })
 
@@ -1476,13 +1542,14 @@ export default function App() {
           {storageState?.tracker && (
             <TrackerSwitcher
               current={storageState.tracker}
+              currentFolder={storageState.connection.kind === 'connected' ? storageState.connection.name : null}
               listTrackers={listTrackers}
               onRemove={askToRemoveTracker}
               onRename={renameTrackerById}
               onNewFromFolder={
                 storageState.connection.kind === 'unsupported' ? null : () => void newTrackerFromFolder()
               }
-              onNewFromFile={() => otherTrackerInputRef.current?.click()}
+              onNewFromFile={() => void pickFileForNewTracker()}
               onExport={exportTrackerById}
             />
           )}

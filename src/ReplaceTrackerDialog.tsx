@@ -44,13 +44,28 @@ export type TrackerReplacement =
     }
 
 /**
+ * A file that is already one of this browser's trackers: the `tracker.json` of the folder it
+ * saves to, or the file it was opened from. Matched by the browser comparing the two
+ * files, never by what they hold, so two files that happen to read alike are not confused.
+ */
+export interface ExistingTracker {
+  kind: 'existing'
+  /** The tracker the file belongs to. */
+  name: string
+  /** The dropped or picked file's own name. */
+  file: string
+  /** The folder whose tracker.json it is; null when it is the file the tracker came from. */
+  folder: string | null
+}
+
+/**
  * `proceed` is the import or the removal; `save-then-proceed` downloads a copy first;
  * `open-new` opens an imported file as a tracker of its own instead of replacing anything.
  */
-export type ReplaceChoice = 'save-then-proceed' | 'proceed' | 'open-new' | 'cancel'
+export type ReplaceChoice = 'save-then-proceed' | 'proceed' | 'open-new' | 'switch' | 'cancel'
 
 export interface ReplaceTrackerDialogProps {
-  replacement: TrackerReplacement
+  replacement: TrackerReplacement | ExistingTracker
   onChoose: (choice: ReplaceChoice) => void
 }
 
@@ -134,6 +149,53 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
   useEffect(() => {
     primaryRef.current?.focus()
   }, [replacing])
+
+  if (replacement.kind === 'existing') {
+    const { name, file, folder } = replacement
+    return (
+      <div
+        className="dialog-backdrop"
+        onMouseDown={(event) => event.currentTarget === event.target && cancel()}
+      >
+        <section
+          aria-describedby="replace-tracker-body"
+          aria-labelledby="replace-tracker-title"
+          aria-modal="true"
+          className="dialog dialog--compact"
+          ref={dialogRef}
+          role="alertdialog"
+          tabIndex={-1}
+        >
+          <div className="dialog__header">
+            <h2 id="replace-tracker-title">{name} is already in this browser</h2>
+          </div>
+          <p className="dialog__body" id="replace-tracker-body">
+            {folder
+              ? `${file} is the file ${name} saves to, in your ${folder} folder.`
+              : `${file} is the file ${name} was opened from.`}{' '}
+            Switch to {name}, or open the file as a separate tracker beside it.
+          </p>
+          <div className="dialog__actions">
+            <button
+              className="button button--primary"
+              onClick={() => onChoose('switch')}
+              ref={primaryRef}
+              type="button"
+            >
+              Switch to {name}
+            </button>
+            <button className="button" onClick={() => onChoose('open-new')} type="button">
+              Open as a new tracker
+            </button>
+            <span className="dialog__actions-spacer" />
+            <button className="button" onClick={cancel} type="button">
+              Cancel
+            </button>
+          </div>
+        </section>
+      </div>
+    )
+  }
 
   if (beside !== null && !replacing && replacement.kind === 'import') {
     const bringing = replacement.attachments > 0

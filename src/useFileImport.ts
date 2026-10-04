@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 
+import type { FileHandleLike } from './backend/fileSystem'
+
 /** What a tracker export can arrive as. Anything else is refused with a reason. */
 const ACCEPTED = ['.json', '.zip']
 
@@ -25,9 +27,31 @@ function trackerFileIn(list: FileList | null | undefined): File | 'wrong-type' |
   return files.find(isTrackerFile) ?? 'wrong-type'
 }
 
+/*
+ * The dropped file as the browser's handle on it, where the browser offers one (Chrome and
+ * Edge). A page is never told a file's path; a handle is what lets it ask whether this is
+ * the same file as one it has seen before. It has to be asked for during the drop event
+ * itself — afterwards the transfer is emptied — which is why it travels as a promise.
+ */
+function handleFor(transfer: DataTransfer | null, file: File): Promise<FileHandleLike | null> | null {
+  const items = Array.from(transfer?.items ?? [])
+  const files = Array.from(transfer?.files ?? [])
+  const item = items.filter((candidate) => candidate.kind === 'file')[files.indexOf(file)]
+  const ask = (item as (DataTransferItem & {
+    getAsFileSystemHandle?: () => Promise<FileSystemHandle | null>
+  }) | undefined)?.getAsFileSystemHandle
+  if (!item || !ask) return null
+  return ask.call(item)
+    .then((handle) => (handle?.kind === 'file' ? (handle as unknown as FileHandleLike) : null))
+    .catch(() => null)
+}
+
 export interface FileImportHandlers {
-  /** A tracker file arrived. */
-  onFile: (file: File) => void
+  /**
+   * A tracker file arrived, with the browser's handle on it when it came by drop in a
+   * browser that offers one; null for a paste, and wherever handles do not exist.
+   */
+  onFile: (file: File, handle: Promise<FileHandleLike | null> | null) => void
   /** Something arrived that could not be one. */
   onRefused: (message: string) => void
 }
@@ -57,13 +81,16 @@ export function useFileImport({ onFile, onRefused }: FileImportHandlers): boolea
   })
 
   useEffect(() => {
-    const refuseOrOpen = (found: File | 'wrong-type' | null) => {
+    const refuseOrOpen = (
+      found: File | 'wrong-type' | null,
+      transfer: DataTransfer | null = null,
+    ) => {
       if (found === null) return
       if (found === 'wrong-type') {
         handlers.current.onRefused('That is not a tracker export. Drop a .json or .zip file.')
         return
       }
-      handlers.current.onFile(found)
+      handlers.current.onFile(found, transfer ? handleFor(transfer, found) : null)
     }
 
     const onDragEnter = (event: DragEvent) => {
@@ -94,7 +121,7 @@ export function useFileImport({ onFile, onRefused }: FileImportHandlers): boolea
       event.preventDefault()
       depth.current = 0
       setDragging(false)
-      refuseOrOpen(trackerFileIn(event.dataTransfer?.files))
+      refuseOrOpen(trackerFileIn(event.dataTransfer?.files), event.dataTransfer ?? null)
     }
 
     /*

@@ -418,6 +418,13 @@ p {
   line-height: 1.25;
 }
 
+/* The count and where it lives on one line, cut short rather than wrapped when long. */
+.tracker-switcher__where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .tracker-switcher__label small {
   color: var(--ink-3);
   font-size: var(--t1);

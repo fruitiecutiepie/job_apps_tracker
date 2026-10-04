@@ -3,9 +3,12 @@ import { Check, ChevronDown, Download, FilePlus2, FolderOpen, Pencil, Upload, X 
 
 import type { TrackerSummary } from './backend'
 import { NEW_TRACKER, trackerHref } from './backend/trackerAddress'
+import { describeWhere } from './trackerWhere'
 
 export interface TrackerSwitcherProps {
-  current: { id: string; name: string }
+  current: { id: string; name: string; sourceFile: string | null }
+  /** The folder this tab's tracker saves to, from the live connection rather than the list. */
+  currentFolder: string | null
   listTrackers: () => Promise<TrackerSummary[]>
   /** Asks before removing a tracker from the browser — this tab's or another. */
   onRemove: (tracker: TrackerSummary) => void
@@ -44,6 +47,7 @@ function describeCount(count: number): string {
  */
 export function TrackerSwitcher({
   current,
+  currentFolder,
   listTrackers,
   onRemove,
   onRename,
@@ -97,6 +101,7 @@ export function TrackerSwitcher({
   const rows: TrackerSummary[] = listed.some((tracker) => tracker.id === current.id)
     ? listed
     : [{ id: current.id, name: current.name, applications: 0, openedAt: '' }, ...listed]
+  const currentWhere = describeWhere({ folder: currentFolder, sourceFile: current.sourceFile ?? undefined })
 
   const startRenaming = (tracker: TrackerSummary) => {
     setDraftName(tracker.name)
@@ -108,11 +113,11 @@ export function TrackerSwitcher({
       <button
         aria-expanded={open}
         aria-haspopup="true"
-        aria-label={`Tracker: ${current.name}. Switch tracker`}
+        aria-label={`Tracker: ${current.name}, ${currentWhere}. Switch tracker`}
         className="tracker-switcher__trigger"
         onClick={() => setOpen((value) => !value)}
         ref={triggerRef}
-        title={current.name}
+        title={`${current.name}, ${currentWhere}`}
         type="button"
       >
         <span className="tracker-switcher__name">{current.name}</span>
@@ -186,7 +191,13 @@ export function TrackerSwitcher({
                     {isCurrent ? <Check aria-hidden="true" size={16} /> : <span className="tracker-switcher__spacer" />}
                     <span className="tracker-switcher__label">
                       <span className="tracker-switcher__name">{tracker.name}</span>
-                      <small>{describeCount(tracker.applications)}</small>
+                      <small className="tracker-switcher__where">
+                        {describeCount(tracker.applications)} · {describeWhere(
+                          tracker.id === current.id
+                            ? { folder: currentFolder, sourceFile: current.sourceFile ?? undefined }
+                            : tracker,
+                        )}
+                      </small>
                     </span>
                   </a>
                   <button
