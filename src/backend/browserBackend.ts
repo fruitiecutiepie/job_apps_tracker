@@ -155,6 +155,11 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
   let meta: TrackerSummary | null = null
   /* No tracker existed anywhere when this one was opened: the demo seeds only then. */
   let firstEver = false
+  /*
+   * Removed from this browser, here or by another tab. A write still queued behind the
+   * removal would otherwise store the whole document and its listing entry again.
+   */
+  let removed = false
 
   /*
    * Another tab can hold this same tracker, and every write stores the whole document, so
@@ -253,7 +258,12 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
    * error, because there is nothing to show for it and an empty tracker is harmless.
    */
   async function resolveTracker(): Promise<void> {
-    await migrateSingleTracker()
+    /*
+     * Under a lock every tab shares: two tabs reloading together after the upgrade would
+     * otherwise both read the old keys before either deleted them, and each move the data
+     * under an id of its own. Inside it, the second finds the old keys already gone.
+     */
+    await locks.run(`${idbName(trackerProfile())}:migrate`, migrateSingleTracker)
     const metas = await listMetas()
     const requested = address.requested()
     const found = requested === null
@@ -514,6 +524,10 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
    * from inside `exclusive`, which is what keeps the revision one tab's to move at a time.
    */
   async function cacheDocument(document: TrackerDatabase): Promise<string> {
+    // A tracker that was stored and has lost its listing entry was removed, by this tab or
+    // another; one never stored yet has no entry to lose, and its first save makes it.
+    if (!removed && meta !== null && (await store.get('state', metaKey(id()))) === null) removed = true
+    if (removed) throw new Error('This tracker was removed from this browser')
     const text = serialize(document)
     await store.put('state', documentKey(id()), text)
     knownDocument = document
@@ -531,8 +545,24 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     announce()
     try {
       const text = await cacheDocument(document)
-      if (directory) await writeFileIn(directory, TRACKER_FILENAME, text)
-      else await noteUnbacked()
+      if (!directory) {
+        await noteUnbacked()
+        return
+      }
+      try {
+        await writeFileIn(directory, TRACKER_FILENAME, text)
+      } catch (error) {
+        /*
+         * The change is stored in this browser but not in the folder — a permission revoked
+         * mid-session, or the folder moved. From here the browser copy is the only one, so
+         * the backlog starts and the pill asks to reconnect, which pushes it into the folder.
+         */
+        const name = directory.name
+        directory = null
+        connection = { kind: 'needs-permission', name }
+        await noteUnbacked()
+        throw error
+      }
     } finally {
       writing -= 1
       announce()
@@ -616,6 +646,11 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       await ready()
       const picked = await pick()
       if (!picked) return { outcome: 'dismissed' }
+      // The folder this tracker already saves to: nothing to open or connect, and opening
+      // it as a tracker of its own would put two trackers on one file.
+      if (directory && (await picked.isSameEntry?.(directory))) {
+        return { outcome: 'connected', connection: announce({ kind: 'connected', name: directory.name }) }
+      }
       const holder = await trackerHolding(picked)
       if (holder) return { outcome: 'already-open', tracker: holder }
 
@@ -814,6 +849,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
           directory = null
           meta = null
           unbackedSince = null
+          removed = true
         }
         const next = (await listMetas())[0] ?? null
         // Every tab on it goes where this one would, rather than writing it back.
@@ -828,23 +864,26 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       return onTracker(renaming, async () => {
         const stored = (await store.get('state', metaKey(renaming))) as TrackerSummary | null
         if (!stored) return
-        const text = (await store.get('state', documentKey(renaming))) as string | null
-        const document = text === null ? createEmptyDocument() : ensureFreshIndexes(parseTrackerDocument(text))
-        const renamed = renameTracker(document, name)
-        if (renamed === document) return
-        const written = serialize(renamed)
         /*
          * The folder's file is the copy that tracker reads first when it opens, so a name
          * written only to browser storage would be undone the next time it did. Rewritten
          * before anything is stored, so a refused permission leaves both copies agreeing.
+         * And it is the folder's file that is renamed, not the browser's copy of it: the
+         * folder may have been written since by the other build or another browser.
          */
         const handle = (await store.get('state', directoryKey(renaming))) as DirectoryHandleLike | null
-        if (handle) {
-          if ((await permissionFor(handle, true)) !== 'granted') {
-            throw new Error(`${stored.name} keeps its name in the ${handle.name} folder, which this page was not allowed to write to`)
-          }
-          await writeFileIn(handle, TRACKER_FILENAME, written)
+        if (handle && (await permissionFor(handle, true)) !== 'granted') {
+          throw new Error(`${stored.name} keeps its name in the ${handle.name} folder, which this page was not allowed to write to`)
         }
+        const file = handle ? await readFileIn(handle, TRACKER_FILENAME) : null
+        const text = file
+          ? await file.text()
+          : (await store.get('state', documentKey(renaming))) as string | null
+        const document = text === null ? createEmptyDocument() : ensureFreshIndexes(parseTrackerDocument(text))
+        const renamed = renameTracker(document, name)
+        if (renamed === document) return
+        const written = serialize(renamed)
+        if (handle) await writeFileIn(handle, TRACKER_FILENAME, written)
         await store.put('state', documentKey(renaming), written)
         await store.put('state', metaKey(renaming), {
           ...stored,
@@ -891,7 +930,19 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
           const file = await readFileIn(directory, TRACKER_FILENAME)
           if (file) {
             const parsed = ensureFreshIndexes(parseTrackerDocument(await file.text()))
-            await cacheDocument(parsed)
+            /*
+             * Stored only when it differs from the browser's copy: storing moves the
+             * revision on and tells every other tab on this tracker to read it again, which
+             * a reload of an unchanged folder has no reason to make them do.
+             */
+            const cached = (await store.get('state', documentKey(id()))) as string | null
+            if (cached !== serialize(parsed)) {
+              await cacheDocument(parsed)
+              return parsed
+            }
+            knownDocument = parsed
+            syncName()
+            knownRevision = ((await store.get('state', revisionKey(id()))) as number | null) ?? 0
             return parsed
           }
         }

@@ -12,7 +12,8 @@ export interface TrackerSwitcherProps {
   listTrackers: () => Promise<TrackerSummary[]>
   /** Asks before removing a tracker from the browser — this tab's or another. */
   onRemove: (tracker: TrackerSummary) => void
-  onRename: (tracker: TrackerSummary, name: string) => Promise<void>
+  /** Resolves to whether the name was stored; a refused one keeps the field open to retry. */
+  onRename: (tracker: TrackerSummary, name: string) => Promise<boolean>
   /** Downloads a tracker as an export file — this tab's or another. */
   onExport: (tracker: TrackerSummary) => void
   /** Starts a new tracker from a folder; absent where the browser cannot open one. */
@@ -139,7 +140,8 @@ export function TrackerSwitcher({
                       onSubmit={(event) => {
                         event.preventDefault()
                         if (!draftName.trim()) return
-                        void onRename(tracker, draftName).then(async () => {
+                        void onRename(tracker, draftName).then(async (renamed) => {
+                          if (!renamed) return
                           setRenamingId(null)
                           await refresh()
                         })

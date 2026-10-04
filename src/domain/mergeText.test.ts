@@ -40,6 +40,16 @@ describe('mergeText', () => {
     expect(mergeText(base, base + 'Same.', base + 'Same.')).toBe(base + 'Same.')
   })
 
+  /*
+   * Typing right beside a word the other tab replaced is two edits in two places, not a
+   * conflict: the replaced word must not come back glued to the new text.
+   */
+  it('places an insertion at the edge of a replacement beside it', () => {
+    expect(mergeText('hello world', 'hello big world', 'hello there')).toBe('hello big there')
+    expect(mergeText('hello world', 'hello world!', 'hello there')).toBe('hello there!')
+    expect(mergeText('hello world', 'hello there', 'hello world!')).toBe('hello there!')
+  })
+
   it('keeps text typed into a stretch the other side deleted', () => {
     expect(mergeText('one two three', 'one twoX three', 'one three')).toContain('twoX')
   })

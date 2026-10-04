@@ -583,6 +583,56 @@ describe('the static build, in a browser that can write a folder', () => {
   })
 
   /*
+   * Another tracker's folder is its copy only while nothing is waiting to reach it. With a
+   * backlog its permission lapsed, and what was typed since is in this browser alone, so
+   * removing it offers the copy rather than saying the folder keeps everything.
+   */
+  it('offers a copy before removing a tracker whose folder fell behind', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    const { backend } = await import('../backend')
+    const current = backend.storage!.state().tracker!
+    vi.spyOn(backend.storage!, 'listTrackers').mockResolvedValue([
+      { id: current.id, name: current.name, applications: 0, openedAt: '' },
+      {
+        id: 'lapsed',
+        name: 'Spring search',
+        applications: 2,
+        openedAt: '',
+        folder: 'job-apps',
+        unbackedSince: '2026-09-01T09:00:00.000Z',
+      },
+    ])
+
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+    await user.click(await screen.findByRole('button', { name: 'Remove Spring search from this browser' }))
+    const question = await screen.findByRole('alertdialog', { name: 'Remove Spring search from this browser?' })
+    expect(question).not.toHaveTextContent('It stays in your job-apps folder.')
+    expect(within(question).getByRole('button', { name: 'Download a copy, then remove' })).toBeInTheDocument()
+  })
+
+  it('keeps the new name in its field when another tracker refuses it', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    const { backend } = await import('../backend')
+    const current = backend.storage!.state().tracker!
+    vi.spyOn(backend.storage!, 'listTrackers').mockResolvedValue([
+      { id: current.id, name: current.name, applications: 0, openedAt: '' },
+      { id: 'other', name: 'Spring search', applications: 2, openedAt: '', folder: 'job-apps' },
+    ])
+    vi.spyOn(backend.storage!, 'renameOtherTracker').mockRejectedValue(new Error('not allowed'))
+
+    await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+    await user.click(await screen.findByRole('button', { name: 'Rename Spring search' }))
+    const field = screen.getByRole('textbox', { name: 'New name for Spring search' })
+    await user.clear(field)
+    await user.type(field, 'Autumn search{Enter}')
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/Could not rename Spring search/))
+    expect(screen.getByRole('textbox', { name: 'New name for Spring search' })).toHaveValue('Autumn search')
+  })
+
+  /*
    * A folder another tracker already writes to is opened as that tracker, not connected a
    * second time; two trackers writing one file would each undo the other.
    */

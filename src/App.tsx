@@ -1040,15 +1040,17 @@ export default function App() {
    * The tracker this tab holds is renamed through its document like any edit. Another one
    * is renamed by the backend, which writes its document — and its folder, if it has one.
    */
-  const renameTrackerById = async (target: TrackerSummary, name: string) => {
+  /* Whether the name was stored, so a refused rename can leave the field open to retry. */
+  const renameTrackerById = async (target: TrackerSummary, name: string): Promise<boolean> => {
     try {
       if (target.id === storageState?.tracker?.id) {
-        await commit((current) => renameTracker(current, name))
-      } else {
-        await backend.storage!.renameOtherTracker(target.id, name)
+        return await commit((current) => renameTracker(current, name))
       }
+      await backend.storage!.renameOtherTracker(target.id, name)
+      return true
     } catch (error) {
       setNotice(`Could not rename ${target.name}: ${errorMessage(error)}`)
+      return false
     }
   }
 
@@ -1128,10 +1130,12 @@ export default function App() {
     const holding = target.id === storageState?.tracker?.id
     const connection = storageState?.connection ?? null
     const current = holding ? (trackerRef.current?.applications.length ?? 0) : target.applications
+    const unbacked = holding ? (storageState?.unbackedSince ?? null) : (target.unbackedSince ?? null)
+    // Another tracker's folder is the copy only while nothing is waiting to reach it: with
+    // a backlog its permission lapsed, and what was typed since is in this browser alone.
     const folder = holding
       ? (connection?.kind === 'connected' ? connection.name : null)
-      : (target.folder ?? null)
-    const unbacked = holding ? (storageState?.unbackedSince ?? null) : (target.unbackedSince ?? null)
+      : (unbacked === null ? (target.folder ?? null) : null)
     // An empty tracker has nothing to lose, so there is nothing to ask.
     if (current === 0) {
       void removeTracker(target)

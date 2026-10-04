@@ -54,13 +54,26 @@ export function mergeText(base: string, ours: string, theirs: string): string {
   const mine = changeBetween(base, ours)
   const other = changeBetween(base, theirs)
 
-  // Strictly apart: two insertions at one point overlap, since nothing orders them.
+  /*
+   * Changes that only touch are apart, ordered by where they sit — an insertion at the edge
+   * of a replacement goes beside it rather than bringing back the text it replaced. Two
+   * insertions at one point overlap, since nothing orders them; so does an insertion at the
+   * edge of a deletion, which keeps the deleted text the insertion was continuing.
+   */
+  const inserts = (change: Change) => change.start === change.end
+  const deletes = (change: Change, text: string) =>
+    change.start < change.end && replacement(base, text, change.start, change.end) === ''
+  const touching = mine.end === other.start || other.end === mine.start
   const apart = mine.end < other.start
     || other.end < mine.start
-    || (mine.end === other.start && mine.start < mine.end && other.start < other.end)
-    || (other.end === mine.start && mine.start < mine.end && other.start < other.end)
+    || (touching
+      && !(inserts(mine) && inserts(other))
+      && !(inserts(mine) && deletes(other, theirs))
+      && !(inserts(other) && deletes(mine, ours)))
   if (apart) {
-    const [first, second] = mine.start <= other.start
+    // On a shared start the insertion goes first: it sits before what the other replaced.
+    const mineFirst = mine.start < other.start || (mine.start === other.start && mine.end <= other.end)
+    const [first, second] = mineFirst
       ? [{ change: mine, text: ours }, { change: other, text: theirs }]
       : [{ change: other, text: theirs }, { change: mine, text: ours }]
     return base.slice(0, first.change.start)
