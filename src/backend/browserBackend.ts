@@ -765,17 +765,6 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       })
     },
 
-    async keepCopyInFolder(filename: string, data: Uint8Array): Promise<void> {
-      await ready()
-      return exclusive(async () => {
-        if (!directory) throw new Error('No folder is connected to keep a copy in')
-        if (filename === TRACKER_FILENAME || filename.includes('/')) {
-          throw new Error('A copy must not take the place of the tracker itself')
-        }
-        await writeFileIn(directory, filename, data.slice().buffer)
-      })
-    },
-
     async markOtherBackedUp(other: string): Promise<void> {
       await ready()
       if (other === id()) return storage.markBackedUp()

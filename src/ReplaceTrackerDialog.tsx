@@ -17,12 +17,14 @@ export type TrackerReplacement =
       /** How many the tracker holds now, all of which are replaced. */
       current: number
       /**
-       * Whether a file the viewer holds already has everything current. A connected
-       * folder does not count: the import writes into that same folder, so its copy is
-       * the one being replaced.
+       * Whether going ahead loses nothing. Where a browser holds several trackers, replacing
+       * closes the tracker on screen rather than writing over it, so this is what removing
+       * it would lose: nothing with a folder, which is never touched, or when the last
+       * export or import has everything. On the dev server replacing writes over its one
+       * file, which nothing else holds.
        */
       backedUp: boolean
-      /** The folder the import will overwrite, when one is connected. */
+      /** The folder the tracker on screen saves to, when one is connected. */
       folder: string | null
       /**
        * The tracker on screen, when the file could instead open as a tracker of its own —
@@ -107,25 +109,22 @@ function describe(replacement: TrackerReplacement): { title: string; body: strin
   /*
    * Two files can be in play — the one being imported and the one last exported — so
    * neither is ever called "the file": the imported one goes by its name, and the backup
-   * is described by what it is. The tracker goes by its name too, where it has one.
+   * is described by what it is.
    */
   const tracker = replacement.openAsNewBeside
-  const holding = tracker ? `the ${plural(current, 'application')} in ${tracker}` : `the ${plural(current, 'application')} in your tracker`
-  const itself = tracker ?? 'your tracker'
-  const Them = current === 1 ? 'It' : 'They'
-  const outcome = folder
-    ? `Importing it replaces ${holding}, here and in your ${folder} folder. A copy of what ${itself} holds now is saved in that folder first.`
-    : backedUp
-      ? `Importing it replaces ${holding}. Nothing is lost: ${itself} has not changed since you last exported or imported it, so that file still has ${them}.`
-      : tracker === null
-        // The dev server: one file on disk, which the import overwrites.
-        ? `Importing it replaces ${holding}. Nothing else holds ${them}, so save a copy first if you might want ${them} back.`
-        : `Importing it replaces ${holding}. ${Them} ${are} only in this browser, so save a copy first if you might want ${them} back.`
-  const verb = tracker ? 'replace' : 'import'
+  if (tracker === null) {
+    // The dev server: one file on disk, which the import writes over.
+    return {
+      title: 'Replace your tracker?',
+      body: `${replacement.fileName} has ${bringing}. Importing it replaces the ${plural(current, 'application')} in your tracker. Nothing else holds ${them}, so save a copy first if you might want ${them} back.`,
+      verb: 'import',
+    }
+  }
+  // Only asked when closing would lose something: the applications are only here.
   return {
-    title: tracker ? `Replace ${tracker}?` : 'Replace your tracker?',
-    body: `${replacement.fileName} has ${bringing}. ${outcome}`,
-    verb,
+    title: `Close ${tracker}?`,
+    body: `${replacement.fileName} opens in place of ${tracker}, which closes. ${tracker}'s ${plural(current, 'application')} ${are} only in this browser, so save a copy first if you might want ${them} back.`,
+    verb: 'replace',
   }
 }
 
@@ -233,13 +232,13 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
           </div>
           <p className="dialog__body" id="replace-tracker-body">
             {replacement.fileName} has {bringing}. Open it as a tracker of its own beside {beside},
-            or replace what {beside} holds with it.
+            or open it in place of {beside}, which closes.
             {/*
               * Replace goes ahead without a second question whenever nothing would be lost,
               * so this is the only place that says why it is safe.
               */}
             {replacement.folder !== null ? (
-              <> Replacing keeps a copy of what {beside} holds now in your {replacement.folder} folder first.</>
+              <> Replacing loses nothing: {beside} stays in your {replacement.folder} folder, and From a folder… opens it again.</>
             ) : replacement.backedUp ? (
               <> Replacing loses nothing: {beside} has not changed since you last exported or imported it.</>
             ) : null}

@@ -36,9 +36,6 @@ import {
   importTrackerArchive,
   describeImportErrors,
   readTrackerImport,
-  collectArchiveFiles,
-  exportFilename,
-  packTrackerArchive,
   type TrackerImportSuccess,
   loadTrackerDatabase,
   MAX_ATTACHMENT_BYTES,
@@ -904,13 +901,16 @@ export default function App() {
       }
 
       /*
-       * A tracker saved to a folder is one whose owner chose not to think about copies, so
-       * replacing it keeps one where they would look: the folder, beside the tracker.json
-       * the import is about to overwrite. That copy is what makes asking about a download
-       * unnecessary, so the folder counts as backed up here.
+       * Where a browser holds several trackers, replacing never overwrites one. It opens the
+       * file as a tracker in this tab and closes the one that was here, which is removing it
+       * from this browser — so what can be lost is what removing loses. A tracker saved to
+       * a folder loses nothing, its folder untouched; one whose last export has everything
+       * loses nothing; only one kept nowhere but this browser is asked about a copy. The dev
+       * server holds one file, so there replacing still means writing over it.
        */
       const connection = storageState?.connection ?? null
       const folder = connection?.kind === 'connected' ? connection.name : null
+      const hosted = Boolean(storageState?.tracker)
       setPendingReplace({
         replacement: {
           kind: 'import',
@@ -924,17 +924,9 @@ export default function App() {
           folder,
           openAsNewBeside: storageState?.tracker?.name ?? null,
         },
-        proceed: async () => {
-          if (folder !== null) {
-            try {
-              await keepCopyInFolder()
-            } catch (error) {
-              setNotice(`Nothing was replaced, because keeping a copy in ${folder} failed: ${errorMessage(error)}`)
-              return
-            }
-          }
-          await applyImport(result.document, result.files, file.name, source)
-        },
+        proceed: hosted
+          ? () => openInPlace(result, file.name, source)
+          : () => applyImport(result.document, result.files, file.name, source),
         saveCopy: saveCurrentCopy,
         openAsNew: () => openAsTracker(result, file.name, source),
       })
@@ -977,6 +969,22 @@ export default function App() {
     return true
   }
 
+  /*
+   * Replace: the file opens as a tracker in this tab, and the tracker that was here closes —
+   * taken off this browser's list, its folder's files never touched. Created first, so a
+   * failure leaves the old one where it was rather than leaving neither.
+   */
+  const openInPlace = async (result: TrackerImportSuccess, filename: string, source: FileHandleLike | null) => {
+    const closing = storageState?.tracker?.id
+    try {
+      const created = await backend.storage!.createTracker(result.document, result.files, filename, source)
+      if (closing) await backend.storage!.removeTracker(closing)
+      navigation.open(trackerHref(created.id))
+    } catch (error) {
+      setNotice(`Import failed: ${errorMessage(error)}`)
+    }
+  }
+
   /* A file as a tracker of its own, remembering which file, so it can be recognised again. */
   const openAsTracker = async (result: TrackerImportSuccess, filename: string, source: FileHandleLike | null) => {
     const created = await backend.storage!.createTracker(result.document, result.files, filename, source)
@@ -1007,15 +1015,6 @@ export default function App() {
    * folder's files are never touched — they are the viewer's — which is why a folder
    * counts as the copy here when it does not for an import, which writes into it.
    */
-  /* The current tracker, attachments and all, into its own folder before an import. */
-  const keepCopyInFolder = async () => {
-    const current = trackerRef.current
-    if (!current) return
-    const name = `${storageState?.tracker?.name ?? 'job-applications'} (before import)`
-    const archive = packTrackerArchive(current, await collectArchiveFiles(current))
-    await backend.storage!.keepCopyInFolder(exportFilename(new Date(), 'zip', name), archive)
-  }
-
   const saveCurrentCopy = async () => {
     const current = trackerRef.current
     if (current) await downloadTrackerArchive(current, new Date(), storageState?.tracker?.name)

@@ -208,17 +208,26 @@ describe('the static build', () => {
       .toEqual(['Imported Ltd', 'Second Import'])
     expect(screen.getByRole('button', { name: /Open Imported Ltd/ })).toBeInTheDocument()
 
-    // Something typed since is only in this browser: replacing it asks about a copy.
+    // Something typed since is only in this browser: closing it asks about a copy first.
     await addApplication(user, 'Typed Since')
     await within(topbar()).findByRole('button', { name: 'Export a backup' })
+    const here = backend.storage!.state().tracker!.id
+    open.mockClear()
     await user.upload(input, trackerFile('Third Import'))
     question = await screen.findByRole('alertdialog', { name: 'Open this file?' })
     await user.click(within(question).getByRole('button', { name: 'Replace Imported Ltd' }))
-    question = await screen.findByRole('alertdialog', { name: 'Replace Imported Ltd?' })
-    expect(question).toHaveTextContent('Third Import.json has 1 application. Importing it replaces the 2 applications in Imported Ltd. They are only in this browser, so save a copy first')
+    question = await screen.findByRole('alertdialog', { name: 'Close Imported Ltd?' })
+    expect(question).toHaveTextContent(
+      "Third Import.json opens in place of Imported Ltd, which closes. Imported Ltd's 2 applications are only in this browser, so save a copy first",
+    )
     expect(within(question).getByRole('button', { name: 'Save a copy, then replace' })).toHaveFocus()
     await user.click(within(question).getByRole('button', { name: 'Discard and replace' }))
-    await waitFor(() => expect(screen.getByRole('button', { name: /Open Third Import/ })).toBeInTheDocument())
+
+    // The file opens as a tracker of its own in this tab; the one that was here is closed.
+    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\?tracker=/)))
+    const listed = await backend.storage!.listTrackers()
+    expect(listed.map((tracker) => tracker.name).sort()).toEqual(['Second Import', 'Third Import'])
+    expect(listed.some((tracker) => tracker.id === here)).toBe(false)
   })
 
   /*
@@ -629,36 +638,41 @@ describe('the static build, in a browser that can write a folder', () => {
   })
 
   /*
-   * A folder-saved tracker's owner chose not to think about copies. Replacing it keeps one
-   * in the folder, beside the tracker.json being overwritten, instead of asking for a
-   * download — and the question says so before anything happens.
+   * Replacing never writes over a tracker: the dropped file opens in this tab and the
+   * tracker that was here closes. A folder-saved one loses nothing by closing — its folder
+   * is never touched — so nothing further is asked.
    */
-  it('keeps a copy in the folder when replacing a folder-saved tracker, instead of asking', async () => {
+  it('replaces a folder-saved tracker by closing it, leaving its folder exactly as it was', async () => {
     const user = userEvent.setup()
     const folder = new FakeDirectory('test_job')
     Object.assign(window, { showDirectoryPicker: vi.fn(async () => folder) })
     await renderStaticApp()
+    const { backend } = await import('../backend')
+    const { navigation } = await import('../backend/trackerAddress')
+    const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
     await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
     await within(topbar()).findByRole('button', { name: 'Saved to test_job' })
     await addApplication(user, 'Northwind')
     await waitFor(() => expect(folder.readText('tracker.json')).toContain('Northwind'))
+    const before = folder.readText('tracker.json')
+    const closing = backend.storage!.state().tracker!.id
 
     const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
     await user.upload(input, trackerFile('Dropped'))
     const question = await screen.findByRole('alertdialog', { name: 'Open this file?' })
     // Connecting the folder named the tracker after it.
-    expect(question).toHaveTextContent('Replacing keeps a copy of what test_job holds now in your test_job folder first.')
+    expect(question).toHaveTextContent('Replacing loses nothing: test_job stays in your test_job folder, and From a folder… opens it again.')
     await user.click(within(question).getByRole('button', { name: 'Replace test_job' }))
 
-    // No second question: the folder holds the copy.
-    await waitFor(() => expect(folder.readText('tracker.json')).toContain('Dropped'))
+    await waitFor(() => expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\?tracker=/)))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(folder.readText('tracker.json')).toBe(before)
     const names: string[] = []
     for await (const name of folder.keys()) names.push(name)
-    const copy = names.find((name) => name.startsWith('test_job (before import) '))
-    expect(copy).toMatch(/\.zip$/)
-    const kept = readTrackerImport(folder.read(copy!)!)
-    expect(kept.ok && kept.document.applications.map((application) => application.company)).toEqual(['Northwind'])
+    expect(names).toEqual(['tracker.json'])
+    const listed = await backend.storage!.listTrackers()
+    expect(listed.map((tracker) => tracker.name)).toEqual(['Dropped'])
+    expect(listed.some((tracker) => tracker.id === closing)).toBe(false)
   })
 
   /*

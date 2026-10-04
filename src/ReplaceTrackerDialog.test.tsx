@@ -33,54 +33,54 @@ describe('the question before removing a tracker', () => {
   })
 })
 
-describe('the question before an import replaces a tracker', () => {
+describe('the question before a dropped file replaces a tracker', () => {
   const importing = {
     kind: 'import' as const, fileName: 'other.json', incoming: 1, attachments: 0, current: 1,
   }
 
   /*
-   * Two files are in play — the one being imported and the last export — so neither is
-   * called "the file": the import goes by its name, and the backup by what it is.
+   * Where a browser holds several trackers, replacing opens the file in this tab and closes
+   * the tracker that was here; it never writes over one. So the first question says what
+   * closing would lose, and only asks again when it would lose something.
    */
-  /*
-   * Where nothing would be lost, Replace goes ahead with no second question, so the first
-   * one is the only place to say why that is safe.
-   */
-  it('says up front that replacing loses nothing when the last export has everything', () => {
+  it('says replacing closes the tracker, and loses nothing when it saves to a folder', () => {
+    expect(body({ ...importing, backedUp: true, folder: 'test_job', openAsNewBeside: 'test_job' })).toBe(
+      'other.json has 1 application. Open it as a tracker of its own beside test_job, or open it in place of test_job, which closes. Replacing loses nothing: test_job stays in your test_job folder, and From a folder… opens it again.',
+    )
+  })
+
+  it('says replacing loses nothing when the last export has everything', () => {
     expect(body({ ...importing, backedUp: true, folder: null, openAsNewBeside: 'first' })).toBe(
-      'other.json has 1 application. Open it as a tracker of its own beside first, or replace what first holds with it. Replacing loses nothing: first has not changed since you last exported or imported it.',
+      'other.json has 1 application. Open it as a tracker of its own beside first, or open it in place of first, which closes. Replacing loses nothing: first has not changed since you last exported or imported it.',
     )
   })
 
-  it('says a connected folder is overwritten too, and keeps a copy there first', () => {
-    expect(body({ ...importing, backedUp: true, folder: 'test_job', openAsNewBeside: 'test_job' })).toContain(
-      'Replacing keeps a copy of what test_job holds now in your test_job folder first.',
+  it('adds nothing to the first question where closing would lose something', () => {
+    expect(body({ ...importing, backedUp: false, folder: null, openAsNewBeside: 'first' })).toBe(
+      'other.json has 1 application. Open it as a tracker of its own beside first, or open it in place of first, which closes.',
     )
   })
 
-  it('says the copy goes into the folder when a folder-saved tracker is replaced', () => {
-    expect(body({ ...importing, backedUp: true, folder: 'test_job', openAsNewBeside: null })).toBe(
-      'other.json has 1 application. Importing it replaces the 1 application in your tracker, here and in your test_job folder. A copy of what your tracker holds now is saved in that folder first.',
-    )
-  })
-
-  it('says, once replacing is chosen, when the applications are only in this browser', () => {
+  it('asks about a copy, once replacing is chosen, when the applications are only here', () => {
     render(<ReplaceTrackerDialog onChoose={() => {}} replacement={{ ...importing, current: 3, backedUp: false, folder: null, openAsNewBeside: 'first' }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Replace first' }))
-    expect(screen.getByRole('alertdialog', { name: 'Replace first?' })).toHaveTextContent(
-      'other.json has 1 application. Importing it replaces the 3 applications in first. They are only in this browser, so save a copy first if you might want them back.',
+    const question = screen.getByRole('alertdialog', { name: 'Close first?' })
+    expect(question).toHaveTextContent(
+      "other.json opens in place of first, which closes. first's 3 applications are only in this browser, so save a copy first if you might want them back.",
     )
+    expect(screen.getByRole('button', { name: 'Save a copy, then replace' })).toHaveFocus()
   })
 
-  it('says the dev server\'s file is the only copy, not the browser', () => {
+  it('goes ahead without a second question when replacing loses nothing', () => {
+    const chosen: string[] = []
+    render(<ReplaceTrackerDialog onChoose={(choice) => chosen.push(choice)} replacement={{ ...importing, backedUp: true, folder: 'test_job', openAsNewBeside: 'test_job' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Replace test_job' }))
+    expect(chosen).toEqual(['proceed'])
+  })
+
+  it('says the dev server\'s file is written over, and that nothing else holds it', () => {
     expect(body({ ...importing, incoming: 2, attachments: 1, current: 19, backedUp: false, folder: null, openAsNewBeside: null })).toBe(
       'other.json has 2 applications and 1 attachment. Importing it replaces the 19 applications in your tracker. Nothing else holds them, so save a copy first if you might want them back.',
-    )
-  })
-
-  it('names the file in the first question, and adds nothing where replacing would lose something', () => {
-    expect(body({ ...importing, backedUp: false, folder: null, openAsNewBeside: 'first' })).toBe(
-      'other.json has 1 application. Open it as a tracker of its own beside first, or replace what first holds with it.',
     )
   })
 })
