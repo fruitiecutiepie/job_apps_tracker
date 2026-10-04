@@ -53,8 +53,6 @@ export interface ExistingTracker {
   kind: 'existing'
   /** The tracker the file belongs to. */
   name: string
-  /** The dropped or picked file's own name. */
-  file: string
   /** The folder whose tracker.json it is; null when it is the file the tracker came from. */
   folder: string | null
 }
@@ -89,7 +87,7 @@ function describe(replacement: TrackerReplacement): { title: string; body: strin
     const body = folder
       ? `It stays in your ${folder} folder.`
       : backedUp
-        ? 'Your last export or import has all of it.'
+        ? 'Nothing is lost: the file you last exported or imported has all of it.'
         : `Its ${applications} ${are} only in this browser and will be deleted.`
     return { title: `Remove ${replacement.name} from this browser?`, body, verb: 'remove' }
   }
@@ -100,7 +98,11 @@ function describe(replacement: TrackerReplacement): { title: string; body: strin
     return { title: 'Replace your tracker?', body: `Its ${applications} ${are} saved nowhere else.`, verb: 'import' }
   }
   // Only asked when closing would lose something: the applications are only here.
-  return { title: `Close ${tracker}?`, body: `Its ${applications} ${are} only in this browser.`, verb: 'replace' }
+  return {
+    title: `Remove ${tracker} from this browser?`,
+    body: `Its ${applications} ${are} only in this browser and will be deleted.`,
+    verb: 'replace',
+  }
 }
 
 /**
@@ -138,7 +140,7 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
   }, [replacing])
 
   if (replacement.kind === 'existing') {
-    const { name, file, folder } = replacement
+    const { name, folder } = replacement
     return (
       <div
         className="dialog-backdrop"
@@ -157,7 +159,7 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
             <h2 id="replace-tracker-title">{name} is already in this browser</h2>
           </div>
           <p className="dialog__body" id="replace-tracker-body">
-            {folder ? `${file} is the file it saves to.` : `It was opened from ${file}.`}
+            {folder ? `This is the file ${name} saves to.` : `${name} was opened from this file.`}
           </p>
           <div className="dialog__actions">
             <button
@@ -206,10 +208,10 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
             */}
           <p className="dialog__body" id="replace-tracker-body">
             {replacement.folder !== null
-              ? `Replacing closes ${beside}; it stays in your ${replacement.folder} folder.`
+              ? `Replacing removes ${beside} from this browser. Its ${replacement.folder} folder keeps everything.`
               : replacement.backedUp
-                ? `Replacing closes ${beside}; your last export or import has all of it.`
-                : `Replacing closes ${beside}.`}
+                ? `Replacing removes ${beside} from this browser. Nothing is lost: the file you last exported or imported has all of it.`
+                : `Replacing removes ${beside} from this browser.`}
           </p>
           <div className="dialog__actions">
             <button
@@ -276,7 +278,7 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
                 ref={primaryRef}
                 type="button"
               >
-                Save a copy, then {verb}
+                Download a copy, then {verb}
               </button>
               <button className="button button--danger" onClick={() => onChoose('proceed')} type="button">
                 Discard and {verb}

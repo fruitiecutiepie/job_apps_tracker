@@ -958,7 +958,7 @@ export default function App() {
       return true
     }
     setPendingReplace({
-      replacement: { kind: 'existing', name: match.name, file: file.name, folder: match.folder ?? null },
+      replacement: { kind: 'existing', name: match.name, folder: match.folder ?? null },
       proceed: async () => {},
       saveCopy: async () => {},
       openAsNew: () => openAsTracker(result, file.name, source),

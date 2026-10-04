@@ -28,7 +28,7 @@ describe('the question before removing a tracker', () => {
   })
 
   it('says the last export has everything, where it does', () => {
-    expect(shown({ ...removing, backedUp: true, folder: null }).body).toBe('Your last export or import has all of it.')
+    expect(shown({ ...removing, backedUp: true, folder: null }).body).toBe('Nothing is lost: the file you last exported or imported has all of it.')
   })
 
   it('says plainly what will be deleted, and nothing else', () => {
@@ -48,28 +48,28 @@ describe('the question before a dropped file replaces a tracker', () => {
   it('says replacing closes a folder-saved tracker, which stays in its folder', () => {
     expect(shown({ ...importing, backedUp: true, folder: 'test_job', openAsNewBeside: 'test_job_apps' })).toEqual({
       title: 'Open tracker.json?',
-      body: 'Replacing closes test_job_apps; it stays in your test_job folder.',
+      body: 'Replacing removes test_job_apps from this browser. Its test_job folder keeps everything.',
     })
   })
 
   it('says the last export has everything, where it does', () => {
     expect(shown({ ...importing, backedUp: true, folder: null, openAsNewBeside: 'first' }).body).toBe(
-      'Replacing closes first; your last export or import has all of it.',
+      'Replacing removes first from this browser. Nothing is lost: the file you last exported or imported has all of it.',
     )
   })
 
   it('says only that replacing closes it where closing would lose something, and asks after', () => {
     expect(shown({ ...importing, backedUp: false, folder: null, openAsNewBeside: 'first' }).body).toBe(
-      'Replacing closes first.',
+      'Replacing removes first from this browser.',
     )
   })
 
   it('asks about a copy, once replacing is chosen, saying what would be lost', () => {
     render(<ReplaceTrackerDialog onChoose={() => {}} replacement={{ ...importing, current: 3, backedUp: false, folder: null, openAsNewBeside: 'first' }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Replace first' }))
-    const question = screen.getByRole('alertdialog', { name: 'Close first?' })
-    expect(question.querySelector('#replace-tracker-body')!.textContent).toBe('Its 3 applications are only in this browser.')
-    expect(screen.getByRole('button', { name: 'Save a copy, then replace' })).toHaveFocus()
+    const question = screen.getByRole('alertdialog', { name: 'Remove first from this browser?' })
+    expect(question.querySelector('#replace-tracker-body')!.textContent).toBe('Its 3 applications are only in this browser and will be deleted.')
+    expect(screen.getByRole('button', { name: 'Download a copy, then replace' })).toHaveFocus()
   })
 
   it('goes ahead without a second question when replacing loses nothing', () => {
@@ -89,15 +89,15 @@ describe('the question before a dropped file replaces a tracker', () => {
 
 describe('the question when a file already is a tracker here', () => {
   it('says why, in one line, for a folder\'s own file', () => {
-    expect(shown({ kind: 'existing', name: 'test_job_apps', file: 'tracker.json', folder: 'test_job' })).toEqual({
+    expect(shown({ kind: 'existing', name: 'test_job_apps', folder: 'test_job' })).toEqual({
       title: 'test_job_apps is already in this browser',
-      body: 'tracker.json is the file it saves to.',
+      body: 'This is the file test_job_apps saves to.',
     })
   })
 
   it('says why, in one line, for the file a tracker was opened from', () => {
-    expect(shown({ kind: 'existing', name: 'last-year', file: 'last-year.json', folder: null }).body).toBe(
-      'It was opened from last-year.json.',
+    expect(shown({ kind: 'existing', name: 'last-year', folder: null }).body).toBe(
+      'last-year was opened from this file.',
     )
   })
 })

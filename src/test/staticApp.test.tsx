@@ -216,9 +216,9 @@ describe('the static build', () => {
     await user.upload(input, trackerFile('Third Import'))
     question = await screen.findByRole('alertdialog', { name: 'Open Third Import.json?' })
     await user.click(within(question).getByRole('button', { name: 'Replace Imported Ltd' }))
-    question = await screen.findByRole('alertdialog', { name: 'Close Imported Ltd?' })
-    expect(question).toHaveTextContent('Its 2 applications are only in this browser.')
-    expect(within(question).getByRole('button', { name: 'Save a copy, then replace' })).toHaveFocus()
+    question = await screen.findByRole('alertdialog', { name: 'Remove Imported Ltd from this browser?' })
+    expect(question).toHaveTextContent('Its 2 applications are only in this browser and will be deleted.')
+    expect(within(question).getByRole('button', { name: 'Download a copy, then replace' })).toHaveFocus()
     await user.click(within(question).getByRole('button', { name: 'Discard and replace' }))
 
     // The file opens as a tracker of its own in this tab; the one that was here is closed.
@@ -436,7 +436,7 @@ describe('the static build', () => {
 
     dropWithHandle(original, exported, 'last-year.json')
     const question = await screen.findByRole('alertdialog', { name: 'last-year is already in this browser' })
-    expect(question).toHaveTextContent('It was opened from last-year.json.')
+    expect(question).toHaveTextContent('last-year was opened from this file.')
     expect(within(question).getByRole('button', { name: 'Switch to last-year' })).toHaveFocus()
     await user.click(within(question).getByRole('button', { name: 'Switch to last-year' }))
     expect(open).toHaveBeenCalledWith(`?tracker=${earlier.id}`)
@@ -657,7 +657,7 @@ describe('the static build, in a browser that can write a folder', () => {
     await user.upload(input, trackerFile('Dropped'))
     const question = await screen.findByRole('alertdialog', { name: 'Open Dropped.json?' })
     // Connecting the folder named the tracker after it.
-    expect(question).toHaveTextContent('Replacing closes test_job; it stays in your test_job folder.')
+    expect(question).toHaveTextContent('Replacing removes test_job from this browser. Its test_job folder keeps everything.')
     await user.click(within(question).getByRole('button', { name: 'Replace test_job' }))
 
     await waitFor(() => expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\?tracker=/)))

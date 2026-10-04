@@ -3426,8 +3426,8 @@ describe('job applications tracker', () => {
       await user.upload(input, jsonFile(JSON.stringify(imported)))
 
       const question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
-      expect(within(question).getByRole('button', { name: 'Save a copy, then import' })).toHaveFocus()
-      await user.click(within(question).getByRole('button', { name: 'Save a copy, then import' }))
+      expect(within(question).getByRole('button', { name: 'Download a copy, then import' })).toHaveFocus()
+      await user.click(within(question).getByRole('button', { name: 'Download a copy, then import' }))
 
       await waitFor(() => expect(readSavedDocument().applications).toHaveLength(1))
       expect(click).toHaveBeenCalledTimes(1)
