@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ComponentType } from 'react'
@@ -524,6 +524,27 @@ describe('the static build, in a browser that can write a folder', () => {
       .toEqual(['Blank tracker', 'From a folder…', 'From a file…'])
   })
 
+  /*
+   * A folder holding a different tracker, picked while this one has applications, opens as
+   * its own tracker rather than replacing these. The backend decides that and its tests say
+   * so; this is the app going there.
+   */
+  it('opens a folder holding a different tracker as its own, not over this one', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    const { backend } = await import('../backend')
+    const { navigation } = await import('../backend/trackerAddress')
+    vi.spyOn(backend.storage!, 'connect').mockResolvedValue({
+      outcome: 'opened',
+      tracker: { id: 'from-the-folder', name: 'last-year', applications: 4, openedAt: '' },
+    })
+    const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
+
+    await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
+    await waitFor(() => expect(open).toHaveBeenCalledWith('?tracker=from-the-folder'))
+    expect(screen.queryByText(/now saved to that folder/)).not.toBeInTheDocument()
+  })
+
   it('says nothing when the folder picker is dismissed', async () => {
     const user = userEvent.setup()
     await renderStaticApp()
@@ -547,6 +568,65 @@ describe('the static build, in a browser that can write a folder', () => {
       'title',
       expect.stringMatching(/^Changes since .+ are only in this browser, and clearing your browsing data would delete them\./),
     )
+  })
+})
+
+/*
+ * The backend's tests prove another tab's write or removal is announced. These prove the
+ * app acts on the announcement: a newer document replaces what is on screen without a
+ * reload, and a removed tracker sends this tab where the removing tab went rather than
+ * leaving it to write the tracker back on its next keystroke.
+ */
+describe('the static build, when another tab changes this tracker', () => {
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllEnvs()
+    vi.resetModules()
+    vi.restoreAllMocks()
+  })
+
+  async function renderHearing() {
+    vi.resetModules()
+    window.history.replaceState(null, '', '/')
+    vi.stubEnv('VITE_TRACKER_BACKEND', 'browser')
+    vi.stubEnv('VITE_TRACKER_PROFILE', 'live')
+    const { backend } = await import('../backend')
+    const { navigation } = await import('../backend/trackerAddress')
+    let hear: (change: import('../backend').ExternalChange) => void = () => {}
+    const subscribe = backend.subscribeChanges!.bind(backend)
+    vi.spyOn(backend, 'subscribeChanges').mockImplementation((listener) => {
+      hear = listener
+      return subscribe(listener)
+    })
+    const open = vi.spyOn(navigation, 'open').mockImplementation(() => {})
+    const { default: App } = (await import('../App')) as { default: ComponentType }
+    render(<App />)
+    await waitFor(
+      () => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument(),
+      { timeout: 5000 },
+    )
+    return { hear: (change: import('../backend').ExternalChange) => act(() => hear(change)), open }
+  }
+
+  it('shows a document another tab stored, without a reload', async () => {
+    const { hear } = await renderHearing()
+    expect(screen.getByText('0 of 0 applications shown')).toBeInTheDocument()
+
+    const document = JSON.parse(await trackerFile('Halcyon').text())
+    hear({ kind: 'document', document: { ...prepareTrackerDatabase(document.applications) } })
+
+    expect(screen.getByText('1 of 1 applications shown')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: /Open Halcyon/ })).toBeInTheDocument()
+  })
+
+  it('goes where the other tab went when this tracker is removed there', async () => {
+    const { hear, open } = await renderHearing()
+
+    hear({ kind: 'removed', next: { id: 'next-one', name: 'Next one', applications: 2, openedAt: '' } })
+    expect(open).toHaveBeenCalledWith('?tracker=next-one')
+
+    hear({ kind: 'removed', next: null })
+    expect(open).toHaveBeenLastCalledWith('?tracker=new')
   })
 })
 
