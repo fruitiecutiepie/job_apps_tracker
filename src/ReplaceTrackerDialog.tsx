@@ -90,7 +90,7 @@ function describe(replacement: TrackerReplacement): { title: string; body: strin
   const replaces = `Importing it replaces the ${plural(current, 'application')} you have now`
   const Them = current === 1 ? 'It' : 'They'
   const outcome = folder
-    ? `${replaces}, here and in your ${folder} folder, so neither keeps the old ${current === 1 ? 'one' : 'ones'}. Save a copy first if you might want ${them} back.`
+    ? `${replaces}, here and in your ${folder} folder. A copy of ${them} is kept in that folder first.`
     : backedUp
       ? `${replaces}. The file you last exported or imported already has ${them}.`
       : replacement.openAsNewBeside === null
@@ -159,6 +159,9 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
           <p className="dialog__body" id="replace-tracker-body">
             The file has {bringing}. Open it as a tracker of its own beside {beside}, or replace
             what {beside} holds with it.
+            {replacement.folder !== null && (
+              <> Replacing keeps a copy of what {beside} holds now in your {replacement.folder} folder first.</>
+            )}
           </p>
           <div className="dialog__actions">
             <button

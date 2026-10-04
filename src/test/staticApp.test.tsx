@@ -7,6 +7,7 @@ import { prepareTrackerDatabase } from '../domain/database'
 import { serializeTrackerDocument } from '../domain/export'
 import { createApplication } from '../domain/mutations'
 import { FakeDirectory } from '../backend/fakeDirectory'
+import { readTrackerImport } from '../domain/import'
 
 /**
  * The static build, exercised as the app rather than as the backend.
@@ -563,6 +564,62 @@ describe('the static build, in a browser that can write a folder', () => {
     await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
     await waitFor(() => expect(open).toHaveBeenCalledWith('?tracker=from-the-folder'))
     expect(screen.queryByText(/now saved to that folder/)).not.toBeInTheDocument()
+  })
+
+  /*
+   * A folder-saved tracker's owner chose not to think about copies. Replacing it keeps one
+   * in the folder, beside the tracker.json being overwritten, instead of asking for a
+   * download — and the question says so before anything happens.
+   */
+  it('keeps a copy in the folder when replacing a folder-saved tracker, instead of asking', async () => {
+    const user = userEvent.setup()
+    const folder = new FakeDirectory('test_job')
+    Object.assign(window, { showDirectoryPicker: vi.fn(async () => folder) })
+    await renderStaticApp()
+    await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
+    await within(topbar()).findByRole('button', { name: 'Saved to test_job' })
+    await addApplication(user, 'Northwind')
+    await waitFor(() => expect(folder.readText('tracker.json')).toContain('Northwind'))
+
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await user.upload(input, trackerFile('Dropped'))
+    const question = await screen.findByRole('alertdialog', { name: 'Open this file?' })
+    // Connecting the folder named the tracker after it.
+    expect(question).toHaveTextContent('Replacing keeps a copy of what test_job holds now in your test_job folder first.')
+    await user.click(within(question).getByRole('button', { name: 'Replace test_job' }))
+
+    // No second question: the folder holds the copy.
+    await waitFor(() => expect(folder.readText('tracker.json')).toContain('Dropped'))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    const names: string[] = []
+    for await (const name of folder.keys()) names.push(name)
+    const copy = names.find((name) => name.startsWith('test_job (before import) '))
+    expect(copy).toMatch(/\.zip$/)
+    const kept = readTrackerImport(folder.read(copy!)!)
+    expect(kept.ok && kept.document.applications.map((application) => application.company)).toEqual(['Northwind'])
+  })
+
+  /*
+   * Dragging a tracker's own tracker.json back onto it would change nothing, so there is
+   * nothing to ask about adding or replacing.
+   */
+  it('does nothing with a file holding exactly what the tracker already has', async () => {
+    const user = userEvent.setup()
+    const folder = new FakeDirectory('test_job')
+    Object.assign(window, { showDirectoryPicker: vi.fn(async () => folder) })
+    await renderStaticApp()
+    await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
+    await within(topbar()).findByRole('button', { name: 'Saved to test_job' })
+    await addApplication(user, 'Northwind')
+    await waitFor(() => expect(folder.readText('tracker.json')).toContain('Northwind'))
+
+    const own = new File([folder.readText('tracker.json')!], 'tracker.json', { type: 'application/json' })
+    await user.upload(document.querySelector<HTMLInputElement>('input[type="file"]')!, own)
+
+    await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(
+      'tracker.json holds exactly what this tracker already has, so there is nothing to import.',
+    ))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
   it('says nothing when the folder picker is dismissed', async () => {

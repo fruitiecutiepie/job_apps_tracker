@@ -166,6 +166,12 @@ export interface ConnectableStorage {
    * cleared it.
    */
   markBackedUp(): Promise<void>
+  /**
+   * Writes a file beside `tracker.json` in this tracker's connected folder — the copy of
+   * the current tracker kept before an import replaces it, where a folder-saved tracker's
+   * owner would look for it. Refuses when no folder is connected.
+   */
+  keepCopyInFolder(filename: string, data: Uint8Array): Promise<void>
   /** As `markBackedUp`, for a tracker this tab is not holding: it was just exported. */
   markOtherBackedUp(id: string): Promise<void>
   /**

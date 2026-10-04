@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest'
 import { packTrackerArchive } from './archive'
 import { createEmptyDocument, refreshTrackerDatabase } from './database'
 import { serializeTrackerDocument } from './export'
-import { readTrackerImport } from './import'
-import { renameTracker } from './mutations'
+import { holdsTheSameApplications, readTrackerImport } from './import'
+import { addApplication, renameTracker } from './mutations'
 import { validateTrackerDocument } from './validation'
 
 /*
@@ -53,5 +53,34 @@ describe('a tracker\'s name in its document', () => {
   it('is described by the schema the document embeds', () => {
     const properties = createEmptyDocument().schema.properties as Record<string, { type?: string }>
     expect(properties.name?.type).toBe('string')
+  })
+})
+
+/*
+ * Dropping a tracker's own file back onto it would change nothing. Asking whether to
+ * replace or add would be a question with no right answer, so it is detected and skipped.
+ */
+describe('a file holding what the tracker already holds', () => {
+  const input = {
+    company: 'Northwind', role: '', url: '', source: '', state: 'applied' as const,
+    next_action: '', next_action_at: null, deadline_at: null, notes: '',
+  }
+
+  it('is recognised, through a save and a reload as written', () => {
+    const tracker = renameTracker(addApplication(createEmptyDocument(), input), 'test_job_apps')
+    const fromDisk = readTrackerImport(new TextEncoder().encode(serializeTrackerDocument(tracker)))
+    expect(fromDisk.ok && holdsTheSameApplications(fromDisk.document, tracker)).toBe(true)
+  })
+
+  it('is recognised whatever the file is named, the name not being an application', () => {
+    const tracker = renameTracker(addApplication(createEmptyDocument(), input), 'test_job_apps')
+    expect(holdsTheSameApplications(renameTracker(tracker, ''), tracker)).toBe(true)
+  })
+
+  it('is not mistaken for one holding different applications', () => {
+    const tracker = addApplication(createEmptyDocument(), input)
+    const more = addApplication(tracker, { ...input, company: 'Halcyon' })
+    expect(holdsTheSameApplications(more, tracker)).toBe(false)
+    expect(holdsTheSameApplications(addApplication(createEmptyDocument(), { ...input, company: 'Halcyon' }), tracker)).toBe(false)
   })
 })
