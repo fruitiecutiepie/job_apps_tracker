@@ -11,9 +11,6 @@ export type TrackerReplacement =
       kind: 'import'
       /** The dropped or chosen file's name, so the question can say which file it means. */
       fileName: string
-      /** How many applications and attachment files the file brings. */
-      incoming: number
-      attachments: number
       /** How many the tracker holds now, all of which are replaced. */
       current: number
       /**
@@ -77,55 +74,33 @@ function plural(count: number, noun: string): string {
   return `${count} ${noun}${count === 1 ? '' : 's'}`
 }
 
+/*
+ * Every body here says only the effect of the action about to be taken, in as few words
+ * as will carry it. The buttons already say what the choices are, and the counts and file
+ * names the reader is looking at do not need restating; what they cannot see is what will
+ * be lost, or that nothing will.
+ */
 function describe(replacement: TrackerReplacement): { title: string; body: string; verb: string } {
   const { current, backedUp, folder } = replacement
+  const applications = plural(current, 'application')
   const are = current === 1 ? 'is' : 'are'
-  const them = current === 1 ? 'it' : 'them'
 
-  /*
-   * Removing means different things depending on where the tracker lives, so the body
-   * opens with that rather than with "deletes": with a folder nothing is lost at all, and
-   * only a tracker kept nowhere but this browser is really gone.
-   */
   if (replacement.kind === 'remove') {
-    const { name } = replacement
-    const applications = plural(current, 'application')
     const body = folder
-      ? `${name} stays in your ${folder} folder, with its ${applications}. Removing it only takes it off this browser's list, and From a folder… opens it again.`
+      ? `It stays in your ${folder} folder.`
       : backedUp
-        ? `${name}'s ${applications} ${are} also in the file you last exported or imported. Removing it clears ${them} from this browser, and From a file… opens that file again.`
-        : `${name}'s ${applications} ${are} only in this browser. Removing it deletes ${them} for good, so save a copy first if you might want ${them} back.`
-    return { title: `Remove ${name} from this browser?`, body, verb: 'remove' }
+        ? 'Your last export or import has all of it.'
+        : `Its ${applications} ${are} only in this browser and will be deleted.`
+    return { title: `Remove ${replacement.name} from this browser?`, body, verb: 'remove' }
   }
 
-  const bringing = replacement.attachments > 0
-    ? `${plural(replacement.incoming, 'application')} and ${plural(replacement.attachments, 'attachment')}`
-    : plural(replacement.incoming, 'application')
-  /*
-   * With a folder connected the applications are not only in this browser, so saying they
-   * are "not saved anywhere else" would be false. What is true is that the import writes
-   * into that folder too, so afterwards neither copy has them.
-   */
-  /*
-   * Two files can be in play — the one being imported and the one last exported — so
-   * neither is ever called "the file": the imported one goes by its name, and the backup
-   * is described by what it is.
-   */
   const tracker = replacement.openAsNewBeside
   if (tracker === null) {
     // The dev server: one file on disk, which the import writes over.
-    return {
-      title: 'Replace your tracker?',
-      body: `${replacement.fileName} has ${bringing}. Importing it replaces the ${plural(current, 'application')} in your tracker. Nothing else holds ${them}, so save a copy first if you might want ${them} back.`,
-      verb: 'import',
-    }
+    return { title: 'Replace your tracker?', body: `Its ${applications} ${are} saved nowhere else.`, verb: 'import' }
   }
   // Only asked when closing would lose something: the applications are only here.
-  return {
-    title: `Close ${tracker}?`,
-    body: `${replacement.fileName} opens in place of ${tracker}, which closes. ${tracker}'s ${plural(current, 'application')} ${are} only in this browser, so save a copy first if you might want ${them} back.`,
-    verb: 'replace',
-  }
+  return { title: `Close ${tracker}?`, body: `Its ${applications} ${are} only in this browser.`, verb: 'replace' }
 }
 
 /**
@@ -182,10 +157,7 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
             <h2 id="replace-tracker-title">{name} is already in this browser</h2>
           </div>
           <p className="dialog__body" id="replace-tracker-body">
-            {folder
-              ? `${file} is the file ${name} saves to, in your ${folder} folder.`
-              : `${file} is the file ${name} was opened from.`}{' '}
-            Switch to {name}, or open the file as a separate tracker beside it.
+            {folder ? `${file} is the file it saves to.` : `It was opened from ${file}.`}
           </p>
           <div className="dialog__actions">
             <button
@@ -210,9 +182,6 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
   }
 
   if (beside !== null && !replacing && replacement.kind === 'import') {
-    const bringing = replacement.attachments > 0
-      ? `${plural(replacement.incoming, 'application')} and ${plural(replacement.attachments, 'attachment')}`
-      : plural(replacement.incoming, 'application')
     return (
       <div
         className="dialog-backdrop"
@@ -228,20 +197,19 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
           tabIndex={-1}
         >
           <div className="dialog__header">
-            <h2 id="replace-tracker-title">Open this file?</h2>
+            <h2 id="replace-tracker-title">Open {replacement.fileName}?</h2>
           </div>
+          {/*
+            * Replace goes ahead without a second question whenever nothing would be lost,
+            * so this line is the only place that says what replacing does to the tracker
+            * on screen, and why it is safe when it is.
+            */}
           <p className="dialog__body" id="replace-tracker-body">
-            {replacement.fileName} has {bringing}. Open it as a tracker of its own beside {beside},
-            or open it in place of {beside}, which closes.
-            {/*
-              * Replace goes ahead without a second question whenever nothing would be lost,
-              * so this is the only place that says why it is safe.
-              */}
-            {replacement.folder !== null ? (
-              <> Replacing loses nothing: {beside} stays in your {replacement.folder} folder, and From a folder… opens it again.</>
-            ) : replacement.backedUp ? (
-              <> Replacing loses nothing: {beside} has not changed since you last exported or imported it.</>
-            ) : null}
+            {replacement.folder !== null
+              ? `Replacing closes ${beside}; it stays in your ${replacement.folder} folder.`
+              : replacement.backedUp
+                ? `Replacing closes ${beside}; your last export or import has all of it.`
+                : `Replacing closes ${beside}.`}
           </p>
           <div className="dialog__actions">
             <button

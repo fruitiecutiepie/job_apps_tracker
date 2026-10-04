@@ -195,7 +195,7 @@ describe('the static build', () => {
 
     // Everything here is in the file it came from, so replacing needs no second question.
     await user.upload(input, trackerFile('Second Import'))
-    let question = await screen.findByRole('alertdialog', { name: 'Open this file?' })
+    let question = await screen.findByRole('alertdialog', { name: 'Open Second Import.json?' })
     expect(within(question).getAllByRole('button').map((button) => button.textContent)).toEqual([
       'Open as a new tracker',
       'Replace Imported Ltd',
@@ -214,12 +214,10 @@ describe('the static build', () => {
     const here = backend.storage!.state().tracker!.id
     open.mockClear()
     await user.upload(input, trackerFile('Third Import'))
-    question = await screen.findByRole('alertdialog', { name: 'Open this file?' })
+    question = await screen.findByRole('alertdialog', { name: 'Open Third Import.json?' })
     await user.click(within(question).getByRole('button', { name: 'Replace Imported Ltd' }))
     question = await screen.findByRole('alertdialog', { name: 'Close Imported Ltd?' })
-    expect(question).toHaveTextContent(
-      "Third Import.json opens in place of Imported Ltd, which closes. Imported Ltd's 2 applications are only in this browser, so save a copy first",
-    )
+    expect(question).toHaveTextContent('Its 2 applications are only in this browser.')
     expect(within(question).getByRole('button', { name: 'Save a copy, then replace' })).toHaveFocus()
     await user.click(within(question).getByRole('button', { name: 'Discard and replace' }))
 
@@ -438,7 +436,7 @@ describe('the static build', () => {
 
     dropWithHandle(original, exported, 'last-year.json')
     const question = await screen.findByRole('alertdialog', { name: 'last-year is already in this browser' })
-    expect(question).toHaveTextContent('last-year.json is the file last-year was opened from.')
+    expect(question).toHaveTextContent('It was opened from last-year.json.')
     expect(within(question).getByRole('button', { name: 'Switch to last-year' })).toHaveFocus()
     await user.click(within(question).getByRole('button', { name: 'Switch to last-year' }))
     expect(open).toHaveBeenCalledWith(`?tracker=${earlier.id}`)
@@ -576,9 +574,7 @@ describe('the static build, in a browser that can write a folder', () => {
     await user.click(within(topbar()).getByRole('button', { name: /^Tracker: job-apps/ }))
     await user.click(screen.getByRole('button', { name: 'Remove job-apps from this browser' }))
     const question = await screen.findByRole('alertdialog', { name: 'Remove job-apps from this browser?' })
-    expect(question).toHaveTextContent(
-      "job-apps stays in your job-apps folder, with its 1 application. Removing it only takes it off this browser's list, and From a folder… opens it again.",
-    )
+    expect(question).toHaveTextContent('It stays in your job-apps folder.')
     expect(within(question).queryByRole('button', { name: /Discard/ })).not.toBeInTheDocument()
     await user.click(within(question).getByRole('button', { name: 'Remove' }))
 
@@ -659,9 +655,9 @@ describe('the static build, in a browser that can write a folder', () => {
 
     const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
     await user.upload(input, trackerFile('Dropped'))
-    const question = await screen.findByRole('alertdialog', { name: 'Open this file?' })
+    const question = await screen.findByRole('alertdialog', { name: 'Open Dropped.json?' })
     // Connecting the folder named the tracker after it.
-    expect(question).toHaveTextContent('Replacing loses nothing: test_job stays in your test_job folder, and From a folder… opens it again.')
+    expect(question).toHaveTextContent('Replacing closes test_job; it stays in your test_job folder.')
     await user.click(within(question).getByRole('button', { name: 'Replace test_job' }))
 
     await waitFor(() => expect(open).toHaveBeenCalledWith(expect.stringMatching(/^\?tracker=/)))
@@ -709,7 +705,7 @@ describe('the static build, in a browser that can write a folder', () => {
 
     const sameWords = folder.readText('tracker.json')!
     dropWithHandle(looseFile('copy-of-tracker.json', sameWords), sameWords)
-    expect(await screen.findByRole('alertdialog', { name: 'Open this file?' })).toBeInTheDocument()
+    expect(await screen.findByRole('alertdialog', { name: 'Open copy-of-tracker.json?' })).toBeInTheDocument()
   })
 
   it('says nothing when the folder picker is dismissed', async () => {

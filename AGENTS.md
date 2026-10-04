@@ -636,6 +636,8 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 
 ### Accessibility and interaction
 
+- A confirmation dialog's body says only the effect of the action about to be taken — what will be lost, or that nothing will — in as few words as carry it. The buttons already name the choices, so the body does not restate them, and it does not repeat counts or file names the reader is already looking at. `ReplaceTrackerDialog` is held to this sentence by sentence in `src/ReplaceTrackerDialog.test.tsx`.
+
 - Keep dialogs and controls labelled, keyboard operable, and focus-safe. Closing an editor should restore focus to its opener when possible.
 - Native drag-and-drop must retain the accessible state-selector fallback; it is also important for touch devices.
 - Confirm destructive collection changes such as import replacement and demo reset, as well as application deletion.

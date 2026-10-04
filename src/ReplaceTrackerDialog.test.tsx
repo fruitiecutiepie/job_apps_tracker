@@ -1,73 +1,74 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
-import { ReplaceTrackerDialog, type TrackerReplacement } from './ReplaceTrackerDialog'
+import { ReplaceTrackerDialog, type ExistingTracker, type TrackerReplacement } from './ReplaceTrackerDialog'
 
-function body(replacement: TrackerReplacement): string {
+function shown(replacement: TrackerReplacement | ExistingTracker): { title: string; body: string } {
   render(<ReplaceTrackerDialog onChoose={() => {}} replacement={replacement} />)
-  return screen.getByRole('alertdialog').querySelector('#replace-tracker-body')!.textContent ?? ''
+  const dialog = screen.getByRole('alertdialog')
+  return {
+    title: dialog.querySelector('#replace-tracker-title')!.textContent ?? '',
+    body: dialog.querySelector('#replace-tracker-body')!.textContent ?? '',
+  }
 }
 
 /*
- * Removing a tracker means different things depending on where it lives, and the copy
- * says which first: nothing is lost with a folder, and only a tracker kept nowhere but
- * the browser is gone for good.
+ * Every body says only the effect of the action about to be taken: what will be lost, or
+ * that nothing will. The buttons already name the choices, so the copy does not restate
+ * them, nor counts and file names the reader is already looking at.
  */
 describe('the question before removing a tracker', () => {
-  it('says a tracker with a folder loses nothing', () => {
-    expect(body({ kind: 'remove', name: 'test_job', current: 1, backedUp: true, folder: 'test_job' })).toBe(
-      "test_job stays in your test_job folder, with its 1 application. Removing it only takes it off this browser's list, and From a folder… opens it again.",
-    )
+  const removing = { kind: 'remove' as const, name: 'test_job_apps', current: 3 }
+
+  it('says a folder-saved tracker stays in its folder', () => {
+    expect(shown({ ...removing, backedUp: true, folder: 'test_job' })).toEqual({
+      title: 'Remove test_job_apps from this browser?',
+      body: 'It stays in your test_job folder.',
+    })
   })
 
-  it('says a tracker whose last export has everything can be opened again from it', () => {
-    expect(body({ kind: 'remove', name: 'Autumn search', current: 3, backedUp: true, folder: null })).toBe(
-      "Autumn search's 3 applications are also in the file you last exported or imported. Removing it clears them from this browser, and From a file… opens that file again.",
-    )
+  it('says the last export has everything, where it does', () => {
+    expect(shown({ ...removing, backedUp: true, folder: null }).body).toBe('Your last export or import has all of it.')
   })
 
-  it('says plainly when removing deletes for good', () => {
-    expect(body({ kind: 'remove', name: 'Untitled tracker', current: 1, backedUp: false, folder: null })).toBe(
-      "Untitled tracker's 1 application is only in this browser. Removing it deletes it for good, so save a copy first if you might want it back.",
+  it('says plainly what will be deleted, and nothing else', () => {
+    expect(shown({ ...removing, backedUp: false, folder: null }).body).toBe(
+      'Its 3 applications are only in this browser and will be deleted.',
     )
   })
 })
 
 describe('the question before a dropped file replaces a tracker', () => {
-  const importing = {
-    kind: 'import' as const, fileName: 'other.json', incoming: 1, attachments: 0, current: 1,
-  }
+  const importing = { kind: 'import' as const, fileName: 'tracker.json', current: 1 }
 
   /*
-   * Where a browser holds several trackers, replacing opens the file in this tab and closes
-   * the tracker that was here; it never writes over one. So the first question says what
-   * closing would lose, and only asks again when it would lose something.
+   * Replace goes ahead without a second question whenever nothing would be lost, so the
+   * first question's one line is what says what replacing does, and why it is safe.
    */
-  it('says replacing closes the tracker, and loses nothing when it saves to a folder', () => {
-    expect(body({ ...importing, backedUp: true, folder: 'test_job', openAsNewBeside: 'test_job' })).toBe(
-      'other.json has 1 application. Open it as a tracker of its own beside test_job, or open it in place of test_job, which closes. Replacing loses nothing: test_job stays in your test_job folder, and From a folder… opens it again.',
+  it('says replacing closes a folder-saved tracker, which stays in its folder', () => {
+    expect(shown({ ...importing, backedUp: true, folder: 'test_job', openAsNewBeside: 'test_job_apps' })).toEqual({
+      title: 'Open tracker.json?',
+      body: 'Replacing closes test_job_apps; it stays in your test_job folder.',
+    })
+  })
+
+  it('says the last export has everything, where it does', () => {
+    expect(shown({ ...importing, backedUp: true, folder: null, openAsNewBeside: 'first' }).body).toBe(
+      'Replacing closes first; your last export or import has all of it.',
     )
   })
 
-  it('says replacing loses nothing when the last export has everything', () => {
-    expect(body({ ...importing, backedUp: true, folder: null, openAsNewBeside: 'first' })).toBe(
-      'other.json has 1 application. Open it as a tracker of its own beside first, or open it in place of first, which closes. Replacing loses nothing: first has not changed since you last exported or imported it.',
+  it('says only that replacing closes it where closing would lose something, and asks after', () => {
+    expect(shown({ ...importing, backedUp: false, folder: null, openAsNewBeside: 'first' }).body).toBe(
+      'Replacing closes first.',
     )
   })
 
-  it('adds nothing to the first question where closing would lose something', () => {
-    expect(body({ ...importing, backedUp: false, folder: null, openAsNewBeside: 'first' })).toBe(
-      'other.json has 1 application. Open it as a tracker of its own beside first, or open it in place of first, which closes.',
-    )
-  })
-
-  it('asks about a copy, once replacing is chosen, when the applications are only here', () => {
+  it('asks about a copy, once replacing is chosen, saying what would be lost', () => {
     render(<ReplaceTrackerDialog onChoose={() => {}} replacement={{ ...importing, current: 3, backedUp: false, folder: null, openAsNewBeside: 'first' }} />)
     fireEvent.click(screen.getByRole('button', { name: 'Replace first' }))
     const question = screen.getByRole('alertdialog', { name: 'Close first?' })
-    expect(question).toHaveTextContent(
-      "other.json opens in place of first, which closes. first's 3 applications are only in this browser, so save a copy first if you might want them back.",
-    )
+    expect(question.querySelector('#replace-tracker-body')!.textContent).toBe('Its 3 applications are only in this browser.')
     expect(screen.getByRole('button', { name: 'Save a copy, then replace' })).toHaveFocus()
   })
 
@@ -78,9 +79,25 @@ describe('the question before a dropped file replaces a tracker', () => {
     expect(chosen).toEqual(['proceed'])
   })
 
-  it('says the dev server\'s file is written over, and that nothing else holds it', () => {
-    expect(body({ ...importing, incoming: 2, attachments: 1, current: 19, backedUp: false, folder: null, openAsNewBeside: null })).toBe(
-      'other.json has 2 applications and 1 attachment. Importing it replaces the 19 applications in your tracker. Nothing else holds them, so save a copy first if you might want them back.',
+  it('says on the dev server that its one file is the only copy', () => {
+    expect(shown({ ...importing, current: 19, backedUp: false, folder: null, openAsNewBeside: null })).toEqual({
+      title: 'Replace your tracker?',
+      body: 'Its 19 applications are saved nowhere else.',
+    })
+  })
+})
+
+describe('the question when a file already is a tracker here', () => {
+  it('says why, in one line, for a folder\'s own file', () => {
+    expect(shown({ kind: 'existing', name: 'test_job_apps', file: 'tracker.json', folder: 'test_job' })).toEqual({
+      title: 'test_job_apps is already in this browser',
+      body: 'tracker.json is the file it saves to.',
+    })
+  })
+
+  it('says why, in one line, for the file a tracker was opened from', () => {
+    expect(shown({ kind: 'existing', name: 'last-year', file: 'last-year.json', folder: null }).body).toBe(
+      'It was opened from last-year.json.',
     )
   })
 })

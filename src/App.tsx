@@ -915,8 +915,6 @@ export default function App() {
         replacement: {
           kind: 'import',
           fileName: file.name,
-          incoming: result.document.applications.length,
-          attachments: result.files.length,
           current,
           backedUp:
             folder !== null
