@@ -76,6 +76,13 @@ const sourceKey = (id: string) => `source:${id}`
 
 export const UNTITLED_TRACKER = 'Untitled tracker'
 
+/** Another tab stored this tracker after the document being written was built. */
+class RevisionConflict extends Error {
+  constructor() {
+    super('Another tab stored this tracker first')
+  }
+}
+
 export interface BrowserBackendOptions {
   store?: KeyValueStore
   supportsFolders?: boolean
@@ -542,30 +549,42 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
   /*
    * Browser storage only, with the tracker's entry in the list kept in step and the
    * revision moved on, so another tab on this tracker knows to read it. Always called
-   * from inside `exclusive`, which is what keeps the revision one tab's to move at a time.
+   * from inside `exclusive`.
+   *
+   * The document and its revision are written together in one step that reads the revision
+   * first, so no other tab's write can land between the two. Given `expected`, the write
+   * goes ahead only if the stored revision still is that — the one the document was built
+   * on — and otherwise throws `RevisionConflict` with nothing written. Without it, the
+   * document simply follows whatever is stored: an import or a folder's file replaces it.
    */
-  async function cacheDocument(document: TrackerDatabase): Promise<string> {
+  async function cacheDocument(document: TrackerDatabase, expected: number | null = null): Promise<string> {
     // A tracker that was stored and has lost its listing entry was removed, by this tab or
     // another; one never stored yet has no entry to lose, and its first save makes it.
     if (!removed && meta !== null && (await store.get('state', metaKey(id()))) === null) removed = true
     if (removed) throw new Error('This tracker was removed from this browser')
     const text = serialize(document)
-    await store.put('state', documentKey(id()), text)
+    let revision = 0
+    const wrote = await store.update('state', revisionKey(id()), (current) => {
+      const stored = (current as number | null) ?? 0
+      if (expected !== null && stored !== expected) return null
+      revision = stored + 1
+      return [[documentKey(id()), text], [revisionKey(id()), revision]]
+    })
+    if (!wrote) throw new RevisionConflict()
+    knownRevision = revision
     knownDocument = document
     // Before the listing entry is written, so it lists the name the document now gives.
     syncName()
     await writeMeta(document.applications.length)
-    knownRevision = (((await store.get('state', revisionKey(id()))) as number | null) ?? 0) + 1
-    await store.put('state', revisionKey(id()), knownRevision)
     post({ type: 'document' })
     return text
   }
 
-  async function writeDocument(document: TrackerDatabase): Promise<void> {
+  async function writeDocument(document: TrackerDatabase, expected: number | null = null): Promise<void> {
     writing += 1
     announce()
     try {
-      const text = await cacheDocument(document)
+      const text = await cacheDocument(document, expected)
       if (!directory) {
         await noteUnbacked()
         return
@@ -911,13 +930,15 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
           if (file && text !== null) await backUpBeforeMigrating(handle, text)
           await writeFileIn(handle, TRACKER_FILENAME, written)
         }
-        await store.put('state', documentKey(renaming), written)
+        // The document and its revision in one step, as `cacheDocument` writes them.
+        await store.update('state', revisionKey(renaming), (current) => [
+          [documentKey(renaming), written],
+          [revisionKey(renaming), ((current as number | null) ?? 0) + 1],
+        ])
         await store.put('state', metaKey(renaming), {
           ...stored,
           name: renamed.name ?? stored.fallbackName ?? stored.name,
         })
-        const revision = (((await store.get('state', revisionKey(renaming))) as number | null) ?? 0) + 1
-        await store.put('state', revisionKey(renaming), revision)
         postTo(renaming, { type: 'document' })
       })
     },
@@ -1022,13 +1043,24 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     async updateDocument(current, mutate) {
       await ready()
       return exclusive(async () => {
-        await catchUp()
-        const base = knownDocument ?? current
-        const next = mutate(base)
-        if (next === base) return { document: base, wrote: false }
-        const refreshed = refreshTrackerDatabase(next)
-        await writeDocument(refreshed)
-        return { document: refreshed, wrote: true }
+        /*
+         * Where Web Locks exist, the lock already keeps another tab out between the read
+         * and the write, and this runs once. Where they do not, another tab can write in
+         * between; the write then refuses, and the mutation runs again on what it stored.
+         */
+        for (;;) {
+          await catchUp()
+          const base = knownDocument ?? current
+          const next = mutate(base)
+          if (next === base) return { document: base, wrote: false }
+          const refreshed = refreshTrackerDatabase(next)
+          try {
+            await writeDocument(refreshed, knownRevision)
+            return { document: refreshed, wrote: true }
+          } catch (error) {
+            if (!(error instanceof RevisionConflict)) throw error
+          }
+        }
       })
     },
 

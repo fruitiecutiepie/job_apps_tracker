@@ -29,7 +29,9 @@ export interface TabChannel {
 /*
  * Without the Web Locks API — older browsers, jsdom — a tab can only take turns with
  * itself, which its own write queue already does. Writes from two such tabs can still
- * cross; the document's revision is what lets the slower one notice and rebase.
+ * cross; the revision is what lets the slower one notice and rebase, because it is
+ * checked and moved in the same storage transaction the document is written in
+ * (`KeyValueStore.update`), so the slower write is refused rather than landing.
  */
 export function webLocks(): TabLock {
   const locks = typeof navigator === 'undefined' ? undefined : navigator.locks

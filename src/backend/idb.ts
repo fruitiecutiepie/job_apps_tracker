@@ -13,6 +13,21 @@ export interface KeyValueStore {
   delete(store: StoreName, key: string): Promise<void>
   keys(store: StoreName): Promise<string[]>
   clear(store: StoreName): Promise<void>
+  /**
+   * Reads `key` and writes whatever `decide` returns for it, as one step no other write can
+   * land inside — another tab's included. `decide` runs synchronously and may return null
+   * to write nothing. Resolves to whether anything was written.
+   *
+   * This is what makes a revision a real guard: read and written apart, two tabs can both
+   * see the same revision and each store a document built on it, the later undoing the
+   * earlier. Web Locks keep that from happening where they exist; this keeps it from
+   * happening anywhere.
+   */
+  update(
+    store: StoreName,
+    key: string,
+    decide: (current: unknown) => Array<[key: string, value: unknown]> | null,
+  ): Promise<boolean>
 }
 
 export const IDB_VERSION = 1
@@ -49,7 +64,18 @@ function openDatabase(name: string): Promise<IDBDatabase> {
 
 export function indexedDbStore(profile: TrackerProfile = trackerProfile()): KeyValueStore {
   let opening: Promise<IDBDatabase> | null = null
-  const database = () => (opening ??= openDatabase(idbName(profile)))
+  /*
+   * Lets go when another context needs the database — an upgrade in a newer tab, or a
+   * deletion — rather than holding it open and leaving that request waiting for good. The
+   * next call opens it again.
+   */
+  const database = () => (opening ??= openDatabase(idbName(profile)).then((db) => {
+    db.onversionchange = () => {
+      db.close()
+      opening = null
+    }
+    return db
+  }))
 
   async function transact<T>(
     store: StoreName,
@@ -92,6 +118,33 @@ export function indexedDbStore(profile: TrackerProfile = trackerProfile()): KeyV
     clear: async (store) => {
       await transact(store, 'readwrite', (objectStore) => objectStore.clear())
     },
+    /*
+     * One readwrite transaction for the read and the writes. IndexedDB runs readwrite
+     * transactions over the same store one at a time, across every tab of the origin, so
+     * nothing can be written between what `decide` saw and what it chose to write.
+     */
+    update: async (store, key, decide) => {
+      const db = await database()
+      const transaction = db.transaction(store, 'readwrite')
+      const objectStore = transaction.objectStore(store)
+      const done = new Promise<void>((resolve, reject) => {
+        transaction.oncomplete = () => resolve()
+        transaction.onabort = transaction.onerror = () =>
+          reject(transaction.error ?? new Error('Browser storage write failed'))
+      })
+      // Written from the read's own callback: an `await` here would let the transaction
+      // commit before the writes were queued on it.
+      const read = objectStore.get(key)
+      let wrote = false
+      read.onsuccess = () => {
+        const entries = decide(read.result ?? null)
+        if (!entries) return
+        wrote = true
+        for (const [entryKey, value] of entries) objectStore.put(value, entryKey)
+      }
+      await done
+      return wrote
+    },
   }
 }
 
@@ -107,5 +160,12 @@ export function memoryStore(): KeyValueStore {
     delete: async (store, key) => void data[store].delete(key),
     keys: async (store) => [...data[store].keys()],
     clear: async (store) => data[store].clear(),
+    // No await between the read and the writes, so nothing else can run between them.
+    update: async (store, key, decide) => {
+      const entries = decide(data[store].get(key) ?? null)
+      if (!entries) return false
+      for (const [entryKey, value] of entries) data[store].set(entryKey, value)
+      return true
+    },
   }
 }

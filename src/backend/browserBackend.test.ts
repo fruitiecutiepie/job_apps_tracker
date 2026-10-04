@@ -1209,13 +1209,11 @@ describe('one tracker open in two tabs', () => {
     })
 
     /*
-     * Known gap, kept as a failing expectation so it is fixed on purpose rather than found.
-     * The revision is read before the mutation and written after it, with no check between,
-     * so two tabs that both read it before either writes each store their own document and
-     * the later one undoes the earlier. Every current browser has Web Locks, which is what
-     * keeps this off the real path; closing it here needs a compare-and-set in the store.
+     * The case the store's one-step update exists for. Both tabs read the same revision
+     * before either writes; the later write finds it moved on, and runs its mutation again
+     * on the document the earlier one stored instead of writing over it.
      */
-    it.fails('keeps both tabs\' edits when they write at the same moment', async () => {
+    it('keeps both tabs\' edits when they write at the same moment', async () => {
       const { first, second, firstDocument, secondDocument } = await twoTabs(noLocks)
       tabs.mute()
 
