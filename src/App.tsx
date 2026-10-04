@@ -1618,11 +1618,20 @@ export default function App() {
 
       {/*
         * Drop anywhere is invisible without this: the window is the target, so there is
-        * nothing on screen for someone holding a file to aim at.
+        * nothing on screen for someone holding a file to aim at. It says what the drop will
+        * do, which differs: the dev server's one file is replaced; where a browser holds
+        * several trackers a file over one with applications asks whether to open as a new
+        * tracker or replace, and over an empty one simply opens there.
         */}
       {dragging && (
         <div aria-hidden="true" className="import-drop">
-          <p>Drop to import — replaces everything here</p>
+          <p>
+            {!storageState?.tracker
+              ? 'Drop to import — replaces everything here'
+              : tracker.applications.length > 0
+                ? 'Drop to open — as a new tracker, or in place of this one'
+                : 'Drop to open it here'}
+          </p>
         </div>
       )}
 

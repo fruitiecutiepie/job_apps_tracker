@@ -356,7 +356,7 @@ The global search, state, activity, company, and source filters apply across vie
   Whichever way the file arrives it is parsed into the domain model and checked against the schema and its invariants *before* you are asked to replace anything, so a hand-edited export that no longer holds together names the field that broke rather than half-replacing your data. A file that is not a tracker export is refused with what it is you can drop. Dragging a Kanban card or a notes tab is untouched: only a drag carrying files from outside the page is an import.
 - **Reset demo data** appears only in the demo — `pnpm dev:demo`, `pnpm start:demo`, or the [hosted demo](https://fruitiecutiepie.com/job_apps_tracker/demo/). It asks for confirmation and restores the original 19 examples.
 
-Import **replaces everything**. It does not merge. When the tracker you are replacing is not saved anywhere else — which includes a connected folder, since the import writes into it — it offers to download a copy first, or to discard it, before anything changes. An empty tracker is simply replaced.
+Replacing a tracker with a file **replaces everything** in it. It does not merge. If the applications being replaced would be lost — kept only in the browser, or in a connected folder, since replacing writes into that folder too — it offers to download a copy first, or to discard them, before anything changes. An empty tracker is simply replaced. On the hosted app, a file dropped over a tracker with applications asks first whether to open it as a new tracker instead, which replaces nothing.
 
 How often to export depends on where your data already is. With a connected folder, or running it
 yourself, you have a real file on disk and exports are for moving between machines. With neither —

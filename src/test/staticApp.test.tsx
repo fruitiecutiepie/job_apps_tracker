@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ComponentType } from 'react'
@@ -201,6 +201,26 @@ describe('the static build', () => {
     expect(within(question).getByRole('button', { name: 'Save a copy, then replace' })).toHaveFocus()
     await user.click(within(question).getByRole('button', { name: 'Discard and replace' }))
     await waitFor(() => expect(screen.getByRole('button', { name: /Open Third Import/ })).toBeInTheDocument())
+  })
+
+  /*
+   * The drop target says what a drop will do. Here a file over a tracker with applications
+   * is asked about rather than replacing it, so "replaces everything" would be false.
+   */
+  it('says what a dropped file will do, which here is not replacing everything', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    const files = { types: ['Files'], files: [trackerFile('Dropped')] }
+
+    fireEvent.dragEnter(window, { dataTransfer: files })
+    expect(screen.getByText('Drop to open it here')).toBeInTheDocument()
+    fireEvent.dragLeave(window, { dataTransfer: files })
+
+    await addApplication(user, 'Northwind')
+    await waitFor(() => expect(screen.getByText('1 of 1 applications shown')).toBeInTheDocument())
+    fireEvent.dragEnter(window, { dataTransfer: files })
+    expect(screen.getByText('Drop to open — as a new tracker, or in place of this one')).toBeInTheDocument()
+    expect(screen.queryByText(/replaces everything/)).not.toBeInTheDocument()
   })
 
   /*
