@@ -462,7 +462,9 @@ describe('the static build, in a browser that can write a folder', () => {
     await user.click(within(topbar()).getByRole('button', { name: /^Tracker: job-apps/ }))
     await user.click(screen.getByRole('button', { name: 'Remove job-apps from this browser' }))
     const question = await screen.findByRole('alertdialog', { name: 'Remove job-apps from this browser?' })
-    expect(question).toHaveTextContent('Your job-apps folder keeps its file.')
+    expect(question).toHaveTextContent(
+      "job-apps stays in your job-apps folder, with its 1 application. Removing it only takes it off this browser's list, and From a folder… opens it again.",
+    )
     expect(within(question).queryByRole('button', { name: /Discard/ })).not.toBeInTheDocument()
     await user.click(within(question).getByRole('button', { name: 'Remove' }))
 

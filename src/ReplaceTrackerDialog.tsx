@@ -56,13 +56,22 @@ function describe(replacement: TrackerReplacement): { title: string; body: strin
     ? 'Your last backup already has them.'
     : 'They are not saved anywhere else, so save a copy first if you might want them back.'
 
+  /*
+   * Removing means different things depending on where the tracker lives, so the body
+   * opens with that rather than with "deletes": with a folder nothing is lost at all, and
+   * only a tracker kept nowhere but this browser is really gone.
+   */
   if (replacement.kind === 'remove') {
-    const where = folder ? ` Your ${folder} folder keeps its file.` : ` ${kept}`
-    return {
-      title: `Remove ${replacement.name} from this browser?`,
-      body: `This deletes its ${plural(current, 'application')} from this browser.${where}`,
-      verb: 'remove',
-    }
+    const { name } = replacement
+    const applications = plural(current, 'application')
+    const are = current === 1 ? 'is' : 'are'
+    const them = current === 1 ? 'it' : 'them'
+    const body = folder
+      ? `${name} stays in your ${folder} folder, with its ${applications}. Removing it only takes it off this browser's list, and From a folder… opens it again.`
+      : backedUp
+        ? `${name}'s ${applications} ${are} also in the file you last exported or imported. Removing it clears ${them} from this browser, and From a file… opens that file again.`
+        : `${name}'s ${applications} ${are} only in this browser. Removing it deletes ${them} for good, so save a copy first if you might want ${them} back.`
+    return { title: `Remove ${name} from this browser?`, body, verb: 'remove' }
   }
 
   const bringing = replacement.attachments > 0
