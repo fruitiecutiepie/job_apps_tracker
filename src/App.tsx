@@ -914,6 +914,7 @@ export default function App() {
       setPendingReplace({
         replacement: {
           kind: 'import',
+          fileName: file.name,
           incoming: result.document.applications.length,
           attachments: result.files.length,
           current,

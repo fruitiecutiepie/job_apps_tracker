@@ -3388,7 +3388,7 @@ describe('job applications tracker', () => {
 
     await user.upload(input, file)
     const question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
-    expect(question).toHaveTextContent('The file has 1 application. Importing it replaces the 19 applications you have now.')
+    expect(question).toHaveTextContent('applications.json has 1 application. Importing it replaces the 19 applications in your tracker.')
     await user.click(within(question).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(readSavedDocument().applications).toHaveLength(19)

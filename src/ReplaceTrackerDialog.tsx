@@ -9,6 +9,8 @@ import { useDialogKeyboard } from './useDialogKeyboard'
 export type TrackerReplacement =
   | {
       kind: 'import'
+      /** The dropped or chosen file's name, so the question can say which file it means. */
+      fileName: string
       /** How many applications and attachment files the file brings. */
       incoming: number
       attachments: number
@@ -102,18 +104,29 @@ function describe(replacement: TrackerReplacement): { title: string; body: strin
    * are "not saved anywhere else" would be false. What is true is that the import writes
    * into that folder too, so afterwards neither copy has them.
    */
-  const replaces = `Importing it replaces the ${plural(current, 'application')} you have now`
+  /*
+   * Two files can be in play — the one being imported and the one last exported — so
+   * neither is ever called "the file": the imported one goes by its name, and the backup
+   * is described by what it is. The tracker goes by its name too, where it has one.
+   */
+  const tracker = replacement.openAsNewBeside
+  const holding = tracker ? `the ${plural(current, 'application')} in ${tracker}` : `the ${plural(current, 'application')} in your tracker`
+  const itself = tracker ?? 'your tracker'
   const Them = current === 1 ? 'It' : 'They'
   const outcome = folder
-    ? `${replaces}, here and in your ${folder} folder. A copy of ${them} is kept in that folder first.`
+    ? `Importing it replaces ${holding}, here and in your ${folder} folder. A copy of what ${itself} holds now is saved in that folder first.`
     : backedUp
-      ? `${replaces}. The file you last exported or imported already has ${them}.`
-      : replacement.openAsNewBeside === null
+      ? `Importing it replaces ${holding}. Nothing is lost: ${itself} has not changed since you last exported or imported it, so that file still has ${them}.`
+      : tracker === null
         // The dev server: one file on disk, which the import overwrites.
-        ? `${replaces}. Nothing else holds ${them}, so save a copy first if you might want ${them} back.`
-        : `${replaces}. ${Them} ${are} only in this browser, so save a copy first if you might want ${them} back.`
-  const verb = replacement.openAsNewBeside ? 'replace' : 'import'
-  return { title: 'Replace your tracker?', body: `The file has ${bringing}. ${outcome}`, verb }
+        ? `Importing it replaces ${holding}. Nothing else holds ${them}, so save a copy first if you might want ${them} back.`
+        : `Importing it replaces ${holding}. ${Them} ${are} only in this browser, so save a copy first if you might want ${them} back.`
+  const verb = tracker ? 'replace' : 'import'
+  return {
+    title: tracker ? `Replace ${tracker}?` : 'Replace your tracker?',
+    body: `${replacement.fileName} has ${bringing}. ${outcome}`,
+    verb,
+  }
 }
 
 /**
@@ -219,11 +232,17 @@ export function ReplaceTrackerDialog({ replacement, onChoose }: ReplaceTrackerDi
             <h2 id="replace-tracker-title">Open this file?</h2>
           </div>
           <p className="dialog__body" id="replace-tracker-body">
-            The file has {bringing}. Open it as a tracker of its own beside {beside}, or replace
-            what {beside} holds with it.
-            {replacement.folder !== null && (
+            {replacement.fileName} has {bringing}. Open it as a tracker of its own beside {beside},
+            or replace what {beside} holds with it.
+            {/*
+              * Replace goes ahead without a second question whenever nothing would be lost,
+              * so this is the only place that says why it is safe.
+              */}
+            {replacement.folder !== null ? (
               <> Replacing keeps a copy of what {beside} holds now in your {replacement.folder} folder first.</>
-            )}
+            ) : replacement.backedUp ? (
+              <> Replacing loses nothing: {beside} has not changed since you last exported or imported it.</>
+            ) : null}
           </p>
           <div className="dialog__actions">
             <button

@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react'
+import { fireEvent, render, screen } from '@testing-library/react'
 import { describe, expect, it } from 'vitest'
 
 import { ReplaceTrackerDialog, type TrackerReplacement } from './ReplaceTrackerDialog'
@@ -34,31 +34,53 @@ describe('the question before removing a tracker', () => {
 })
 
 describe('the question before an import replaces a tracker', () => {
+  const importing = {
+    kind: 'import' as const, fileName: 'other.json', incoming: 1, attachments: 0, current: 1,
+  }
+
   /*
-   * With a folder connected the applications are in the folder too, so "not saved anywhere
-   * else" would be false. What is true is that the import overwrites the folder as well.
+   * Two files are in play — the one being imported and the last export — so neither is
+   * called "the file": the import goes by its name, and the backup by what it is.
    */
-  it('says a connected folder is overwritten too, and keeps a copy there first', () => {
-    const text = body({
-      kind: 'import', incoming: 1, attachments: 0, current: 1, backedUp: true, folder: 'test_job', openAsNewBeside: null,
-    })
-    expect(text).toBe(
-      'The file has 1 application. Importing it replaces the 1 application you have now, here and in your test_job folder. A copy of it is kept in that folder first.',
+  /*
+   * Where nothing would be lost, Replace goes ahead with no second question, so the first
+   * one is the only place to say why that is safe.
+   */
+  it('says up front that replacing loses nothing when the last export has everything', () => {
+    expect(body({ ...importing, backedUp: true, folder: null, openAsNewBeside: 'first' })).toBe(
+      'other.json has 1 application. Open it as a tracker of its own beside first, or replace what first holds with it. Replacing loses nothing: first has not changed since you last exported or imported it.',
     )
   })
 
-  it('says up front that replacing a folder-saved tracker keeps a copy in the folder', () => {
-    const text = body({
-      kind: 'import', incoming: 1, attachments: 0, current: 1, backedUp: true, folder: 'test_job', openAsNewBeside: 'test_job_apps',
-    })
-    expect(text).toContain('Replacing keeps a copy of what test_job_apps holds now in your test_job folder first.')
+  it('says a connected folder is overwritten too, and keeps a copy there first', () => {
+    expect(body({ ...importing, backedUp: true, folder: 'test_job', openAsNewBeside: 'test_job' })).toContain(
+      'Replacing keeps a copy of what test_job holds now in your test_job folder first.',
+    )
+  })
+
+  it('says the copy goes into the folder when a folder-saved tracker is replaced', () => {
+    expect(body({ ...importing, backedUp: true, folder: 'test_job', openAsNewBeside: null })).toBe(
+      'other.json has 1 application. Importing it replaces the 1 application in your tracker, here and in your test_job folder. A copy of what your tracker holds now is saved in that folder first.',
+    )
+  })
+
+  it('says, once replacing is chosen, when the applications are only in this browser', () => {
+    render(<ReplaceTrackerDialog onChoose={() => {}} replacement={{ ...importing, current: 3, backedUp: false, folder: null, openAsNewBeside: 'first' }} />)
+    fireEvent.click(screen.getByRole('button', { name: 'Replace first' }))
+    expect(screen.getByRole('alertdialog', { name: 'Replace first?' })).toHaveTextContent(
+      'other.json has 1 application. Importing it replaces the 3 applications in first. They are only in this browser, so save a copy first if you might want them back.',
+    )
   })
 
   it('says the dev server\'s file is the only copy, not the browser', () => {
-    expect(body({
-      kind: 'import', incoming: 2, attachments: 1, current: 19, backedUp: false, folder: null, openAsNewBeside: null,
-    })).toBe(
-      'The file has 2 applications and 1 attachment. Importing it replaces the 19 applications you have now. Nothing else holds them, so save a copy first if you might want them back.',
+    expect(body({ ...importing, incoming: 2, attachments: 1, current: 19, backedUp: false, folder: null, openAsNewBeside: null })).toBe(
+      'other.json has 2 applications and 1 attachment. Importing it replaces the 19 applications in your tracker. Nothing else holds them, so save a copy first if you might want them back.',
+    )
+  })
+
+  it('names the file in the first question, and adds nothing where replacing would lose something', () => {
+    expect(body({ ...importing, backedUp: false, folder: null, openAsNewBeside: 'first' })).toBe(
+      'other.json has 1 application. Open it as a tracker of its own beside first, or replace what first holds with it.',
     )
   })
 })
