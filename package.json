@@ -14,6 +14,8 @@
     "build:pages-demo": "VITE_TRACKER_BACKEND=browser VITE_TRACKER_PROFILE=demo VITE_BASE_PATH=/job_apps_tracker/demo/ VITE_OUT_DIR=dist/demo vite build",
     "preview:pages": "VITE_TRACKER_BACKEND=browser VITE_BASE_PATH=/job_apps_tracker/ vite preview",
     "preview:site": "pnpm build:pages && pnpm build:pages-demo && pnpm preview:pages",
+    "build:workers": "rm -rf dist && VITE_TRACKER_BACKEND=browser VITE_BASE_PATH=/projects/job_apps_tracker/app/ VITE_OUT_DIR=dist/projects/job_apps_tracker/app vite build && VITE_TRACKER_BACKEND=browser VITE_TRACKER_PROFILE=demo VITE_BASE_PATH=/projects/job_apps_tracker/app/demo/ VITE_OUT_DIR=dist/projects/job_apps_tracker/app/demo vite build",
+    "deploy": "pnpm build:workers && wrangler deploy",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "test": "vitest run",
@@ -49,7 +51,8 @@
     "typescript": "^5.9.3",
     "typescript-eslint": "latest",
     "vite": "latest",
-    "vitest": "latest"
+    "vitest": "latest",
+    "wrangler": "^4.148.0"
   },
   "packageManager": "pnpm@10.30.3"
 }
