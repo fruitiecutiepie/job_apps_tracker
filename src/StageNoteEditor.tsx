@@ -3,6 +3,7 @@ import { FORMATS, type Format } from './noteFormats'
 import { ChevronRight } from 'lucide-react'
 import { buildSections, foldRegions, parseMarkdown, splitMatches } from './markdown'
 import { continueList } from './listContinuation'
+import { mapOffset } from './domain/mergeText'
 import { lineStartOffset, offsetTopsWithin } from './noteEditorJump'
 import {
   applyProjectedEdit,
@@ -236,6 +237,28 @@ export function StageNoteEditor({
     return () => observer.disconnect()
   }, [measure])
 
+  /*
+   * The note can change while this box holds the caret without anyone typing into it:
+   * another tab on the same tracker wrote it, and the panel merged that in. Setting a
+   * textarea's value from outside sends the caret to the end, which mid-sentence is the
+   * last place anyone wants it. So the caret this box last had is carried through the
+   * change instead — before the edit it stays, after it it moves with the text.
+   */
+  const caretRef = useRef<number | null>(null)
+  const shownValueRef = useRef(value)
+  const emittedRef = useRef<string | null>(null)
+  useLayoutEffect(() => {
+    const before = shownValueRef.current
+    shownValueRef.current = value
+    if (before === value) return
+    const own = emittedRef.current === value
+    emittedRef.current = null
+    if (own || caretRef.current === null) return
+    if (document.activeElement !== textareaRef.current) return
+    pendingCaret.current = mapOffset(before, value, caretRef.current)
+    caretRef.current = pendingCaret.current
+  }, [value])
+
   /** Puts the caret back where it was in the note once the box has been reprojected. */
   useLayoutEffect(() => {
     const offset = pendingCaret.current
@@ -271,7 +294,10 @@ export function StageNoteEditor({
       if (result.blocked.length > 0) return kept
       return result.anchors
     })
-    if (result.blocked.length === 0 && result.text !== value) onChange(result.text)
+    if (result.blocked.length === 0 && result.text !== value) {
+      emittedRef.current = result.text
+      onChange(result.text)
+    }
   }
 
   const format = (entry: Format) => {
@@ -424,6 +450,9 @@ export function StageNoteEditor({
               data-note-source={sourceId}
               {...{ [FOLD_DATA]: JSON.stringify(ranges) }}
               onChange={(event) => edit(event.target.value, event.target.selectionStart)}
+              onSelect={(event) => {
+                caretRef.current = toSourceOffset(projected, value, ranges, event.currentTarget.selectionStart)
+              }}
               onKeyDown={(event) => {
                 if (event.key !== 'Enter') return
                 if (event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return

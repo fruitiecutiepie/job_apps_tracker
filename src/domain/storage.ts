@@ -1,4 +1,4 @@
-import { backend } from '../backend'
+import { backend, type ExternalChange } from '../backend'
 import { createEmptyDocument, ensureFreshIndexes, refreshTrackerDatabase } from './database'
 import { createDemoDocument } from './demo'
 import { serializeTrackerDocument } from './export'
@@ -113,6 +113,25 @@ export function loadTrackerDatabase(): Promise<TrackerDatabase> {
 
 export function saveTrackerDatabase(document: TrackerDatabase): Promise<TrackerDatabase> {
   return backend.saveDocument(document)
+}
+
+/**
+ * Applies a mutation to the newest stored document. Where only one writer exists, the
+ * newest is `current`; the static build can have a second tab writing the same tracker,
+ * and runs the mutation on what that tab stored instead.
+ */
+export async function updateTrackerDatabase(
+  current: TrackerDatabase,
+  mutate: (document: TrackerDatabase) => TrackerDatabase,
+): Promise<{ document: TrackerDatabase; wrote: boolean }> {
+  if (backend.updateDocument) return backend.updateDocument(current, mutate)
+  const next = mutate(current)
+  if (next === current) return { document: current, wrote: false }
+  return { document: await backend.saveDocument(next), wrote: true }
+}
+
+export function subscribeTrackerChanges(listener: (change: ExternalChange) => void): () => void {
+  return backend.subscribeChanges?.(listener) ?? (() => {})
 }
 
 export function resetTrackerDatabase(): Promise<TrackerDatabase> {

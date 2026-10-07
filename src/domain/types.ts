@@ -337,6 +337,12 @@ export interface TrackerDatabase {
   /** The document layout this file is written in; see `DATA_VERSION`. */
   schema_version: 3
   schema: JsonSchemaObject
+  /**
+   * What the reader called this tracker, absent until they name it. In the document rather
+   * than beside it because a name is part of what the file is: it has to travel with the
+   * folder, an export, and a move to another browser, none of which browser storage does.
+   */
+  name?: string
   applications: Application[]
   indexes: TrackerIndexes
 }

@@ -365,6 +365,150 @@ p {
   font-weight: 600;
 }
 
+/*
+ * The brand and which tracker this tab holds share the first cell. The name is capped so a
+ * long folder name truncates rather than pushing the views off the bar; the whole name is
+ * the trigger's title, and the tab's.
+ */
+.topbar__identity {
+  display: flex;
+  align-items: center;
+  gap: var(--s3);
+  min-width: 0;
+}
+
+.tracker-switcher__trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  max-width: 14rem;
+  height: var(--control);
+  padding: 0 var(--s2) 0 var(--s3);
+  border: 1px solid var(--line);
+  border-radius: var(--r1);
+  color: var(--ink-2);
+  background: transparent;
+  font-size: var(--t2);
+  font-weight: 500;
+}
+
+.tracker-switcher__trigger:hover,
+.tracker-switcher__trigger[aria-expanded='true'] {
+  border-color: var(--line-strong);
+  color: var(--ink);
+}
+
+.tracker-switcher__trigger svg {
+  flex-shrink: 0;
+}
+
+.tracker-switcher__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Opens under the trigger at the left of the bar, where More actions opens at the right. */
+/* Wide enough for a name beside four row actions; never wider than the window. */
+.actions-menu__panel.tracker-switcher__panel {
+  right: auto;
+  left: 0;
+  width: min(24rem, calc(100vw - 2 * var(--gutter)));
+}
+
+.tracker-switcher__caption {
+  margin: 0;
+  padding: var(--s2) var(--s3);
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+.tracker-switcher__list {
+  display: grid;
+  margin: 0 0 var(--s2);
+  padding: 0 0 var(--s2);
+  border-bottom: 1px solid var(--line);
+  list-style: none;
+}
+
+.tracker-switcher__item {
+  min-height: var(--control-form);
+  text-decoration: none;
+}
+
+.tracker-switcher__item[aria-current='page'] svg {
+  color: var(--accent);
+}
+
+.tracker-switcher__label {
+  display: grid;
+  min-width: 0;
+  line-height: 1.25;
+}
+
+/* The count and where it lives on one line, cut short rather than wrapped when long. */
+.tracker-switcher__where {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tracker-switcher__label small {
+  color: var(--ink-3);
+  font-size: var(--t1);
+}
+
+.tracker-switcher__group {
+  display: grid;
+}
+
+/*
+ * A row is the tracker's link, which takes the width, and its two actions at the end.
+ * The actions are quiet until reached for, like the panel's own title-bar icons.
+ */
+.tracker-switcher__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
+}
+
+.tracker-switcher__row .tracker-switcher__item {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Both classes: `.icon-button` is defined later in the file and would otherwise box these. */
+.icon-button.tracker-switcher__action {
+  flex-shrink: 0;
+  border-color: transparent;
+  color: var(--ink-3);
+  background: transparent;
+}
+
+.icon-button.tracker-switcher__action:hover,
+.icon-button.tracker-switcher__action:focus-visible {
+  border-color: transparent;
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.tracker-switcher__input {
+  flex: 1;
+  min-width: 0;
+  height: var(--control);
+  padding: 0 var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--surface);
+  font-size: var(--t3);
+}
+
+.tracker-switcher__spacer {
+  flex-shrink: 0;
+  width: 16px;
+}
+
 /* Where you are: the strip of views, and the prep notes toggle that lays a workspace over
    whichever of them you were reading. One cell, because both answer the same question —
    the actions on the other side answer what you can do to the collection. */
@@ -625,7 +769,14 @@ p {
   gap: var(--s3);
 }
 
-.storage-intro__aside {
+.storage-intro p.storage-intro__hint {
+  margin: var(--s3) 0 0;
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+/* Qualified by `p` so it outranks `.storage-intro p`, whose bottom margin is for the body. */
+.storage-intro p.storage-intro__aside {
   margin: var(--s4) 0 0;
   padding-top: var(--s4);
   border-top: 1px solid var(--line);
@@ -691,6 +842,10 @@ p {
   background: transparent;
   font-size: var(--t3);
   text-align: left;
+}
+
+a.actions-menu__item {
+  text-decoration: none;
 }
 
 /* One line each in More actions, however long the label: the panel grows to the widest
@@ -2381,6 +2536,17 @@ tbody tr:hover {
 
 .dialog__actions-spacer {
   flex: 1;
+}
+
+/* A question rather than a form: narrower, and the prose sits at reading size. */
+.dialog--compact {
+  width: min(36rem, 100%);
+}
+
+.dialog__body {
+  margin: 0 0 var(--s5);
+  color: var(--ink-2);
+  font-size: var(--t3);
 }
 
 /* --------------------------------------------------------- attachments --- */

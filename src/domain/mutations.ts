@@ -6,6 +6,7 @@ import {
 } from './compensation'
 import { isCorrespondenceDirection } from './correspondence'
 import { createUuidV7 } from './id'
+import { prepareTrackerDatabase } from './database'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
 import { isOutcomeId, isStateId, outcomeAbandonsTask, stateRank } from './states'
 import { safeAttachmentFilename } from './attachmentPaths'
@@ -1245,4 +1246,16 @@ export function deleteApplication(document: TrackerDocument, id: string): Tracke
     ...document,
     applications: document.applications.filter((application) => application.id !== id),
   }
+}
+
+/**
+ * Names the tracker, or un-names it with a blank name. The name is the document's own, so
+ * it reaches a connected folder, an export, and another tab exactly as an application
+ * does. An unchanged name returns the same document, so renaming to the current name
+ * writes nothing.
+ */
+export function renameTracker(document: TrackerDocument, name: string): TrackerDocument {
+  const named = name.trim() || undefined
+  if (named === document.name) return document
+  return prepareTrackerDatabase(document.applications, named)
 }

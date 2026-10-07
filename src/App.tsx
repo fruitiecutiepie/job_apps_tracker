@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Archive,
   CircleCheck,
@@ -40,10 +40,12 @@ import {
   deleteApplication,
   deleteApplicationAttachmentFolder,
   downloadTrackerArchive,
+  downloadArchive,
   formatFileSize,
   importTrackerArchive,
   describeImportErrors,
   readTrackerImport,
+  type TrackerImportSuccess,
   loadTrackerDatabase,
   MAX_ATTACHMENT_BYTES,
   moveApplication,
@@ -51,13 +53,15 @@ import {
   readFileAsUint8Array,
   resetTrackerDatabase,
   saveTrackerDatabase,
+  subscribeTrackerChanges,
+  updateTrackerDatabase,
+  renameTracker,
   tryLoadLegacyLocalStorage,
   clearApplicationRating,
   updateApplication,
   reviseApplicationStageCapture,
   updateApplicationStageCapture,
   updateApplicationStageNotes,
-  reviseApplicationPosting,
   updateApplicationPosting,
   updateApplicationRatings,
   updateApplicationCorrespondence,
@@ -80,9 +84,13 @@ import {
   type TrackerDocument,
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
-import { backend, isBrowserBackend } from './backend'
+import { backend, isBrowserBackend, type StorageConnection, type TrackerSummary } from './backend'
 import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
-import { useStorageConnection } from './useStorageConnection'
+import { ReplaceTrackerDialog, type ExistingTracker, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
+import type { FileHandleLike } from './backend/fileSystem'
+import { useStorageState } from './useStorageState'
+import { TrackerSwitcher } from './TrackerSwitcher'
+import { navigation, NEW_TRACKER, trackerHref } from './backend/trackerAddress'
 import { useFileImport } from './useFileImport'
 import { DisclosureMenu } from './DisclosureMenu'
 import { ARCHIVE_BULK_NOTHING, archiveBulkConfirmation, archiveBulkLabel, archiveBulkNotice } from './archiveCopy'
@@ -114,6 +122,7 @@ import {
   type InviteRow,
 } from './invites'
 import type { StageNoteDraftBatch } from './StageNotesPanel'
+import { applyStageDraftBatches } from './stageDraftBatches'
 import { postingRef, stageRef, type NoteRequest } from './notesLayout'
 import { PostingField } from './PostingField'
 import { formatShortDate } from './views/viewUtils'
@@ -714,8 +723,54 @@ export default function App() {
   const dialogOpenerRef = useRef<HTMLElement | null>(null)
   const dialogWasOpenRef = useRef(false)
   const importInputRef = useRef<HTMLInputElement>(null)
-  const storageConnection = useStorageConnection()
-  const [introDismissed, setIntroDismissed] = useState(false)
+  /* Kept apart from the import input: that one replaces this tracker, this one starts another. */
+  const otherTrackerInputRef = useRef<HTMLInputElement>(null)
+  const storageState = useStorageState()
+
+  /*
+   * Another tab holding this tracker wrote it, or removed it. A newer document replaces
+   * what is on screen at once, so the two tabs never show different trackers under one
+   * name; a removal sends this tab where the removing one went, rather than letting its
+   * next keystroke write the tracker back.
+   */
+  useEffect(() => subscribeTrackerChanges((change) => {
+    if (change.kind === 'removed') {
+      navigation.open(trackerHref(change.next?.id ?? NEW_TRACKER))
+      return
+    }
+    trackerRef.current = change.document
+    setTracker(change.document)
+  }), [])
+  const listTrackers = useCallback(() => backend.storage!.listTrackers(), [])
+
+  /*
+   * The tab says which tracker it holds, so several open at once can be told apart in the
+   * tab strip — the whole point of holding more than one.
+   */
+  const trackerName = storageState?.tracker?.name ?? null
+  useEffect(() => {
+    if (trackerName === null) return
+    const previous = document.title
+    document.title = `${trackerName} — Job applications`
+    return () => {
+      document.title = previous
+    }
+  }, [trackerName])
+  /*
+   * A replacement waiting on its question: what the dialog asks about, and what runs if the
+   * viewer goes ahead. An import and starting fresh are one gate, so neither can grow a
+   * way of replacing the tracker the other does not ask about.
+   */
+  const [pendingReplace, setPendingReplace] = useState<{
+    replacement: TrackerReplacement | ExistingTracker
+    proceed: () => Promise<void>
+    /** Downloads the tracker about to be replaced or removed, which need not be this one. */
+    saveCopy: () => Promise<void>
+    /** Opens an imported file as a tracker of its own, where a browser can hold several. */
+    openAsNew?: () => Promise<void>
+    /** Goes to the tracker a file already belongs to. */
+    switchTo?: () => void
+  } | null>(null)
   // Prep notes became a view rather than a dialog, so only the editor is one now.
   const dialogIsOpen = editor !== null
   // Read by every view, not only Statistics: its quiet threshold is the board's and the
@@ -805,16 +860,19 @@ export default function App() {
       const current = trackerRef.current
       if (!current) return false
 
-      const next = mutate(current)
-      // Every mutation returns the document it was given when there is nothing to do, so
-      // this is also what keeps a no-op move or an unchanged draft off the disk.
-      if (next === current) return true
-
       try {
-        const saved = await saveTrackerDatabase(next)
-        trackerRef.current = saved
-        setTracker(saved)
-        if (message) setNotice(message)
+        /*
+         * The mutation, not the document, goes to storage: where another tab holds this
+         * tracker too, it is run there on whatever that tab last stored. Every mutation
+         * returns the document it was given when there is nothing to do, which is also
+         * what keeps a no-op move or an unchanged draft off the disk.
+         */
+        const { document: saved, wrote } = await updateTrackerDatabase(current, mutate)
+        if (saved !== trackerRef.current) {
+          trackerRef.current = saved
+          setTracker(saved)
+        }
+        if (wrote && message) setNotice(message)
         return true
       } catch (error) {
         setNotice(`Save failed: ${errorMessage(error)}`)
@@ -834,24 +892,125 @@ export default function App() {
    * question names what is actually in the file. A file that cannot be read never gets as
    * far as asking, and says why instead.
    */
-  const importFile = async (file: File) => {
+  const importFile = async (file: File, handle: Promise<FileHandleLike | null> | null = null) => {
     try {
       const result = readTrackerImport(await readFileAsUint8Array(file))
       if (!result.ok) {
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
       }
+      const source = handle ? await handle : null
 
-      const { applications } = result.document
-      const attachments = result.files.length
-      const carrying = attachments > 0 ? ` and ${attachments} attachments` : ''
-      if (!window.confirm(
-        `Replace your current tracker with ${applications.length} imported applications${carrying}?`,
-      )) {
+      // A file that already is a tracker here: this one is left alone, another is offered.
+      if (await answeredAsExisting(file, source, result)) return
+
+      // An empty tracker has nothing to replace, so there is nothing to ask.
+      const current = trackerRef.current?.applications.length ?? 0
+      if (current === 0) {
+        await applyImport(result.document, result.files, file.name, source)
         return
       }
 
-      const saved = await importTrackerArchive(result.document, result.files)
+      /*
+       * Where a browser holds several trackers, replacing never overwrites one. It opens the
+       * file as a tracker in this tab and closes the one that was here, which is removing it
+       * from this browser — so what can be lost is what removing loses. A tracker saved to
+       * a folder loses nothing, its folder untouched; one whose last export has everything
+       * loses nothing; only one kept nowhere but this browser is asked about a copy. The dev
+       * server holds one file, so there replacing still means writing over it.
+       */
+      const connection = storageState?.connection ?? null
+      const folder = connection?.kind === 'connected' ? connection.name : null
+      const hosted = Boolean(storageState?.tracker)
+      setPendingReplace({
+        replacement: {
+          kind: 'import',
+          fileName: file.name,
+          current,
+          backedUp:
+            folder !== null
+            || (connection !== null && storageState?.unbackedSince === null),
+          folder,
+          openAsNewBeside: storageState?.tracker?.name ?? null,
+        },
+        proceed: hosted
+          ? () => openInPlace(result, file.name, source)
+          : () => applyImport(result.document, result.files, file.name, source),
+        saveCopy: saveCurrentCopy,
+        openAsNew: () => openAsTracker(result, file.name, source),
+      })
+    } catch (error) {
+      setNotice(`Import failed: ${errorMessage(error)}`)
+    }
+  }
+
+  /*
+   * Whether a file is one this browser already holds as a tracker — the tracker.json of a
+   * folder one saves to, or the file one was opened from — and if so, answers for it.
+   * Matched by the browser comparing the two files on disk, never by what they hold: two
+   * files that read alike are still two files, and opening the second as a tracker of its
+   * own is a fair thing to want. Where the browser offers no handle on the file (a paste,
+   * Firefox, Safari), nothing matches and the ordinary question is asked.
+   */
+  const answeredAsExisting = async (
+    file: File,
+    source: FileHandleLike | null,
+    result: TrackerImportSuccess,
+  ): Promise<boolean> => {
+    if (!source || !backend.storage) return false
+    const match = await backend.storage.findTrackerForFile(source)
+    if (!match) return false
+    if (match.id === storageState?.tracker?.id) {
+      setNotice(
+        match.folder
+          ? `${file.name} is the file ${match.name} already saves to, so there is nothing to import.`
+          : `${match.name} was opened from ${file.name} already, so there is nothing to import.`,
+      )
+      return true
+    }
+    setPendingReplace({
+      replacement: { kind: 'existing', name: match.name, folder: match.folder ?? null },
+      proceed: async () => {},
+      saveCopy: async () => {},
+      openAsNew: () => openAsTracker(result, file.name, source),
+      switchTo: () => navigation.open(trackerHref(match.id)),
+    })
+    return true
+  }
+
+  /*
+   * Replace: the file opens as a tracker in this tab, and the tracker that was here closes —
+   * taken off this browser's list, its folder's files never touched. Created first, so a
+   * failure leaves the old one where it was rather than leaving neither.
+   */
+  const openInPlace = async (result: TrackerImportSuccess, filename: string, source: FileHandleLike | null) => {
+    const closing = storageState?.tracker?.id
+    try {
+      const created = await backend.storage!.createTracker(result.document, result.files, filename, source)
+      if (closing) await backend.storage!.removeTracker(closing)
+      navigation.open(trackerHref(created.id))
+    } catch (error) {
+      setNotice(`Import failed: ${errorMessage(error)}`)
+    }
+  }
+
+  /* A file as a tracker of its own, remembering which file, so it can be recognised again. */
+  const openAsTracker = async (result: TrackerImportSuccess, filename: string, source: FileHandleLike | null) => {
+    const created = await backend.storage!.createTracker(result.document, result.files, filename, source)
+    navigation.open(trackerHref(created.id))
+  }
+
+  const applyImport = async (
+    document: TrackerImportSuccess['document'],
+    files: TrackerImportSuccess['files'],
+    filename: string,
+    source: FileHandleLike | null = null,
+  ) => {
+    try {
+      const saved = await importTrackerArchive(document, files)
+      // What was just imported is a file the viewer already holds, and names the tracker.
+      await backend.storage?.markBackedUp()
+      await backend.storage?.nameAfterFile(filename, source)
       trackerRef.current = saved
       setTracker(saved)
       setNotice(`Imported ${saved.applications.length} applications.`)
@@ -860,8 +1019,183 @@ export default function App() {
     }
   }
 
+  /*
+   * Removes this tab's tracker from browser storage and opens the next one. A connected
+   * folder's files are never touched — they are the viewer's — which is why a folder
+   * counts as the copy here when it does not for an import, which writes into it.
+   */
+  const saveCurrentCopy = async () => {
+    const current = trackerRef.current
+    if (current) await downloadTrackerArchive(current, new Date(), storageState?.tracker?.name)
+  }
+
+  /*
+   * Removes a tracker from browser storage. Removing the one this tab holds opens the next;
+   * removing another leaves this tab where it is, and any tab holding that one is moved on
+   * by the backend.
+   */
+  const removeTracker = async (target: TrackerSummary) => {
+    try {
+      const next = await backend.storage!.removeTracker(target.id)
+      if (target.id === storageState?.tracker?.id) {
+        navigation.open(trackerHref(next?.id ?? NEW_TRACKER))
+      } else {
+        setNotice(`Removed ${target.name} from this browser.`)
+      }
+    } catch (error) {
+      setNotice(`Could not remove ${target.name}: ${errorMessage(error)}`)
+    }
+  }
+
+  /*
+   * The tracker this tab holds is renamed through its document like any edit. Another one
+   * is renamed by the backend, which writes its document — and its folder, if it has one.
+   */
+  /* Whether the name was stored, so a refused rename can leave the field open to retry. */
+  const renameTrackerById = async (target: TrackerSummary, name: string): Promise<boolean> => {
+    try {
+      if (target.id === storageState?.tracker?.id) {
+        return await commit((current) => renameTracker(current, name))
+      }
+      await backend.storage!.renameOtherTracker(target.id, name)
+      return true
+    } catch (error) {
+      setNotice(`Could not rename ${target.name}: ${errorMessage(error)}`)
+      return false
+    }
+  }
+
+  const newTrackerFromFolder = async () => {
+    try {
+      const result = await backend.storage!.openFolder()
+      if (result.outcome === 'opened') navigation.open(trackerHref(result.tracker.id))
+    } catch (error) {
+      setNotice(`Could not open the folder: ${errorMessage(error)}`)
+    }
+  }
+
+  /*
+   * The same reading and validating an import does, so an unreadable file says why rather
+   * than becoming an empty tracker; then the document goes beside this tracker, not over it.
+   */
+  const newTrackerFromFile = async (file: File, source: FileHandleLike | null = null) => {
+    try {
+      const result = readTrackerImport(await readFileAsUint8Array(file))
+      if (!result.ok) {
+        setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
+        return
+      }
+      if (await answeredAsExisting(file, source, result)) return
+      await openAsTracker(result, file.name, source)
+    } catch (error) {
+      setNotice(`Import failed: ${errorMessage(error)}`)
+    }
+  }
+
+  /*
+   * From a file…: through the browser's file picker where it has one, which hands back a
+   * handle on the file and so lets it be recognised later; through a plain file input
+   * everywhere else, which gives only the file.
+   */
+  const pickFileForNewTracker = async () => {
+    const picker = (window as { showOpenFilePicker?: (options: unknown) => Promise<FileHandleLike[]> })
+      .showOpenFilePicker
+    if (!picker) {
+      otherTrackerInputRef.current?.click()
+      return
+    }
+    try {
+      const [handle] = await picker({
+        types: [{ description: 'Tracker export', accept: { 'application/json': ['.json'], 'application/zip': ['.zip'] } }],
+      })
+      if (handle) await newTrackerFromFile(await handle.getFile(), handle)
+    } catch (error) {
+      // Dismissing the picker is a decision, not a failure.
+      if (error instanceof DOMException && error.name === 'AbortError') return
+      setNotice(`Import failed: ${errorMessage(error)}`)
+    }
+  }
+
+  /*
+   * The same question an import asks, about whichever tracker is being removed: the one
+   * this tab holds is measured from what is on screen, another from what its listing says.
+   */
+  const saveOtherCopy = async (target: TrackerSummary) => {
+    const { document, files } = await backend.storage!.readTracker(target.id)
+    downloadArchive(document, files, new Date(), target.name)
+    await backend.storage!.markOtherBackedUp(target.id)
+  }
+
+  /* Export from a row: the tracker on screen as Export always did, any other by its id. */
+  const exportTrackerById = (target: TrackerSummary) => {
+    if (target.id === storageState?.tracker?.id) {
+      exportTracker()
+      return
+    }
+    saveOtherCopy(target).catch((error) => {
+      setNotice(`Export failed: ${errorMessage(error)}`)
+    })
+  }
+
+  const askToRemoveTracker = (target: TrackerSummary) => {
+    const holding = target.id === storageState?.tracker?.id
+    const connection = storageState?.connection ?? null
+    const current = holding ? (trackerRef.current?.applications.length ?? 0) : target.applications
+    const unbacked = holding ? (storageState?.unbackedSince ?? null) : (target.unbackedSince ?? null)
+    // Another tracker's folder is the copy only while nothing is waiting to reach it: with
+    // a backlog its permission lapsed, and what was typed since is in this browser alone.
+    const folder = holding
+      ? (connection?.kind === 'connected' ? connection.name : null)
+      : (unbacked === null ? (target.folder ?? null) : null)
+    // An empty tracker has nothing to lose, so there is nothing to ask.
+    if (current === 0) {
+      void removeTracker(target)
+      return
+    }
+    setPendingReplace({
+      replacement: {
+        kind: 'remove',
+        name: target.name,
+        current,
+        backedUp: folder !== null || (connection !== null && unbacked === null),
+        folder,
+      },
+      proceed: () => removeTracker(target),
+      saveCopy: holding ? saveCurrentCopy : () => saveOtherCopy(target),
+    })
+  }
+
+
+  const answerReplace = async (choice: ReplaceChoice) => {
+    const pending = pendingReplace
+    setPendingReplace(null)
+    if (!pending || choice === 'cancel') return
+    if (choice === 'switch') {
+      pending.switchTo?.()
+      return
+    }
+    if (choice === 'open-new') {
+      try {
+        await pending.openAsNew?.()
+      } catch (error) {
+        setNotice(`Import failed: ${errorMessage(error)}`)
+      }
+      return
+    }
+    if (choice === 'save-then-proceed') {
+      try {
+        await pending.saveCopy()
+      } catch (error) {
+        // No copy, no replacement: the viewer asked for the two together.
+        setNotice(`Nothing was replaced, because saving a copy failed: ${errorMessage(error)}`)
+        return
+      }
+    }
+    await pending.proceed()
+  }
+
   const dragging = useFileImport({
-    onFile: (file) => void importFile(file),
+    onFile: (file, handle) => void importFile(file, handle),
     onRefused: setNotice,
   })
 
@@ -956,9 +1290,8 @@ export default function App() {
    * would be in the way, and the topbar control says the same thing in a line.
    */
   const showStorageIntro =
-    storageConnection !== null
-    && !introDismissed
-    && storageConnection.kind !== 'connected'
+    storageState !== null
+    && storageState.connection.kind !== 'connected'
     && tracker.applications.length === 0
 
   const editingApplication = editor?.mode === 'edit'
@@ -1009,17 +1342,11 @@ export default function App() {
     // No notice: the panel writes while it is being typed into, and a toast per pause
     // would sit permanently over the notes it is describing. The panel's status bar says
     // the same thing where the writing is already being watched.
+    //
+    //
+    // The merge with whatever another tab stored meanwhile is in `applyStageDraftBatches`.
     const at = new Date()
-    return commit((current) =>
-      batches.reduce((document, batch) => {
-        const next = updateApplicationStageNotes(document, batch.applicationId, batch.drafts, at)
-        // `revise` rather than `set`: typing in the pane corrects the posting you captured,
-        // it does not capture it again, so `captured_at` stays where it was.
-        return batch.posting === undefined
-          ? next
-          : reviseApplicationPosting(next, batch.applicationId, batch.posting, at)
-      }, current),
-    )
+    return commit((current) => applyStageDraftBatches(current, batches, at))
   }
 
   const rememberDialogOpener = (opener?: HTMLElement) => {
@@ -1084,25 +1411,58 @@ export default function App() {
    * back rather than assumed unchanged: pointing the site at last week's export is one of
    * the two reasons anyone presses this.
    */
-  const reloadAfter = async (connect: () => Promise<unknown>, message: string) => {
+  const reloadAfter = async (
+    connect: () => Promise<StorageConnection | null>,
+    message: string,
+  ) => {
     try {
-      await connect()
+      /*
+       * Only a folder actually connected is news. A dismissed picker comes back null and a
+       * refused permission comes back still needing one; both leave everything as it was,
+       * and the topbar already says so.
+       */
+      const result = await connect()
+      if (result?.kind !== 'connected') return
       const loaded = await loadTrackerDatabase()
       trackerRef.current = loaded
       setTracker(loaded)
-      setIntroDismissed(true)
       setNotice(message)
     } catch (error) {
       setNotice(`Could not open the folder: ${errorMessage(error)}`)
     }
   }
 
+  /*
+   * A folder another tracker in this browser already writes to is opened as that tracker
+   * rather than connected a second time: two trackers writing whole documents into one
+   * file would each undo the other. Picking the folder says "open this", so this does.
+   */
   const connectStorage = () => {
-    void reloadAfter(() => backend.storage!.connect(), 'Changes are now saved to that folder too.')
+    void reloadAfter(async () => {
+      const result = await backend.storage!.connect()
+      if (result.outcome === 'already-open' || result.outcome === 'opened') {
+        navigation.open(trackerHref(result.tracker.id))
+        return null
+      }
+      return result.outcome === 'connected' ? result.connection : null
+    }, 'Changes are now saved to that folder too.')
   }
 
   const reconnectStorage = () => {
     void reloadAfter(() => backend.storage!.reconnect(), 'Reconnected to your folder.')
+  }
+
+  /*
+   * A download is the one backup a browser without folder support can make, so it is
+   * what clears the reminder. Whether the viewer then keeps the file is theirs to know:
+   * the download is as far as a page can see.
+   */
+  const exportTracker = () => {
+    downloadTrackerArchive(tracker, new Date(), storageState?.tracker?.name)
+      .then(() => backend.storage?.markBackedUp())
+      .catch((error) => {
+        setNotice(`Export failed: ${errorMessage(error)}`)
+      })
   }
 
   const closeEditor = () => setEditor(null)
@@ -1216,13 +1576,29 @@ export default function App() {
   return (
     <div className="app-shell">
       <header className="topbar">
-        <a className="brand" href="#main" aria-label="Job applications tracker home">
-          <span className="brand__mark" aria-hidden="true">J</span>
-          <span>
-            <strong>Job applications</strong>
-            <small>Local tracker</small>
-          </span>
-        </a>
+        <div className="topbar__identity">
+          <a className="brand" href="#main" aria-label="Job applications tracker home">
+            <span className="brand__mark" aria-hidden="true">J</span>
+            <span>
+              <strong>Job applications</strong>
+              {!storageState?.tracker && <small>Local tracker</small>}
+            </span>
+          </a>
+          {storageState?.tracker && (
+            <TrackerSwitcher
+              current={storageState.tracker}
+              currentFolder={storageState.connection.kind === 'connected' ? storageState.connection.name : null}
+              listTrackers={listTrackers}
+              onRemove={askToRemoveTracker}
+              onRename={renameTrackerById}
+              onNewFromFolder={
+                storageState.connection.kind === 'unsupported' ? null : () => void newTrackerFromFolder()
+              }
+              onNewFromFile={() => void pickFileForNewTracker()}
+              onExport={exportTrackerById}
+            />
+          )}
+        </div>
 
         {/*
           * Where you are, in one cell: the seven views of the collection, and the prep
@@ -1282,11 +1658,12 @@ export default function App() {
         </div>
 
         <div className="topbar__actions">
-          {storageConnection && (
+          {storageState && (
             <StorageStatus
-              connection={storageConnection}
               onConnect={connectStorage}
+              onExport={exportTracker}
               onReconnect={reconnectStorage}
+              state={storageState}
             />
           )}
 
@@ -1302,25 +1679,32 @@ export default function App() {
             Add application
           </button>
 
+          {/*
+            * Where a browser holds several trackers, Import and Export belong to each one —
+            * they are on its row in the switcher — and a menu offering them here would act
+            * on one of several without saying which. The dev server holds one file, so it
+            * keeps them. Archive all ended and the demo's reset act on the tracker on
+            * screen, so the menu stays for them everywhere.
+            */}
           <MoreActionsMenu>
-            <button
-              className="actions-menu__item"
-              onClick={() => importInputRef.current?.click()}
-              type="button"
-            >
-              <Upload aria-hidden="true" size={16} /> Import
-            </button>
-            <button
-              className="actions-menu__item"
-              onClick={() => {
-                downloadTrackerArchive(tracker).catch((error) => {
-                  setNotice(`Export failed: ${errorMessage(error)}`)
-                })
-              }}
-              type="button"
-            >
-              <Download aria-hidden="true" size={16} /> Export
-            </button>
+            {!storageState?.tracker && (
+              <>
+                <button
+                  className="actions-menu__item"
+                  onClick={() => importInputRef.current?.click()}
+                  type="button"
+                >
+                  <Upload aria-hidden="true" size={16} /> Import
+                </button>
+                <button
+                  className="actions-menu__item"
+                  onClick={exportTracker}
+                  type="button"
+                >
+                  <Download aria-hidden="true" size={16} /> Export
+                </button>
+              </>
+            )}
             {/*
               * How a new job search starts clean. Exactly what End records — rejected,
               * withdrawn, closed — and never without asking: it touches every one of them
@@ -1382,14 +1766,36 @@ export default function App() {
         ref={importInputRef}
         type="file"
       />
+      <input
+        accept="application/json,.json,application/zip,.zip"
+        aria-hidden="true"
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.target.files?.[0]
+          event.target.value = ''
+          if (file) void newTrackerFromFile(file)
+        }}
+        ref={otherTrackerInputRef}
+        tabIndex={-1}
+        type="file"
+      />
 
       {/*
         * Drop anywhere is invisible without this: the window is the target, so there is
-        * nothing on screen for someone holding a file to aim at.
+        * nothing on screen for someone holding a file to aim at. It says what the drop will
+        * do, which differs: the dev server's one file is replaced; where a browser holds
+        * several trackers a file over one with applications asks whether to open as a new
+        * tracker or replace, and over an empty one simply opens there.
         */}
       {dragging && (
         <div aria-hidden="true" className="import-drop">
-          <p>Drop to import — replaces everything here</p>
+          <p>
+            {!storageState?.tracker
+              ? 'Drop to import — replaces everything here'
+              : tracker.applications.length > 0
+                ? 'Drop to open — as a new tracker, or in place of this one'
+                : 'Drop to open it here'}
+          </p>
         </div>
       )}
 
@@ -1553,11 +1959,18 @@ export default function App() {
 
         {showStorageIntro && (
           <StorageIntro
-            connection={storageConnection}
+            connection={storageState.connection}
             onConnect={connectStorage}
-            onDismiss={() => setIntroDismissed(true)}
+            onAdd={(opener) => openNewApplication(opener)}
             onImport={() => importInputRef.current?.click()}
             showDemoLink={!isDemoTrackerProfile()}
+          />
+        )}
+
+        {pendingReplace && (
+          <ReplaceTrackerDialog
+            onChoose={(choice) => void answerReplace(choice)}
+            replacement={pendingReplace.replacement}
           />
         )}
 

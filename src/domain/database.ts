@@ -7,10 +7,14 @@ function cloneSchema(): JsonSchemaObject {
   return JSON.parse(JSON.stringify(TRACKER_JSON_SCHEMA)) as JsonSchemaObject
 }
 
-export function prepareTrackerDatabase(applications: Application[]): TrackerDatabase {
+export function prepareTrackerDatabase(applications: Application[], name?: string): TrackerDatabase {
+  const named = name?.trim()
   return {
     schema_version: DATA_VERSION,
     schema: cloneSchema(),
+    // Omitted rather than null when blank, so an unnamed tracker's file is the same shape
+    // it always was.
+    ...(named ? { name: named } : {}),
     applications,
     indexes: rebuildIndexes(applications),
   }
@@ -21,7 +25,7 @@ export function createEmptyDocument(): TrackerDatabase {
 }
 
 export function refreshTrackerDatabase(database: TrackerDatabase): TrackerDatabase {
-  return prepareTrackerDatabase(database.applications)
+  return prepareTrackerDatabase(database.applications, database.name)
 }
 
 export function ensureFreshIndexes(database: TrackerDatabase): TrackerDatabase {

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import App from '../App'
@@ -56,11 +56,18 @@ function dragOver(files: File[] = [jsonFile('{}')]) {
   fireEvent.dragEnter(window, { dataTransfer: fileTransfer(files) })
 }
 
-let confirmSpy: ReturnType<typeof vi.spyOn>
+/*
+ * Replacing a tracker that holds anything asks first, in a dialog of the app's own rather
+ * than `window.confirm`, because the answer has three parts. The drop and the paste are
+ * the same import as the button, so they ask the same question.
+ */
+async function answerReplace(name: 'Discard and import' | 'Cancel'): Promise<void> {
+  const question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
+  fireEvent.click(within(question).getByRole('button', { name }))
+}
 
 beforeEach(() => {
   seedFullDemo()
-  confirmSpy = vi.spyOn(window, 'confirm').mockReturnValue(true)
 })
 
 afterEach(() => {
@@ -73,6 +80,7 @@ describe('dropping a file on the app', () => {
     expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
 
     drop([jsonFile(exportedJson('Dropped Industries'))])
+    await answerReplace('Discard and import')
 
     await waitFor(() => expect(screen.getByText('1 of 1 applications shown')).toBeInTheDocument())
     expect(screen.getByRole('button', { name: /Open Dropped Industries/ })).toBeInTheDocument()
@@ -80,12 +88,12 @@ describe('dropping a file on the app', () => {
   })
 
   it('asks before replacing, and does nothing when the answer is no', async () => {
-    confirmSpy.mockReturnValue(false)
     await renderLoadedApp()
 
     drop([jsonFile(exportedJson('Dropped Industries'))])
+    await answerReplace('Cancel')
 
-    await waitFor(() => expect(confirmSpy).toHaveBeenCalled())
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
   })
 
@@ -109,6 +117,7 @@ describe('dropping a file on the app', () => {
     )
 
     drop([new File([archive as BlobPart], 'job-applications.zip', { type: 'application/zip' })])
+    await answerReplace('Discard and import')
 
     await waitFor(() => expect(screen.getByText('1 of 1 applications shown')).toBeInTheDocument())
   })
@@ -120,7 +129,7 @@ describe('dropping a file on the app', () => {
 
     await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(/Import failed/))
     expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument()
-    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 
   it('names what it accepts when the wrong kind of file lands on it', async () => {
@@ -155,7 +164,7 @@ describe('dropping a file on the app', () => {
 
     fireEvent.drop(window, { dataTransfer: { types: ['text/plain'], files: [] } })
     await waitFor(() => expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument())
-    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 })
 
@@ -164,6 +173,7 @@ describe('pasting a file into the app', () => {
     await renderLoadedApp()
 
     fireEvent.paste(window, { clipboardData: { files: [jsonFile(exportedJson('Pasted Ltd'))] } })
+    await answerReplace('Discard and import')
 
     await waitFor(() => expect(screen.getByText('1 of 1 applications shown')).toBeInTheDocument())
   })
@@ -181,6 +191,6 @@ describe('pasting a file into the app', () => {
     })
 
     await waitFor(() => expect(screen.getByText('18 of 19 applications shown')).toBeInTheDocument())
-    expect(confirmSpy).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
   })
 })

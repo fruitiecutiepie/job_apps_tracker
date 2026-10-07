@@ -47,6 +47,10 @@ export class FakeDirectory implements DirectoryHandleLike {
     yield* this.directories.keys()
   }
 
+  async isSameEntry(other: DirectoryHandleLike): Promise<boolean> {
+    return other === this
+  }
+
   async queryPermission(): Promise<PermissionState> {
     return this.permission
   }
@@ -77,8 +81,48 @@ function notFound(name: string): DOMException {
   return new DOMException(`${name} was not found`, 'NotFoundError')
 }
 
+/*
+ * Which file on disk a fake handle stands for: the folder holding it and its name. Two
+ * handles are the same entry when both match, however each was obtained, which is what
+ * the real `isSameEntry` answers.
+ */
+const ENTRY = Symbol('fake file entry')
+type FakeFileHandle = FileHandleLike & { [ENTRY]: { folder: object; name: string } }
+
+function sameEntry(left: FakeFileHandle, right: FileHandleLike): boolean {
+  const other = (right as Partial<FakeFileHandle>)[ENTRY]
+  return Boolean(other && other.folder === left[ENTRY].folder && other.name === left[ENTRY].name)
+}
+
+/**
+ * A file on disk outside any connected folder — one a tracker was opened from — for tests
+ * that drop or pick the same file twice. Each call is a different file, however it reads.
+ */
+export function looseFile(name: string, contents: string): FileHandleLike {
+  const folder = {}
+  const handle: FakeFileHandle = {
+    [ENTRY]: { folder, name },
+    kind: 'file',
+    name,
+    async getFile() {
+      return new File([contents], name)
+    },
+    async createWritable() {
+      throw new DOMException('Read only', 'NotAllowedError')
+    },
+    async isSameEntry(other) {
+      return sameEntry(handle, other)
+    },
+  }
+  return handle
+}
+
 function fileHandle(directory: FakeDirectory, name: string): FileHandleLike {
-  return {
+  const handle: FakeFileHandle = {
+    [ENTRY]: { folder: directory, name },
+    async isSameEntry(other) {
+      return sameEntry(handle, other)
+    },
     kind: 'file',
     name,
     async getFile(): Promise<File> {
@@ -98,6 +142,7 @@ function fileHandle(directory: FakeDirectory, name: string): FileHandleLike {
       }
     },
   }
+  return handle
 }
 
 async function toBytes(data: BufferSource | Blob | string): Promise<Uint8Array> {

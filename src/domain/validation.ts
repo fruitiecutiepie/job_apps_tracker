@@ -820,9 +820,16 @@ export function validateTrackerDocument(raw: unknown): ValidationResult {
   const applications = validateApplications(value.applications, errors)
   if (!applications) return { ok: false, errors }
 
+  // Absent on every document written before trackers had names, which stay valid unnamed.
+  let name: string | undefined
+  if ('name' in value && value.name !== undefined && value.name !== null) {
+    if (typeof value.name === 'string') name = value.name
+    else addError(errors, 'name', 'must be a string')
+  }
+
   return errors.length > 0
     ? { ok: false, errors }
-    : { ok: true, value: prepareTrackerDatabase(applications), errors: [] }
+    : { ok: true, value: prepareTrackerDatabase(applications, name), errors: [] }
 }
 
 export function parseTrackerDocument(text: string): TrackerDatabase {

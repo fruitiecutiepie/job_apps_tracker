@@ -11,8 +11,23 @@ export function serializeTrackerDocument(document: TrackerDatabase): string {
   return `${JSON.stringify(assertTrackerDocument(refreshTrackerDatabase(document)), null, 2)}\n`
 }
 
-export function exportFilename(at: Date = new Date(), extension: 'json' | 'zip' = 'zip'): string {
-  return `job-applications-${at.toISOString().replace(/[:.]/g, '-')}.${extension}`
+/*
+ * Named after the tracker and the day, so a folder of exports says what each one is and
+ * an import can name the tracker it makes back from it. Characters no filesystem takes in
+ * a name are replaced; the day is the local one, which is the day the reader thinks it is.
+ */
+export function exportFilename(
+  at: Date = new Date(),
+  extension: 'json' | 'zip' = 'zip',
+  name = 'job-applications',
+): string {
+  const safe = name.replace(/[\\/:*?"<>|]/g, '-').trim() || 'job-applications'
+  const day = [
+    at.getFullYear(),
+    String(at.getMonth() + 1).padStart(2, '0'),
+    String(at.getDate()).padStart(2, '0'),
+  ].join('-')
+  return `${safe} ${day}.${extension}`
 }
 
 export async function collectArchiveFiles(document: TrackerDatabase): Promise<ArchiveAttachmentFile[]> {
@@ -30,14 +45,30 @@ export async function collectArchiveFiles(document: TrackerDatabase): Promise<Ar
   return files
 }
 
-export async function downloadTrackerArchive(document: TrackerDatabase, at: Date = new Date()): Promise<void> {
-  const files = await collectArchiveFiles(document)
+export async function downloadTrackerArchive(
+  document: TrackerDatabase,
+  at: Date = new Date(),
+  name?: string,
+): Promise<void> {
+  downloadArchive(document, await collectArchiveFiles(document), at, name)
+}
+
+/**
+ * Downloads a document with attachment bytes already in hand — a tracker this tab is not
+ * holding, whose bytes `collectArchiveFiles` cannot reach through the open backend.
+ */
+export function downloadArchive(
+  document: TrackerDatabase,
+  files: ArchiveAttachmentFile[],
+  at: Date = new Date(),
+  name?: string,
+): void {
   const archiveBytes = packTrackerArchive(document, files)
   const blob = new Blob([archiveBytes as BlobPart], { type: 'application/zip' })
   const url = URL.createObjectURL(blob)
   const anchor = window.document.createElement('a')
   anchor.href = url
-  anchor.download = exportFilename(at, 'zip')
+  anchor.download = exportFilename(at, 'zip', name)
   anchor.click()
   URL.revokeObjectURL(url)
 }

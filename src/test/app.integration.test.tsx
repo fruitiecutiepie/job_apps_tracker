@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { DEFAULT_DEMO_REFERENCE } from '../domain/demo'
 import { loadTrackerDocument } from '../domain/storage'
+import { readTrackerImport } from '../domain/import'
 import { formatShortDate, formatTimeOfDay } from '../views/viewUtils'
 import App from '../App'
 import { seedFullDemo } from './fixture'
@@ -3472,7 +3473,6 @@ describe('job applications tracker', () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()
     const user = userEvent.setup()
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     await renderLoadedApp()
 
     const original = readSavedDocument()
@@ -3491,14 +3491,70 @@ describe('job applications tracker', () => {
     const file = jsonFile(JSON.stringify(imported))
 
     await user.upload(input, file)
+    const question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
+    expect(question).toHaveTextContent('Its 19 applications are saved nowhere else.')
+    await user.click(within(question).getByRole('button', { name: 'Cancel' }))
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
     expect(readSavedDocument().applications).toHaveLength(19)
 
     await user.upload(input, file)
+    await user.click(
+      within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Discard and import' }),
+    )
     await waitFor(() => expect(readSavedDocument().applications).toHaveLength(1))
     expect(readSavedDocument().applications[0].company).toBe('Imported Company')
     expect(screen.getByRole('button', { name: /Open Imported Company/ })).toBeInTheDocument()
     expect(screen.getByRole('status')).toHaveTextContent('Imported 1 application')
-    expect(confirm).toHaveBeenCalledTimes(2)
+  })
+
+  /*
+   * The dev server writes one file, and an import overwrites it. So the tracker being
+   * replaced is held nowhere else, and the question offers the copy before the discard.
+   */
+  it('saves a copy of the tracker being replaced when asked, before importing', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.length
+
+    const objectUrls = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL }
+    const blobs: Blob[] = []
+    URL.createObjectURL = vi.fn((blob: Blob) => {
+      blobs.push(blob)
+      return 'blob:tracker'
+    })
+    URL.revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    try {
+      const imported = { ...readSavedDocument(), applications: [readSavedDocument().applications[0]] }
+      const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+      await user.upload(input, jsonFile(JSON.stringify(imported)))
+
+      const question = await screen.findByRole('alertdialog', { name: 'Replace your tracker?' })
+      expect(within(question).getByRole('button', { name: 'Download a copy, then import' })).toHaveFocus()
+      await user.click(within(question).getByRole('button', { name: 'Download a copy, then import' }))
+
+      await waitFor(() => expect(readSavedDocument().applications).toHaveLength(1))
+      expect(click).toHaveBeenCalledTimes(1)
+      const archive = readTrackerImport(new Uint8Array(await blobs[0].arrayBuffer()))
+      expect(archive.ok && archive.document.applications).toHaveLength(before)
+    } finally {
+      click.mockRestore()
+      Object.assign(URL, objectUrls)
+    }
+  })
+
+  it('backs out of an import on Escape', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = JSON.stringify(readSavedDocument())
+    const imported = { ...readSavedDocument(), applications: [readSavedDocument().applications[0]] }
+    const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
+    await user.upload(input, jsonFile(JSON.stringify(imported)))
+
+    await screen.findByRole('alertdialog')
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('alertdialog')).not.toBeInTheDocument()
+    expect(JSON.stringify(readSavedDocument())).toBe(before)
   })
 
   it('leaves saved data untouched when an import document is invalid', async () => {
