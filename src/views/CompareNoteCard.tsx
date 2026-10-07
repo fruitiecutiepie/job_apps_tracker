@@ -5,6 +5,7 @@ import { AUTOSAVE_MS } from "../StageNotesPanel";
 import { StageNoteEditor } from "../StageNoteEditor";
 import { CAPTURE_SECTION, MarkdownNotes, capturedMarkdown } from "../markdown";
 import { stageNoteFor, stateLabel } from "../domain";
+import { rebaseDraft } from "../domain/mergeText";
 import type { Application, StateId } from "../domain";
 import { formatShortDate, formatTimeOfDay } from "./viewUtils";
 import {
@@ -26,7 +27,7 @@ interface CompareNoteCardProps {
   state: StateId;
   /** The application is at this stage now; otherwise the card says where it is instead. */
   isHere: boolean;
-  onSave: (body: string) => Promise<void>;
+  onSave: (body: string, base: string) => Promise<string | void>;
   onOpenFull: () => void;
 }
 
@@ -53,20 +54,26 @@ export function CompareNoteCard({ application, state, isHere, onSave, onOpenFull
   useEffect(() => {
     savedBodyRef.current = savedBody;
   }, [savedBody]);
+  /** The text this draft was last merged with. The save rebases against it. */
+  const baseRef = useRef(savedBody);
   const onSaveRef = useRef(onSave);
   useEffect(() => {
     onSaveRef.current = onSave;
   }, [onSave]);
 
   /**
-   * A change that arrived from elsewhere (another tab, the full editor) replaces the draft
-   * — but only while this card isn't the one being typed into, so an autosave in flight here
-   * never gets overwritten by the very write it is about to cause.
+   * A body stored elsewhere — another tab, the full editor — replaces the draft when this
+   * card has nothing unsaved, and is merged into it when it does. The card used to ignore
+   * that body while it held focus, then save its own over it. A body equal to what this
+   * card last merged, trimmed, is its own write coming back.
    */
   useEffect(() => {
-    if (focusedRef.current) return;
-    setDraft(savedBody);
-  }, [saved?.updated_at, savedBody]);
+    const last = baseRef.current;
+    if (savedBody === last || savedBody === last.trim()) return;
+    const draft = draftRef.current;
+    setDraft(draft === last ? savedBody : rebaseDraft(last, draft, savedBody));
+    baseRef.current = savedBody;
+  }, [savedBody]);
 
   /**
    * Reads only refs, like the full dialog's own flush, so it can be called from the
@@ -74,7 +81,14 @@ export function CompareNoteCard({ application, state, isHere, onSave, onOpenFull
    */
   const flush = useCallback(() => {
     if (draftRef.current === savedBodyRef.current) return;
-    void onSaveRef.current(draftRef.current);
+    const sent = draftRef.current;
+    const base = baseRef.current;
+    void onSaveRef.current(sent, base).then((merged) => {
+      const stored = typeof merged === "string" ? merged : sent;
+      const newer = draftRef.current;
+      setDraft(newer === sent ? stored : rebaseDraft(sent, newer, stored));
+      baseRef.current = stored;
+    });
   }, []);
 
   useEffect(() => {

@@ -196,7 +196,12 @@ interface StageNotesPanelProps {
    */
   onSaveDrafts: (batches: StageNoteDraftBatch[]) => Promise<boolean>
   /** Commits a change that arrived from an external editor, which writes on its own. */
-  onExternalChange: (applicationId: string, state: StateId, body: string) => Promise<void>
+  onExternalChange: (
+    applicationId: string,
+    state: StateId,
+    body: string,
+    base: string,
+  ) => Promise<string | void>
   /**
    * Stores one captured line against a stage, the moment it is entered rather than at the
    * next pause in typing: it is answered mid-conversation, where Escape and a closed tab
@@ -551,6 +556,8 @@ interface OpenSession {
    * posting is read-only in a pane, so there is no session to open for one. */
   ref: StageNoteRef
   session: StageNoteEditSession
+  /** The text the scratch file was last known to hold. A poll rebases from it. */
+  base: string
 }
 
 export function StageNotesPanel({
@@ -1055,12 +1062,9 @@ export function StageNotesPanel({
     const key = noteRefKey(ref)
     setFormError(null)
     try {
-      const session = await openStageNoteInEditor(
-        ref.applicationId,
-        ref.state,
-        draftsRef.current[key] ?? '',
-      )
-      sessionsRef.current = { ...sessionsRef.current, [key]: { ref, session } }
+      const seeded = draftsRef.current[key] ?? ''
+      const session = await openStageNoteInEditor(ref.applicationId, ref.state, seeded)
+      sessionsRef.current = { ...sessionsRef.current, [key]: { ref, session, base: seeded } }
       setSessions(sessionsRef.current)
       // The external editor owns this note while the session lasts.
       setEditing((current) => current.filter((entry) => entry !== key))
@@ -1100,12 +1104,21 @@ export function StageNotesPanel({
         try {
           const contents = await readStageNoteFromEditor(open.ref.applicationId, open.ref.state)
           if (cancelled || !contents) continue
-          if ((draftsRef.current[key] ?? '') === contents.body) continue
-          setDraft(key, contents.body)
-          await externalChangeRef.current(open.ref.applicationId, open.ref.state, contents.body)
-          // Stored by the line above, so the autosave has nothing left to write for this
-          // note and the file coming back does not turn into a second write of itself.
-          markStored(key, contents.body)
+          // Unchanged since the file was seeded, or since the last poll stored it. The
+          // next poll rebases from the file, not from the merged note: basing on the
+          // merge would read the file as a new edit and undo it.
+          if (contents.body === open.base) continue
+          const merged = await externalChangeRef.current(
+            open.ref.applicationId,
+            open.ref.state,
+            contents.body,
+            open.base,
+          )
+          const stored = typeof merged === 'string' ? merged : contents.body
+          open.base = contents.body
+          if (cancelled) continue
+          setDraft(key, stored)
+          markStored(key, stored)
         } catch {
           // A transient read failure should not end the session; the next tick retries.
         }

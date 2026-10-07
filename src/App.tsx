@@ -57,11 +57,9 @@ import {
   updateTrackerDatabase,
   renameTracker,
   tryLoadLegacyLocalStorage,
-  clearApplicationRating,
   updateApplication,
   reviseApplicationStageCapture,
   updateApplicationStageCapture,
-  updateApplicationStageNotes,
   updateApplicationPosting,
   updateApplicationRatings,
   updateApplicationCorrespondence,
@@ -105,7 +103,7 @@ import {
   firstCompensationProblem,
   type CompensationValues,
 } from './compensation'
-import { clearedRatingDimensions, ratingDrafts, ratingValuesFor, type RatingValues } from './ratings'
+import { ratingDrafts, ratingValuesFor, type RatingValues } from './ratings'
 import { fromDateTimeInput, toDateTimeInput } from './dateInput'
 import { CorrespondenceFields } from './CorrespondenceFields'
 import { InviteFields } from './InviteFields'
@@ -122,7 +120,8 @@ import {
   type InviteRow,
 } from './invites'
 import type { StageNoteDraftBatch } from './StageNotesPanel'
-import { applyStageDraftBatches } from './stageDraftBatches'
+import { applyEditorSave } from './editorSave'
+import { applyStageDraftBatches, saveStageNoteDraft } from './stageDraftBatches'
 import { postingRef, stageRef, type NoteRequest } from './notesLayout'
 import { PostingField } from './PostingField'
 import { formatShortDate } from './views/viewUtils'
@@ -257,6 +256,7 @@ interface ApplicationEditorProps {
     completedActions: CompletedActionDraft[],
     posting: PostingDraft | null,
     correspondence: CorrespondenceDraft[],
+    opened: Application | null,
   ) => Promise<void>
 }
 
@@ -293,6 +293,7 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
   )
   const [posting, setPosting] = useState<PostingRow>(() => postingRowFor(application))
   const [keptAttachments] = useState<Attachment[]>(() => application?.attachments ?? [])
+  const openedRef = useRef(application)
   const [removedAttachmentIds, setRemovedAttachmentIds] = useState<string[]>([])
   const [stagedFiles, setStagedFiles] = useState<StagedAttachmentFile[]>([])
   const [formError, setFormError] = useState<string | null>(null)
@@ -404,6 +405,7 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
                 completedActions.map(({ id, action, at }) => ({ id, action, at })),
                 postingDraftFrom(posting),
                 correspondenceDrafts(correspondence),
+                openedRef.current,
               )
             } catch (error) {
               setFormError(errorMessage(error))
@@ -1306,12 +1308,18 @@ export default function App() {
     applicationId: string,
     state: StateId,
     body: string,
+    base: string,
     message: string,
-  ) => {
-    await commit(
-      (current) => updateApplicationStageNotes(current, applicationId, [{ state, body }], new Date()),
-      message,
-    )
+  ): Promise<string> => {
+    let merged = body
+    await commit((current) => {
+      const next = saveStageNoteDraft(current, applicationId, state, base, body, new Date())
+      merged = next.applications
+        .find((item) => item.id === applicationId)
+        ?.stage_notes.find((note) => note.state === state)?.body ?? ''
+      return next
+    }, message)
+    return merged
   }
 
   const captureStageLine = async (applicationId: string, state: StateId, line: string) => {
@@ -1515,8 +1523,8 @@ export default function App() {
       // Every application, not the filtered set: see `PrepNotesView`.
       applications={tracker.applications}
       onCapture={captureStageLine}
-      onExternalChange={(applicationId: string, state: StateId, body: string) =>
-        commitStageNote(applicationId, state, body, 'Prep notes saved from your editor.')}
+      onExternalChange={(applicationId: string, state: StateId, body: string, base: string) =>
+        commitStageNote(applicationId, state, body, base, 'Prep notes saved from your editor.')}
       // The editor opens over the workspace rather than instead of it: the arrangement,
       // the drafts and the captures are all the panel's own state, and unmounting it to
       // change a company name would throw the lot away.
@@ -1555,8 +1563,16 @@ export default function App() {
           <CompareNotesView
             applications={filteredApplications}
             onOpenStageNotes={openStageNotes}
-            onSaveStageNote={async (id, state, body) => {
-              await commit((current) => updateApplicationStageNotes(current, id, [{ state, body }], new Date()))
+            onSaveStageNote={async (id, state, body, base) => {
+              let merged = body
+              await commit((current) => {
+                const next = saveStageNoteDraft(current, id, state, base, body, new Date())
+                merged = next.applications
+                  .find((item) => item.id === id)
+                  ?.stage_notes.find((note) => note.state === state)?.body ?? ''
+                return next
+              })
+              return merged
             }}
           />
         )
@@ -1989,6 +2005,7 @@ export default function App() {
 
       {editor && (editor.mode === 'add' || editingApplication) && (
         <ApplicationEditor
+          key={editor.mode === 'add' ? 'add' : editor.id}
           application={editor.mode === 'edit' ? editingApplication : null}
           messagesFor={editor.mode === 'edit' ? editor.messagesFor : undefined}
           onClose={closeEditor}
@@ -2010,6 +2027,7 @@ export default function App() {
             completedActions,
             posting,
             correspondence,
+            opened,
           ) => {
             const input: ApplicationInput = {
               company: values.company,
@@ -2042,33 +2060,25 @@ export default function App() {
                 next = updateApplicationPosting(next, id, posting, now)
                 return updateApplicationRatings(next, id, ratingDrafts(values.ratings), now)
               }, 'Application added.')
-            } else {
+            } else if (opened) {
               const attachments = await applyAttachmentPlan(editor.id, attachmentPlan, now)
-              await commit((current) => {
-                let next = updateApplication(current, editor.id, {
-                  company: input.company,
-                  role: input.role,
-                  url: input.url,
-                  source: input.source,
-                  next_action: input.next_action,
-                  next_action_at: input.next_action_at,
-                  deadline_at: input.deadline_at,
-                  notes: input.notes,
-                  attachments,
-                  compensation: input.compensation,
-                }, now)
-                next = updateApplicationStateEvents(next, editor.id, invites, now)
-                next = updateApplicationCorrespondence(next, editor.id, correspondence, now)
-                next = updateApplicationCompletedActions(next, editor.id, completedActions, now)
-                next = updateApplicationPosting(next, editor.id, posting, now)
-                next = updateApplicationRatings(next, editor.id, ratingDrafts(values.ratings), now)
-                // Drafts cannot express "back to never assessed", so blanked ones clear here.
-                for (const dimension of clearedRatingDimensions(editingApplication, values.ratings)) {
-                  next = clearApplicationRating(next, editor.id, dimension, now)
-                }
-                next = moveApplication(next, editor.id, { state: values.state, outcome: values.outcome }, now)
-                return archiveApplication(next, editor.id, values.archived, now)
-              }, 'Application updated.')
+              await commit((current) => applyEditorSave(current, opened, {
+                input,
+                compensationValues: values.compensation,
+                ratingValues: values.ratings,
+                correspondence,
+                invites,
+                completedActions,
+                posting,
+                state: values.state,
+                outcome: values.outcome,
+                archived: values.archived,
+                nextActionAt: values.nextActionAt,
+                deadlineAt: values.deadlineAt,
+                attachments,
+                removedAttachmentIds: attachmentPlan.removedAttachmentIds,
+                stagedCount: attachmentPlan.stagedFiles.length,
+              }, now), 'Application updated.')
             }
             closeEditor()
           }}

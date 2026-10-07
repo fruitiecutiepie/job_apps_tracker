@@ -5,7 +5,7 @@ import { prepareTrackerDatabase } from '../domain/database'
 import { MAX_ATTACHMENT_BYTES } from '../domain/attachmentPaths'
 import type { TrackerDatabase } from '../domain/types'
 import type { ExternalChange, TrackerBackend } from './types'
-import { browserBackend, MIGRATION_BACKUP_FILENAME, TRACKER_FILENAME, trackerNameFromFile, type BrowserBackendOptions } from './browserBackend'
+import { browserBackend, LEGACY_MIGRATION_KEY, MIGRATION_BACKUP_FILENAME, TRACKER_FILENAME, trackerNameFromFile, type BrowserBackendOptions } from './browserBackend'
 import { exportFilename } from '../domain/export'
 import { NEW_TRACKER } from './trackerAddress'
 import type { TabChannel, TabLock, TabMessage } from './tabSync'
@@ -204,7 +204,7 @@ describe('browser backend, with a folder connected', () => {
     folder.permission = 'denied'
     vi.spyOn(folder, 'getFileHandle').mockRejectedValue(new DOMException('gone', 'NotAllowedError'))
 
-    await expect(backend.saveDocument(withApplication())).rejects.toThrow()
+    await backend.saveDocument(withApplication())
     expect(backend.storage!.state().saving).toBe(false)
   })
 
@@ -876,10 +876,65 @@ describe('several trackers in one browser', () => {
     await backend.storage!.connect()
     vi.spyOn(folder, 'getFileHandle').mockRejectedValue(new DOMException('gone', 'NotFoundError'))
 
-    await expect(backend.saveDocument(withApplication())).rejects.toThrow()
+    await backend.saveDocument(withApplication())
     expect(backend.storage!.state().unbackedSince).not.toBeNull()
     expect(backend.storage!.connection()).toEqual({ kind: 'needs-permission', name: 'job-apps' })
     expect(JSON.parse((await cachedDocument(store, backend)) as string).applications).toHaveLength(1)
+  })
+
+  it('keeps a save the folder missed when the tab is opened again', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const { backend } = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder })
+    await backend.loadDocument()
+    await backend.storage!.connect()
+    const failing = vi.spyOn(folder, 'getFileHandle').mockRejectedValue(new DOMException('gone', 'NotFoundError'))
+    await backend.saveDocument(withApplication('Only in the browser'))
+    failing.mockRestore()
+    const id = backend.storage!.state().tracker!.id
+
+    const reloaded = tab(id, { supportsFolders: true }).backend
+    const loaded = await reloaded.loadDocument()
+
+    expect(loaded.applications.map((item) => item.company)).toEqual(['Only in the browser'])
+    expect(JSON.parse(folder.readText(TRACKER_FILENAME)!).applications.map((item: { company: string }) => item.company)).toEqual(['Only in the browser'])
+    expect(reloaded.storage!.state().unbackedSince).toBeNull()
+  })
+
+  it('renames the browser copy when the folder is behind it', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const other = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+    await other.loadDocument()
+    await other.storage!.connect()
+    const otherId = other.storage!.state().tracker!.id
+    const failing = vi.spyOn(folder, 'getFileHandle').mockRejectedValue(new DOMException('gone', 'NotFoundError'))
+    await other.saveDocument(withApplication('Typed since'))
+    failing.mockRestore()
+    const { backend } = tab(NEW_TRACKER, { supportsFolders: true })
+    await backend.loadDocument()
+
+    await backend.storage!.renameOtherTracker(otherId, 'Autumn search')
+
+    const written = JSON.parse(folder.readText(TRACKER_FILENAME)!)
+    expect(written.name).toBe('Autumn search')
+    expect(written.applications.map((item: { company: string }) => item.company)).toEqual(['Typed since'])
+  })
+
+  it('reconnects a lapsed folder instead of opening it as a second tracker', async () => {
+    const folder = new FakeDirectory('job-apps')
+    const holder = tab(NEW_TRACKER, { supportsFolders: true, pick: async () => folder }).backend
+    await holder.loadDocument()
+    await holder.storage!.connect()
+    await holder.saveDocument(withApplication('Kept'))
+    const holderId = holder.storage!.state().tracker!.id
+    folder.permission = 'prompt'
+    const { backend } = tab(holderId, { supportsFolders: true, pick: async () => folder })
+    await backend.loadDocument()
+
+    expect(backend.storage!.connection()).toEqual({ kind: 'needs-permission', name: 'job-apps' })
+    expect(await backend.storage!.openFolder()).toMatchObject({ outcome: 'opened', tracker: { id: holderId } })
+    expect(await backend.storage!.connect()).toMatchObject({ outcome: 'connected', connection: { kind: 'connected', name: 'job-apps' } })
+    expect(await backend.storage!.listTrackers()).toHaveLength(1)
+    expect((await backend.loadDocument()).applications.map((item) => item.company)).toEqual(['Kept'])
   })
 
   it('renames another tracker in its folder as well, or not at all', async () => {
@@ -1060,6 +1115,52 @@ describe('several trackers in one browser', () => {
     expect(new TextDecoder().decode(await backend.readAttachment(APPLICATION_ID, ATTACHMENT_ID) ?? undefined)).toBe('resume')
     expect(await store.get('state', 'document')).toBeNull()
     expect(await backend.storage!.listTrackers()).toHaveLength(1)
+  })
+
+  it('treats a browser-only tracker from before the backlog as not yet backed up', async () => {
+    await store.put('state', 'document', `${JSON.stringify(withApplication('From before'))}\n`)
+
+    const { backend } = tab(null)
+    await backend.loadDocument()
+
+    expect(backend.storage!.state().unbackedSince).toBe('2026-09-01T09:00:00.000Z')
+    expect(await backend.storage!.listTrackers()).toHaveLength(1)
+  })
+
+  it('finishes a migration that stopped before its attachments were moved', async () => {
+    const id = '33333333-3333-7333-8333-333333333333'
+    await store.put('state', LEGACY_MIGRATION_KEY, id)
+    await store.put('state', `document:${id}`, `${JSON.stringify(withApplication('From before'))}\n`)
+    await store.put('state', `meta:${id}`, {
+      id,
+      name: 'Untitled tracker',
+      applications: 1,
+      openedAt: '2026-09-01T09:00:00.000Z',
+    })
+    await store.put('attachments', `${APPLICATION_ID}/${ATTACHMENT_ID}`, new TextEncoder().encode('resume').buffer)
+
+    const { backend } = tab(null)
+    await backend.loadDocument()
+
+    expect(await backend.storage!.listTrackers()).toHaveLength(1)
+    expect(backend.storage!.state().tracker!.id).toBe(id)
+    expect(new TextDecoder().decode(await backend.readAttachment(APPLICATION_ID, ATTACHMENT_ID) ?? undefined)).toBe('resume')
+    expect(await store.get('attachments', `${APPLICATION_ID}/${ATTACHMENT_ID}`)).toBeNull()
+    expect(await store.get('state', LEGACY_MIGRATION_KEY)).toBeNull()
+  })
+
+  it('moves a single-tracker browser once when two tabs load without Web Locks', async () => {
+    await store.put('state', 'document', `${JSON.stringify(withApplication('From before'))}\n`)
+    await store.put('attachments', `${APPLICATION_ID}/${ATTACHMENT_ID}`, new TextEncoder().encode('resume').buffer)
+    const locks = { run: <T,>(_name: string, task: () => Promise<T>) => task() }
+
+    const first = tab(null, { locks })
+    const second = tab(null, { locks })
+    await Promise.all([first.backend.loadDocument(), second.backend.loadDocument()])
+
+    expect(await first.backend.storage!.listTrackers()).toHaveLength(1)
+    expect(first.backend.storage!.state().tracker!.id).toBe(second.backend.storage!.state().tracker!.id)
+    expect(new TextDecoder().decode(await first.backend.readAttachment(APPLICATION_ID, ATTACHMENT_ID) ?? undefined)).toBe('resume')
   })
 
   it('seeds the demo once, not every new tracker in it', async () => {

@@ -8,7 +8,7 @@ import type { CompareEntry } from "./compareStages";
 interface CompareNotesViewProps {
   applications: Application[];
   onOpenStageNotes: (id: string, state: StateId) => void;
-  onSaveStageNote: (id: string, state: StateId, body: string) => Promise<void>;
+  onSaveStageNote: (id: string, state: StateId, body: string, base: string) => Promise<string | void>;
 }
 
 /**
@@ -102,7 +102,7 @@ export function CompareNotesView({ applications, onOpenStageNotes, onSaveStageNo
               isHere={isHere}
               key={`${application.id}:${stage}`}
               onOpenFull={() => onOpenStageNotes(application.id, stage)}
-              onSave={(body) => onSaveStageNote(application.id, stage, body)}
+              onSave={(body, base) => onSaveStageNote(application.id, stage, body, base)}
               state={stage}
             />
           ))}

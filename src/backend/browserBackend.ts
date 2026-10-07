@@ -64,6 +64,12 @@ async function backUpBeforeMigrating(directory: DirectoryHandleLike, text: strin
 const LEGACY_DOCUMENT_KEY = 'document'
 const LEGACY_DIRECTORY_KEY = 'directoryHandle'
 const LEGACY_BACKLOG_KEY = 'unbackedSince'
+/**
+ * Set while a single-tracker browser is being moved under an id, and cleared when that
+ * move has finished. A reload in the middle finds it and finishes, instead of minting a
+ * second tracker and leaving the attachments under the first.
+ */
+export const LEGACY_MIGRATION_KEY = 'legacyMigration'
 
 const META_PREFIX = 'meta:'
 const documentKey = (id: string) => `document:${id}`
@@ -252,31 +258,86 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
    * of its own so an existing visitor's data becomes their first tracker rather than
    * vanishing behind keys nothing reads any more.
    */
+  /**
+   * Copies whatever the single-tracker layout still holds onto `migrated`, then drops the
+   * old keys. Each attachment moves in one `update`, so a second tab cannot delete the
+   * bytes before this one has copied them. Safe to run again: a key already moved is gone.
+   */
+  async function finishSingleTrackerMigration(migrated: string): Promise<void> {
+    const handle = (await store.get('state', LEGACY_DIRECTORY_KEY)) as DirectoryHandleLike | null
+    if (handle) {
+      await store.update('state', LEGACY_DIRECTORY_KEY, (current) => {
+        if (current == null) return null
+        return [[directoryKey(migrated), current], [LEGACY_DIRECTORY_KEY, null]]
+      })
+    }
+    const backlog = (await store.get('state', LEGACY_BACKLOG_KEY)) as string | null
+    if (backlog !== null && (await store.get('state', backlogKey(migrated))) === null) {
+      await store.put('state', backlogKey(migrated), backlog)
+    }
+    await store.delete('state', LEGACY_BACKLOG_KEY)
+    await store.delete('state', LEGACY_DOCUMENT_KEY)
+    for (const key of await store.keys('attachments')) {
+      if (key.split('/').length !== 2) continue
+      await store.update('attachments', key, (current) => {
+        if (current == null) return null
+        return [[`${migrated}/${key}`, current], [key, null]]
+      })
+    }
+    await store.delete('state', LEGACY_MIGRATION_KEY)
+  }
+
   async function migrateSingleTracker(): Promise<void> {
+    const pending = (await store.get('state', LEGACY_MIGRATION_KEY)) as string | null
+    if (pending) {
+      await finishSingleTrackerMigration(pending)
+      return
+    }
+
     const document = (await store.get('state', LEGACY_DOCUMENT_KEY)) as string | null
     const handle = (await store.get('state', LEGACY_DIRECTORY_KEY)) as DirectoryHandleLike | null
     const backlog = (await store.get('state', LEGACY_BACKLOG_KEY)) as string | null
     if (document === null && handle === null) return
 
     const migrated = createUuidV7(now())
-    if (document !== null) await store.put('state', documentKey(migrated), document)
-    if (handle !== null) await store.put('state', directoryKey(migrated), handle)
-    if (backlog !== null) await store.put('state', backlogKey(migrated), backlog)
-    for (const key of await store.keys('attachments')) {
-      if (key.split('/').length !== 2) continue
-      await store.put('attachments', `${migrated}/${key}`, await store.get('attachments', key))
-      await store.delete('attachments', key)
-    }
+    const applications = document === null ? 0 : countApplications(document)
+    /*
+     * A browser-only tracker from before this field existed has no backlog key and no
+     * folder. Absence would otherwise read as "a file already has everything", and Remove
+     * would delete the only copy. A folder, or a backlog already recorded, is left as it was.
+     */
+    const initialBacklog = backlog
+      ?? (!isDemoTrackerProfile() && document !== null && handle === null && applications > 0
+        ? now().toISOString()
+        : null)
     const summary: TrackerSummary = {
       id: migrated,
       name: handle?.name ?? UNTITLED_TRACKER,
-      applications: document === null ? 0 : countApplications(document),
+      applications,
       openedAt: now().toISOString(),
     }
-    await store.put('state', metaKey(migrated), summary)
-    await store.delete('state', LEGACY_DOCUMENT_KEY)
-    await store.delete('state', LEGACY_DIRECTORY_KEY)
-    await store.delete('state', LEGACY_BACKLOG_KEY)
+    /*
+     * The document (or, when there is none, the folder handle) and the listing entry move
+     * in one step. The loser finds the key already gone and does not mint a second tracker,
+     * which is what keeps this safe where Web Locks are missing.
+     */
+    const claimKey = document !== null ? LEGACY_DOCUMENT_KEY : LEGACY_DIRECTORY_KEY
+    let won = false
+    await store.update('state', claimKey, (current) => {
+      if (current == null) return null
+      won = true
+      const entries: Array<[string, unknown]> = [
+        [LEGACY_MIGRATION_KEY, migrated],
+        [metaKey(migrated), summary],
+        [claimKey, null],
+      ]
+      if (claimKey === LEGACY_DOCUMENT_KEY) entries.push([documentKey(migrated), current])
+      if (claimKey === LEGACY_DIRECTORY_KEY) entries.push([directoryKey(migrated), current])
+      if (initialBacklog !== null) entries.push([backlogKey(migrated), initialBacklog])
+      return entries
+    })
+    if (!won) return
+    await finishSingleTrackerMigration(migrated)
   }
 
   /*
@@ -591,17 +652,17 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       }
       try {
         await writeFileIn(directory, TRACKER_FILENAME, text)
-      } catch (error) {
+      } catch {
         /*
-         * The change is stored in this browser but not in the folder — a permission revoked
-         * mid-session, or the folder moved. From here the browser copy is the only one, so
-         * the backlog starts and the pill asks to reconnect, which pushes it into the folder.
+         * The change is already stored in this browser. Throwing here made the caller report
+         * a failed save and leave it out of what this tab shows, so the next attempt of the
+         * same edit ran again on a document that already contained it. The backlog and the
+         * pill are the record that the folder did not get the write.
          */
         const name = directory.name
         directory = null
         connection = { kind: 'needs-permission', name }
         await noteUnbacked()
-        throw error
       }
     } finally {
       writing -= 1
@@ -667,6 +728,21 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     return source && (await file.isSameEntry(source)) ? { source: true } : null
   }
 
+  /**
+   * The folder this tracker saves to, including while permission has lapsed and the
+   * in-memory handle is clear. The stored handle is what a reload still has.
+   */
+  async function ownFolder(): Promise<DirectoryHandleLike | null> {
+    if (directory) return directory
+    return (await store.get('state', directoryKey(id()))) as DirectoryHandleLike | null
+  }
+
+  async function picksOwnFolder(picked: DirectoryHandleLike): Promise<boolean> {
+    const own = await ownFolder()
+    if (!own || !picked.isSameEntry) return false
+    return picked.isSameEntry(own)
+  }
+
   /* Another tracker in this browser already writing to the folder just picked, if any. */
   async function trackerHolding(picked: DirectoryHandleLike): Promise<TrackerSummary | null> {
     if (!picked.isSameEntry) return null
@@ -687,9 +763,24 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       const picked = await pick()
       if (!picked) return { outcome: 'dismissed' }
       // The folder this tracker already saves to: nothing to open or connect, and opening
-      // it as a tracker of its own would put two trackers on one file.
-      if (directory && (await picked.isSameEntry?.(directory))) {
-        return { outcome: 'connected', connection: announce({ kind: 'connected', name: directory.name }) }
+      // it as a tracker of its own would put two trackers on one file. The in-memory handle
+      // is null while permission has lapsed, so the stored one counts too: this pick is the
+      // gesture that reconnects it, and the browser copy is what gets pushed.
+      if (await picksOwnFolder(picked)) {
+        if (directory) {
+          return { outcome: 'connected', connection: announce({ kind: 'connected', name: directory.name }) }
+        }
+        return exclusive(async () => {
+          directory = picked
+          await store.put('state', directoryKey(id()), picked)
+          await flushToFolder()
+          await clearBacklog()
+          post({ type: 'storage' })
+          return {
+            outcome: 'connected' as const,
+            connection: announce({ kind: 'connected', name: picked.name }),
+          }
+        })
       }
       const holder = await trackerHolding(picked)
       if (holder) return { outcome: 'already-open', tracker: holder }
@@ -711,26 +802,41 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
           : ensureFreshIndexes(parseTrackerDocument(existingText))
         // Whichever tracker it opens as, the next write replaces a file in an older layout.
         if (existingText !== null) await backUpBeforeMigrating(picked, existingText)
-        const cachedText = (await store.get('state', documentKey(id()))) as string | null
-        if (parsedExisting && cachedText !== null && countApplications(cachedText) > 0) {
-          return {
-            outcome: 'opened' as const,
-            tracker: await storeAsNewTracker(picked, parsedExisting, picked.name),
+        /*
+         * Checked again when the write is refused: without Web Locks another tab can store
+         * the first application after the read above and before `cacheDocument`. Adopting
+         * the folder then would replace that application. The revision is the one the read
+         * was based on, so a newer document fails the write and the check runs on it.
+         */
+        for (;;) {
+          const cachedText = (await store.get('state', documentKey(id()))) as string | null
+          const expected = ((await store.get('state', revisionKey(id()))) as number | null) ?? 0
+          if (parsedExisting && cachedText !== null && countApplications(cachedText) > 0) {
+            return {
+              outcome: 'opened' as const,
+              tracker: await storeAsNewTracker(picked, parsedExisting, picked.name),
+            }
+          }
+          // Before the document is stored, so the listing takes the folder's name.
+          fallbackName = picked.name
+          try {
+            if (parsedExisting) {
+              await cacheDocument(parsedExisting, expected)
+            } else {
+              const document = cachedText === null
+                ? createEmptyDocument()
+                : ensureFreshIndexes(parseTrackerDocument(cachedText))
+              const text = await cacheDocument(document, expected)
+              await writeFileIn(picked, TRACKER_FILENAME, text)
+            }
+            break
+          } catch (error) {
+            if (!(error instanceof RevisionConflict)) throw error
           }
         }
 
         directory = picked
-        fallbackName = picked.name
         await store.put('state', directoryKey(id()), picked)
-        if (parsedExisting) {
-          await cacheDocument(parsedExisting)
-        } else {
-          const document = cachedText === null
-            ? createEmptyDocument()
-            : ensureFreshIndexes(parseTrackerDocument(cachedText))
-          const text = await cacheDocument(document)
-          await writeFileIn(picked, TRACKER_FILENAME, text)
-        }
         await clearBacklog()
         post({ type: 'storage' })
         return {
@@ -749,7 +855,7 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
       await ready()
       const picked = await pick()
       if (!picked) return { outcome: 'dismissed' }
-      if (directory && (await picked.isSameEntry?.(directory))) {
+      if (await picksOwnFolder(picked)) {
         const current = (await listMetas()).find((item) => item.id === id())
         return {
           outcome: 'opened',
@@ -918,28 +1024,51 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
         if (handle && (await permissionFor(handle, true)) !== 'granted') {
           throw new Error(`${stored.name} keeps its name in the ${handle.name} folder, which this page was not allowed to write to`)
         }
-        const file = handle ? await readFileIn(handle, TRACKER_FILENAME) : null
-        const text = file
-          ? await file.text()
-          : (await store.get('state', documentKey(renaming))) as string | null
-        const document = text === null ? createEmptyDocument() : ensureFreshIndexes(parseTrackerDocument(text))
-        const renamed = renameTracker(document, name)
-        if (renamed === document) return
-        const written = serialize(renamed)
-        if (handle) {
-          if (file && text !== null) await backUpBeforeMigrating(handle, text)
-          await writeFileIn(handle, TRACKER_FILENAME, written)
+        /*
+         * A backlog means this browser's copy is ahead of the folder, the same way a failed
+         * write leaves it. Renaming the folder file then would put that older copy back.
+         * With no backlog the folder may have been written elsewhere, and it is the copy
+         * this tracker reads first, so the rename lands on it.
+         * The revision is checked in the write, and a miss retries on whatever is stored
+         * now, so the rename does not replace a document built on an older revision.
+         */
+        for (;;) {
+          const backlog = (await store.get('state', backlogKey(renaming))) as string | null
+          const file = handle ? await readFileIn(handle, TRACKER_FILENAME) : null
+          const text = backlog !== null || !file
+            ? (await store.get('state', documentKey(renaming))) as string | null
+            : await file.text()
+          const document = text === null ? createEmptyDocument() : ensureFreshIndexes(parseTrackerDocument(text))
+          const renamed = renameTracker(document, name)
+          if (renamed === document) return
+          const written = serialize(renamed)
+          const expected = ((await store.get('state', revisionKey(renaming))) as number | null) ?? 0
+          const wrote = await store.update('state', revisionKey(renaming), (current) => {
+            if (((current as number | null) ?? 0) !== expected) return null
+            return [
+              [documentKey(renaming), written],
+              [revisionKey(renaming), expected + 1],
+            ]
+          })
+          if (!wrote) continue
+          if (handle) {
+            try {
+              if (file) await backUpBeforeMigrating(handle, await file.text())
+              await writeFileIn(handle, TRACKER_FILENAME, written)
+              await store.delete('state', backlogKey(renaming))
+            } catch {
+              if ((await store.get('state', backlogKey(renaming))) === null) {
+                await store.put('state', backlogKey(renaming), now().toISOString())
+              }
+            }
+          }
+          await store.put('state', metaKey(renaming), {
+            ...stored,
+            name: renamed.name ?? stored.fallbackName ?? stored.name,
+          })
+          postTo(renaming, { type: 'document' })
+          return
         }
-        // The document and its revision in one step, as `cacheDocument` writes them.
-        await store.update('state', revisionKey(renaming), (current) => [
-          [documentKey(renaming), written],
-          [revisionKey(renaming), ((current as number | null) ?? 0) + 1],
-        ])
-        await store.put('state', metaKey(renaming), {
-          ...stored,
-          name: renamed.name ?? stored.fallbackName ?? stored.name,
-        })
-        postTo(renaming, { type: 'document' })
       })
     },
 
@@ -974,7 +1103,9 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
     async loadDocument(): Promise<TrackerDatabase> {
       await ready()
       return exclusive(async () => {
-        if (directory) {
+        // A backlog means the browser copy is ahead of the folder: a write reached IndexedDB
+        // and not the file. Reading the file here would put that older copy back.
+        if (directory && unbackedSince === null) {
           const file = await readFileIn(directory, TRACKER_FILENAME)
           if (file) {
             const text = await file.text()
@@ -1020,7 +1151,21 @@ export function browserBackend(options: BrowserBackendOptions = {}): TrackerBack
         knownDocument = parsed
         syncName()
         knownRevision = ((await store.get('state', revisionKey(id()))) as number | null) ?? 0
-        if (directory) await writeFileIn(directory, TRACKER_FILENAME, serialize(parsed))
+        if (directory) {
+          const hadBacklog = unbackedSince !== null
+          try {
+            const file = await readFileIn(directory, TRACKER_FILENAME)
+            if (file) await backUpBeforeMigrating(directory, await file.text())
+            await writeFileIn(directory, TRACKER_FILENAME, serialize(parsed))
+            await clearBacklog()
+            if (hadBacklog) post({ type: 'storage' })
+          } catch {
+            const name = directory.name
+            directory = null
+            connection = { kind: 'needs-permission', name }
+            await noteUnbacked()
+          }
+        }
         return parsed
       })
     },
