@@ -8,7 +8,7 @@ import { correspondenceDrafts, correspondenceRowsFor } from './correspondence'
 import { compensationFromValues, compensationValuesFor } from './compensation'
 import type { CompensationValues } from './compensation'
 import { toDateTimeInput } from './dateInput'
-import type { Application, ApplicationEdits, ApplicationInput, Attachment, CompletedActionDraft, CorrespondenceDraft, PostingDraft, RatingDimension, StateEventDraft, StateId, TrackerDocument } from './domain'
+import type { Application, ApplicationEdits, ApplicationInput, Attachment, CompletedActionDraft, CorrespondenceDraft, PostingDraft, RatingDimensionId, StateEventDraft, StateId, TrackerDocument } from './domain'
 import { archiveApplication, clearApplicationRating, moveApplication, updateApplication, updateApplicationCompletedActions, updateApplicationCorrespondence, updateApplicationPosting, updateApplicationRatings, updateApplicationStateEvents } from './domain/mutations'
 import { inviteDrafts, inviteRowsFor } from './invites'
 import { postingDraftFrom, postingRowFor } from './posting'
@@ -60,7 +60,7 @@ export function attachmentsAfterEdit(
 function ratingsToWrite(opened: Application, values: RatingValues) {
   const openedValues = ratingValuesFor(opened)
   const changed = { ...values }
-  for (const dimension of Object.keys(openedValues) as RatingDimension[]) {
+  for (const dimension of Object.keys(openedValues) as RatingDimensionId[]) {
     if (values[dimension] === openedValues[dimension]) changed[dimension] = ''
   }
   return ratingDrafts(changed)
