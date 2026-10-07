@@ -16,7 +16,7 @@ export interface KeyValueStore {
   /**
    * Reads `key` and writes whatever `decide` returns for it, as one step no other write can
    * land inside — another tab's included. `decide` runs synchronously and may return null
-   * to write nothing. Resolves to whether anything was written.
+   * to write nothing. A null value deletes that key. Resolves to whether anything was written.
    *
    * This is what makes a revision a real guard: read and written apart, two tabs can both
    * see the same revision and each store a document built on it, the later undoing the
@@ -140,7 +140,10 @@ export function indexedDbStore(profile: TrackerProfile = trackerProfile()): KeyV
         const entries = decide(read.result ?? null)
         if (!entries) return
         wrote = true
-        for (const [entryKey, value] of entries) objectStore.put(value, entryKey)
+        for (const [entryKey, value] of entries) {
+          if (value === null) objectStore.delete(entryKey)
+          else objectStore.put(value, entryKey)
+        }
       }
       await done
       return wrote
@@ -164,7 +167,10 @@ export function memoryStore(): KeyValueStore {
     update: async (store, key, decide) => {
       const entries = decide(data[store].get(key) ?? null)
       if (!entries) return false
-      for (const [entryKey, value] of entries) data[store].set(entryKey, value)
+      for (const [entryKey, value] of entries) {
+        if (value === null) data[store].delete(entryKey)
+        else data[store].set(entryKey, value)
+      }
       return true
     },
   }

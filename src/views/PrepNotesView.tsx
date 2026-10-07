@@ -23,7 +23,12 @@ interface PrepNotesViewProps {
   /** Acknowledges that request, so navigating back here later does not reopen it. */
   onRequested: () => void;
   onSaveDrafts: (batches: StageNoteDraftBatch[]) => Promise<boolean>;
-  onExternalChange: (applicationId: string, state: StateId, body: string) => Promise<void>;
+  onExternalChange: (
+    applicationId: string,
+    state: StateId,
+    body: string,
+    base: string,
+  ) => Promise<string | void>;
   onCapture: (applicationId: string, state: StateId, line: string) => Promise<void>;
   onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>;
   /** Opens the application editor for the application a note in the panel prepares for. */

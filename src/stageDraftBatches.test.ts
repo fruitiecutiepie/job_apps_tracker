@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { createDemoDocument } from './domain/demo'
 import { setPosting } from './domain/mutations'
 import type { StateId, TrackerDocument } from './domain/types'
-import { applyStageDraftBatches } from './stageDraftBatches'
+import { applyStageDraftBatches, saveStageNoteDraft } from './stageDraftBatches'
 
 const AT = new Date('2026-10-04T09:00:00.000Z')
 
@@ -59,5 +59,11 @@ describe('storing the prep notes panel\'s drafts', () => {
     expect(stored.applications.find((item) => item.id === id)?.posting?.body).toBe(
       'Senior engineer. Remote. Remote-first.',
     )
+  })
+
+  it('merges a note saved from its base when the stored note has moved on', () => {
+    const { document, id, state } = withNote('Ask about the team. And the stack.')
+    const stored = saveStageNoteDraft(document, id, state, 'Ask about the team.', 'Ask about the team. And on-call.', AT)
+    expect(noteIn(stored, id)).toBe('Ask about the team. And the stack. And on-call.')
   })
 })
