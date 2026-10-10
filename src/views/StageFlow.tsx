@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { OUTCOME_IDS, stateRank, statusLabel } from "../domain";
+import { OUTCOME_IDS, stageRank, statusLabel } from "../domain";
 import { ChartKey } from "./ChartKey";
 import type { ChartTone } from "./ChartKey";
 import { moveKey, stageMoveKind } from "./outcomes";
@@ -17,8 +17,8 @@ const LABEL = 18;
 const GAP = 6;
 
 /** Stage first, then outcome: the order the moves are listed in, on either side. */
-const order = ({ state, outcome }: MoveEnd) => stateRank(state) * OUTCOME_IDS.length + OUTCOME_IDS.indexOf(outcome);
-const endKey = ({ state, outcome }: MoveEnd) => `${state}:${outcome}`;
+const order = ({ stage, outcome }: MoveEnd) => stageRank(stage) * OUTCOME_IDS.length + OUTCOME_IDS.indexOf(outcome);
+const endKey = ({ stage, outcome }: MoveEnd) => `${stage}:${outcome}`;
 
 const TONE: Record<StageMoveKind, ChartTone> = {
   further: "strong",

@@ -34,7 +34,7 @@ describe('the answers', () => {
   })
 
   it('says nothing has stalled rather than naming a stage that lost nothing', () => {
-    const rows = [{ state: 'applied' as const, decided: 5, passed: 5, pending: 0 }]
+    const rows = [{ stage: 'applied' as const, decided: 5, passed: 5, pending: 0 }]
     expect(losingAnswer(rows, 5)).toEqual({
       answer: 'Nothing has stalled yet: every decided application got past its stage.',
       worst: null,
@@ -43,8 +43,8 @@ describe('the answers', () => {
 
   it('names the earliest stage when two lose at the same rate', () => {
     const rows = [
-      { state: 'applied' as const, decided: 6, passed: 3, pending: 0 },
-      { state: 'round_1' as const, decided: 6, passed: 3, pending: 0 },
+      { stage: 'applied' as const, decided: 6, passed: 3, pending: 0 },
+      { stage: 'round_1' as const, decided: 6, passed: 3, pending: 0 },
     ]
     expect(losingAnswer(rows, 5).worst).toBe('applied')
   })

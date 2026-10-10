@@ -1,7 +1,7 @@
 import { rebuildIndexes, indexesAreStale } from './indexes'
 import { TRACKER_JSON_SCHEMA } from './jsonSchema'
 import { DATA_VERSION } from './migrate'
-import { DEFAULT_STAGE_CONFIG, stageConfigFrom, storedStages, type StageConfig } from './states'
+import { DEFAULT_STAGE_CONFIG, stageConfigFrom, storedStages, type StageConfig } from './stages'
 import type { Application, JsonSchemaObject, TrackerDatabase } from './types'
 
 function cloneSchema(): JsonSchemaObject {

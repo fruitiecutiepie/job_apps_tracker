@@ -1,16 +1,16 @@
 import { describe, expect, it } from 'vitest'
 
-import { formatSpan, stateTimeline } from './stateTimeline'
+import { formatSpan, stageTimeline } from './stageTimeline'
 
 const at = (day: number, hour = 9) =>
   new Date(2026, 2, day, hour).toISOString()
 
-describe('stateTimeline', () => {
-  it('labels each entry from the state configuration, oldest first', () => {
-    const entries = stateTimeline(
+describe('stageTimeline', () => {
+  it('labels each entry from the stage configuration, oldest first', () => {
+    const entries = stageTimeline(
       [
-        { state: 'applied', outcome: 'active', at: at(1) },
-        { state: 'screening', outcome: 'active', at: at(4) },
+        { stage: 'applied', outcome: 'active', at: at(1) },
+        { stage: 'screening', outcome: 'active', at: at(4) },
       ],
       new Date(2026, 2, 6),
     )
@@ -18,10 +18,10 @@ describe('stateTimeline', () => {
   })
 
   it('measures a finished span to the move that ended it', () => {
-    const [applied] = stateTimeline(
+    const [applied] = stageTimeline(
       [
-        { state: 'applied', outcome: 'active', at: at(1) },
-        { state: 'online_assessment', outcome: 'active', at: at(4) },
+        { stage: 'applied', outcome: 'active', at: at(1) },
+        { stage: 'online_assessment', outcome: 'active', at: at(4) },
       ],
       new Date(2026, 2, 20),
     )
@@ -30,15 +30,15 @@ describe('stateTimeline', () => {
   })
 
   it('measures the last span to now and marks it current', () => {
-    const entries = stateTimeline([{ state: 'applied', outcome: 'active', at: at(1) }], new Date(2026, 2, 6))
+    const entries = stageTimeline([{ stage: 'applied', outcome: 'active', at: at(1) }], new Date(2026, 2, 6))
     expect(entries[0]).toMatchObject({ days: 5, current: true })
   })
 
   it('counts local days, so two moves on one day span none', () => {
-    const [first] = stateTimeline(
+    const [first] = stageTimeline(
       [
-        { state: 'applied', outcome: 'active', at: at(1, 8) },
-        { state: 'online_assessment', outcome: 'active', at: at(1, 23) },
+        { stage: 'applied', outcome: 'active', at: at(1, 8) },
+        { stage: 'online_assessment', outcome: 'active', at: at(1, 23) },
       ],
       new Date(2026, 2, 2),
     )
@@ -46,10 +46,10 @@ describe('stateTimeline', () => {
   })
 
   it('never reports a negative span for history recorded out of order', () => {
-    const [first] = stateTimeline(
+    const [first] = stageTimeline(
       [
-        { state: 'applied', outcome: 'active', at: at(9) },
-        { state: 'online_assessment', outcome: 'active', at: at(4) },
+        { stage: 'applied', outcome: 'active', at: at(9) },
+        { stage: 'online_assessment', outcome: 'active', at: at(4) },
       ],
       new Date(2026, 2, 20),
     )
@@ -57,10 +57,10 @@ describe('stateTimeline', () => {
   })
 
   it('names an ending by its stage and how it went', () => {
-    const entries = stateTimeline(
+    const entries = stageTimeline(
       [
-        { state: 'round_1', outcome: 'active', at: at(1) },
-        { state: 'round_1', outcome: 'rejected', at: at(4) },
+        { stage: 'round_1', outcome: 'active', at: at(1) },
+        { stage: 'round_1', outcome: 'rejected', at: at(4) },
       ],
       new Date(2026, 2, 6),
     )
@@ -68,10 +68,10 @@ describe('stateTimeline', () => {
   })
 
   it('reports no span rather than a wrong one when a timestamp cannot be read', () => {
-    const [first] = stateTimeline(
+    const [first] = stageTimeline(
       [
-        { state: 'applied', outcome: 'active', at: 'not a timestamp' },
-        { state: 'online_assessment', outcome: 'active', at: at(4) },
+        { stage: 'applied', outcome: 'active', at: 'not a timestamp' },
+        { stage: 'online_assessment', outcome: 'active', at: at(4) },
       ],
       new Date(2026, 2, 20),
     )
@@ -82,7 +82,7 @@ describe('stateTimeline', () => {
 
 describe('formatSpan', () => {
   const span = (days: number | null, current: boolean) =>
-    formatSpan({ state: 'applied', outcome: 'active', label: 'Applied', at: at(1), days, current })
+    formatSpan({ stage: 'applied', outcome: 'active', label: 'Applied', at: at(1), days, current })
 
   it('words a finished span, with same-day moves saying so', () => {
     expect(span(0, false)).toBe('Same day')

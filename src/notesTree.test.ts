@@ -1,19 +1,19 @@
 import { describe, expect, it } from 'vitest'
 
 import { createApplication } from './domain/mutations'
-import type { Application, StateId } from './domain'
+import type { Application, StageId } from './domain'
 import { buildNotesTree, buildPostingsTree, MATCHES_SHOWN } from './notesTree'
 
 function application(
   company: string,
-  notes: Partial<Record<StateId, { body?: string; heard?: string[] }>>,
+  notes: Partial<Record<StageId, { body?: string; heard?: string[] }>>,
   role: string | null = 'Engineer',
 ): Application {
-  const base = createApplication({ company, role: role ?? undefined, state: 'applied' }, '2026-01-01T00:00:00.000Z', company)
+  const base = createApplication({ company, role: role ?? undefined, stage: 'applied' }, '2026-01-01T00:00:00.000Z', company)
   return {
     ...base,
-    stage_notes: Object.entries(notes).map(([state, note]) => ({
-      state: state as StateId,
+    stage_notes: Object.entries(notes).map(([stage, note]) => ({
+      stage: stage as StageId,
       body: note?.body ?? '',
       heard: (note?.heard ?? []).map((body, index) => ({ id: `${company}${index}`, body, at: base.created_at })),
       created_at: base.created_at,
@@ -48,7 +48,7 @@ describe('buildPostingsTree', () => {
   it('keeps postings out of the prep notes tree', () => {
     expect(shape(buildNotesTree([marble, atlas], '')).map(([label]) => label))
       .not.toContain('Job postings')
-    expect(buildNotesTree([marble], '').every((group) => typeof group.state === 'string'))
+    expect(buildNotesTree([marble], '').every((group) => typeof group.stage === 'string'))
       .toBe(true)
   })
 
@@ -104,7 +104,7 @@ describe('buildNotesTree', () => {
       role: 'Engineer',
       written: true,
       captured: 1,
-      ref: { applicationId: 'Halcyon Maps', state: 'round_2' },
+      ref: { applicationId: 'Halcyon Maps', stage: 'round_2' },
     })
   })
 

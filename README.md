@@ -24,7 +24,7 @@ The catch worth knowing up front: without a connected folder, your data lives on
 - Optional deadline per application, recording an external closing or decision date separately from your own next action
 - Preference ranking from four subjective ratings, discounted for what you have not judged yet, with the weakest dimension named so a healthy average cannot hide a dealbreaker, shown on the table row and the Kanban card, summarised across the collection on Statistics, and used to break ties within a table band
 - Compensation as a measurement rather than a rating: what was advertised, what you expect, and what was offered, kept side by side and compared against your target
-- Derived urgency ranking that explains itself, combining stage, scheduled invites, deadline, next-action date, and how long an application has sat in the same state, into one sortable column
+- Derived urgency ranking that explains itself, combining stage, scheduled invites, deadline, next-action date, and how long an application has sat in the same stage, into one sortable column
 - Sortable and filterable table with invites, deadline, urgency, preference, compensation, and attachments columns, where sorting by invite sorts by what is next, and opening on urgency bands the rows under headings — what is dated, what is live but undated, what is finished with a task still on it, and what is finished
 - A **Done** control on the Kanban card and in the table's next action cell that clears a finished task and records it as a dated completed action, kept apart from your notes
 - Calendar invites imported from the `.ics` a recruiter sends, filed against a stage, with a rescheduled invite replacing the one it supersedes
@@ -82,7 +82,7 @@ This is the only local setup where the demo's **Open my tracker** and the tracke
 
 ### Track an application
 
-Select **Add application** and enter a company, optional role and URL, its current state, notes, and an optional next action. A next action can be saved without a date; its date is cleared automatically if the action text is removed. A deadline is separate: it records an external closing or decision date and can be set with no next action at all. URLs must begin with `http://` or `https://`.
+Select **Add application** and enter a company, optional role and URL, its current stage, notes, and an optional next action. A next action can be saved without a date; its date is cleared automatically if the action text is removed. A deadline is separate: it records an external closing or decision date and can be set with no next action at all. URLs must begin with `http://` or `https://`.
 
 Select **Done** beside a next action — on a Kanban card or in the table's next action
 column — when you have finished it. The task moves to that application's **Completed
@@ -140,7 +140,7 @@ the zip export carries them.
 
 Open an application and use **Import .ics file** under Interview invites to read the calendar attachment a
 recruiter emailed you. The time, place, and joining link come from the file; the stage it is filed under
-defaults to the application's current state, and you can change it to any other. **Add invite manually**
+defaults to the application's current stage, and you can change it to any other. **Add invite manually**
 records one by hand instead, for an interview arranged over the phone.
 
 Re-importing a rescheduled invite updates the one it replaces rather than adding a second, because invites are
@@ -225,7 +225,7 @@ it folded, and deleting a heading takes its fold with it.
 
 This one needs the dev server, because it starts an editor process on the machine running it. The hosted site has no such machine, so it leaves the button out and the in-app Markdown editor is the only one.
 
-Select **Editor** on a stage note to open it in a real editor. The current draft is written to `data/editing/{applicationId}/{state}.md`, that file is handed to your editor, and anything you save there is pulled back and stored automatically—an editor has no Save button to press, so the app does it for you. The stage's in-app textarea steps aside while the session is live; **Stop** ends it, and closing the dialog ends every session and deletes the scratch files.
+Select **Editor** on a stage note to open it in a real editor. The current draft is written to `data/editing/{applicationId}/{stage}.md`, that file is handed to your editor, and anything you save there is pulled back and stored automatically—an editor has no Save button to press, so the app does it for you. The stage's in-app textarea steps aside while the session is live; **Stop** ends it, and closing the dialog ends every session and deletes the scratch files.
 
 Which editor opens is taken from `VISUAL`, then `EDITOR`, then your platform's default handler for `.md`:
 

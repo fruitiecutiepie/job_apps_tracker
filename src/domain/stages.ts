@@ -1,4 +1,4 @@
-import type { BuiltinStateId, OutcomeId, RoundId, StageSetting, StateId, Status } from './types'
+import type { BuiltinStageId, OutcomeId, RoundId, StageSetting, StageId, Status } from './types'
 
 /**
  * The stages every tracker starts with, in the order an application usually passes through
@@ -24,8 +24,8 @@ export const DEFAULT_STAGES = [
 ] as const satisfies readonly StageSetting[]
 
 /** The stages before the rounds and after them; the rounds go between. */
-const BEFORE_ROUNDS = DEFAULT_STAGES.slice(0, 6).map(({ id }) => id) as readonly BuiltinStateId[]
-const AFTER_ROUNDS = DEFAULT_STAGES.slice(8).map(({ id }) => id) as readonly BuiltinStateId[]
+const BEFORE_ROUNDS = DEFAULT_STAGES.slice(0, 6).map(({ id }) => id) as readonly BuiltinStageId[]
+const AFTER_ROUNDS = DEFAULT_STAGES.slice(8).map(({ id }) => id) as readonly BuiltinStageId[]
 const BUILTIN_IDS = new Set<string>([...BEFORE_ROUNDS, ...AFTER_ROUNDS])
 
 /** Rounds every tracker has. More can be added; these two cannot be taken away. */
@@ -44,7 +44,7 @@ export function roundId(round: number): RoundId {
   return `round_${round}`
 }
 
-export function defaultStageLabel(id: StateId): string {
+export function defaultStageLabel(id: StageId): string {
   const round = roundNumber(id)
   if (round !== null) return `Round ${round}`
   return DEFAULT_STAGES.find((stage) => stage.id === id)?.label ?? id
@@ -52,20 +52,20 @@ export function defaultStageLabel(id: StateId): string {
 
 /**
  * Whether a value has the shape of a stage id: one of the fixed stages, or a round. Whether a
- * particular tracker holds that round is `isStateId`'s question, not this one.
+ * particular tracker holds that round is `isStageId`'s question, not this one.
  */
-export function isStageIdShape(value: unknown): value is StateId {
+export function isStageIdShape(value: unknown): value is StageId {
   return typeof value === 'string' && (BUILTIN_IDS.has(value) || roundNumber(value) !== null)
 }
 
 /** The stages one tracker reads in, with what it calls each. */
 export interface StageConfig {
   readonly stages: readonly StageSetting[]
-  readonly ids: readonly StateId[]
+  readonly ids: readonly StageId[]
   readonly rounds: number
-  has(value: unknown): value is StateId
-  label(id: StateId): string
-  rank(id: StateId): number
+  has(value: unknown): value is StageId
+  label(id: StageId): string
+  rank(id: StageId): number
 }
 
 /**
@@ -82,7 +82,7 @@ export function stageConfigFrom(stored: readonly StageSetting[] | undefined): St
     if (trimmed) labels.set(id, trimmed)
     rounds = Math.max(rounds, roundNumber(id) ?? 0)
   }
-  const ids: StateId[] = [
+  const ids: StageId[] = [
     ...BEFORE_ROUNDS,
     ...Array.from({ length: rounds }, (_, index) => roundId(index + 1)),
     ...AFTER_ROUNDS,
@@ -93,7 +93,7 @@ export function stageConfigFrom(stored: readonly StageSetting[] | undefined): St
     stages,
     ids,
     rounds,
-    has: (value: unknown): value is StateId => typeof value === 'string' && byId.has(value),
+    has: (value: unknown): value is StageId => typeof value === 'string' && byId.has(value),
     label: (id) => byId.get(id)?.label ?? defaultStageLabel(id),
     rank: (id) => byId.get(id)?.index ?? ids.length,
   }
@@ -121,8 +121,8 @@ export const DEFAULT_STAGE_CONFIG = stageConfigFrom(undefined)
 let current: StageConfig = DEFAULT_STAGE_CONFIG
 
 /** The open tracker's stages, in order. */
-export let STATE_CONFIG: readonly StageSetting[] = current.stages
-export let STATE_IDS: readonly StateId[] = current.ids
+export let STAGE_CONFIG: readonly StageSetting[] = current.stages
+export let STAGE_IDS: readonly StageId[] = current.ids
 
 function sameStages(left: StageConfig, right: StageConfig): boolean {
   return left.stages.length === right.stages.length
@@ -131,14 +131,14 @@ function sameStages(left: StageConfig, right: StageConfig): boolean {
 
 /**
  * Makes these the stages every label, list and order reads. Stages equal to the ones already
- * applied change nothing, so `STATE_CONFIG` keeps its identity across the saves that did not
+ * applied change nothing, so `STAGE_CONFIG` keeps its identity across the saves that did not
  * touch it and nothing derived from it is rebuilt for them.
  */
 export function applyStages(config: StageConfig): void {
   if (config === current || sameStages(config, current)) return
   current = config
-  STATE_CONFIG = config.stages
-  STATE_IDS = config.ids
+  STAGE_CONFIG = config.stages
+  STAGE_IDS = config.ids
 }
 
 /** The open tracker's stages as a whole, for code that has to pass them on. */
@@ -146,28 +146,28 @@ export function currentStages(): StageConfig {
   return current
 }
 
-export function isStateId(value: unknown): value is StateId {
+export function isStageId(value: unknown): value is StageId {
   return current.has(value)
 }
 
 /** Position of a stage in the configured order, for deterministic sorting. */
-export function stateRank(state: StateId): number {
-  return current.rank(state)
+export function stageRank(stage: StageId): number {
+  return current.rank(stage)
 }
 
-export function stateLabel(state: StateId): string {
-  return current.label(state)
+export function stageLabel(stage: StageId): string {
+  return current.label(stage)
 }
 
 /** The stage after this one, or null at the last. A shortcut, never a restriction. */
-export function nextState(state: StateId): StateId | null {
-  return STATE_IDS[stateRank(state) + 1] ?? null
+export function nextStage(stage: StageId): StageId | null {
+  return STAGE_IDS[stageRank(stage) + 1] ?? null
 }
 
 /** The stage before this one, or null at the first. */
-export function previousState(state: StateId): StateId | null {
-  const rank = stateRank(state)
-  return rank > 0 ? STATE_IDS[rank - 1] ?? null : null
+export function previousStage(stage: StageId): StageId | null {
+  const rank = stageRank(stage)
+  return rank > 0 ? STAGE_IDS[rank - 1] ?? null : null
 }
 
 /**
@@ -213,22 +213,22 @@ export const ENDING_OUTCOMES = Object.freeze(
  * states of their own, because those are the words people already use for them — nobody
  * says "Applied — Rejected" for an application that never reached a person.
  */
-const STATUS_NAMES: Partial<Record<`${StateId}:${OutcomeId}`, string>> = {
+const STATUS_NAMES: Partial<Record<`${StageId}:${OutcomeId}`, string>> = {
   'applied:rejected': 'Auto-rejected',
   'headhunted:closed': 'No openings',
 }
 
-export function statusLabel({ state, outcome }: Status, stages: StageConfig = current): string {
-  if (outcome === 'active') return stages.label(state)
-  return STATUS_NAMES[`${state}:${outcome}`] ?? `${stages.label(state)} — ${outcomeLabel(outcome)}`
+export function statusLabel({ stage, outcome }: Status, stages: StageConfig = current): string {
+  if (outcome === 'active') return stages.label(stage)
+  return STATUS_NAMES[`${stage}:${outcome}`] ?? `${stages.label(stage)} — ${outcomeLabel(outcome)}`
 }
 
 export function sameStatus(left: Status, right: Status): boolean {
-  return left.state === right.state && left.outcome === right.outcome
+  return left.stage === right.stage && left.outcome === right.outcome
 }
 
 /** The stage a search ends in when it succeeds. */
-export const FINAL_STATE: StateId = 'accepted'
+export const FINAL_STAGE: StageId = 'accepted'
 
 /**
  * Whether an application is still running, was turned down, or is finished some other way:
@@ -241,9 +241,9 @@ export const FINAL_STATE: StateId = 'accepted'
  */
 export type Lifecycle = 'live' | 'rejected' | 'closed'
 
-export function classifyLifecycle({ state, outcome }: Status): Lifecycle {
+export function classifyLifecycle({ stage, outcome }: Status): Lifecycle {
   if (outcome === 'rejected') return 'rejected'
-  if (outcome !== 'active' || state === FINAL_STATE) return 'closed'
+  if (outcome !== 'active' || stage === FINAL_STAGE) return 'closed'
   return 'live'
 }
 
@@ -258,21 +258,21 @@ export function outcomeAbandonsTask(outcome: OutcomeId): boolean {
 }
 
 /** What the stage filter can be set to: one stage, or all of them. */
-export type StateFilter = StateId | 'all'
+export type StageFilter = StageId | 'all'
 
-export function stateFilterMatches(filter: StateFilter, state: StateId): boolean {
-  return filter === 'all' || state === filter
+export function stageFilterMatches(filter: StageFilter, stage: StageId): boolean {
+  return filter === 'all' || stage === filter
 }
 
 /** The stages a filter admits, or undefined for the filter that admits every one. */
-export function statesForFilter(filter: StateFilter): readonly StateId[] | undefined {
+export function stagesForFilter(filter: StageFilter): readonly StageId[] | undefined {
   return filter === 'all' ? undefined : [filter]
 }
 
 /**
  * What the outcome filter can be set to: one outcome, `ended` for any of the four that are not
  * `active`, or all. Orthogonal to the stage filter, so "Round 1, rejected" is one pair of
- * choices rather than a state of its own.
+ * choices rather than a state of its own, the way it was before stages and outcomes split.
  */
 export type OutcomeFilter = OutcomeId | 'all' | 'ended'
 

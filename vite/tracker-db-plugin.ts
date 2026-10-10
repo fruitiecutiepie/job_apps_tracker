@@ -263,10 +263,10 @@ function isSameOriginRequest(req: IncomingMessage): boolean {
   return site === 'same-origin' || site === 'same-site'
 }
 
-function parseNoteEditRoute(req: IncomingMessage): { applicationId?: string; state?: string } {
+function parseNoteEditRoute(req: IncomingMessage): { applicationId?: string; stage?: string } {
   const segments = parseUrl(req).pathname.split('/').filter(Boolean)
   if (segments.length < 1 || segments[0] !== '__note-edit') return {}
-  return { applicationId: segments[1], state: segments[2] }
+  return { applicationId: segments[1], stage: segments[2] }
 }
 
 function handleNoteEdit(root: string, profile: TrackerProfile, req: IncomingMessage, res: ServerResponse): void {
@@ -277,7 +277,7 @@ function handleNoteEdit(root: string, profile: TrackerProfile, req: IncomingMess
     return
   }
 
-  const { applicationId, state } = parseNoteEditRoute(req)
+  const { applicationId, stage } = parseNoteEditRoute(req)
 
   if (req.method === 'DELETE' && !applicationId) {
     removeEditingRoot(dataDir)
@@ -285,12 +285,12 @@ function handleNoteEdit(root: string, profile: TrackerProfile, req: IncomingMess
     return
   }
 
-  if (!applicationId || !state) {
+  if (!applicationId || !stage) {
     sendText(res, 400, 'An application id and stage are required')
     return
   }
 
-  const filePath = resolveStageNoteEditPath(dataDir, applicationId, state)
+  const filePath = resolveStageNoteEditPath(dataDir, applicationId, stage)
   if (!filePath) {
     sendText(res, 400, 'Application id or stage is invalid')
     return

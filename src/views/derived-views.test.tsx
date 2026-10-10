@@ -1,7 +1,7 @@
 import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
-import { COMPENSATION_STAGE_IDS, STATE_IDS, emptyCompensation } from '../domain'
+import { COMPENSATION_STAGE_IDS, STAGE_IDS, emptyCompensation } from '../domain'
 import stylesheet from '../styles.css?raw'
 import type {
   Application,
@@ -9,8 +9,8 @@ import type {
   CompensationStageId,
   Rating,
   RatingDimensionId,
-  StateEvent,
-  StateId,
+  StageEvent,
+  StageId,
 } from '../domain'
 import { KanbanView } from './KanbanView'
 import { StatisticsView } from './StatisticsView'
@@ -31,17 +31,17 @@ function application(
   company: string,
   overrides: Partial<Application> = {},
 ): Application {
-  const state: StateId = 'applied'
+  const stage: StageId = 'applied'
   return {
     id: `00000000-0000-7000-8000-${company.toLowerCase().replace(/[^a-z0-9]/g, '').padEnd(12, '0').slice(0, 12)}`,
     company,
     role: 'Software engineer',
     url: null,
     source: null,
-    state,
+    stage,
     outcome: 'active',
     // Created 40 days ago but moved yesterday, so nothing is silent by default.
-    state_history: [{ state, outcome: 'active', at: localDate(-1) }],
+    stage_history: [{ stage, outcome: 'active', at: localDate(-1) }],
     archived_at: null,
     next_action: null,
     next_action_at: null,
@@ -49,7 +49,7 @@ function application(
     notes: null,
     completed_actions: [],
     stage_notes: [],
-    state_events: [],
+    stage_events: [],
     correspondence: [],
     attachments: [],
     posting: null,
@@ -61,10 +61,10 @@ function application(
   }
 }
 
-function stateEvent(overrides: Partial<StateEvent> = {}): StateEvent {
+function stageEvent(overrides: Partial<StageEvent> = {}): StageEvent {
   return {
     id: `00000000-0000-7000-9000-${String(Math.abs(Date.parse(overrides.starts_at ?? localDate(1)))).slice(-12)}`,
-    state: 'round_1',
+    stage: 'round_1',
     summary: 'Round 1 — panel',
     starts_at: localDate(1),
     ends_at: null,
@@ -125,10 +125,10 @@ describe('TableView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
 
-    const state: StateId = 'applied'
+    const stage: StageId = 'applied'
     render(
       <TableView
-        applications={[application('Twenty Co', { state_history: [{ state, outcome: 'active', at: localDate(-20) }] })]}
+        applications={[application('Twenty Co', { stage_history: [{ stage, outcome: 'active', at: localDate(-20) }] })]}
         onArchive={vi.fn()}
         onCompleteAction={vi.fn()}
         onMove={vi.fn()}
@@ -154,11 +154,11 @@ describe('TableView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
 
-    const state: StateId = 'applied'
+    const stage: StageId = 'applied'
     const applications = [
-      application('Quiet Co', { state_history: [{ state, outcome: 'active', at: localDate(-40) }] }),
-      application('Busy Co', { state_history: [{ state, outcome: 'active', at: localDate(-2) }] }),
-      application('Silent Co', { state_history: [{ state, outcome: 'active', at: localDate(-35) }] }),
+      application('Quiet Co', { stage_history: [{ stage, outcome: 'active', at: localDate(-40) }] }),
+      application('Busy Co', { stage_history: [{ stage, outcome: 'active', at: localDate(-2) }] }),
+      application('Silent Co', { stage_history: [{ stage, outcome: 'active', at: localDate(-35) }] }),
     ]
 
     render(
@@ -196,8 +196,8 @@ describe('TableView', () => {
     const applications = [
       application('Zebra Works', { created_at: localDate(-10), updated_at: localDate(-3) }),
       application('Alpha Labs', {
-        state: 'accepted', outcome: 'active',
-        state_history: [{ state: 'accepted', outcome: 'active', at: localDate(-2) }],
+        stage: 'accepted', outcome: 'active',
+        stage_history: [{ stage: 'accepted', outcome: 'active', at: localDate(-2) }],
         created_at: localDate(-30),
         updated_at: localDate(-2),
       }),
@@ -234,7 +234,7 @@ describe('TableView', () => {
       screen.getByRole('combobox', { name: 'Move Alpha Labs to stage' }),
       { target: { value: 'offer' } },
     )
-    expect(onMove).toHaveBeenCalledWith(applications[1].id, { state: 'offer' })
+    expect(onMove).toHaveBeenCalledWith(applications[1].id, { stage: 'offer' })
 
     fireEvent.click(within(screen.getByRole('rowheader', { name: 'Alpha Labs' })).getByRole('button'))
     expect(onOpen).toHaveBeenCalledWith(applications[1].id)
@@ -244,8 +244,8 @@ describe('TableView', () => {
   it('narrows rows with column filters without changing the data', () => {
     const applications = [
       application('Alpha Labs', {
-        state: 'accepted', outcome: 'active',
-        state_history: [{ state: 'accepted', outcome: 'active', at: localDate(-2) }],
+        stage: 'accepted', outcome: 'active',
+        stage_history: [{ stage: 'accepted', outcome: 'active', at: localDate(-2) }],
         source: 'LinkedIn',
         attachments: [{
           id: '018f0000-0000-7000-8000-000000000002',
@@ -286,13 +286,13 @@ describe('TableView', () => {
     vi.setSystemTime(now)
     const applications = [
       application('Later Panel', {
-        state_events: [stateEvent({ summary: 'Systems design round', starts_at: localDate(9) })],
+        stage_events: [stageEvent({ summary: 'Systems design round', starts_at: localDate(9) })],
       }),
       application('No Invites'),
       application('Sooner Panel', {
-        state_events: [
-          stateEvent({ summary: 'Called off round', starts_at: localDate(2), cancelled: true }),
-          stateEvent({ summary: 'Research panel', starts_at: localDate(4), location: 'Docklands' }),
+        stage_events: [
+          stageEvent({ summary: 'Called off round', starts_at: localDate(2), cancelled: true }),
+          stageEvent({ summary: 'Research panel', starts_at: localDate(4), location: 'Docklands' }),
         ],
       }),
     ]
@@ -416,8 +416,8 @@ describe('TableView', () => {
     const applications = [
       application('Quiet Co'),
       application('Rejected Co', {
-        state: 'applied', outcome: 'rejected',
-        state_history: [{ state: 'applied', outcome: 'rejected', at: localDate(-2) }],
+        stage: 'applied', outcome: 'rejected',
+        stage_history: [{ stage: 'applied', outcome: 'rejected', at: localDate(-2) }],
         deadline_at: localDate(1),
       }),
       application('Deadline Co', { deadline_at: localDate(2) }),
@@ -460,13 +460,13 @@ describe('TableView', () => {
     const applications = [
       application('Quiet Co'),
       application('Loose End Co', {
-        state: 'applied', outcome: 'rejected',
-        state_history: [{ state: 'applied', outcome: 'rejected', at: localDate(-2) }],
+        stage: 'applied', outcome: 'rejected',
+        stage_history: [{ stage: 'applied', outcome: 'rejected', at: localDate(-2) }],
         next_action: 'Ask for feedback',
       }),
       application('Closed Co', {
-        state: 'applied', outcome: 'rejected',
-        state_history: [{ state: 'applied', outcome: 'rejected', at: localDate(-2) }],
+        stage: 'applied', outcome: 'rejected',
+        stage_history: [{ stage: 'applied', outcome: 'rejected', at: localDate(-2) }],
       }),
       application('Overdue Co', { next_action: 'Follow up', next_action_at: localDate(-3) }),
     ]
@@ -539,10 +539,10 @@ describe('TableView', () => {
       // An invite decays over 21 days and a self-set action over 7, so at these distances
       // the invite scores higher while the action falls due first.
       application('Invite Co', {
-        state_events: [
+        stage_events: [
           {
             id: '00000000-0000-7000-8000-000000000009',
-            state: 'screening',
+            stage: 'screening',
             summary: 'Screening call',
             starts_at: localDate(6),
             ends_at: null,
@@ -576,7 +576,7 @@ describe('TableView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
     const onMove = vi.fn()
-    const waiting = application('Waiting Co', { state: 'screening' })
+    const waiting = application('Waiting Co', { stage: 'screening' })
 
     render(
       <TableView
@@ -594,9 +594,9 @@ describe('TableView', () => {
     expect(next).toHaveTextContent(/^$/)
     expect(next).toHaveAttribute('title', 'Next: Take-home assessment')
     fireEvent.click(next)
-    expect(onMove).toHaveBeenLastCalledWith(waiting.id, { state: 'take_home_assessment' })
+    expect(onMove).toHaveBeenLastCalledWith(waiting.id, { stage: 'take_home_assessment' })
     fireEvent.click(screen.getByRole('button', { name: 'Move Waiting Co back to Online assessment' }))
-    expect(onMove).toHaveBeenLastCalledWith(waiting.id, { state: 'online_assessment' })
+    expect(onMove).toHaveBeenLastCalledWith(waiting.id, { stage: 'online_assessment' })
   })
 
   it('archives a running row as it is, without ending it first', () => {
@@ -604,7 +604,7 @@ describe('TableView', () => {
     vi.setSystemTime(now)
     const onArchive = vi.fn()
     const onMove = vi.fn()
-    const running = application('Paused Co', { state: 'round_1' })
+    const running = application('Paused Co', { stage: 'round_1' })
 
     render(
       <TableView
@@ -625,7 +625,7 @@ describe('TableView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
     const onMove = vi.fn()
-    const waiting = application('Waiting Co', { state: 'round_1' })
+    const waiting = application('Waiting Co', { stage: 'round_1' })
 
     render(
       <TableView
@@ -657,7 +657,7 @@ describe('TableView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
     const onMove = vi.fn()
-    const offer = application('Offer Co', { state: 'offer' })
+    const offer = application('Offer Co', { stage: 'offer' })
 
     render(
       <TableView
@@ -674,7 +674,7 @@ describe('TableView', () => {
 
     // The same arrow every other stage has, going to the next stage like every other one.
     fireEvent.click(screen.getByRole('button', { name: 'Move Offer Co to Accepted' }))
-    expect(onMove).toHaveBeenLastCalledWith(offer.id, { state: 'accepted' })
+    expect(onMove).toHaveBeenLastCalledWith(offer.id, { stage: 'accepted' })
   })
 
   it('offers an ended row its way back and its way out, and says how it ended', () => {
@@ -683,16 +683,16 @@ describe('TableView', () => {
     const onMove = vi.fn()
     const onArchive = vi.fn()
     const turnedDown = application('Turned Down', {
-      state: 'round_1', outcome: 'rejected',
-      state_history: [{ state: 'round_1', outcome: 'rejected', at: localDate(-2) }],
+      stage: 'round_1', outcome: 'rejected',
+      stage_history: [{ stage: 'round_1', outcome: 'rejected', at: localDate(-2) }],
     })
 
     render(
       <TableView
         applications={[
           application('Offer Taken', {
-            state: 'accepted', outcome: 'active',
-            state_history: [{ state: 'accepted', outcome: 'active', at: localDate(-2) }],
+            stage: 'accepted', outcome: 'active',
+            stage_history: [{ stage: 'accepted', outcome: 'active', at: localDate(-2) }],
           }),
           turnedDown,
         ]}
@@ -723,7 +723,7 @@ describe('TableView', () => {
     const archived = application('Put Away Co', {
       outcome: 'rejected',
       archived_at: localDate(-1),
-      state_history: [{ state: 'applied', outcome: 'rejected', at: localDate(-2) }],
+      stage_history: [{ stage: 'applied', outcome: 'rejected', at: localDate(-2) }],
     })
 
     render(
@@ -1193,32 +1193,32 @@ describe('StatisticsView', () => {
   /** Two rejected, one live and talking, one live and silent. */
   const searched = [
     application('Bounced Co', {
-      state: 'applied', outcome: 'rejected',
-      state_history: [
-        { state: 'applied', outcome: 'active', at: localDate(-30) },
-        { state: 'applied', outcome: 'rejected', at: localDate(-28) },
+      stage: 'applied', outcome: 'rejected',
+      stage_history: [
+        { stage: 'applied', outcome: 'active', at: localDate(-30) },
+        { stage: 'applied', outcome: 'rejected', at: localDate(-28) },
       ],
       source: 'LinkedIn',
     }),
     application('Nearly Co', {
-      state: 'screening', outcome: 'rejected',
-      state_history: [
-        { state: 'applied', outcome: 'active', at: localDate(-40) },
-        { state: 'screening', outcome: 'active', at: localDate(-30) },
-        { state: 'screening', outcome: 'rejected', at: localDate(-20) },
+      stage: 'screening', outcome: 'rejected',
+      stage_history: [
+        { stage: 'applied', outcome: 'active', at: localDate(-40) },
+        { stage: 'screening', outcome: 'active', at: localDate(-30) },
+        { stage: 'screening', outcome: 'rejected', at: localDate(-20) },
       ],
       source: 'LinkedIn',
     }),
     application('Talking Co', {
-      state: 'screening',
-      state_history: [
-        { state: 'applied', outcome: 'active', at: localDate(-25) },
-        { state: 'screening', outcome: 'active', at: localDate(-12) },
+      stage: 'screening',
+      stage_history: [
+        { stage: 'applied', outcome: 'active', at: localDate(-25) },
+        { stage: 'screening', outcome: 'active', at: localDate(-12) },
       ],
       source: 'Referral',
     }),
     application('Silent Co', {
-      state_history: [{ state: 'applied', outcome: 'active', at: localDate(-20) }],
+      stage_history: [{ stage: 'applied', outcome: 'active', at: localDate(-20) }],
       source: 'Referral',
     }),
   ]
@@ -1270,7 +1270,7 @@ describe('StatisticsView', () => {
     expect(onOpen).toHaveBeenCalledWith(searched[3]!.id)
   })
 
-  it('states each threshold on the card it changes, and edits it there', () => {
+  it('stages each threshold on the card it changes, and edits it there', () => {
     const onSettingChange = vi.fn()
     const { unmount } = renderStats(searched, {}, { onSettingChange })
 
@@ -1371,7 +1371,7 @@ describe('StatisticsView', () => {
     expect(answerOf('Where do applications go?')).toBe(
       'Of 4 recorded moves, 2 went to a later stage and 2 to a rejection.',
     )
-    const table = tableNamed('Every recorded move, from the state it left to the state it reached')
+    const table = tableNamed('Every recorded move, from the stage it left to the stage it reached')
     expect(rowCells(table, 'Screening call')).toEqual(['Screening call — Rejected', '1'])
   })
 
@@ -1396,7 +1396,7 @@ describe('StatisticsView', () => {
   it('names an unrecorded source rather than dropping those applications', () => {
     renderStats([
       ...searched,
-      application('Nowhere Co', { state_history: [{ state: 'applied', outcome: 'active', at: localDate(-5) }] }),
+      application('Nowhere Co', { stage_history: [{ stage: 'applied', outcome: 'active', at: localDate(-5) }] }),
     ])
 
     const row = within(sourcesTable()).getByLabelText('Not recorded').closest('tr')!
@@ -1422,8 +1422,8 @@ describe('StatisticsView', () => {
 
     renderStats([
       application('Short Co', {
-        state: 'offer',
-        state_history: [{ state: 'offer', outcome: 'active', at: localDate(-3) }],
+        stage: 'offer',
+        stage_history: [{ stage: 'offer', outcome: 'active', at: localDate(-3) }],
         compensation: {
           currency: 'EUR',
           advertised: null,
@@ -1496,26 +1496,26 @@ describe('kanbanColumnGroups', () => {
     const groups = kanbanColumnGroups([
       application('Live Co'),
       application('Bounced Co', { outcome: 'rejected' }),
-      application('Signed Co', { state: 'accepted', outcome: 'active' }),
+      application('Signed Co', { stage: 'accepted', outcome: 'active' }),
     ])
 
     expect(groups).toHaveLength(10)
-    expect(groups.map(({ state }) => state)).toEqual([...STATE_IDS])
+    expect(groups.map(({ stage }) => stage)).toEqual([...STAGE_IDS])
     expect(groups[1]).toEqual({
-      state: 'applied',
+      stage: 'applied',
       lanes: [
-        { state: 'applied', outcome: 'active' },
-        { state: 'applied', outcome: 'rejected' },
+        { stage: 'applied', outcome: 'active' },
+        { stage: 'applied', outcome: 'rejected' },
       ],
     })
     // Accepted is a column like any other, its job in the running lane.
-    expect(groups[9]).toEqual({ state: 'accepted', lanes: [{ state: 'accepted', outcome: 'active' }] })
+    expect(groups[9]).toEqual({ stage: 'accepted', lanes: [{ stage: 'accepted', outcome: 'active' }] })
     expect(groups.flatMap((group) => group.lanes)).toHaveLength(11)
   })
 
   it('draws the one lane a filter names at every stage it admits, empty or not', () => {
     expect(kanbanColumnGroups([], ['round_1'], ['withdrawn'])).toEqual([
-      { state: 'round_1', lanes: [{ state: 'round_1', outcome: 'withdrawn' }] },
+      { stage: 'round_1', lanes: [{ stage: 'round_1', outcome: 'withdrawn' }] },
     ])
   })
 
@@ -1527,7 +1527,7 @@ describe('kanbanColumnGroups', () => {
     )
 
     expect(groups).toEqual([
-      { state: 'applied', lanes: [{ state: 'applied', outcome: 'rejected' }] },
+      { stage: 'applied', lanes: [{ stage: 'applied', outcome: 'rejected' }] },
     ])
   })
 })
@@ -1598,11 +1598,11 @@ describe('KanbanView', () => {
   it('opens a card\'s messages on the stage the card is in', () => {
     const onOpenMessages = vi.fn()
     const record = application('Mailbox Co', {
-      state: 'round_1',
+      stage: 'round_1',
       correspondence: [
         {
           id: 'm1',
-          state: 'round_1',
+          stage: 'round_1',
           direction: 'received',
           subject: 'Next steps',
           channel: 'Email',
@@ -1670,18 +1670,18 @@ describe('KanbanView', () => {
     const select = screen.getByRole('combobox', { name: 'Move Keyboard Movers to stage' })
     expect(within(select).queryByRole('option', { name: /Rejected/ })).not.toBeInTheDocument()
     fireEvent.change(select, { target: { value: 'offer' } })
-    expect(onMove).toHaveBeenCalledWith(record.id, { state: 'offer' })
+    expect(onMove).toHaveBeenCalledWith(record.id, { stage: 'offer' })
   })
 
   it('shows the soonest invite still ahead and skips cancelled or past ones', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
     const record = application('Invite Board', {
-      state_events: [
-        stateEvent({ summary: 'Already happened', starts_at: localDate(-3) }),
-        stateEvent({ summary: 'Called off', starts_at: localDate(1), cancelled: true }),
-        stateEvent({ summary: 'Research panel', starts_at: localDate(2) }),
-        stateEvent({ summary: 'Leadership chat', starts_at: localDate(6) }),
+      stage_events: [
+        stageEvent({ summary: 'Already happened', starts_at: localDate(-3) }),
+        stageEvent({ summary: 'Called off', starts_at: localDate(1), cancelled: true }),
+        stageEvent({ summary: 'Research panel', starts_at: localDate(2) }),
+        stageEvent({ summary: 'Leadership chat', starts_at: localDate(6) }),
       ],
     })
 
@@ -1716,7 +1716,7 @@ describe('KanbanView', () => {
     fireEvent.dragOver(destination!, { dataTransfer })
     fireEvent.drop(destination!, { dataTransfer })
 
-    expect(onMove).toHaveBeenCalledWith(record.id, { state: 'offer', outcome: 'active' })
+    expect(onMove).toHaveBeenCalledWith(record.id, { stage: 'offer', outcome: 'active' })
   })
 
   it('moves a dragged card onto an ending lane, which is the move End makes', () => {
@@ -1744,7 +1744,7 @@ describe('KanbanView', () => {
     fireEvent.dragOver(destination!, { dataTransfer })
     fireEvent.drop(destination!, { dataTransfer })
 
-    expect(onMove).toHaveBeenCalledWith(record.id, { state: 'applied', outcome: 'rejected' })
+    expect(onMove).toHaveBeenCalledWith(record.id, { stage: 'applied', outcome: 'rejected' })
   })
 
   it('reacts to a move by how it went, however the card was moved', () => {
@@ -1764,7 +1764,7 @@ describe('KanbanView', () => {
     const toast = () => document.querySelector('.move-toast-region')!
     const settle = () => act(() => vi.advanceTimersByTime(5000))
 
-    let record = application('Feedback Co', { state: 'round_1' })
+    let record = application('Feedback Co', { stage: 'round_1' })
     const { rerender } = render(<KanbanView applications={[record]} {...props} />)
     const show = (change: Partial<Application>) => {
       record = { ...record, ...change }
@@ -1773,7 +1773,7 @@ describe('KanbanView', () => {
 
     // On by the arrow: a quick pop and a cheer.
     fireEvent.click(screen.getByRole('button', { name: 'Move Feedback Co to Round 2' }))
-    show({ state: 'round_2' })
+    show({ stage: 'round_2' })
     expect(card()).toHaveClass('application-card--landed')
     expect(toast()).toHaveTextContent('Keep it up!')
     // Gone on its own, not left as a state the card sits in.
@@ -1783,7 +1783,7 @@ describe('KanbanView', () => {
 
     // Back is most often a correction: it moves and says nothing.
     fireEvent.click(screen.getByRole('button', { name: 'Move Feedback Co back to Round 1' }))
-    show({ state: 'round_1' })
+    show({ stage: 'round_1' })
     expect(card()).not.toHaveClass('application-card--landed')
     expect(toast()).toBeEmptyDOMElement()
 
@@ -1791,7 +1791,7 @@ describe('KanbanView', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Move Feedback Co to stage' }), {
       target: { value: 'offer' },
     })
-    show({ state: 'offer' })
+    show({ stage: 'offer' })
     expect(toast()).not.toBeEmptyDOMElement()
     settle()
 
@@ -1799,7 +1799,7 @@ describe('KanbanView', () => {
     fireEvent.dragStart(card(), { dataTransfer })
     const accepted = screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section')!
     fireEvent.drop(accepted, { dataTransfer })
-    show({ state: 'accepted' })
+    show({ stage: 'accepted' })
     expect(card().querySelector('.confetti')).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section'))
       .toHaveClass('kanban-lane--celebrate')
@@ -1808,7 +1808,7 @@ describe('KanbanView', () => {
     expect(card().querySelector('.confetti')).toBeNull()
 
     // Ended from the End menu: no fanfare on the card, and a word of encouragement.
-    show({ state: 'round_1' })
+    show({ stage: 'round_1' })
     fireEvent.click(screen.getByRole('button', { name: /^End Feedback Co/ }))
     fireEvent.click(screen.getByRole('button', { name: /Move Feedback Co to Round 1 — Rejected/ }))
     show({ outcome: 'rejected' })
@@ -1912,12 +1912,12 @@ describe('KanbanView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
 
-    const state: StateId = 'applied'
+    const stage: StageId = 'applied'
     render(
       <KanbanView
         applications={[
-          application('Fresh Co', { state_history: [{ state, outcome: 'active', at: localDate(-29) }] }),
-          application('Quiet Co', { state_history: [{ state, outcome: 'active', at: localDate(-30) }] }),
+          application('Fresh Co', { stage_history: [{ stage, outcome: 'active', at: localDate(-29) }] }),
+          application('Quiet Co', { stage_history: [{ stage, outcome: 'active', at: localDate(-30) }] }),
         ]}
         onOpen={vi.fn()}
         onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()}
@@ -1946,12 +1946,12 @@ describe('KanbanView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
 
-    const state: StateId = 'applied'
+    const stage: StageId = 'applied'
     render(
       <KanbanView
         applications={[
           application('Annotated Co', {
-            state_history: [{ state, outcome: 'active', at: localDate(-40) }],
+            stage_history: [{ stage, outcome: 'active', at: localDate(-40) }],
             updated_at: localDate(0),
           }),
         ]}
@@ -1974,8 +1974,8 @@ describe('KanbanView', () => {
       <KanbanView
         applications={[
           application('Turned Down Co', {
-            state: 'applied', outcome: 'rejected',
-            state_history: [{ state: 'applied', outcome: 'rejected', at: localDate(-60) }],
+            stage: 'applied', outcome: 'rejected',
+            stage_history: [{ stage: 'applied', outcome: 'rejected', at: localDate(-60) }],
             updated_at: localDate(-60),
           }),
         ]}

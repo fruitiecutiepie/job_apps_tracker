@@ -2,7 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
-import { DEFAULT_STAGE_CONFIG, applyStages } from '../domain/states'
+import { DEFAULT_STAGE_CONFIG, applyStages } from '../domain/stages'
 import { loadTrackerDocument, resetTrackerDocument, saveTrackerDocument } from '../domain/storage'
 import { seedNamedCompanies } from './fixture'
 import { handleTestAttachmentFetch, wipeTestAttachments } from './attachmentStore'

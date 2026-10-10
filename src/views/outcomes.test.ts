@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { emptyCompensation, legacyStatus } from '../domain'
-import type { Application, StateEvent, StateHistoryEntry } from '../domain'
+import type { Application, StageEvent, StageHistoryEntry } from '../domain'
 import {
   advanced,
   daysToFirstReply,
@@ -30,7 +30,7 @@ function at(daysFromToday: number, hour = 9): string {
  * reader says it — `auto_rejected`, `recruiter_interview_rejected` — and read through the
  * same table that migrates old files, so the tables below stay one word per move.
  */
-function history(entries: readonly (readonly [string, number])[]): StateHistoryEntry[] {
+function history(entries: readonly (readonly [string, number])[]): StageHistoryEntry[] {
   return entries.map(([status, daysAgo]) => ({ ...legacyStatus(status)!, at: at(-daysAgo) }))
 }
 
@@ -44,7 +44,7 @@ function application(
 ): Application {
   const trail = history(entries)
   // Tolerates an empty list so a test can supply an out-of-order or single-entry history
-  // of its own through `overrides` without the helper deriving state from nothing.
+  // of its own through `overrides` without the helper deriving stage from nothing.
   const last = trail.at(-1)
   return {
     id: `00000000-0000-7000-8000-${company.toLowerCase().replace(/[^a-z0-9]/g, '').padEnd(12, '0').slice(0, 12)}`,
@@ -52,9 +52,9 @@ function application(
     role: null,
     url: null,
     source: null,
-    state: last?.state ?? 'applied',
+    stage: last?.stage ?? 'applied',
     outcome: last?.outcome ?? 'active',
-    state_history: trail,
+    stage_history: trail,
     archived_at: null,
     next_action: null,
     next_action_at: null,
@@ -63,7 +63,7 @@ function application(
     compensation: emptyCompensation(),
     ratings: [],
     stage_notes: [],
-    state_events: [] as StateEvent[],
+    stage_events: [] as StageEvent[],
     correspondence: [],
     completed_actions: [],
     attachments: [],
@@ -102,22 +102,22 @@ describe('hearing back', () => {
 
   it('reads two moves on one day as no days, like every other span', () => {
     const sameDay = application('Fast Co', [])
-    const trail: StateHistoryEntry[] = [
-      { state: 'applied', outcome: 'active', at: at(-3, 9) },
-      { state: 'applied', outcome: 'rejected', at: at(-3, 17) },
+    const trail: StageHistoryEntry[] = [
+      { stage: 'applied', outcome: 'active', at: at(-3, 9) },
+      { stage: 'applied', outcome: 'rejected', at: at(-3, 17) },
     ]
 
-    expect(daysToFirstReply({ ...sameDay, state_history: trail })).toBe(0)
+    expect(daysToFirstReply({ ...sameDay, stage_history: trail })).toBe(0)
   })
 
   it('reads history in time order rather than trusting the stored order', () => {
     const scrambled = application('Jumbled Co', [])
-    const trail: StateHistoryEntry[] = [
-      { state: 'recruiter_messaged', outcome: 'active', at: at(-10) },
-      { state: 'applied', outcome: 'active', at: at(-20) },
+    const trail: StageHistoryEntry[] = [
+      { stage: 'recruiter_messaged', outcome: 'active', at: at(-10) },
+      { stage: 'applied', outcome: 'active', at: at(-20) },
     ]
 
-    expect(daysToFirstReply({ ...scrambled, state_history: trail })).toBe(10)
+    expect(daysToFirstReply({ ...scrambled, stage_history: trail })).toBe(10)
   })
 })
 
@@ -248,7 +248,7 @@ describe('stageMoves', () => {
       application('Three Co', [['applied', 20], ['auto_rejected', 18]]),
     ]
 
-    // In configured state order on both ends: Auto-rejected sits right after Applied.
+    // In configured stage order on both ends: Auto-rejected sits right after Applied.
     expect(stageMoves(applications)).toEqual([
       { from: status('applied'), to: status('auto_rejected'), count: 1 },
       { from: status('applied'), to: status('screening'), count: 2 },
@@ -271,10 +271,10 @@ describe('stageMoves', () => {
 
   it('reads history in time order, not in the order it was stored', () => {
     const shuffled = application('Shuffled Co', [], {
-      state: 'screening',
-      state_history: [
-        { state: 'screening', outcome: 'active', at: at(-5) },
-        { state: 'applied', outcome: 'active', at: at(-10) },
+      stage: 'screening',
+      stage_history: [
+        { stage: 'screening', outcome: 'active', at: at(-5) },
+        { stage: 'applied', outcome: 'active', at: at(-10) },
       ],
     })
 
@@ -306,8 +306,8 @@ describe('stagePassRates', () => {
       application('Waiting Co', [['applied', 5]]),
     ])
 
-    expect(rows.find((row) => row.state === 'applied')).toEqual({
-      state: 'applied',
+    expect(rows.find((row) => row.stage === 'applied')).toEqual({
+      stage: 'applied',
       decided: 2,
       passed: 1,
       pending: 1,
@@ -316,7 +316,7 @@ describe('stagePassRates', () => {
 
   it('counts a skipped stage as passing the one before it', () => {
     const skipped = application('Skipped Co', [['applied', 20], ['round_1', 10]])
-    expect(stagePassRates([skipped])[0]).toEqual({ state: 'applied', decided: 1, passed: 1, pending: 0 })
+    expect(stagePassRates([skipped])[0]).toEqual({ stage: 'applied', decided: 1, passed: 1, pending: 0 })
   })
 
   it('does not count going back as passing, and counts accepting as passing Offer', () => {
@@ -325,8 +325,8 @@ describe('stagePassRates', () => {
       application('Hired Co', [['offer', 10], ['accepted', 5]]),
     ])
 
-    expect(rows.find((row) => row.state === 'screening')).toMatchObject({ decided: 1, passed: 0 })
-    expect(rows.find((row) => row.state === 'offer')).toMatchObject({ decided: 1, passed: 1 })
+    expect(rows.find((row) => row.stage === 'screening')).toMatchObject({ decided: 1, passed: 0 })
+    expect(rows.find((row) => row.stage === 'offer')).toMatchObject({ decided: 1, passed: 1 })
   })
 })
 

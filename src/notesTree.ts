@@ -10,8 +10,8 @@
  * filtered is worth reasoning about without rendering a sidebar.
  */
 
-import type { Application, StateId } from './domain'
-import { STATE_CONFIG, stateLabel } from './domain'
+import type { Application, StageId } from './domain'
+import { STAGE_CONFIG, stageLabel } from './domain'
 import { postingRef, stageRef, type NoteRef } from './notesLayout'
 
 /** How much of a note a hit shows around the words that matched. */
@@ -52,7 +52,7 @@ export interface NotesTreeEntry {
 
 /** A stage heading in the tree and the rows under it. */
 export interface NotesTreeGroup {
-  state: StateId
+  stage: StageId
   label: string
   notes: NotesTreeEntry[]
 }
@@ -65,8 +65,8 @@ export const POSTING_LABEL = 'Job posting'
  * for "Halcyon" means the company and would be puzzled to be told there is no such note,
  * so the name of the thing the note belongs to counts too.
  */
-function haystack(application: Application, state: StateId, body: string, captured: string): string {
-  return [application.company, application.role ?? '', stateLabel(state), body, captured]
+function haystack(application: Application, stage: StageId, body: string, captured: string): string {
+  return [application.company, application.role ?? '', stageLabel(stage), body, captured]
     .join('\n')
     .toLowerCase()
 }
@@ -122,7 +122,7 @@ export function buildNotesTree(
   query: string,
 ): NotesTreeGroup[] {
   const needle = query.trim().toLowerCase()
-  const byState = new Map<StateId, NotesTreeEntry[]>()
+  const byStage = new Map<StageId, NotesTreeEntry[]>()
 
   for (const application of applications) {
 
@@ -130,7 +130,7 @@ export function buildNotesTree(
       const written = note.body.trim().length > 0
       if (!written && note.heard.length === 0) continue
       const captured = note.heard.map((entry) => entry.body).join('\n')
-      if (needle && !haystack(application, note.state, note.body, captured).includes(needle)) continue
+      if (needle && !haystack(application, note.stage, note.body, captured).includes(needle)) continue
 
       // What the note itself says, which is not the same question as whether the row
       // matched: a row found by its company has nothing to show under it.
@@ -138,9 +138,9 @@ export function buildNotesTree(
         ? [...hitsIn(note.body, needle, 'written'), ...hitsIn(captured, needle, 'captured')]
         : []
 
-      const entries = byState.get(note.state) ?? []
+      const entries = byStage.get(note.stage) ?? []
       entries.push({
-        ref: stageRef(application.id, note.state),
+        ref: stageRef(application.id, note.stage),
         company: application.company,
         role: application.role,
         written,
@@ -148,17 +148,17 @@ export function buildNotesTree(
         matches: found.slice(0, MATCHES_SHOWN),
         hits: found.length,
       })
-      byState.set(note.state, entries)
+      byStage.set(note.stage, entries)
     }
   }
 
-  // Walked in `STATE_CONFIG` order rather than sorted after the fact, so the tree reads
+  // Walked in `STAGE_CONFIG` order rather than sorted after the fact, so the tree reads
   // down the pipeline the way every other list of stages in the app does.
-  return STATE_CONFIG.flatMap(({ id }) => {
-    const notes = byState.get(id)
+  return STAGE_CONFIG.flatMap(({ id }) => {
+    const notes = byStage.get(id)
     if (!notes || notes.length === 0) return []
     notes.sort(byName)
-    return [{ state: id, label: stateLabel(id), notes }]
+    return [{ stage: id, label: stageLabel(id), notes }]
   })
 }
 

@@ -18,7 +18,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import { screen, within } from '@testing-library/react'
 import { page, userEvent } from '@vitest/browser/context'
 
-import { stateLabel } from './domain'
+import { stageLabel } from './domain'
 import type { Application } from './domain'
 import {
   FIRST_PANE_ID,
@@ -38,7 +38,7 @@ function withLongNote(applications: Application[]): Application[] {
       ? {
           ...application,
           stage_notes: application.stage_notes.map((note) =>
-            note.state === application.state ? { ...note, body: long } : note,
+            note.stage === application.stage ? { ...note, body: long } : note,
           ),
         }
       : application,
@@ -113,7 +113,7 @@ describe('the panel in a real browser', () => {
         singleGroup(FIRST_PANE_ID, postingRef(halcyon.id)),
         FIRST_PANE_ID,
         'right',
-        stageRef(halcyon.id, halcyon.state),
+        stageRef(halcyon.id, halcyon.stage),
         () => 'pane-2',
       )!,
     )
@@ -198,11 +198,11 @@ describe('the panel in a real browser', () => {
     // of them is a stage the fixture already has open — the picker offers a row's other
     // stages, and one already on a tab is not among them.
     const opening = ['applied', 'recruiter_messaged', 'screening', 'take_home_assessment'] as const
-    for (const state of opening) {
+    for (const stage of opening) {
       await userEvent.click(screen.getByRole('button', { name: 'Open' }))
       await userEvent.selectOptions(
         screen.getByRole('combobox', { name: new RegExp(`Other stages for ${halcyon.company}`) }),
-        [stateLabel(state)],
+        [stageLabel(stage)],
       )
     }
     expect(strip().scrollWidth).toBeGreaterThan(strip().clientWidth)
@@ -219,11 +219,11 @@ describe('the panel in a real browser', () => {
     const { halcyon } = renderPanel()
     await page.viewport(640, 800)
     const strip = () => document.querySelector<HTMLElement>('.panel__tabs')!
-    for (const state of ['applied', 'recruiter_messaged', 'screening', 'take_home_assessment'] as const) {
+    for (const stage of ['applied', 'recruiter_messaged', 'screening', 'take_home_assessment'] as const) {
       await userEvent.click(screen.getByRole('button', { name: 'Open' }))
       await userEvent.selectOptions(
         screen.getByRole('combobox', { name: new RegExp(`Other stages for ${halcyon.company}`) }),
-        [stateLabel(state)],
+        [stageLabel(stage)],
       )
     }
     expect(strip().scrollWidth).toBeGreaterThan(strip().clientWidth)
@@ -744,8 +744,8 @@ describe('the stage pill in the title bar', () => {
      * off, because a pill held to 9rem spent the value to buy the width. jsdom cannot
      * answer either half: it lays nothing out and every box measures zero.
      */
-    for (const state of ['round_2', 'take_home_assessment'] as const) {
-      await userEvent.selectOptions(pill, stateLabel(state))
+    for (const stage of ['round_2', 'take_home_assessment'] as const) {
+      await userEvent.selectOptions(pill, stageLabel(stage))
       expect(pill.getBoundingClientRect().width).toBeGreaterThanOrEqual(needed(pill) - 1)
     }
   })
@@ -753,7 +753,7 @@ describe('the stage pill in the title bar', () => {
   it('spends the name before it touches the stage', async () => {
     renderPanel()
     const pill = document.querySelector<HTMLSelectElement>('.panel__stage-select')!
-    await userEvent.selectOptions(pill, stateLabel('take_home_assessment'))
+    await userEvent.selectOptions(pill, stageLabel('take_home_assessment'))
     const name = document.querySelector<HTMLElement>('.panel__subject')!
 
     // Narrow enough that the two cannot both be written out. The name is the half that

@@ -66,7 +66,7 @@ describe('move controls', () => {
   it('sit quieter than the stage select they shortcut, in tokens only', () => {
     const body = ruleBody('.move-controls__button')
     const table = ruleBody('.move-controls--table .move-controls__button')
-    const select = ruleBody('.table-state-select')
+    const select = ruleBody('.table-stage-select')
 
     // In the table, the same row height as the select beside them, so the cell does not
     // look ragged; on a card, the control height every other card control has.

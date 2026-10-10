@@ -14,7 +14,7 @@ import {
   isStageIdShape,
   stageConfigFrom,
   type StageConfig,
-} from './states'
+} from './stages'
 import type {
   Application,
   Attachment,
@@ -27,9 +27,9 @@ import type {
   Rating,
   StageNote,
   StageSetting,
-  StateEvent,
-  StateHistoryEntry,
-  StateId,
+  StageEvent,
+  StageHistoryEntry,
+  StageId,
   TrackerDatabase,
 } from './types'
 import { prepareTrackerDatabase } from './database'
@@ -63,12 +63,12 @@ const QUALIFIED_ISO =
  */
 let validating: StageConfig = DEFAULT_STAGE_CONFIG
 
-function isStateId(value: unknown): value is StateId {
+function isStageId(value: unknown): value is StageId {
   return validating.has(value)
 }
 
-function stateRank(state: StateId): number {
-  return validating.rank(state)
+function stageRank(stage: StageId): number {
+  return validating.rank(stage)
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -134,33 +134,33 @@ function urlValue(value: unknown, path: string, errors: ValidationError[]): stri
 function historyValue(
   value: unknown,
   path: string,
-  state: Application['state'],
+  stage: Application['stage'],
   outcome: Application['outcome'],
   createdAt: string,
   errors: ValidationError[],
-): StateHistoryEntry[] {
-  if (value === undefined) return [{ state, outcome, at: createdAt }]
+): StageHistoryEntry[] {
+  if (value === undefined) return [{ stage, outcome, at: createdAt }]
   if (!Array.isArray(value) || value.length === 0) {
     addError(errors, path, 'must be a non-empty array')
     return []
   }
-  const history: StateHistoryEntry[] = []
+  const history: StageHistoryEntry[] = []
   value.forEach((entry, index) => {
     if (!isRecord(entry)) {
       addError(errors, `${path}[${index}]`, 'must be an object')
       return
     }
-    if (!isStateId(entry.state)) addError(errors, `${path}[${index}].state`, 'is invalid')
+    if (!isStageId(entry.stage)) addError(errors, `${path}[${index}].stage`, 'is invalid')
     if (!isOutcomeId(entry.outcome)) addError(errors, `${path}[${index}].outcome`, 'is invalid')
     if (!validTimestamp(entry.at)) {
       addError(errors, `${path}[${index}].at`, 'must be a timezone-qualified ISO-8601 timestamp')
     }
-    if (isStateId(entry.state) && isOutcomeId(entry.outcome) && validTimestamp(entry.at)) {
-      history.push({ state: entry.state, outcome: entry.outcome, at: entry.at })
+    if (isStageId(entry.stage) && isOutcomeId(entry.outcome) && validTimestamp(entry.at)) {
+      history.push({ stage: entry.stage, outcome: entry.outcome, at: entry.at })
     }
   })
   const last = history[history.length - 1]
-  if (last && (last.state !== state || last.outcome !== outcome)) {
+  if (last && (last.stage !== stage || last.outcome !== outcome)) {
     addError(errors, path, "must end in the application's current stage and outcome")
   }
   return history
@@ -405,7 +405,7 @@ function stageNoteValue(value: unknown, path: string, errors: ValidationError[])
     addError(errors, path, 'must be an object')
     return null
   }
-  if (!isStateId(value.state)) addError(errors, `${path}.state`, 'is invalid')
+  if (!isStageId(value.stage)) addError(errors, `${path}.stage`, 'is invalid')
   const heard = heardValue(value.heard, `${path}.heard`, errors)
   // A note carrying captured lines is a real note with nothing prepared in it, so a blank
   // body is only missing when there is nothing else in the note either.
@@ -417,7 +417,7 @@ function stageNoteValue(value: unknown, path: string, errors: ValidationError[])
     addError(errors, `${path}.updated_at`, 'must be a timezone-qualified ISO-8601 timestamp')
   }
   if (
-    !isStateId(value.state)
+    !isStageId(value.stage)
     || (heard.length === 0 && !nonBlank(value.body))
     || !validTimestamp(value.created_at)
     || !validTimestamp(value.updated_at)
@@ -426,7 +426,7 @@ function stageNoteValue(value: unknown, path: string, errors: ValidationError[])
   }
 
   return {
-    state: value.state,
+    stage: value.stage,
     body: typeof value.body === 'string' ? value.body.trim() : '',
     heard,
     created_at: value.created_at,
@@ -447,20 +447,20 @@ function stageNotesValue(value: unknown, path: string, errors: ValidationError[]
 
   const seen = new Set<string>()
   notes.forEach((note, index) => {
-    if (seen.has(note.state)) addError(errors, `${path}[${index}].state`, 'duplicates another stage note')
-    seen.add(note.state)
+    if (seen.has(note.stage)) addError(errors, `${path}[${index}].stage`, 'duplicates another stage note')
+    seen.add(note.stage)
   })
 
-  return notes.sort((left, right) => stateRank(left.state) - stateRank(right.state))
+  return notes.sort((left, right) => stageRank(left.stage) - stageRank(right.stage))
 }
 
-function stateEventValue(value: unknown, path: string, errors: ValidationError[]): StateEvent | null {
+function stageEventValue(value: unknown, path: string, errors: ValidationError[]): StageEvent | null {
   if (!isRecord(value)) {
     addError(errors, path, 'must be an object')
     return null
   }
   if (!nonBlank(value.id)) addError(errors, `${path}.id`, 'is required')
-  if (!isStateId(value.state)) addError(errors, `${path}.state`, 'is invalid')
+  if (!isStageId(value.stage)) addError(errors, `${path}.stage`, 'is invalid')
   if (!nonBlank(value.summary)) addError(errors, `${path}.summary`, 'is required')
   if (!validTimestamp(value.starts_at)) {
     addError(errors, `${path}.starts_at`, 'must be a timezone-qualified ISO-8601 timestamp')
@@ -505,7 +505,7 @@ function stateEventValue(value: unknown, path: string, errors: ValidationError[]
 
   if (
     !nonBlank(value.id)
-    || !isStateId(value.state)
+    || !isStageId(value.stage)
     || !nonBlank(value.summary)
     || !validTimestamp(value.starts_at)
     || !validTimestamp(value.created_at)
@@ -516,7 +516,7 @@ function stateEventValue(value: unknown, path: string, errors: ValidationError[]
 
   return {
     id: value.id.trim(),
-    state: value.state,
+    stage: value.stage,
     summary: value.summary.trim(),
     starts_at: value.starts_at,
     ends_at: endsAt,
@@ -530,7 +530,7 @@ function stateEventValue(value: unknown, path: string, errors: ValidationError[]
   }
 }
 
-function stateEventsValue(value: unknown, path: string, errors: ValidationError[]): StateEvent[] {
+function stageEventsValue(value: unknown, path: string, errors: ValidationError[]): StageEvent[] {
   if (value === undefined || value === null) return []
   if (!Array.isArray(value)) {
     addError(errors, path, 'must be an array')
@@ -538,8 +538,8 @@ function stateEventsValue(value: unknown, path: string, errors: ValidationError[
   }
 
   const events = value
-    .map((event, index) => stateEventValue(event, `${path}[${index}]`, errors))
-    .filter((event): event is StateEvent => event !== null)
+    .map((event, index) => stageEventValue(event, `${path}[${index}]`, errors))
+    .filter((event): event is StageEvent => event !== null)
 
   const seenIds = new Set<string>()
   const seenUids = new Set<string>()
@@ -556,7 +556,7 @@ function stateEventsValue(value: unknown, path: string, errors: ValidationError[
 
   return events.sort(
     (left, right) =>
-      stateRank(left.state) - stateRank(right.state)
+      stageRank(left.stage) - stageRank(right.stage)
       || Date.parse(left.starts_at) - Date.parse(right.starts_at)
       || left.id.localeCompare(right.id),
   )
@@ -572,7 +572,7 @@ function correspondenceEntryValue(
     return null
   }
   if (!nonBlank(value.id)) addError(errors, `${path}.id`, 'is required')
-  if (!isStateId(value.state)) addError(errors, `${path}.state`, 'is invalid')
+  if (!isStageId(value.stage)) addError(errors, `${path}.stage`, 'is invalid')
   if (!isCorrespondenceDirection(value.direction)) {
     addError(errors, `${path}.direction`, 'is invalid')
   }
@@ -594,7 +594,7 @@ function correspondenceEntryValue(
   // There is no future check on `at` either — nothing here is enforced against the clock.
   if (
     !nonBlank(value.id)
-    || !isStateId(value.state)
+    || !isStageId(value.stage)
     || !isCorrespondenceDirection(value.direction)
     || !nonBlank(value.body)
     || !validTimestamp(value.at)
@@ -606,7 +606,7 @@ function correspondenceEntryValue(
 
   return {
     id: value.id.trim(),
-    state: value.state,
+    stage: value.stage,
     direction: value.direction,
     subject: nullableText(value.subject, `${path}.subject`, errors),
     channel: nullableText(value.channel, `${path}.channel`, errors),
@@ -730,7 +730,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
   }
   if (!nonBlank(value.id)) addError(errors, `${path}.id`, 'is required')
   if (!nonBlank(value.company)) addError(errors, `${path}.company`, 'is required')
-  if (!isStateId(value.state)) addError(errors, `${path}.state`, 'is invalid')
+  if (!isStageId(value.stage)) addError(errors, `${path}.stage`, 'is invalid')
   if (!isOutcomeId(value.outcome)) addError(errors, `${path}.outcome`, 'is invalid')
   if (!validTimestamp(value.created_at)) {
     addError(errors, `${path}.created_at`, 'must be a timezone-qualified ISO-8601 timestamp')
@@ -738,7 +738,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
   if (!validTimestamp(value.updated_at)) {
     addError(errors, `${path}.updated_at`, 'must be a timezone-qualified ISO-8601 timestamp')
   }
-  if (!nonBlank(value.id) || !nonBlank(value.company) || !isStateId(value.state) || !isOutcomeId(value.outcome) || !validTimestamp(value.created_at) || !validTimestamp(value.updated_at)) return null
+  if (!nonBlank(value.id) || !nonBlank(value.company) || !isStageId(value.stage) || !isOutcomeId(value.outcome) || !validTimestamp(value.created_at) || !validTimestamp(value.updated_at)) return null
 
   // Absent is not archived, which is what every application written before archiving was.
   let archivedAt: string | null = null
@@ -775,12 +775,12 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     role: nullableText(value.role, `${path}.role`, errors),
     url: urlValue(value.url, `${path}.url`, errors),
     source: nullableText(value.source, `${path}.source`, errors),
-    state: value.state,
+    stage: value.stage,
     outcome: value.outcome,
-    state_history: historyValue(
-      value.state_history,
-      `${path}.state_history`,
-      value.state,
+    stage_history: historyValue(
+      value.stage_history,
+      `${path}.stage_history`,
+      value.stage,
       value.outcome,
       value.created_at,
       errors,
@@ -796,7 +796,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
       errors,
     ),
     stage_notes: stageNotesValue(value.stage_notes, `${path}.stage_notes`, errors),
-    state_events: stateEventsValue(value.state_events, `${path}.state_events`, errors),
+    stage_events: stageEventsValue(value.stage_events, `${path}.stage_events`, errors),
     correspondence: correspondenceValue(value.correspondence, `${path}.correspondence`, errors),
     attachments: attachmentsValue(value.attachments, `${path}.attachments`, errors),
     posting: postingValue(value.posting, `${path}.posting`, errors),

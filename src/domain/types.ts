@@ -5,10 +5,10 @@
  * message is filed against the conversation it belongs to rather than against how that
  * conversation turned out.
  */
-export type StateId = BuiltinStateId | RoundId
+export type StageId = BuiltinStageId | RoundId
 
 /** The stages every tracker has, whatever it calls them. */
-export type BuiltinStateId =
+export type BuiltinStageId =
   | 'headhunted'
   | 'applied'
   | 'recruiter_messaged'
@@ -27,7 +27,7 @@ export type RoundId = `round_${number}`
 
 /** One stage of a tracker and what it is called there. */
 export interface StageSetting {
-  id: StateId
+  id: StageId
   label: string
 }
 
@@ -41,7 +41,7 @@ export type OutcomeId = 'active' | 'rejected' | 'withdrawn' | 'closed'
 
 /** Where an application stands: its stage and how that stage is going. */
 export interface Status {
-  state: StateId
+  stage: StageId
   outcome: OutcomeId
 }
 
@@ -49,8 +49,8 @@ export type RatingDimensionId = 'work' | 'growth' | 'people' | 'company'
 
 export type CompensationStageId = 'advertised' | 'expected' | 'offered'
 
-export interface StateHistoryEntry {
-  state: StateId
+export interface StageHistoryEntry {
+  stage: StageId
   outcome: OutcomeId
   at: string
 }
@@ -97,7 +97,7 @@ export interface CompletedActionDraft {
 }
 
 export interface StageNote {
-  state: StateId
+  stage: StageId
   body: string
   /** Lines captured during this stage, oldest first. */
   heard: HeardEntry[]
@@ -111,7 +111,7 @@ export interface StageNote {
  * saving the notes panel cannot roll one back or write one twice.
  */
 export interface StageNoteDraft {
-  state: StateId
+  stage: StageId
   body: string
 }
 
@@ -168,13 +168,13 @@ export interface Compensation {
 }
 
 /**
- * A calendar invite filed against one state of an application. `ics_uid` is the
+ * A calendar invite filed against one stage of an application. `ics_uid` is the
  * iCalendar UID it arrived with, which is how a rescheduled invite replaces the
  * one it supersedes instead of sitting beside it.
  */
-export interface StateEvent {
+export interface StageEvent {
   id: string
-  state: StateId
+  stage: StageId
   summary: string
   starts_at: string
   ends_at: string | null
@@ -188,9 +188,9 @@ export interface StateEvent {
 }
 
 /** An invite as edited in the UI, before an id and timestamps are resolved. */
-export interface StateEventDraft {
+export interface StageEventDraft {
   id?: string
-  state: StateId
+  stage: StageId
   summary: string
   starts_at: string
   ends_at?: string | null
@@ -204,7 +204,7 @@ export interface StateEventDraft {
 export type CorrespondenceDirection = 'received' | 'sent'
 
 /**
- * One message exchanged with an employer, filed against one state: a recruiter's email, a
+ * One message exchanged with an employer, filed against one stage: a recruiter's email, a
  * LinkedIn message, a rejection note, and what you sent back. It is deliberately not a third
  * mode of `stage_notes`. A prep note is what you wrote before a stage and a `HeardEntry` is a
  * line typed mid-conversation; a message is neither, because someone else wrote it at a
@@ -226,7 +226,7 @@ export type CorrespondenceDirection = 'received' | 'sent'
  */
 export interface CorrespondenceEntry {
   id: string
-  state: StateId
+  stage: StageId
   direction: CorrespondenceDirection
   /**
    * What the message was about, when it came with one. Optional because a LinkedIn message
@@ -256,7 +256,7 @@ export interface CorrespondenceEntry {
  */
 export interface CorrespondenceDraft {
   id?: string
-  state: StateId
+  stage: StageId
   direction: CorrespondenceDirection
   subject?: string | null
   channel?: string | null
@@ -301,9 +301,9 @@ export interface Application {
   role: string | null
   url: string | null
   source: string | null
-  state: StateId
+  stage: StageId
   outcome: OutcomeId
-  state_history: StateHistoryEntry[]
+  stage_history: StageHistoryEntry[]
   /**
    * When the application was put away, or null. A visibility flag rather than an outcome:
    * archiving keeps how it ended, and hides it so the next job search does not start among
@@ -317,7 +317,7 @@ export interface Application {
   /** Next actions carried out, oldest first. */
   completed_actions: CompletedAction[]
   stage_notes: StageNote[]
-  state_events: StateEvent[]
+  stage_events: StageEvent[]
   /** Messages exchanged with the employer, oldest first by the time they were sent. */
   correspondence: CorrespondenceEntry[]
   attachments: Attachment[]
@@ -332,7 +332,7 @@ export type JsonSchemaObject = Record<string, unknown>
 
 export interface TrackerIndexes {
   by_id: Record<string, number>
-  by_state: Record<StateId, string[]>
+  by_stage: Record<StageId, string[]>
   by_company: Record<string, string[]>
   by_created_at: string[]
   by_updated_at: string[]
@@ -341,10 +341,10 @@ export interface TrackerIndexes {
   with_next_action: string[]
   unscheduled_next_actions: string[]
   by_outcome: Record<OutcomeId, string[]>
-  ever_reached: Record<StateId, string[]>
+  ever_reached: Record<StageId, string[]>
   search_text: Record<string, string>
-  stats_current: Record<StateId, number>
-  stats_ever_reached: Record<StateId, number>
+  stats_current: Record<StageId, number>
+  stats_ever_reached: Record<StageId, number>
 }
 
 export interface TrackerDatabase {
@@ -381,7 +381,7 @@ export interface ApplicationInput {
   role?: string | null
   url?: string | null
   source?: string | null
-  state?: StateId
+  stage?: StageId
   outcome?: OutcomeId
   next_action?: string | null
   next_action_at?: string | null
@@ -404,7 +404,7 @@ export type ApplicationEdits = Partial<
     | 'deadline_at'
     | 'notes'
     | 'attachments'
-    // Unlike `ratings`, `stage_notes`, `state_events`, and `correspondence`, compensation carries no
+    // Unlike `ratings`, `stage_notes`, `stage_events`, and `correspondence`, compensation carries no
     // per-record timestamps, so there is nothing a second write path could destroy: the
     // whole record is replaced at once, exactly the way `deadline_at` is.
     | 'compensation'

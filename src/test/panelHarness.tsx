@@ -38,7 +38,7 @@ export function renderPanel(
   layoutFor?: (halcyon: Application) => LayoutNode,
 ) {
   const halcyon = applications.find((application) => application.company === 'Halcyon Maps')!
-  const layout = layoutFor?.(halcyon) ?? openingLayout(halcyon, halcyon.state)
+  const layout = layoutFor?.(halcyon) ?? openingLayout(halcyon, halcyon.stage)
   render(
     <div className="app-shell">
       <header className="topbar">

@@ -240,7 +240,7 @@ describe('job applications tracker', () => {
     expect(screen.getByRole('heading', { name: 'Round 1 — Rejected' })).toBeInTheDocument()
     const saved = readSavedDocument()
     expect(saved.schema_version).toBe(DATA_VERSION)
-    expect(saved.applications[0]).toMatchObject({ state: 'round_1', outcome: 'rejected' })
+    expect(saved.applications[0]).toMatchObject({ stage: 'round_1', outcome: 'rejected' })
   })
 
   it('shows an error when saved data is unreadable and leaves storage untouched', async () => {
@@ -304,7 +304,7 @@ describe('job applications tracker', () => {
           company: 'Paper Kite Labs',
           role: 'Design systems engineer',
           source: 'LinkedIn',
-          state: 'applied',
+          stage: 'applied',
           next_action: 'Send portfolio follow-up',
         }),
       ]),
@@ -477,7 +477,7 @@ describe('job applications tracker', () => {
 
     // Filtering is a view: nothing about the application was written.
     const saved = readSavedDocument().applications.find((a) => a.company === 'Northstar Labs')!
-    expect(saved.state).toBe('headhunted')
+    expect(saved.stage).toBe('headhunted')
   })
 
   it('copies the roles of a whole outcome, not just one stage', async () => {
@@ -578,7 +578,7 @@ describe('job applications tracker', () => {
     expect(screen.getByRole('status')).toHaveTextContent('Copied 5 roles')
   })
 
-  it('persists edits across reloads and appends history only when state changes', async () => {
+  it('persists edits across reloads and appends history only when stage changes', async () => {
     // Counts the whole corpus, so it takes the demo entire.
     seedFullDemo()
     const user = userEvent.setup()
@@ -604,11 +604,11 @@ describe('job applications tracker', () => {
       (application) => application.id === before.id,
     )!
     expect(after.company).toBe('Saffron Systems International')
-    expect(after.state).toBe('round_2')
+    expect(after.stage).toBe('round_2')
     // The stage moved and the outcome did not.
     expect(after.outcome).toBe('active')
-    expect(after.state_history).toHaveLength(before.state_history.length + 1)
-    expect(after.state_history.at(-1)).toMatchObject({ state: 'round_2', outcome: 'active' })
+    expect(after.stage_history).toHaveLength(before.stage_history.length + 1)
+    expect(after.stage_history.at(-1)).toMatchObject({ stage: 'round_2', outcome: 'active' })
 
     unmount()
     await renderLoadedApp()
@@ -647,7 +647,7 @@ describe('job applications tracker', () => {
     ])
     expect(after.completed_actions.at(-1)!.at).toBe(DEFAULT_DEMO_REFERENCE)
     // Resolving a task is not a stage change, and a closing date is not a task.
-    expect(after.state_history).toEqual(before.state_history)
+    expect(after.stage_history).toEqual(before.stage_history)
     expect(after.deadline_at).toBe(before.deadline_at)
 
     // The control goes away with the action it resolved, and the change survives a reload.
@@ -677,7 +677,7 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'Move Marble & Finch to Auto-rejected' }))
 
     const after = readSavedDocument().applications.find((item) => item.id === before.id)!
-    expect(after.state).toBe('applied')
+    expect(after.stage).toBe('applied')
     expect(after.outcome).toBe('rejected')
     expect(after.next_action).toBeNull()
     expect(after.next_action_at).toBeNull()
@@ -685,7 +685,7 @@ describe('job applications tracker', () => {
     expect(after.completed_actions).toEqual(before.completed_actions)
     // A closing date is not the task, and the move is still one stage change.
     expect(after.deadline_at).toBe(before.deadline_at)
-    expect(after.state_history).toHaveLength(before.state_history.length + 1)
+    expect(after.stage_history).toHaveLength(before.stage_history.length + 1)
 
     // Said out loud rather than left to be noticed, since a task disappeared.
     expect(await screen.findByText(/Next action cleared\./)).toBeInTheDocument()
@@ -711,7 +711,7 @@ describe('job applications tracker', () => {
     )
 
     const after = readSavedDocument().applications.find((item) => item.id === before.id)!
-    expect(after.state).toBe('recruiter_messaged')
+    expect(after.stage).toBe('recruiter_messaged')
     expect(after.next_action).toBe('Follow up on the application')
     expect(after.next_action_at).toBe(before.next_action_at)
   })
@@ -1337,12 +1337,12 @@ describe('job applications tracker', () => {
     await waitFor(
       () =>
         expect(savedNotes().stage_notes).toEqual([
-          expect.objectContaining({ state: 'applied', body: 'Ask about the rebrand project' }),
+          expect.objectContaining({ stage: 'applied', body: 'Ask about the rebrand project' }),
         ]),
       { timeout: 4000 },
     )
     expect(screen.getByRole('region', { name: 'Prep' })).toBeInTheDocument()
-    expect(savedNotes().state_history).toHaveLength(1)
+    expect(savedNotes().stage_history).toHaveLength(1)
 
     // A write per pause in typing would put a toast permanently over the note it names.
     expect(screen.queryByText('Prep notes saved.')).not.toBeInTheDocument()
@@ -1385,7 +1385,7 @@ describe('job applications tracker', () => {
         readSavedDocument()
           .applications.find((application) => application.company === 'Marble & Finch')!
           .stage_notes,
-      ).toEqual([expect.objectContaining({ state: 'applied', body: 'Salary band question' })]),
+      ).toEqual([expect.objectContaining({ stage: 'applied', body: 'Salary band question' })]),
     )
     vi.useRealTimers()
   })
@@ -1401,7 +1401,7 @@ describe('job applications tracker', () => {
       readSavedDocument().applications.find(
         (application) => application.company === 'Halcyon Maps',
       )!.stage_notes
-    const stamps = new Map(notes().map((note) => [note.state, note.updated_at]))
+    const stamps = new Map(notes().map((note) => [note.stage, note.updated_at]))
 
     await user.click(within(dialog).getByRole('tab', { name: 'Halcyon Maps · Engineering Manager · Offer' }))
     await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Offer' }))
@@ -1411,12 +1411,12 @@ describe('job applications tracker', () => {
     // the date it was seeded with — which is what tells the two apart.
     await waitFor(
       () =>
-        expect(notes().find((note) => note.state === 'offer')!.updated_at)
+        expect(notes().find((note) => note.stage === 'offer')!.updated_at)
           .toBe(DEFAULT_DEMO_REFERENCE),
       { timeout: 4000 },
     )
-    for (const state of ['round_1', 'round_2'] as const) {
-      expect(notes().find((note) => note.state === state)!.updated_at).toBe(stamps.get(state))
+    for (const stage of ['round_1', 'round_2'] as const) {
+      expect(notes().find((note) => note.stage === stage)!.updated_at).toBe(stamps.get(stage))
     }
   })
 
@@ -1445,7 +1445,7 @@ describe('job applications tracker', () => {
 
     // A stage already open as a tab: picking it focuses that tab rather than opening a
     // second copy of it, and closes the tab it was picked from — the reader asked to see
-    // a different stage, not to have both open. Leaves the application's own state
+    // a different stage, not to have both open. Leaves the application's own stage
     // untouched either way, since this is not the same action as moving it on the board.
     await user.selectOptions(select(), 'Offer')
 
@@ -1456,7 +1456,7 @@ describe('job applications tracker', () => {
     ).not.toBeInTheDocument()
     expect(
       readSavedDocument().applications.find((application) => application.company === 'Halcyon Maps')!
-        .state,
+        .stage,
     ).toBe('round_2')
     expect(select().value).toBe('offer')
 
@@ -1488,7 +1488,7 @@ describe('job applications tracker', () => {
     expect(
       readSavedDocument()
         .applications.find((application) => application.company === 'Halcyon Maps')!
-        .stage_notes.map((note) => note.state),
+        .stage_notes.map((note) => note.stage),
     ).toEqual(['round_1', 'round_2', 'offer'])
 
     // And it stays closed next time. Closing a tab is the reader arranging their
@@ -1553,7 +1553,7 @@ describe('job applications tracker', () => {
     const stored = readSavedDocument().applications.find(
       (application) => application.company === 'Halcyon Maps',
     )!
-    const captured = stored.stage_notes.find((note) => note.state === 'round_2')!
+    const captured = stored.stage_notes.find((note) => note.stage === 'round_2')!
     expect(captured.heard.map((entry) => entry.body)).toEqual([
       'Team is 40 engineers across four squads',
       'Platform work gets a fixed 20% of each quarter',
@@ -1563,7 +1563,7 @@ describe('job applications tracker', () => {
     // The prepared body it was captured against is untouched, and so are the other stages.
     expect(captured.body).toContain('Cutting cycle time')
     expect(captured.body).not.toContain('Two more rounds after this')
-    expect(stored.stage_notes.map((note) => note.state)).toEqual([
+    expect(stored.stage_notes.map((note) => note.stage)).toEqual([
       'round_1',
       'round_2',
       'offer',
@@ -1594,7 +1594,7 @@ describe('job applications tracker', () => {
     const stored = readSavedDocument().applications.find(
       (application) => application.company === 'Halcyon Maps',
     )!
-    const captured = stored.stage_notes.find((note) => note.state === 'round_2')!
+    const captured = stored.stage_notes.find((note) => note.stage === 'round_2')!
     expect(captured.heard.at(-1)?.body).toBe('Offer decision sits with the VP')
   })
 
@@ -1612,7 +1612,7 @@ describe('job applications tracker', () => {
     const captured = () =>
       readSavedDocument()
         .applications.find((application) => application.company === 'Halcyon Maps')!
-        .stage_notes.find((note) => note.state === 'round_2')!
+        .stage_notes.find((note) => note.stage === 'round_2')!
     await waitFor(() => expect(captured().body).toBe(''), { timeout: 4000 })
     expect(captured().heard).toHaveLength(3)
   })
@@ -1627,7 +1627,7 @@ describe('job applications tracker', () => {
     const before = readSavedDocument().applications.find(
       (application) => application.company === 'Halcyon Maps',
     )!
-    const [first] = before.stage_notes.find((note) => note.state === 'round_2')!.heard
+    const [first] = before.stage_notes.find((note) => note.stage === 'round_2')!.heard
 
     await openCapture(user, dialog, 'Halcyon Maps · Round 2')
     await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Halcyon Maps · Round 2' }))
@@ -1645,7 +1645,7 @@ describe('job applications tracker', () => {
     const stored = readSavedDocument().applications.find(
       (application) => application.company === 'Halcyon Maps',
     )!
-    const line = stored.stage_notes.find((note) => note.state === 'round_2')!.heard[0]
+    const line = stored.stage_notes.find((note) => note.stage === 'round_2')!.heard[0]
     expect(line.body).toBe('Team is 42 engineers across four squads')
     // A correction fixes what was written down; it does not claim the line was said later.
     expect(line.id).toBe(first.id)
@@ -1667,7 +1667,7 @@ describe('job applications tracker', () => {
     const before = readSavedDocument().applications.find(
       (application) => application.company === 'Halcyon Maps',
     )!
-    const heard = before.stage_notes.find((note) => note.state === 'round_2')!.heard
+    const heard = before.stage_notes.find((note) => note.stage === 'round_2')!.heard
     expect(heard).toHaveLength(3)
 
     await openCapture(user, dialog, 'Halcyon Maps · Round 2')
@@ -1680,7 +1680,7 @@ describe('job applications tracker', () => {
     const stored = readSavedDocument().applications.find(
       (application) => application.company === 'Halcyon Maps',
     )!
-    const note = stored.stage_notes.find((entry) => entry.state === 'round_2')!
+    const note = stored.stage_notes.find((entry) => entry.stage === 'round_2')!
     expect(note.heard.map((entry) => entry.id)).toEqual([heard[0].id, heard[2].id])
     // What was prepared for the stage is untouched by a line being taken out of it.
     expect(note.body).toContain('Cutting cycle time')
@@ -1730,7 +1730,7 @@ describe('job applications tracker', () => {
       const stored = readSavedDocument().applications.find(
         (application) => application.company === 'Halcyon Maps',
       )!
-      const note = stored.stage_notes.find((entry) => entry.state === 'round_2')!
+      const note = stored.stage_notes.find((entry) => entry.stage === 'round_2')!
       expect(note.heard.at(-1)?.body).toBe('Decision comes back Friday')
       expect(note.body).toContain('Ask about on-call.')
     }, { timeout: 3000 })
@@ -1748,7 +1748,7 @@ describe('job applications tracker', () => {
 
     // Split, then read the second pane: capture follows the pane being read rather than
     // the one that was open first. Both panes now show the same "Company · Role" heading
-    // once the state is dropped from it, so scope to the pane holding Round 1.
+    // once the stage is dropped from it, so scope to the pane holding Round 1.
     await splitPane(user, dialog)
     const interview1Pane = within(dialog)
       .getAllByRole('tabpanel')
@@ -1853,11 +1853,11 @@ describe('job applications tracker', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Round 1' }))
     await user.clear(within(dialog).getByLabelText('Halcyon Maps · Round 1 prep notes'))
 
-    const savedStates = () =>
+    const savedStages = () =>
       readSavedDocument()
         .applications.find((application) => application.company === 'Halcyon Maps')!
-        .stage_notes.map((note) => note.state)
-    await waitFor(() => expect(savedStates()).toEqual(['round_2', 'offer']), { timeout: 4000 })
+        .stage_notes.map((note) => note.stage)
+    await waitFor(() => expect(savedStages()).toEqual(['round_2', 'offer']), { timeout: 4000 })
 
     // The stage keeps its tab and its pane: the note went, but the caret that emptied it
     // is still in the box, and a stage typed into must not vanish from under it.
@@ -2510,7 +2510,7 @@ describe('job applications tracker', () => {
         expect(
           readSavedDocument()
             .applications.find((application) => application.id === target.id)!
-            .stage_notes.map((note) => note.state),
+            .stage_notes.map((note) => note.stage),
         ).toEqual(['round_2', 'offer'])
       },
       // The scratch file is re-read once a second, so this cannot land any sooner.
@@ -3127,7 +3127,7 @@ describe('job applications tracker', () => {
     const saved = readSavedDocument().applications.find(
       (application) => application.company === 'Halcyon Maps',
     )!
-    expect(saved.stage_notes.map((note) => note.state)).toEqual([
+    expect(saved.stage_notes.map((note) => note.stage)).toEqual([
       'round_1',
       'round_2',
       'offer',
@@ -3185,12 +3185,12 @@ describe('job applications tracker', () => {
     await waitFor(
       () =>
         expect(saved().stage_notes).toEqual([
-          expect.objectContaining({ state: 'round_1', body: 'Prepare two operations stories' }),
+          expect.objectContaining({ stage: 'round_1', body: 'Prepare two operations stories' }),
         ]),
       { timeout: 4000 },
     )
     // Writing a note for a stage does not move the application to it.
-    expect(saved().state).toBe('online_assessment')
+    expect(saved().stage).toBe('online_assessment')
   })
 
   it('folds every level of hierarchy: headings, points with detail, quotes, and code', async () => {
@@ -3481,10 +3481,10 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(20)
 
     const search = screen.getByRole('searchbox', { name: 'Search applications' })
-    const stateFilter = screen.getByLabelText('Filter by stage')
+    const stageFilter = screen.getByLabelText('Filter by stage')
     const companyFilter = screen.getByLabelText('Filter by company')
     await user.type(search, 'Reset Me')
-    await user.selectOptions(stateFilter, 'applied')
+    await user.selectOptions(stageFilter, 'applied')
     await user.selectOptions(companyFilter, 'Reset Me Incorporated')
 
     await user.click(screen.getByRole('button', { name: 'More actions' }))
@@ -3495,9 +3495,9 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: 'More actions' }))
     await user.click(screen.getByRole('button', { name: 'Reset demo data' }))
     expect(readSavedDocument().applications).toHaveLength(19)
-    expect(new Set(readSavedDocument().applications.map((application) => application.state)).size).toBe(10)
+    expect(new Set(readSavedDocument().applications.map((application) => application.stage)).size).toBe(10)
     expect(search).toHaveValue('')
-    expect(stateFilter).toHaveValue('all')
+    expect(stageFilter).toHaveValue('all')
     expect(screen.getByLabelText('Filter by company')).toHaveValue('all')
     expect(screen.getByRole('status')).toHaveTextContent('Demo data restored')
     expect(confirm).toHaveBeenCalledTimes(2)
@@ -3627,7 +3627,7 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
-  it('imports a calendar invite against a state and replaces it when it is rescheduled', async () => {
+  it('imports a calendar invite against a stage and replaces it when it is rescheduled', async () => {
     // Reads the shown-of-total count, so it takes the demo entire.
     seedFullDemo()
     const user = userEvent.setup()
@@ -3659,16 +3659,16 @@ describe('job applications tracker', () => {
 
     const paperKite = () =>
       readSavedDocument().applications.find((application) => application.company === 'Paper Kite')
-    expect(paperKite()?.state_events).toHaveLength(1)
-    expect(paperKite()?.state_events[0]).toMatchObject({
-      state: 'recruiter_messaged',
+    expect(paperKite()?.stage_events).toHaveLength(1)
+    expect(paperKite()?.stage_events[0]).toMatchObject({
+      stage: 'recruiter_messaged',
       summary: 'Intro chat with Dana',
       starts_at: '2026-09-01T04:00:00.000Z',
       ends_at: '2026-09-01T04:30:00.000Z',
       location: 'Video call',
       ics_uid: 'screen-1@example.com',
     })
-    const storedId = paperKite()!.state_events[0]!.id
+    const storedId = paperKite()!.stage_events[0]!.id
 
     await user.click(
       screen.getByRole('button', { name: /^Open Paper Kite, Senior UX Researcher/ }),
@@ -3688,8 +3688,8 @@ describe('job applications tracker', () => {
     expect(within(reopened).getByRole('status')).toHaveTextContent('1 updated')
     await user.click(within(reopened).getByRole('button', { name: 'Save changes' }))
 
-    expect(paperKite()?.state_events).toHaveLength(1)
-    expect(paperKite()?.state_events[0]).toMatchObject({
+    expect(paperKite()?.stage_events).toHaveLength(1)
+    expect(paperKite()?.stage_events[0]).toMatchObject({
       id: storedId,
       summary: 'Intro chat with Dana (moved)',
       starts_at: '2026-09-03T05:00:00.000Z',
@@ -3718,7 +3718,7 @@ describe('job applications tracker', () => {
     )
     expect(
       readSavedDocument().applications.find((application) => application.company === 'Paper Kite')
-        ?.state_events,
+        ?.stage_events,
     ).toEqual([])
   })
 
@@ -3746,7 +3746,7 @@ describe('job applications tracker', () => {
 
     expect(logged()).toHaveLength(1)
     expect(logged()[0]).toMatchObject({
-      state: 'recruiter_messaged',
+      stage: 'recruiter_messaged',
       direction: 'received',
       who: 'Dana Okafor',
       channel: 'Email',
@@ -4470,7 +4470,7 @@ describe('job applications tracker', () => {
     expect(
       readSavedDocument()
         .applications.find((application) => application.company === 'Halcyon Maps')!
-        .stage_notes.map((note) => note.state),
+        .stage_notes.map((note) => note.stage),
     ).toEqual(['round_1', 'round_2', 'offer'])
   })
 
@@ -4554,7 +4554,7 @@ describe('job applications tracker', () => {
 
     // Splitting leaves the first pane focused, so reach for the second one before moving
     // its tab: the arrow acts on the pane being read, like every other panel binding.
-    // Both panes now show the same "Company · Role" heading once the state is dropped
+    // Both panes now show the same "Company · Role" heading once the stage is dropped
     // from it, so scope to the pane holding Round 1.
     const interview1Pane = within(dialog)
       .getAllByRole('tabpanel')
@@ -4924,18 +4924,18 @@ describe('job applications tracker', () => {
     await waitFor(
       () => {
         const after = readSavedDocument().applications.find((application) => application.id === before.id)!
-        expect(after.stage_notes.find((note) => note.state === 'round_2')?.body).toContain(
+        expect(after.stage_notes.find((note) => note.stage === 'round_2')?.body).toContain(
           'Ask about the platform roadmap.',
         )
         // The card only ever holds one draft, so the other two stages this application
         // already had notes for are untouched — same guarantee the dialog gives, checked
         // here for the comparison view's own, narrower write.
         expect(after.stage_notes).toHaveLength(3)
-        expect(after.stage_notes.find((note) => note.state === 'round_1')?.body).toBe(
-          before.stage_notes.find((note) => note.state === 'round_1')?.body,
+        expect(after.stage_notes.find((note) => note.stage === 'round_1')?.body).toBe(
+          before.stage_notes.find((note) => note.stage === 'round_1')?.body,
         )
-        expect(after.stage_notes.find((note) => note.state === 'offer')?.body).toBe(
-          before.stage_notes.find((note) => note.state === 'offer')?.body,
+        expect(after.stage_notes.find((note) => note.stage === 'offer')?.body).toBe(
+          before.stage_notes.find((note) => note.stage === 'offer')?.body,
         )
       },
       { timeout: 4000 },
@@ -4963,7 +4963,7 @@ describe('job applications tracker', () => {
     await waitFor(
       () => {
         const after = readSavedDocument().applications.find((application) => application.id === paperKiteBefore.id)!
-        expect(after.stage_notes.find((note) => note.state === 'recruiter_messaged')?.body).toBe(
+        expect(after.stage_notes.find((note) => note.stage === 'recruiter_messaged')?.body).toBe(
           'Ask which team the role reports into.',
         )
       },
@@ -4996,7 +4996,7 @@ describe('job applications tracker', () => {
     await waitFor(
       () => {
         const halcyon = readSavedDocument().applications.find((item) => item.company === 'Halcyon Maps')!
-        expect(halcyon.stage_notes.find((note) => note.state === 'offer')).toBeUndefined()
+        expect(halcyon.stage_notes.find((note) => note.stage === 'offer')).toBeUndefined()
       },
       { timeout: 4000 },
     )
@@ -5010,7 +5010,7 @@ describe('job applications tracker', () => {
     const before = readSavedDocument().applications.find(
       (application) => application.company === 'Halcyon Maps',
     )!
-    const originalBody = before.stage_notes.find((note) => note.state === 'round_2')!.body
+    const originalBody = before.stage_notes.find((note) => note.stage === 'round_2')!.body
 
     const board = await compareStage(user, 'Round 2')
     const card = within(board).getByRole('article', { name: /Halcyon Maps/ })
@@ -5026,7 +5026,7 @@ describe('job applications tracker', () => {
     await waitFor(
       () => {
         const saved = readSavedDocument().applications.find((item) => item.id === before.id)!
-        expect(saved.stage_notes.find((note) => note.state === 'round_2')!.body).toContain(
+        expect(saved.stage_notes.find((note) => note.stage === 'round_2')!.body).toContain(
           'Ask who owns the platform roadmap.',
         )
       },
@@ -5041,7 +5041,7 @@ describe('job applications tracker', () => {
     await waitFor(
       () => {
         const saved = readSavedDocument().applications.find((item) => item.id === before.id)!
-        expect(saved.stage_notes.find((note) => note.state === 'round_2')!.body).toContain(
+        expect(saved.stage_notes.find((note) => note.stage === 'round_2')!.body).toContain(
           'Confirm the start date.',
         )
       },
@@ -5049,7 +5049,7 @@ describe('job applications tracker', () => {
     )
 
     const after = readSavedDocument().applications.find((item) => item.id === before.id)!
-    const body = after.stage_notes.find((note) => note.state === 'round_2')!.body
+    const body = after.stage_notes.find((note) => note.stage === 'round_2')!.body
     expect(body).toContain(originalBody)
     // The card's sentence must survive the panel's write rather than being overwritten by
     // a draft the panel seeded before it landed.

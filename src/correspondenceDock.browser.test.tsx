@@ -39,7 +39,7 @@ const PASTED = [
 
 const message = (overrides: Partial<CorrespondenceEntry> = {}): CorrespondenceEntry => ({
   id: '018f0000-0000-7001-8000-000000000001',
-  state: 'round_2',
+  stage: 'round_2',
   direction: 'received',
   subject: 'After Thursday — next steps',
   channel: 'Email',

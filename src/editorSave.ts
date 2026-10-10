@@ -8,8 +8,8 @@ import { correspondenceDrafts, correspondenceRowsFor } from './correspondence'
 import { compensationFromValues, compensationValuesFor } from './compensation'
 import type { CompensationValues } from './compensation'
 import { toDateTimeInput } from './dateInput'
-import type { Application, ApplicationEdits, ApplicationInput, Attachment, CompletedActionDraft, CorrespondenceDraft, PostingDraft, RatingDimensionId, StateEventDraft, StateId, TrackerDocument } from './domain'
-import { archiveApplication, clearApplicationRating, moveApplication, updateApplication, updateApplicationCompletedActions, updateApplicationCorrespondence, updateApplicationPosting, updateApplicationRatings, updateApplicationStateEvents } from './domain/mutations'
+import type { Application, ApplicationEdits, ApplicationInput, Attachment, CompletedActionDraft, CorrespondenceDraft, PostingDraft, RatingDimensionId, StageEventDraft, StageId, TrackerDocument } from './domain'
+import { archiveApplication, clearApplicationRating, moveApplication, updateApplication, updateApplicationCompletedActions, updateApplicationCorrespondence, updateApplicationPosting, updateApplicationRatings, updateApplicationStageEvents } from './domain/mutations'
 import { inviteDrafts, inviteRowsFor } from './invites'
 import { postingDraftFrom, postingRowFor } from './posting'
 import { clearedRatingDimensions, ratingDrafts, ratingValuesFor } from './ratings'
@@ -20,10 +20,10 @@ export interface EditorForm {
   compensationValues: CompensationValues
   ratingValues: RatingValues
   correspondence: CorrespondenceDraft[]
-  invites: StateEventDraft[]
+  invites: StageEventDraft[]
   completedActions: CompletedActionDraft[]
   posting: PostingDraft | null
-  state: StateId
+  stage: StageId
   outcome: Application['outcome']
   archived: boolean
   nextActionAt: string
@@ -108,7 +108,7 @@ export function applyEditorSave(
     document = updateApplicationCorrespondence(document, opened.id, form.correspondence, at)
   }
   if (!sameList(form.invites, inviteDrafts(inviteRowsFor(opened)))) {
-    document = updateApplicationStateEvents(document, opened.id, form.invites, at)
+    document = updateApplicationStageEvents(document, opened.id, form.invites, at)
   }
   if (!sameList(form.completedActions, opened.completed_actions.map(({ id, action, at: when }) => ({ id, action, at: when })))) {
     document = updateApplicationCompletedActions(document, opened.id, form.completedActions, at)
@@ -124,10 +124,10 @@ export function applyEditorSave(
     document = clearApplicationRating(document, opened.id, dimension, at)
   }
 
-  const state = form.state === opened.state ? stored.state : form.state
+  const stage = form.stage === opened.stage ? stored.stage : form.stage
   const outcome = form.outcome === opened.outcome ? stored.outcome : form.outcome
-  if (state !== stored.state || outcome !== stored.outcome) {
-    document = moveApplication(document, opened.id, { state, outcome }, at)
+  if (stage !== stored.stage || outcome !== stored.outcome) {
+    document = moveApplication(document, opened.id, { stage, outcome }, at)
   }
   const archived = form.archived === (opened.archived_at !== null) ? stored.archived_at !== null : form.archived
   if (archived !== (stored.archived_at !== null)) {

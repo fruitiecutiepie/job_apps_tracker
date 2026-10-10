@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
-import { isStateId, type StateId } from './domain'
+import { isStageId, type StageId } from './domain'
 
 import {
   MIN_PANE_FRACTION,
@@ -40,8 +40,8 @@ import {
   type TabGroup,
 } from './notesLayout'
 
-const acme = (state: StateId): NoteRef => stageRef('acme', state)
-const globex = (state: StateId): NoteRef => stageRef('globex', state)
+const acme = (stage: StageId): NoteRef => stageRef('acme', stage)
+const globex = (stage: StageId): NoteRef => stageRef('globex', stage)
 
 /** Ids the assertions can name, rather than whatever a counter happened to reach. */
 function ids(...names: string[]): () => string {
@@ -65,12 +65,12 @@ describe('noteRefKey', () => {
 
 describe('posting refs', () => {
   /*
-   * The whole defence of the key namespace. A posting's key stands where a state's does, so
-   * the two are only unambiguous while no state is called `posting` — and a collision would
+   * The whole defence of the key namespace. A posting's key stands where a stage's does, so
+   * the two are only unambiguous while no stage is called `posting` — and a collision would
    * not throw, it would quietly hand one pane another's contents.
    */
-  it('reserves a segment no state can claim', () => {
-    expect(isStateId(POSTING_SEGMENT)).toBe(false)
+  it('reserves a segment no stage can claim', () => {
+    expect(isStageId(POSTING_SEGMENT)).toBe(false)
   })
 
   it('keys a stage note exactly as it did before postings existed', () => {
@@ -87,7 +87,7 @@ describe('posting refs', () => {
     }
   })
 
-  it('rejects a key naming neither a state nor a posting', () => {
+  it('rejects a key naming neither a stage nor a posting', () => {
     expect(parseNoteRefKey('acme::postings')).toBeNull()
     expect(parseNoteRefKey('acme::nope')).toBeNull()
     expect(parseNoteRefKey('acme::posting::extra')).toBeNull()
@@ -865,7 +865,7 @@ describe('parseNoteRefKey', () => {
 
   it('refuses anything that is not one', () => {
     expect(parseNoteRefKey('acme')).toBeNull()
-    expect(parseNoteRefKey('acme::not_a_state')).toBeNull()
+    expect(parseNoteRefKey('acme::not_a_stage')).toBeNull()
     expect(parseNoteRefKey('::applied')).toBeNull()
   })
 })

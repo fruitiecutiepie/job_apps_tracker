@@ -1,5 +1,5 @@
-import { isStageIdShape } from './states'
-import type { StateId, Status } from './types'
+import { isStageIdShape } from './stages'
+import type { StageId, Status } from './types'
 
 /**
  * The document layout this build writes.
@@ -14,15 +14,19 @@ import type { StateId, Status } from './types'
  * - **4** gives three stages ids that say what they are rather than what they were called —
  *   `recruiter_interview` is `screening`, `interview_1` and `interview_2` are `round_1` and
  *   `round_2` — because a tracker can now rename any stage and add rounds, and an id that was
- *   a label would read wrong the moment its label changed.
+ *   a label would read wrong the moment its label changed. It also calls the field what the
+ *   interface always called it: `state`, `state_history` and `state_events` are `stage`,
+ *   `stage_history` and `stage_events`, and everything filed by stage says `stage`.
  *
  * Each step rewrites the raw document into the next layout; a file is walked forward from
- * whatever it was written in.
+ * whatever it was written in. Every step before the last reads and writes the old `state`
+ * keys, so the layouts they were written for stay exactly as they were; the last step is the
+ * one that renames them.
  */
 export const DATA_VERSION = 4
 
 /** The version-3 stage ids that version 4 renamed, and what they are now. */
-const RENAMED_STAGES: Record<string, StateId> = {
+const RENAMED_STAGES: Record<string, StageId> = {
   recruiter_interview: 'screening',
   interview_1: 'round_1',
   interview_2: 'round_2',
@@ -33,6 +37,12 @@ function renamedStage(value: unknown): unknown {
   return typeof value === 'string' && Object.hasOwn(RENAMED_STAGES, value) ? RENAMED_STAGES[value] : value
 }
 
+/** How an earlier layout said where an application stood, under the key it used. */
+interface LegacyStatus {
+  state: StageId
+  outcome: Status['outcome']
+}
+
 /**
  * The version-1 states that were not stages, and the stage and outcome each one meant.
  * Every other version-1 state is a stage of the same name, still running.
@@ -41,7 +51,7 @@ function renamedStage(value: unknown): unknown {
  * was a headhunter's pitch with nothing behind it, which is the employer ending it.
  * `accepted` is a stage of its own name, so it needs no entry here.
  */
-const LEGACY_STATUS: Record<string, Status> = {
+const LEGACY_STATUS: Record<string, LegacyStatus> = {
   no_openings: { state: 'headhunted', outcome: 'closed' },
   auto_rejected: { state: 'applied', outcome: 'rejected' },
   recruiter_messaged_rejected: { state: 'recruiter_messaged', outcome: 'rejected' },
@@ -53,11 +63,7 @@ const LEGACY_STATUS: Record<string, Status> = {
   offer_rejected: { state: 'offer', outcome: 'rejected' },
 }
 
-/**
- * What a state from any earlier layout means now, or null when it was never a state: a
- * version-1 state that was not a stage, a stage version 4 renamed, or a stage as it is.
- */
-export function legacyStatus(value: unknown): Status | null {
+function legacyPair(value: unknown): LegacyStatus | null {
   const renamed = renamedStage(value)
   if (isStageIdShape(renamed)) return { state: renamed, outcome: 'active' }
   if (typeof value === 'string' && Object.hasOwn(LEGACY_STATUS, value)) return LEGACY_STATUS[value]!
@@ -65,11 +71,20 @@ export function legacyStatus(value: unknown): Status | null {
 }
 
 /**
+ * What a state from any earlier layout means now, or null when it was never a state: a
+ * version-1 state that was not a stage, a stage version 4 renamed, or a stage as it is.
+ */
+export function legacyStatus(value: unknown): Status | null {
+  const pair = legacyPair(value)
+  return pair && { stage: pair.state, outcome: pair.outcome }
+}
+
+/**
  * The stage a state from any earlier layout was filed against. Unknown values pass through to
  * be refused.
  */
-export function legacyState(value: unknown): unknown {
-  return legacyStatus(value)?.state ?? value
+export function legacyStage(value: unknown): unknown {
+  return legacyPair(value)?.state ?? value
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -78,7 +93,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function refiled(value: unknown): unknown {
   if (!Array.isArray(value)) return value
-  return value.map((item) => (isRecord(item) ? { ...item, state: legacyState(item.state) } : item))
+  return value.map((item) => (isRecord(item) ? { ...item, state: legacyStage(item.state) } : item))
 }
 
 function earlier(left: unknown, right: unknown): unknown {
@@ -101,9 +116,9 @@ function later(left: unknown, right: unknown): unknown {
 function mergedNotes(value: unknown): unknown {
   if (!Array.isArray(value)) return value
   const merged: unknown[] = []
-  const byState = new Map<StateId, { note: Record<string, unknown>; from: Set<unknown> }>()
+  const byState = new Map<StageId, { note: Record<string, unknown>; from: Set<unknown> }>()
   for (const original of value) {
-    const item = isRecord(original) ? { ...original, state: legacyState(original.state) } : original
+    const item = isRecord(original) ? { ...original, state: legacyStage(original.state) } : original
     if (!isRecord(item) || !isRecord(original) || !isStageIdShape(item.state)) {
       merged.push(item)
       continue
@@ -136,14 +151,14 @@ function migratedHistory(value: unknown): unknown {
   if (!Array.isArray(value)) return value
   return value.map((entry) => {
     if (!isRecord(entry)) return entry
-    const status = legacyStatus(entry.state)
+    const status = legacyPair(entry.state)
     return status ? { ...entry, ...status } : entry
   })
 }
 
 function migratedApplication(value: unknown): unknown {
   if (!isRecord(value)) return value
-  const status = legacyStatus(value.state)
+  const status = legacyPair(value.state)
   return {
     ...value,
     ...(status ?? null),
@@ -175,24 +190,47 @@ function version3Application(value: unknown): unknown {
   }
 }
 
-function renamedFiling(value: unknown): unknown {
-  if (!Array.isArray(value)) return value
-  return value.map((item) => (isRecord(item) ? { ...item, state: renamedStage(item.state) } : item))
+/**
+ * A record's `state` as `stage`, with the id version 4 renamed. A record that already says
+ * `stage` is left alone, so a step that runs twice, or a file that was half-written by a
+ * build in between, comes out the same.
+ */
+function restaged(value: unknown): unknown {
+  if (!isRecord(value) || !('state' in value)) return value
+  const { state, ...rest } = value
+  return state === undefined ? rest : { ...rest, stage: renamedStage(state) }
+}
+
+function restagedList(value: unknown): unknown {
+  return Array.isArray(value) ? value.map(restaged) : value
+}
+
+/** Moves one field to its new name, unless the record already carries the new one. */
+function renamedField(value: Record<string, unknown>, from: string, to: string): Record<string, unknown> {
+  if (!(from in value) || to in value) return value
+  const { [from]: moved, ...rest } = value
+  return { ...rest, [to]: moved }
 }
 
 /**
- * Version 3's stage ids as version 4's, everywhere an application files something by stage.
- * A history entry carries its stage under the same key, so it is refiled the same way.
+ * Version 3's application as version 4's: the stage ids that were labels renamed, and the
+ * field called what the interface calls it, everywhere an application files something by
+ * stage. A history entry carries its stage under the same key, so it is refiled the same way.
  */
 function version4Application(value: unknown): unknown {
-  if (!isRecord(value)) return value
+  const application = restaged(value)
+  if (!isRecord(application)) return application
+  const renamed = renamedField(
+    renamedField(application, 'state_history', 'stage_history'),
+    'state_events',
+    'stage_events',
+  )
   return {
-    ...value,
-    state: renamedStage(value.state),
-    state_history: renamedFiling(value.state_history),
-    stage_notes: renamedFiling(value.stage_notes),
-    state_events: renamedFiling(value.state_events),
-    correspondence: renamedFiling(value.correspondence),
+    ...renamed,
+    stage_history: restagedList(renamed.stage_history),
+    stage_notes: restagedList(renamed.stage_notes),
+    stage_events: restagedList(renamed.stage_events),
+    correspondence: restagedList(renamed.correspondence),
   }
 }
 
@@ -206,15 +244,19 @@ function mapApplications(
 /**
  * Walks a document forward to the current layout, leaving validation to decide whether what
  * came out is sound. Raw in, raw out: the validator is the one place a document is
- * canonicalized, and it runs straight after this. Version 1's migration writes the current
- * layout directly — its `accepted` state was always a stage, and `legacyStatus` already
- * answers in version-4 ids — while a version-2 file takes the Accepted step and then the
- * renaming one, and a version-3 file the renaming one alone.
+ * canonicalized, and it runs straight after this. Version 1's migration splits each state in
+ * version-4 ids — its `accepted` state was always a stage — and then takes the renaming step;
+ * a version-2 file takes the Accepted step and then the renaming one, and a version-3 file the
+ * renaming one alone.
  */
 export function migrateDocument(value: Record<string, unknown>): Record<string, unknown> {
   const version = documentVersion(value)
   if (version === 1) {
-    return { ...value, schema_version: DATA_VERSION, applications: mapApplications(value, migratedApplication) }
+    return {
+      ...value,
+      schema_version: DATA_VERSION,
+      applications: mapApplications(value, (application) => version4Application(migratedApplication(application))),
+    }
   }
   if (version === 2) {
     return {

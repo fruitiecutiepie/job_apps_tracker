@@ -8,7 +8,7 @@ import {
   createDemoDocument,
   createEmptyDocument,
   documentStages,
-  isStateId,
+  isStageId,
   migrateDocument,
   needsMigration,
   parseTrackerDocument,
@@ -16,20 +16,20 @@ import {
   serializeTrackerDocument,
   setStages,
   stageInUse,
-  stateLabel,
+  stageLabel,
   statusLabel,
   validateTrackerDocument,
 } from '.'
 
-import type { StateId, TrackerDocument } from './types'
+import type { StageId, TrackerDocument } from './types'
 
 const AT = '2026-08-01T09:00:00+10:00'
 
 /** The document with one stage called something else. */
-function renameStage(document: TrackerDocument, state: StateId, label: string): TrackerDocument {
+function renameStage(document: TrackerDocument, id: StageId, label: string): TrackerDocument {
   return setStages(
     document,
-    documentStages(document).stages.map((stage) => (stage.id === state ? { ...stage, label } : stage)),
+    documentStages(document).stages.map((stage) => (stage.id === id ? { ...stage, label } : stage)),
   )
 }
 
@@ -51,7 +51,7 @@ const LATER = '2026-08-08T09:00:00+10:00'
 afterEach(() => applyStages(DEFAULT_STAGE_CONFIG))
 
 describe('stage ids as of version 4', () => {
-  it('migrates version-3 stage ids wherever an application files something by stage', () => {
+  it('migrates version-3 stage ids and keys wherever an application files something by stage', () => {
     const raw = {
       schema_version: 3,
       applications: [{
@@ -83,17 +83,17 @@ describe('stage ids as of version 4', () => {
     const [application] = parsed.applications
 
     expect(parsed.schema_version).toBe(DATA_VERSION)
-    expect(application).toMatchObject({ state: 'round_2', outcome: 'rejected' })
-    expect(application!.state_history.map((entry) => entry.state)).toEqual(['screening', 'round_1', 'round_2'])
-    expect(application!.stage_notes.map((note) => note.state)).toEqual(['round_1'])
-    expect(application!.state_events.map((event) => event.state)).toEqual(['screening'])
-    expect(application!.correspondence.map((entry) => entry.state)).toEqual(['round_2'])
+    expect(application).toMatchObject({ stage: 'round_2', outcome: 'rejected' })
+    expect(application!.stage_history.map((entry) => entry.stage)).toEqual(['screening', 'round_1', 'round_2'])
+    expect(application!.stage_notes.map((note) => note.stage)).toEqual(['round_1'])
+    expect(application!.stage_events.map((event) => event.stage)).toEqual(['screening'])
+    expect(application!.correspondence.map((entry) => entry.stage)).toEqual(['round_2'])
   })
 
   it('refuses a version-4 document that still uses a version-3 id', () => {
     const raw = JSON.parse(serializeTrackerDocument(createDemoDocument())) as Record<string, unknown>
     const applications = raw.applications as Record<string, unknown>[]
-    applications[0] = { ...applications[0], state: 'interview_1', state_history: undefined }
+    applications[0] = { ...applications[0], stage: 'interview_1', stage_history: undefined }
 
     expect(migrateDocument(raw)).toBe(raw)
     expect(validateTrackerDocument(raw).ok).toBe(false)
@@ -112,13 +112,13 @@ describe('a tracker\'s own stages', () => {
   })
 
   it('renames a stage without touching any application', () => {
-    const document = addApplication(createEmptyDocument(), { company: 'Northwind', state: 'screening' }, AT)
+    const document = addApplication(createEmptyDocument(), { company: 'Northwind', stage: 'screening' }, AT)
     const renamed = renameStage(document, 'screening', '  Phone screen ')
 
     expect(documentStages(renamed).label('screening')).toBe('Phone screen')
     expect(renamed.applications).toEqual(document.applications)
     expect(renamed.indexes.search_text[document.applications[0]!.id]).toContain('phone screen')
-    expect(statusLabel({ state: 'screening', outcome: 'rejected' }, documentStages(renamed)))
+    expect(statusLabel({ stage: 'screening', outcome: 'rejected' }, documentStages(renamed)))
       .toBe('Phone screen — Rejected')
   })
 
@@ -151,7 +151,7 @@ describe('a tracker\'s own stages', () => {
     expect(documentStages(keepRounds(added, 2)).rounds).toBe(2)
 
     applyStages(documentStages(added))
-    const held = addApplication(added, { company: 'Northwind', state: 'round_3' }, AT)
+    const held = addApplication(added, { company: 'Northwind', stage: 'round_3' }, AT)
     expect(stageInUse(held, 'round_3')).toBe(true)
     expect(stageInUse(held, 'round_4')).toBe(false)
     // Round 4 is free and goes; Round 3 holds Northwind and stays.
@@ -162,13 +162,13 @@ describe('a tracker\'s own stages', () => {
   it('counts a move through a round, not only being at it, as something filed there', () => {
     const added = addRound(createEmptyDocument())
     applyStages(documentStages(added))
-    const document = addApplication(added, { company: 'Northwind', state: 'round_3' }, AT)
+    const document = addApplication(added, { company: 'Northwind', stage: 'round_3' }, AT)
     const moved = {
       ...document,
       applications: document.applications.map((application) => ({
         ...application,
-        state: 'offer' as const,
-        state_history: [...application.state_history, { state: 'offer' as const, outcome: 'active' as const, at: LATER }],
+        stage: 'offer' as const,
+        stage_history: [...application.stage_history, { stage: 'offer' as const, outcome: 'active' as const, at: LATER }],
       })),
     }
 
@@ -189,7 +189,7 @@ describe('a tracker\'s own stages', () => {
     const withRound = addRound(createEmptyDocument())
     applyStages(documentStages(withRound))
     const raw = JSON.parse(serializeTrackerDocument(
-      addApplication(withRound, { company: 'Northwind', state: 'round_3' }, AT),
+      addApplication(withRound, { company: 'Northwind', stage: 'round_3' }, AT),
     )) as Record<string, unknown>
     applyStages(DEFAULT_STAGE_CONFIG)
 
@@ -211,9 +211,9 @@ describe('a tracker\'s own stages', () => {
   it('reads labels and membership from the tracker on screen', () => {
     const document = addRound(renameStage(createEmptyDocument(), 'screening', 'Phone screen'))
 
-    expect(isStateId('round_3')).toBe(false)
+    expect(isStageId('round_3')).toBe(false)
     applyStages(documentStages(document))
-    expect(isStateId('round_3')).toBe(true)
-    expect(stateLabel('screening')).toBe('Phone screen')
+    expect(isStageId('round_3')).toBe(true)
+    expect(stageLabel('screening')).toBe('Phone screen')
   })
 })

@@ -1777,7 +1777,7 @@ tbody tr:hover {
   font-weight: 600;
 }
 
-.table-state-select {
+.table-stage-select {
   max-width: 100%;
   min-height: 28px;
   padding: 0 var(--s2);
@@ -2838,13 +2838,13 @@ tbody tr:hover {
   gap: var(--s2);
 }
 
-/* ------------------------------------------------------- state history --- */
+/* ------------------------------------------------------- stage history --- */
 
-.state-history {
+.stage-history {
   gap: var(--s3);
 }
 
-.state-history__list {
+.stage-history__list {
   display: grid;
   gap: var(--s1);
   margin: 0;
@@ -2852,7 +2852,7 @@ tbody tr:hover {
   list-style: none;
 }
 
-.state-history__entry {
+.stage-history__entry {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -2864,21 +2864,21 @@ tbody tr:hover {
   line-height: 1.4;
 }
 
-.state-history__entry--current {
+.stage-history__entry--current {
   border-left-color: var(--accent);
 }
 
-.state-history__state {
+.stage-history__stage {
   color: var(--ink);
   font-weight: 500;
 }
 
-.state-history__date,
-.state-history__span {
+.stage-history__date,
+.stage-history__span {
   color: var(--ink-3);
 }
 
-.state-history__span {
+.stage-history__span {
   margin-left: auto;
 }
 
@@ -3402,7 +3402,7 @@ tbody tr:hover {
 }
 
 /* The stage select and what became of it, read together as one value. */
-.table-state {
+.table-stage {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -6018,7 +6018,7 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .context-bar select,
   .table-col-header input,
   .table-col-header select,
-  .table-state-select,
+  .table-stage-select,
   .move-controls__button,
   .move-controls--table .move-controls__button,
   .stage-notes-button--table,

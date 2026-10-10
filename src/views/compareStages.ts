@@ -1,5 +1,5 @@
-import { STATE_CONFIG, classifyLifecycle, stageNoteFor } from "../domain";
-import type { Application, StateId } from "../domain";
+import { STAGE_CONFIG, classifyLifecycle, stageNoteFor } from "../domain";
+import type { Application, StageId } from "../domain";
 
 /** One application's place at a stage on the comparison board. */
 export interface CompareEntry {
@@ -11,14 +11,14 @@ export interface CompareEntry {
 }
 
 export interface CompareStage {
-  state: StateId;
+  stage: StageId;
   entries: CompareEntry[];
 }
 
 /**
  * The stages worth comparing, in pipeline order, and who belongs at each.
  *
- * An application belongs at a stage when it holds a note for it, whatever state it is in
+ * An application belongs at a stage when it holds a note for it, whatever stage it is in
  * now — a rejected application's Round 1 prep is still the thing to reread before the
  * next Round 1 — or when it is live and at that stage now with nothing written, which
  * is the gap worth seeing. A live application with no note for some *other* stage is not a
@@ -29,12 +29,12 @@ export interface CompareStage {
  * prepared; the notes written elsewhere follow as reference. Company breaks the tie.
  */
 export function compareStages(applications: readonly Application[]): CompareStage[] {
-  return STATE_CONFIG.flatMap(({ id: state }) => {
+  return STAGE_CONFIG.flatMap(({ id: stage }) => {
     const entries = applications
       .map((application) => ({
         application,
-        isHere: application.state === state,
-        hasNote: stageNoteFor(application, state) != null,
+        isHere: application.stage === stage,
+        hasNote: stageNoteFor(application, stage) != null,
       }))
       .filter(
         (entry) =>
@@ -45,7 +45,7 @@ export function compareStages(applications: readonly Application[]): CompareStag
           Number(right.isHere) - Number(left.isHere) ||
           left.application.company.localeCompare(right.application.company),
       );
-    return entries.length > 0 ? [{ state, entries }] : [];
+    return entries.length > 0 ? [{ stage, entries }] : [];
   });
 }
 
@@ -54,10 +54,10 @@ export function compareStages(applications: readonly Application[]): CompareStag
  * tie, since a later stage is the one closer to an outcome. Null only when there is
  * nothing to compare anywhere.
  */
-export function defaultCompareStage(stages: readonly CompareStage[]): StateId | null {
+export function defaultCompareStage(stages: readonly CompareStage[]): StageId | null {
   let best: CompareStage | null = null;
   for (const stage of stages) {
     if (!best || stage.entries.length >= best.entries.length) best = stage;
   }
-  return best?.state ?? null;
+  return best?.stage ?? null;
 }

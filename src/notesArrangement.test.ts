@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { createApplication } from './domain/mutations'
-import type { Application, StateId } from './domain'
+import type { Application, StageId } from './domain'
 import {
   MIN_PANE_FRACTION,
   highestPaneNumber,
@@ -29,15 +29,15 @@ import {
   serializeArrangement,
 } from './notesArrangement'
 
-const ref = (applicationId: string, state: StateId): NoteRef => stageRef(applicationId, state)
+const ref = (applicationId: string, stage: StageId): NoteRef => stageRef(applicationId, stage)
 
 /** An application the refs below can name, with only the fields the module reads. */
-function application(id: string, noted: StateId[] = [], state: StateId = 'applied'): Application {
-  const base = createApplication({ company: id, state }, '2026-01-01T00:00:00.000Z', id)
+function application(id: string, noted: StageId[] = [], stage: StageId = 'applied'): Application {
+  const base = createApplication({ company: id, stage }, '2026-01-01T00:00:00.000Z', id)
   return {
     ...base,
-    stage_notes: noted.map((noteState) => ({
-      state: noteState,
+    stage_notes: noted.map((noteStage) => ({
+      stage: noteStage,
       body: '',
       heard: [],
       created_at: base.created_at,
@@ -141,13 +141,13 @@ describe('restoreArrangement', () => {
     expect(keys(restored!.layout)).toEqual([noteRefKey(ref('globex', 'offer'))])
   })
 
-  it('drops a tab naming a state that is no longer a state', () => {
+  it('drops a tab naming a stage that is no longer a stage', () => {
     const raw = JSON.stringify({
       version: ARRANGEMENT_VERSION,
       layout: {
         kind: 'group',
         id: 'pane-1',
-        tabs: [ref('acme', 'applied'), { applicationId: 'acme', state: 'shortlisted' }],
+        tabs: [ref('acme', 'applied'), { applicationId: 'acme', stage: 'shortlisted' }],
         activeKey: noteRefKey(ref('acme', 'applied')),
       },
       focusedGroupId: 'pane-1',
@@ -165,14 +165,15 @@ describe('restoreArrangement', () => {
   })
 
   it('restores an arrangement written before postings existed, untouched', () => {
-    // No `kind` anywhere: exactly the shape every arrangement in storage already has.
+    // No `kind` anywhere, the stage under `state`, and an id data version 4 renamed:
+    // exactly the shape every arrangement in storage already has.
     const raw = JSON.stringify({
       version: ARRANGEMENT_VERSION,
       layout: {
         kind: 'group',
         id: 'pane-1',
-        tabs: [{ applicationId: 'acme', state: 'applied' }, { applicationId: 'acme', state: 'round_1' }],
-        activeKey: 'acme::round_1',
+        tabs: [{ applicationId: 'acme', state: 'applied' }, { applicationId: 'acme', state: 'interview_1' }],
+        activeKey: 'acme::interview_1',
       },
       focusedGroupId: 'pane-1',
     })

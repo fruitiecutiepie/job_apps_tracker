@@ -5,16 +5,16 @@ import {
   openStageNoteInEditor,
   readStageNoteFromEditor,
   supportsExternalEditor,
-  STATE_CONFIG,
-  stateLabel,
-  stateRank,
+  STAGE_CONFIG,
+  stageLabel,
+  stageRank,
   type Application,
   type CorrespondenceEntry,
   type Posting,
   type StageNote,
   type StageNoteDraft,
   type StageNoteEditSession,
-  type StateId,
+  type StageId,
 } from './domain'
 import { PostingPane } from './PostingPane'
 import { QuickOpen, type QuickOpenEntry } from './QuickOpen'
@@ -150,7 +150,7 @@ const CLOSE_TAB_SHORTCUT = byKey('X', 'shift')
 
 /**
  * Drafts to store, grouped by the application they belong to. `applyStageNotes` allows one
- * draft per state in a call, so a panel holding two companies' notes cannot send one flat
+ * draft per stage in a call, so a panel holding two companies' notes cannot send one flat
  * list: the batches keep each application's stages apart.
  */
 export interface StageNoteDraftBatch {
@@ -198,7 +198,7 @@ interface StageNotesPanelProps {
   /** Commits a change that arrived from an external editor, which writes on its own. */
   onExternalChange: (
     applicationId: string,
-    state: StateId,
+    stage: StageId,
     body: string,
     base: string,
   ) => Promise<string | void>
@@ -207,20 +207,20 @@ interface StageNotesPanelProps {
    * next pause in typing: it is answered mid-conversation, where Escape and a closed tab
    * are likelier than a lull the autosave could ride on.
    */
-  onCapture: (applicationId: string, state: StateId, line: string) => Promise<void>
+  onCapture: (applicationId: string, stage: StageId, line: string) => Promise<void>
   /**
    * Stores a rewritten captured line, or removes it when the text is blank. Like a
    * capture and unlike a draft, it is stored as it is entered: a correction to something
    * already written down has nothing a Save could still be waiting for.
    */
-  onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>
+  onRevise: (applicationId: string, stage: StageId, entryId: string, body: string) => Promise<void>
   /**
    * Opens the application editor for the application a note prepares for. The panel holds
    * notes from several applications at once, so the id travels with the request rather
    * than being the one the panel was opened on.
    */
   /** The stage, when the caller is a message rather than the application itself. */
-  onOpenApplication: (applicationId: string, messagesFor?: StateId) => void
+  onOpenApplication: (applicationId: string, messagesFor?: StageId) => void
 }
 
 function errorMessage(error: unknown): string {
@@ -552,7 +552,7 @@ function SidebarHeading({
 
 /** One external editing session, with the note it belongs to. */
 interface OpenSession {
-  /** Stage notes only: the scratch-file route is keyed by application and state, and a
+  /** Stage notes only: the scratch-file route is keyed by application and stage, and a
    * posting is read-only in a pane, so there is no session to open for one. */
   ref: StageNoteRef
   session: StageNoteEditSession
@@ -584,7 +584,7 @@ export function StageNotesPanel({
     const entries: [string, StageNote][] = []
     for (const application of applications) {
       for (const note of application.stage_notes) {
-        entries.push([noteRefKey(stageRef(application.id, note.state)), note])
+        entries.push([noteRefKey(stageRef(application.id, note.stage)), note])
       }
     }
     return new Map(entries)
@@ -606,7 +606,7 @@ export function StageNotesPanel({
       // The company leads because that is what tells two open notes apart; the stage is
       // the same word in both. Always present, even with one application open: a name
       // that grows a prefix when a second company arrives is not a stable name.
-      return `${company} · ${ref.kind === 'posting' ? POSTING_LABEL : stateLabel(ref.state)}`
+      return `${company} · ${ref.kind === 'posting' ? POSTING_LABEL : stageLabel(ref.stage)}`
     },
     [applicationsById],
   )
@@ -864,7 +864,7 @@ export function StageNotesPanel({
         return {
           company: application?.company ?? '',
           role: application ? applicationRole(application) : '',
-          stage: ref.kind === 'posting' ? POSTING_LABEL : stateLabel(ref.state),
+          stage: ref.kind === 'posting' ? POSTING_LABEL : stageLabel(ref.stage),
         }
       }),
     )
@@ -990,7 +990,7 @@ export function StageNotesPanel({
       if (ref.kind === 'posting') {
         batch.posting = body
         batch.postingBase = base
-      } else batch.drafts.push({ state: ref.state, body, base })
+      } else batch.drafts.push({ stage: ref.stage, body, base })
       byApplication.set(ref.applicationId, batch)
     }
     return [...byApplication].map(([applicationId, batch]) => ({ applicationId, ...batch }))
@@ -1016,7 +1016,7 @@ export function StageNotesPanel({
         if (!written) break
         for (const batch of batches) {
           for (const draft of batch.drafts) {
-            markStored(noteRefKey(stageRef(batch.applicationId, draft.state)), draft.body)
+            markStored(noteRefKey(stageRef(batch.applicationId, draft.stage)), draft.body)
           }
           if (batch.posting !== undefined) {
             markStored(noteRefKey(postingRef(batch.applicationId)), batch.posting)
@@ -1063,7 +1063,7 @@ export function StageNotesPanel({
     setFormError(null)
     try {
       const seeded = draftsRef.current[key] ?? ''
-      const session = await openStageNoteInEditor(ref.applicationId, ref.state, seeded)
+      const session = await openStageNoteInEditor(ref.applicationId, ref.stage, seeded)
       sessionsRef.current = { ...sessionsRef.current, [key]: { ref, session, base: seeded } }
       setSessions(sessionsRef.current)
       // The external editor owns this note while the session lasts.
@@ -1084,7 +1084,7 @@ export function StageNotesPanel({
     sessionsRef.current = remaining
     setSessions(remaining)
     try {
-      await closeStageNoteEditor(ref.applicationId, ref.state)
+      await closeStageNoteEditor(ref.applicationId, ref.stage)
     } catch (error) {
       setFormError(errorMessage(error))
     }
@@ -1102,7 +1102,7 @@ export function StageNotesPanel({
         const open = sessionsRef.current[key]
         if (!open) continue
         try {
-          const contents = await readStageNoteFromEditor(open.ref.applicationId, open.ref.state)
+          const contents = await readStageNoteFromEditor(open.ref.applicationId, open.ref.stage)
           if (cancelled || !contents) continue
           // Unchanged since the file was seeded, or since the last poll stored it. The
           // next poll rebases from the file, not from the merged note: basing on the
@@ -1110,7 +1110,7 @@ export function StageNotesPanel({
           if (contents.body === open.base) continue
           const merged = await externalChangeRef.current(
             open.ref.applicationId,
-            open.ref.state,
+            open.ref.stage,
             contents.body,
             open.base,
           )
@@ -1136,7 +1136,7 @@ export function StageNotesPanel({
   useEffect(() => {
     return () => {
       for (const open of Object.values(sessionsRef.current)) {
-        void closeStageNoteEditor(open.ref.applicationId, open.ref.state)
+        void closeStageNoteEditor(open.ref.applicationId, open.ref.stage)
       }
     }
   }, [])
@@ -1165,7 +1165,7 @@ export function StageNotesPanel({
     const byKey = new Map<string, CorrespondenceEntry[]>()
     for (const application of applications) {
       for (const entry of application.correspondence) {
-        const key = noteRefKey(stageRef(application.id, entry.state))
+        const key = noteRefKey(stageRef(application.id, entry.stage))
         const filed = byKey.get(key)
         if (filed) filed.push(entry)
         else byKey.set(key, [entry])
@@ -1396,7 +1396,7 @@ export function StageNotesPanel({
         const back = remembered && group?.tabs.some((tab) => noteRefKey(tab) === remembered)
           ? parseNoteRefKey(remembered)
           : openPrepNoteFor(layoutRef.current, groupId, ref.applicationId)
-            ?? (application ? stageRef(ref.applicationId, application.state) : null)
+            ?? (application ? stageRef(ref.applicationId, application.stage) : null)
         if (!back) return
         // A note open in another pane is shown there rather than opened a second time here.
         const shown = revealOrOpen(layoutRef.current, groupId, back)
@@ -1990,13 +1990,13 @@ export function StageNotesPanel({
     for (const application of applications) {
       // A captured posting is pickable; an application without one has nothing to open.
       if (application.posting) add(postingRef(application.id))
-      add(stageRef(application.id, application.state))
+      add(stageRef(application.id, application.stage))
       for (const note of application.stage_notes) {
-        add(stageRef(application.id, note.state))
+        add(stageRef(application.id, note.stage))
       }
     }
-    for (const state of STATE_CONFIG) {
-      add(stageRef(activeRef.applicationId, state.id))
+    for (const stage of STAGE_CONFIG) {
+      add(stageRef(activeRef.applicationId, stage.id))
     }
     return found
   }, [activeRef.applicationId, applications, labelOf])
@@ -2025,8 +2025,8 @@ export function StageNotesPanel({
       // The posting first: it is what the rest was written against, and it belongs to no
       // stage, so there is no rank that would put it anywhere else.
       const ordered = [...refs].sort((left, right) =>
-        (left.kind === 'posting' ? -1 : stateRank(left.state))
-        - (right.kind === 'posting' ? -1 : stateRank(right.state)),
+        (left.kind === 'posting' ? -1 : stageRank(left.stage))
+        - (right.kind === 'posting' ? -1 : stageRank(right.stage)),
       )
       return {
         id: application.id,
@@ -2034,7 +2034,7 @@ export function StageNotesPanel({
         role: applicationRole(application),
         stages: ordered.map((ref) => ({
           id: noteRefKey(ref),
-          label: ref.kind === 'posting' ? POSTING_LABEL : stateLabel(ref.state),
+          label: ref.kind === 'posting' ? POSTING_LABEL : stageLabel(ref.stage),
           // Whether picking it shows a tab you already have rather than adding one — which
           // is `revealOrOpen`'s rule: open in any pane, unless this picker's pane is empty,
           // where picking it adds the copy the empty pane was made for.
@@ -2044,7 +2044,7 @@ export function StageNotesPanel({
         })),
         // Enter still lands on the stage you are at: the posting is a row you choose, not
         // the one the picker assumes.
-        defaultStageId: noteRefKey(stageRef(application.id, application.state)),
+        defaultStageId: noteRefKey(stageRef(application.id, application.stage)),
       }
     })
   }, [applicationRole, applicationsById, openKeys, pickable, pickingInto])
@@ -2360,7 +2360,7 @@ export function StageNotesPanel({
             // The whole name, for the tooltip and for anyone reading the strip through its
             // accessible names rather than looking at it.
             const fullLabel = application
-              ? `${application.company} · ${applicationRole(application)} · ${tab.kind === 'posting' ? POSTING_LABEL : stateLabel(tab.state)}`
+              ? `${application.company} · ${applicationRole(application)} · ${tab.kind === 'posting' ? POSTING_LABEL : stageLabel(tab.stage)}`
               : label
             const isDropTarget =
               drag.target?.kind === 'slot'
@@ -2437,7 +2437,7 @@ export function StageNotesPanel({
                       at once, so what a reader needs is not what a listener does. */}
                   <span className="sr-only">{fullLabel}</span>
                   <span aria-hidden="true" className="panel__tab-label">{shortLabel}</span>
-                  {tab.kind === 'stage' && application?.state === tab.state ? (
+                  {tab.kind === 'stage' && application?.stage === tab.stage ? (
                     <span className="panel__tab-badge">Current</span>
                   ) : null}
                   {tabMatches ? <span className="panel__tab-count">{tabMatches.count}</span> : null}
@@ -2533,8 +2533,8 @@ export function StageNotesPanel({
           heardMatchBase={(found?.base ?? 0) + (found?.written ?? 0) + (found?.wrote ?? 0)}
           isCorrespondenceOpen={correspondenceOpen.includes(shownKey)}
           isCorrespondenceReading={correspondenceReading.includes(shownKey)}
-          onEditCorrespondence={() => onOpenApplication(shown.applicationId, shown.state)}
-          isCurrentState={shownApplication?.state === shown.state}
+          onEditCorrespondence={() => onOpenApplication(shown.applicationId, shown.stage)}
+          isCurrentStage={shownApplication?.stage === shown.stage}
           captureHeight={captureHeight}
           isCaptureOpen={captureOpen.includes(shownKey)}
           onResizeCapture={resizeCapture}
@@ -2545,7 +2545,7 @@ export function StageNotesPanel({
           lines={linesByKey.get(shownKey) ?? []}
           matchBase={found?.base ?? 0}
           noteRef={shown}
-          onCapture={(line) => onCapture(shown.applicationId, shown.state, line)}
+          onCapture={(line) => onCapture(shown.applicationId, shown.stage, line)}
           onChange={(value) => editDraft(shownKey, value)}
           onClose={isSplit ? () => applyLayout(closeGroup(layoutRef.current, group.id)) : null}
           onFocus={() => setFocusedGroupId(group.id)}
@@ -2561,7 +2561,7 @@ export function StageNotesPanel({
               : null
           }
           onRevise={(entryId, revised) =>
-            onRevise(shown.applicationId, shown.state, entryId, revised)}
+            onRevise(shown.applicationId, shown.stage, entryId, revised)}
           onStopExternal={() => stopEditingExternally(shown)}
           onToggleCapture={() =>
             setCaptureOpen((current) =>
@@ -2697,13 +2697,13 @@ export function StageNotesPanel({
                     switchStage(
                       focusedGroupId,
                       activeKey,
-                      stageRef(activeRef.applicationId, event.target.value as StateId),
+                      stageRef(activeRef.applicationId, event.target.value as StageId),
                     )}
-                  value={activeRef.state}
+                  value={activeRef.stage}
                 >
-                  {STATE_CONFIG.map((state) => (
-                    <option key={state.id} value={state.id}>
-                      {state.label}
+                  {STAGE_CONFIG.map((stage) => (
+                    <option key={stage.id} value={stage.id}>
+                      {stage.label}
                     </option>
                   ))}
                 </select>

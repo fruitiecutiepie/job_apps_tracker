@@ -13,7 +13,7 @@ function oneApplication(company = 'Northwind') {
       role: 'Engineer',
       url: '',
       source: '',
-      state: 'applied',
+      stage: 'applied',
       next_action: '',
       next_action_at: null,
       deadline_at: null,
@@ -73,7 +73,7 @@ describe('reading an imported file', () => {
 
   it('says which field is wrong, not just that something is', () => {
     const broken = JSON.stringify({
-      applications: [{ id: 'not-a-uuid', company: '', state: 'invented_state' }],
+      applications: [{ id: 'not-a-uuid', company: '', stage: 'invented_stage' }],
     })
     const result = readTrackerImport(bytesOf(broken))
     expect(result.ok).toBe(false)

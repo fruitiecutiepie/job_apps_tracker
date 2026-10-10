@@ -6,37 +6,37 @@ const context = { othersRunning: 4 }
 
 describe('moveFeedback', () => {
   it('cheers a step on to a later stage', () => {
-    const reaction = moveFeedback({ state: 'round_1', outcome: 'active' }, { state: 'round_2' }, context, 0)
+    const reaction = moveFeedback({ stage: 'round_1', outcome: 'active' }, { stage: 'round_2' }, context, 0)
     expect(reaction).toEqual({ kind: 'progress', message: 'Keep it up!' })
   })
 
   it('cheers a jump over several stages the same way', () => {
-    expect(moveFeedback({ state: 'applied', outcome: 'active' }, { state: 'offer' }, context)?.kind).toBe('progress')
+    expect(moveFeedback({ stage: 'applied', outcome: 'active' }, { stage: 'offer' }, context)?.kind).toBe('progress')
   })
 
   it('varies the cheer by turn rather than repeating one', () => {
-    const from = { state: 'applied', outcome: 'active' } as const
-    const first = moveFeedback(from, { state: 'round_1' }, context, 0)?.message
-    const second = moveFeedback(from, { state: 'round_1' }, context, 1)?.message
+    const from = { stage: 'applied', outcome: 'active' } as const
+    const first = moveFeedback(from, { stage: 'round_1' }, context, 0)?.message
+    const second = moveFeedback(from, { stage: 'round_1' }, context, 1)?.message
     expect(first).not.toBe(second)
   })
 
   it('celebrates arriving at Accepted', () => {
-    expect(moveFeedback({ state: 'offer', outcome: 'active' }, { state: 'accepted' }, context)?.kind).toBe('accepted')
+    expect(moveFeedback({ stage: 'offer', outcome: 'active' }, { stage: 'accepted' }, context)?.kind).toBe('accepted')
   })
 
   it('says nothing for a step back, which is most often a correction', () => {
-    expect(moveFeedback({ state: 'round_2', outcome: 'active' }, { state: 'round_1' }, context)).toBeNull()
-    expect(moveFeedback({ state: 'accepted', outcome: 'active' }, { state: 'offer' }, context)).toBeNull()
+    expect(moveFeedback({ stage: 'round_2', outcome: 'active' }, { stage: 'round_1' }, context)).toBeNull()
+    expect(moveFeedback({ stage: 'accepted', outcome: 'active' }, { stage: 'offer' }, context)).toBeNull()
   })
 
   it('says nothing when nothing moved', () => {
-    expect(moveFeedback({ state: 'offer', outcome: 'active' }, { state: 'offer' }, context)).toBeNull()
-    expect(moveFeedback({ state: 'offer', outcome: 'rejected' }, { outcome: 'rejected' }, context)).toBeNull()
+    expect(moveFeedback({ stage: 'offer', outcome: 'active' }, { stage: 'offer' }, context)).toBeNull()
+    expect(moveFeedback({ stage: 'offer', outcome: 'rejected' }, { outcome: 'rejected' }, context)).toBeNull()
   })
 
   it('encourages on every way of ending, with words for that way', () => {
-    const from = { state: 'round_1', outcome: 'active' } as const
+    const from = { stage: 'round_1', outcome: 'active' } as const
     const rejected = moveFeedback(from, { outcome: 'rejected' }, context)
     const withdrawn = moveFeedback(from, { outcome: 'withdrawn' }, context)
     const closed = moveFeedback(from, { outcome: 'closed' }, context)
@@ -47,12 +47,12 @@ describe('moveFeedback', () => {
   })
 
   it('reads an ending lane further along as an ending, not progress', () => {
-    const reaction = moveFeedback({ state: 'applied', outcome: 'active' }, { state: 'offer', outcome: 'rejected' }, context)
+    const reaction = moveFeedback({ stage: 'applied', outcome: 'active' }, { stage: 'offer', outcome: 'rejected' }, context)
     expect(reaction?.kind).toBe('ended')
   })
 
   it('says a line for each way of ending, then how many others are still going', () => {
-    const from = { state: 'round_2', outcome: 'active' } as const
+    const from = { stage: 'round_2', outcome: 'active' } as const
     expect(moveFeedback(from, { outcome: 'rejected' }, context)?.message).toBe(
       'Sorry, that one stings. 4 others on your board are still going.',
     )
@@ -65,11 +65,11 @@ describe('moveFeedback', () => {
   })
 
   it('congratulates on taking the job', () => {
-    expect(moveFeedback({ state: 'offer', outcome: 'active' }, { state: 'accepted' }, context)?.message)
+    expect(moveFeedback({ stage: 'offer', outcome: 'active' }, { stage: 'accepted' }, context)?.message)
       .toBe('Congratulations, you earned this one!')
   })
 
   it('says nothing for a reopen where it stopped', () => {
-    expect(moveFeedback({ state: 'offer', outcome: 'rejected' }, { outcome: 'active' }, context)).toBeNull()
+    expect(moveFeedback({ stage: 'offer', outcome: 'rejected' }, { outcome: 'active' }, context)).toBeNull()
   })
 })

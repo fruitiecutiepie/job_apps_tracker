@@ -1,8 +1,8 @@
-import { OUTCOME_IDS, STATE_CONFIG } from "../domain";
-import type { Application, OutcomeId, StateEvent, StateId, Status } from "../domain";
+import { OUTCOME_IDS, STAGE_CONFIG } from "../domain";
+import type { Application, OutcomeId, StageEvent, StageId, Status } from "../domain";
 
 export interface KanbanColumnGroup {
-  state: StateId;
+  stage: StageId;
   /** The stage's running lane first, then one per way of ending that is on show. */
   lanes: Status[];
 }
@@ -19,19 +19,19 @@ export interface KanbanColumnGroup {
  */
 export function kanbanColumnGroups(
   applications: readonly Application[],
-  visibleStates?: readonly StateId[],
+  visibleStages?: readonly StageId[],
   visibleOutcomes: readonly OutcomeId[] = OUTCOME_IDS,
 ): KanbanColumnGroup[] {
-  const stages = visibleStates ? new Set(visibleStates) : null;
-  const held = new Set(applications.map((application) => `${application.state}:${application.outcome}`));
+  const stages = visibleStages ? new Set(visibleStages) : null;
+  const held = new Set(applications.map((application) => `${application.stage}:${application.outcome}`));
   const onlyOne = visibleOutcomes.length === 1;
 
-  return STATE_CONFIG.flatMap(({ id: state }) => {
-    if (stages && !stages.has(state)) return [];
+  return STAGE_CONFIG.flatMap(({ id: stage }) => {
+    if (stages && !stages.has(stage)) return [];
     const lanes = visibleOutcomes
-      .filter((outcome) => outcome === "active" || onlyOne || held.has(`${state}:${outcome}`))
-      .map((outcome) => ({ state, outcome }));
-    return lanes.length > 0 ? [{ state, lanes }] : [];
+      .filter((outcome) => outcome === "active" || onlyOne || held.has(`${stage}:${outcome}`))
+      .map((outcome) => ({ stage, outcome }));
+    return lanes.length > 0 ? [{ stage, lanes }] : [];
   });
 }
 
@@ -87,7 +87,7 @@ export function applicationAgeInDays(updatedAt: string, today: Date = new Date()
  * the overdue grouping uses.
  */
 /** Text a column filter can match against every invite on an application. */
-export function inviteFilterText(invites: StateEvent[]): string {
+export function inviteFilterText(invites: StageEvent[]): string {
   return invites
     .map((invite) =>
       [
@@ -102,13 +102,13 @@ export function inviteFilterText(invites: StateEvent[]): string {
     .join(" ");
 }
 
-export function upcomingStateEvent(
+export function upcomingStageEvent(
   application: Application,
   today: Date = new Date(),
-): StateEvent | null {
+): StageEvent | null {
   const from = startOfLocalDay(today).getTime();
   return (
-    application.state_events
+    application.stage_events
       .filter((event) => {
         if (event.cancelled) return false;
         const at = parseTimestamp(event.starts_at);

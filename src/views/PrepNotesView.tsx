@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Application, StateId } from "../domain";
+import type { Application, StageId } from "../domain";
 import {
   ARRANGEMENT_SAVE_MS,
   clearArrangement,
@@ -25,14 +25,14 @@ interface PrepNotesViewProps {
   onSaveDrafts: (batches: StageNoteDraftBatch[]) => Promise<boolean>;
   onExternalChange: (
     applicationId: string,
-    state: StateId,
+    stage: StageId,
     body: string,
     base: string,
   ) => Promise<string | void>;
-  onCapture: (applicationId: string, state: StateId, line: string) => Promise<void>;
-  onRevise: (applicationId: string, state: StateId, entryId: string, body: string) => Promise<void>;
+  onCapture: (applicationId: string, stage: StageId, line: string) => Promise<void>;
+  onRevise: (applicationId: string, stage: StageId, entryId: string, body: string) => Promise<void>;
   /** Opens the application editor for the application a note in the panel prepares for. */
-  onOpenApplication: (applicationId: string, messagesFor?: StateId) => void;
+  onOpenApplication: (applicationId: string, messagesFor?: StageId) => void;
 }
 
 /**
@@ -152,8 +152,8 @@ function openingFor(applications: Application[], request: NoteRequest | null): A
   if (!application) return null;
   // The fan is the application's own material either way — its posting and its noted
   // stages. Which tab you land on is the one that was asked for.
-  const state = request.ref.kind === 'stage' ? request.ref.state : application.state;
-  const fan = openingLayout(application, state);
+  const stage = request.ref.kind === 'stage' ? request.ref.stage : application.stage;
+  const fan = openingLayout(application, stage);
   const layout = request.ref.kind === 'posting'
     ? openInGroup(fan, fan.id, request.ref)
     : fan;
