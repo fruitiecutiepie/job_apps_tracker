@@ -1240,6 +1240,8 @@ a.actions-menu__item {
 }
 
 .application-card {
+  /* Holds the confetti a card lands on Accepted with. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--s2);
@@ -1251,6 +1253,201 @@ a.actions-menu__item {
 
 .application-card--dragging {
   opacity: 0.45;
+}
+
+/*
+ * A card moved on to a later stage gives a quick pop as it lands — quick, because it is
+ * the move made most often and nobody should wait on it. Display only.
+ */
+.application-card--landed {
+  z-index: 1;
+  animation: card-land 240ms cubic-bezier(0.2, 0.8, 0.3, 1.3);
+}
+
+/* Taking the job: a longer pulse, a bigger bounce, and a burst of confetti. */
+.kanban-lane--celebrate {
+  animation: lane-celebrate 1500ms ease-out;
+}
+
+.kanban-lane--celebrate .application-card--landed {
+  animation: card-celebrate 900ms cubic-bezier(0.2, 0.8, 0.3, 1.2);
+}
+
+@keyframes card-land {
+  from {
+    border-color: var(--accent);
+    box-shadow: var(--focus);
+    transform: scale(0.96);
+  }
+
+  60% {
+    border-color: var(--accent);
+    transform: scale(1.03);
+  }
+}
+
+@keyframes card-celebrate {
+  0% {
+    border-color: var(--accent);
+    box-shadow: var(--focus);
+    transform: scale(0.9);
+  }
+
+  35% {
+    transform: scale(1.06) rotate(-1deg);
+  }
+
+  60% {
+    border-color: var(--accent);
+    box-shadow: var(--focus);
+    transform: scale(0.99) rotate(0.5deg);
+  }
+}
+
+@keyframes lane-celebrate {
+  0%,
+  45% {
+    border-color: var(--accent);
+    background: var(--accent-weak);
+    box-shadow: var(--focus);
+  }
+}
+
+/*
+ * The burst sits on the card's centre at zero size; each piece flies out along the
+ * direction KanbanView gives it, measured in steps of the spacing scale, and falls a
+ * little as it fades. Teal shades only, the app's one accent.
+ */
+.confetti {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.confetti__piece {
+  position: absolute;
+  top: calc(var(--s4) / -2);
+  left: calc(var(--s3) / -2);
+  width: var(--s3);
+  height: var(--s4);
+  border-radius: var(--s1);
+  background: var(--accent);
+  opacity: 0;
+  animation: confetti-burst 1200ms cubic-bezier(0.15, 0.7, 0.3, 1) var(--delay) forwards;
+}
+
+.confetti__piece:nth-child(4n + 2) {
+  background: var(--chart-mid);
+}
+
+.confetti__piece:nth-child(4n + 3) {
+  background: var(--accent-strong);
+}
+
+.confetti__piece:nth-child(3n) {
+  height: var(--s3);
+  border-radius: var(--pill);
+}
+
+@keyframes confetti-burst {
+  0% {
+    opacity: 1;
+    transform: translate(0, 0) rotate(0) scale(0.6);
+  }
+
+  70% {
+    opacity: 1;
+  }
+
+  100% {
+    opacity: 0;
+    transform: translate(calc(var(--dx) * var(--s6)), calc(var(--dy) * var(--s6) + var(--s6)))
+      rotate(var(--spin)) scale(1);
+  }
+}
+
+/*
+ * What a move said, at the foot of the window: a card can land in a lane scrolled out of
+ * view, or one a filter hides, and the message still has to be seen. It never takes a
+ * press, so it cannot get in the way of the next move. Its lifetime comes from KanbanView,
+ * which is what removes it.
+ */
+.move-toast-region {
+  position: fixed;
+  z-index: 40;
+  right: var(--s5);
+  bottom: var(--s5);
+  left: var(--s5);
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.move-toast {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s3);
+  max-width: 100%;
+  margin: 0;
+  padding: var(--s3) var(--s5);
+  border: 1px solid var(--accent);
+  border-radius: var(--pill);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--ink);
+  font-size: var(--t4);
+  font-weight: 500;
+  animation: toast var(--toast-duration) ease both;
+}
+
+.move-toast svg {
+  flex: none;
+  color: var(--accent);
+}
+
+/* An ending is not a win: the same box, quieter, with nothing lit. */
+.move-toast--ended {
+  border-color: var(--line-strong);
+}
+
+.move-toast--ended svg {
+  color: var(--ink-2);
+}
+
+.move-toast--accepted {
+  background: var(--accent-weak);
+}
+
+@keyframes toast {
+  0% {
+    opacity: 0;
+    transform: translateY(var(--s3));
+  }
+
+  6%,
+  88% {
+    opacity: 1;
+    transform: none;
+  }
+
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes toast-fade {
+  0%,
+  100% {
+    opacity: 0;
+  }
+
+  6%,
+  88% {
+    opacity: 1;
+  }
 }
 
 .application-card--idle {
@@ -6412,6 +6609,29 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .markdown__fold svg {
     transition: none;
+  }
+
+  /*
+   * No movement: the message fades rather than slides, and the lane a card was accepted
+   * into holds the drop-target colour while the confetti would have been flying.
+   */
+  .application-card--landed,
+  .kanban-lane--celebrate .application-card--landed {
+    animation: none;
+  }
+
+  .move-toast {
+    animation-name: toast-fade;
+  }
+
+  .kanban-lane--celebrate {
+    border-color: var(--accent);
+    background: var(--accent-weak);
+    animation: none;
+  }
+
+  .confetti {
+    display: none;
   }
 
   .feedback-pill__dot {
