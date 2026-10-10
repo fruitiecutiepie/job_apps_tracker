@@ -1,23 +1,43 @@
 {
-  "$schema": "./node_modules/wrangler/config-schema.json",
-  "name": "job-apps-tracker",
-  "compatibility_date": "2026-10-07",
-  "workers_dev": false,
-  "observability": {
-    "enabled": true,
-    "traces": {
-      "enabled": true
-    }
-  },
-  "routes": [
-    {
-      "pattern": "fruitiecutiepie.com/projects/job_apps_tracker/app*",
-      "zone_name": "fruitiecutiepie.com"
-    }
-  ],
-  "assets": {
-    "directory": "./dist",
-    // /app and /app/ both open the app. /app is the address that stays.
-    "html_handling": "drop-trailing-slash"
-  }
+	"$schema": "./node_modules/wrangler/config-schema.json",
+	"name": "job-apps-tracker",
+	// Only the feedback route runs code; everything else is the static build below.
+	"main": "worker/index.ts",
+	"compatibility_date": "2026-10-07",
+	"workers_dev": false,
+	"observability": {
+		"enabled": true,
+		"traces": {
+			"enabled": true
+		}
+	},
+	"routes": [
+		{
+			"pattern": "fruitiecutiepie.com/projects/job_apps_tracker/app*",
+			"zone_name": "fruitiecutiepie.com"
+		}
+	],
+	"assets": {
+		"directory": "./dist",
+		"binding": "ASSETS",
+		// /app and /app/ both open the app. /app is the address that stays.
+		"html_handling": "drop-trailing-slash",
+		// The app and its demo both send to the tracker's own /api/feedback.
+		"run_worker_first": [
+			"/projects/job_apps_tracker/app/api/*"
+		]
+	},
+	// Feedback reports and their screenshots. Create once with
+	// `wrangler r2 bucket create job-apps-tracker-feedback`, and set the inbox's secret with
+	// `wrangler secret put FEEDBACK_ADMIN_TOKEN`.
+	"r2_buckets": [
+		{
+			"binding": "FEEDBACK",
+			"bucket_name": "job-apps-tracker-feedback"
+		},
+		{
+			"bucket_name": "job-apps-tracker-feedback",
+			"binding": "job_apps_tracker_feedback"
+		}
+	]
 }

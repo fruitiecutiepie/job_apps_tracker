@@ -1,6 +1,6 @@
 # Contributing to the Job Applications Tracker
 
-This file applies to the entire repository. Keep changes within the app's current scope: it is a single-user, local-first React/TypeScript application with no authentication, backend, synchronization, notifications, or collaboration layer.
+This file applies to the entire repository. Keep changes within the app's current scope: it is a single-user, local-first React/TypeScript application with no authentication, backend, synchronization, notifications, or collaboration layer. The one exception is the feedback route below, which receives reports the reader chooses to send and never anything from their tracker.
 
 ## Repository map
 
@@ -22,6 +22,7 @@ This file applies to the entire repository. Keep changes within the app's curren
 - `src/StorageStatus.tsx` is the static build's storage control and first-visit prompt, following `src/useStorageState.ts`. `src/TrackerSwitcher.tsx` names the tracker this tab holds and links to the others; `src/ReplaceTrackerDialog.tsx` is the one question asked before an import or a removal. Both render nothing under the dev-server backend, which has no choice to offer.
 - `src/domain/import.ts` turns the bytes of a chosen, dropped or pasted file into a validated document; `src/useFileImport.ts` is the window-level drop and paste listener that feeds it.
 - `src/views/` contains view components and their derived-data helpers. `compareStages.ts` decides which stages the Compare view offers and who belongs at each. `urgency.ts` scores and explains the ranking; `urgencyBands.ts` reads that ranking coarsely enough to band a sorted table, and is the only source for band ids, order and headings. A band is not a second ranking: it never changes a score, and the Urgency column still says on the row itself what the band is too coarse to.
+- `src/feedback/` is the feedback panel and the route it sends to. `report.ts` is the report shape and its validation, shared by the panel and the route; `server.ts` is the route as one `Request → Response` function over a `FeedbackStore`, which `worker/index.ts` runs against an R2 bucket and `vite/feedback-plugin.ts` against `data/feedback/`; `inboxPage.ts` is the maintainer's reading page that route serves. `steps.ts` names what the reader does while reproducing a problem, `screenshot.ts` takes a picture of the tab, and `inbox.ts` is this browser's own list of what it sent.
 - `src/test/` contains app integration and smoke tests; view-focused tests live beside the views.
 - `src/styles.css` contains the responsive visual system. Spacing, radius, type size, colour,
   control height, shadow, and focus all come from the token scale in its `:root` block; reuse a
@@ -286,6 +287,16 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Derive links between the two hosted builds from `import.meta.env.BASE_URL` through `src/siteLinks.ts`. A fork is served from a different repository name, so a hard-coded path is wrong everywhere but here.
 - External note editing starts a process on the machine running the dev server, so the static build cannot offer it. Gate it on `backend.capabilities.externalEditor` rather than on the profile or on feature detection at the call site.
 - A Cursor `beforeSubmitPrompt` hook backs up live and demo `tracker.json` files and their attachment directories to `data/backups/{timestamp}/` before agent prompts. Agents should edit applications through mutations and attachment APIs; do not bypass the backup hook with alternate write paths.
+
+### Feedback
+
+- A report carries the reader's words, the screenshots they chose, the steps recorded while they reproduced the problem, an optional email, and the page context `collectContext` lists — view, build, path without its query, browser, language, window. **Nothing from the tracker goes with it**, and the panel's **Also sent with it** must keep listing every context field, so the sender sees exactly what leaves.
+- Recorded steps name controls, never content: `describeChange` says which field was edited and never its value, a click on anything that is not a control is not a step, and plain typing is not a key step. A control's accessible name can still carry a company (`Move Acme to Interview 2`), which is why every step is listed and removable before Send. Anything inside `[data-feedback-ui]` is the panel itself and is never recorded.
+- The panel is non-modal and portalled to `body` above the dialog backdrop, so a problem inside a dialog can be shown and photographed. It stops Escape, Tab, paste and file drops at its own edge: the dialog's focus trap, the window's tracker import and the panel's Escape must not each answer one key press. Its image input exists only while the panel is open, because tests and the app find the import inputs as the page's file inputs.
+- A report that fails to send is stored in this browser's feedback inbox (its own IndexedDB database, apart from every tracker's) with the reason, and is retried from **Sent**. It is never only in a form that a reload would empty.
+- The route accepts a report from anyone and refuses `Sec-Fetch-Site: cross-site`; reading, triaging and deleting take `FEEDBACK_ADMIN_TOKEN`. With no token configured the inbox is shut rather than open. The inbox page builds its DOM with `textContent` only — reports are strangers' text — and is served under a CSP allowing nothing but itself.
+- A screenshot is one frame of a `getDisplayMedia` tab capture, so the browser asks first, and its prompt speaks of sharing or recording the screen — alarming from a button reading Screenshot, and not the page's to reword. The panel says what is coming before the first capture in a browser (`CaptureNotice`), and the button's hint says it at all times. Every way a capture can end is bounded — a frame, sharing stopped from the browser's bar, or a timeout — because the panel hides itself while one runs. Never wait on `requestVideoFrameCallback` for that frame: the video is not in the page, a frame nobody renders is never presented, and in Chrome the wait never ended, taking the screenshot and the pill with it. `pnpm test:capture` takes a real one in Chromium with a fake capture device.
+- `wrangler.jsonc` sends only `…/app/api/*` to the Worker (`run_worker_first`); everything else is served as static assets exactly as before.
 
 ### Demo data
 

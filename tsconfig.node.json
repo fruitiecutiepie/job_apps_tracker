@@ -16,6 +16,7 @@
   "include": [
     "vite.config.ts",
     "vitest.browser.config.ts",
+    "vitest.capture.config.ts",
     "eslint.config.js",
     "vite/**/*.ts"
   ]

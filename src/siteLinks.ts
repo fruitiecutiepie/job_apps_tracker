@@ -20,3 +20,12 @@ export function trackerSiteUrl(): string {
   const base = baseUrl()
   return base.endsWith(`/${DEMO_SEGMENT}`) ? base.slice(0, -DEMO_SEGMENT.length) : base
 }
+
+/*
+ * Where feedback is sent. Always the tracker's own base, from the demo too, so the Worker
+ * answers one route rather than two; on the dev server the base is `/`, and the dev server
+ * answers it there.
+ */
+export function feedbackEndpoint(): string {
+  return `${trackerSiteUrl()}api/feedback`
+}

@@ -370,7 +370,12 @@ neither a finger nor any browser automation.
     last one still running. Move it to another state, save, reopen, and confirm one entry was
     appended. Reopen and change nothing but the notes, save, and confirm the list is unchanged.
     Open **Add application** and confirm no History list appears.
-16. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
+16. Press **Feedback** in the top bar, then **Show me**. Open an application, change its stage,
+    press Escape, take a **Screenshot** from the pill (Chrome: the browser asks, and the pill is
+    not in the picture), then **Done**. Confirm the steps name the controls and nothing typed,
+    remove one, and **Send**. Open `/api/feedback/inbox` with the token `local` and confirm the
+    report, its screenshot and its remaining steps are there, then delete it.
+17. Choose **Reset demo data** from **More actions**, cancel once, then reopen the menu
     and confirm it. Confirm the same 19 examples are restored in `data/demo/`, now including
     the demo invites, and that `data/tracker.json` is unchanged.
 

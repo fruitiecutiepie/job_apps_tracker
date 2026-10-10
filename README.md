@@ -371,6 +371,20 @@ yourself, you have a real file on disk and exports are for moving between machin
 the hosted app in Firefox or Safari, or in Chrome before you have chosen a folder — the export
 is your only copy, and clearing site data would otherwise be the end of it.
 
+### Send feedback or report a bug
+
+**Feedback** in the top bar opens a small panel over whatever view you are on — the page stays usable behind it. Pick **Bug**, **Idea** or **Other**, write a line, and press **Send**. Everything else is optional:
+
+- **Screenshot** takes a picture of this tab. The browser asks to share the tab first — that is how a web page photographs itself — and the panel says so before the first time; one frame is kept, sharing stops at once, and the panel steps out of the picture. You can also paste or drop an image onto the panel, or pick one; up to four.
+- **Show me** shrinks the panel to a pill in the corner while you reproduce the problem. Meanwhile it notes which buttons, tabs and menus you use — `Clicked button “Add application”`, `Set “Stage” to “Interview 1”` — but never what you type. Take more screenshots from the pill, then press **Done** to get back to your report, where every recorded step is listed and can be removed before sending.
+- **Email me when it is done** leaves an address to hear back on. It is remembered in this browser for next time and is never shown publicly.
+
+**Also sent with it** lists the rest of the report: which view you were on, the browser and the window size. **Sent** lists what this browser has sent. A report that could not be sent is kept there with the reason and a **Try again** button, so nothing you wrote is lost to a dropped connection.
+
+Reports go to the Worker that serves the hosted app and are stored in a private R2 bucket. Running it yourself, the dev and preview servers take them instead and write them to `data/feedback/` (gitignored).
+
+**Reading them** is the page at `/api/feedback/inbox` under the app's address. Running it yourself, that is <http://localhost:5173/api/feedback/inbox>, with the token `local` unless `FEEDBACK_ADMIN_TOKEN` is set. On the hosted app it asks for the token you set as a Worker secret (see *Publishing it yourself*). Each report shows its text, screenshots, recorded steps and context, with a status to triage it by, and an email link prefilled to tell the sender it is fixed.
+
 ## Where your data lives
 
 There are two builds, and they differ in one thing: who writes the file.
@@ -396,7 +410,7 @@ The top bar always says which of these you have:
 | **Reconnect `<folder>`** | The folder is still yours but its permission lapsed, which browsers do. Edits are still being saved to browser storage; click to grant it again and the folder catches up. |
 | **Export a backup** | Firefox or Safari, which cannot write to a folder, with changes your last export does not have. Click to export; hover it to see since when. An import counts as a backup too, since you are holding the file you imported. |
 
-Durability follows from that: a connected folder is a file you own, and browser storage is only as durable as the browser profile. The first time a change lands only in browser storage, the app asks the browser to keep that storage persistent, which makes it less likely to be cleared to free up space; Firefox may ask you to allow it. That makes the browser copy harder to lose, but it is still not a file you hold, so the reminder does not go away because of it. Nothing is uploaded in either build — the hosted app is static files, with no account and no endpoint to send anything to.
+Durability follows from that: a connected folder is a file you own, and browser storage is only as durable as the browser profile. The first time a change lands only in browser storage, the app asks the browser to keep that storage persistent, which makes it less likely to be cleared to free up space; Firefox may ask you to allow it. That makes the browser copy harder to lose, but it is still not a file you hold, so the reminder does not go away because of it. Nothing from your tracker is uploaded in either build — the hosted app is static files and has no account. The one thing that ever leaves the browser is a feedback report you write and press Send on, described below, and it carries nothing from your applications.
 
 ### The demo
 
@@ -405,6 +419,16 @@ Durability follows from that: a connected folder is a file you own, and browser 
 It is the same origin as the tracker, so the one thing keeping them apart is that each gets its own IndexedDB database. Emptying the demo sticks — it is not reseeded on every load — and a standing banner says whose data it is, with a link back.
 
 ### Publishing it yourself
+
+The Cloudflare deploy (`pnpm deploy`) also runs the feedback route, which needs two one-off steps before the first deploy that includes it:
+
+```sh
+pnpm wrangler r2 bucket create job-apps-tracker-feedback
+pnpm wrangler secret put FEEDBACK_ADMIN_TOKEN
+```
+
+Without the secret, reports are still accepted and stored, but the inbox page refuses to list them.
+
 
 `.github/workflows/pages.yml` typechecks, lints, tests, builds both sites and deploys on every push to `master`. A fork needs two things: **Settings → Pages → Source** set to **GitHub Actions**, and the `VITE_BASE_PATH` values in `package.json`'s `build:pages` and `build:pages-demo` changed to match the repository name.
 
