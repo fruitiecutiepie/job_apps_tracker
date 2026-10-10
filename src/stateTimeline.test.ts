@@ -10,11 +10,11 @@ describe('stateTimeline', () => {
     const entries = stateTimeline(
       [
         { state: 'applied', outcome: 'active', at: at(1) },
-        { state: 'recruiter_interview', outcome: 'active', at: at(4) },
+        { state: 'screening', outcome: 'active', at: at(4) },
       ],
       new Date(2026, 2, 6),
     )
-    expect(entries.map((entry) => entry.label)).toEqual(['Applied', 'Recruiter interview'])
+    expect(entries.map((entry) => entry.label)).toEqual(['Applied', 'Screening call'])
   })
 
   it('measures a finished span to the move that ended it', () => {
@@ -59,12 +59,12 @@ describe('stateTimeline', () => {
   it('names an ending by its stage and how it went', () => {
     const entries = stateTimeline(
       [
-        { state: 'interview_1', outcome: 'active', at: at(1) },
-        { state: 'interview_1', outcome: 'rejected', at: at(4) },
+        { state: 'round_1', outcome: 'active', at: at(1) },
+        { state: 'round_1', outcome: 'rejected', at: at(4) },
       ],
       new Date(2026, 2, 6),
     )
-    expect(entries.map((entry) => entry.label)).toEqual(['Interview 1', 'Interview 1 — Rejected'])
+    expect(entries.map((entry) => entry.label)).toEqual(['Round 1', 'Round 1 — Rejected'])
   })
 
   it('reports no span rather than a wrong one when a timestamp cannot be read', () => {

@@ -46,8 +46,8 @@ function application(company: string, overrides: Partial<Application> = {}): App
 function invite(overrides: Partial<StateEvent> = {}): StateEvent {
   return {
     id: '00000000-0000-7000-8000-000000000001',
-    state: 'recruiter_interview',
-    summary: 'Recruiter interview',
+    state: 'screening',
+    summary: 'Screening call',
     starts_at: at(2),
     ends_at: null,
     location: null,

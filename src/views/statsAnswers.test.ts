@@ -44,7 +44,7 @@ describe('the answers', () => {
   it('names the earliest stage when two lose at the same rate', () => {
     const rows = [
       { state: 'applied' as const, decided: 6, passed: 3, pending: 0 },
-      { state: 'interview_1' as const, decided: 6, passed: 3, pending: 0 },
+      { state: 'round_1' as const, decided: 6, passed: 3, pending: 0 },
     ]
     expect(losingAnswer(rows, 5).worst).toBe('applied')
   })

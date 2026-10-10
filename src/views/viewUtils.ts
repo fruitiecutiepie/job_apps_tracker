@@ -14,7 +14,7 @@ export interface KanbanColumnGroup {
  * cost the board thirty-six mostly empty lanes. A filter naming one outcome draws that lane
  * everywhere, since asking for it is asking where it would be.
  *
- * Every lane drawn is its own drop target, so dragging onto "Interview 1 — Rejected" is the
+ * Every lane drawn is its own drop target, so dragging onto "Round 1 — Rejected" is the
  * same move End makes.
  */
 export function kanbanColumnGroups(

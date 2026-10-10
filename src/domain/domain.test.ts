@@ -102,10 +102,10 @@ describe('state configuration and demo content', () => {
       'applied',
       'recruiter_messaged',
       'online_assessment',
-      'recruiter_interview',
+      'screening',
       'take_home_assessment',
-      'interview_1',
-      'interview_2',
+      'round_1',
+      'round_2',
       'offer',
       'accepted',
     ])
@@ -115,9 +115,9 @@ describe('state configuration and demo content', () => {
   })
 
   it('reads a stage and an outcome together as the words people use for them', () => {
-    expect(statusLabel({ state: 'interview_1', outcome: 'active' })).toBe('Interview 1')
+    expect(statusLabel({ state: 'round_1', outcome: 'active' })).toBe('Round 1')
     // The old rejection labels, em dashes included, come out of the pair unchanged.
-    expect(statusLabel({ state: 'interview_1', outcome: 'rejected' })).toBe('Interview 1 — Rejected')
+    expect(statusLabel({ state: 'round_1', outcome: 'rejected' })).toBe('Round 1 — Rejected')
     expect(statusLabel({ state: 'offer', outcome: 'rejected' })).toBe('Offer — Rejected')
     expect(statusLabel({ state: 'applied', outcome: 'rejected' })).toBe('Auto-rejected')
     expect(statusLabel({ state: 'headhunted', outcome: 'closed' })).toBe('No openings')
@@ -125,7 +125,7 @@ describe('state configuration and demo content', () => {
     // Backing out of a job you took, and an offer rescinded after you said yes.
     expect(statusLabel({ state: 'accepted', outcome: 'withdrawn' })).toBe('Accepted — Withdrawn')
     expect(statusLabel({ state: 'accepted', outcome: 'closed' })).toBe('Accepted — Closed')
-    expect(statusLabel({ state: 'interview_2', outcome: 'withdrawn' })).toBe('Interview 2 — Withdrawn')
+    expect(statusLabel({ state: 'round_2', outcome: 'withdrawn' })).toBe('Round 2 — Withdrawn')
     expect(statusLabel({ state: 'take_home_assessment', outcome: 'closed' })).toBe(
       'Take-home assessment — Closed',
     )
@@ -409,18 +409,18 @@ describe('application mutations', () => {
   })
 
   it('keeps whichever axis a move leaves out', () => {
-    const original = createApplication({ company: 'Northwind', state: 'interview_1' }, REFERENCE)
+    const original = createApplication({ company: 'Northwind', state: 'round_1' }, REFERENCE)
     const ended = moveApplicationStatus(original, { outcome: 'rejected' }, REFERENCE)
-    expect(ended.state).toBe('interview_1')
+    expect(ended.state).toBe('round_1')
     expect(ended.outcome).toBe('rejected')
 
     // Correcting where it ended does not reopen it.
-    const corrected = moveApplicationStatus(ended, { state: 'interview_2' }, REFERENCE)
-    expect(corrected.state).toBe('interview_2')
+    const corrected = moveApplicationStatus(ended, { state: 'round_2' }, REFERENCE)
+    expect(corrected.state).toBe('round_2')
     expect(corrected.outcome).toBe('rejected')
 
     const reopened = moveApplicationStatus(corrected, { outcome: 'active' }, REFERENCE)
-    expect(reopened.state).toBe('interview_2')
+    expect(reopened.state).toBe('round_2')
     expect(reopened.outcome).toBe('active')
     expect(reopened.state_history).toHaveLength(4)
   })
@@ -707,11 +707,11 @@ describe('stage prep notes', () => {
 
   it('records a prep note for a stage with its own timestamps', () => {
     const application = createApplication({ company: 'Northwind' }, REFERENCE)
-    const withNote = setStageNote(application, 'interview_1', '  Ask about the panel  ', REFERENCE)
+    const withNote = setStageNote(application, 'round_1', '  Ask about the panel  ', REFERENCE)
 
     expect(withNote.stage_notes).toEqual([
       {
-        state: 'interview_1',
+        state: 'round_1',
         body: 'Ask about the panel',
         heard: [],
         created_at: REFERENCE.toISOString(),
@@ -728,23 +728,23 @@ describe('stage prep notes', () => {
     const withTwoCaptures = () => {
       const application = setStageNote(
         createApplication({ company: 'Northwind' }, REFERENCE),
-        'interview_1',
+        'round_1',
         'Ask about the panel',
         REFERENCE,
       )
-      const first = captureStageNote(application, 'interview_1', 'Panel is three people', REFERENCE)
-      return captureStageNote(first, 'interview_1', 'Dana runs the lop', LATER)
+      const first = captureStageNote(application, 'round_1', 'Panel is three people', REFERENCE)
+      return captureStageNote(first, 'round_1', 'Dana runs the lop', LATER)
     }
 
     const captures = (application: Application) =>
-      stageNoteFor(application, 'interview_1')?.heard ?? []
+      stageNoteFor(application, 'round_1')?.heard ?? []
 
     it('rewrites the line and leaves the moment it was captured alone', () => {
       const application = withTwoCaptures()
       const [, typo] = captures(application)
       const fixed = reviseStageNoteCapture(
         application,
-        'interview_1',
+        'round_1',
         typo.id,
         '  Dana runs the loop  ',
         LATEST,
@@ -754,31 +754,31 @@ describe('stage prep notes', () => {
       // later, and the day it reads under is a reading of `at`.
       expect(captures(fixed)[1]).toEqual({ id: typo.id, body: 'Dana runs the loop', at: typo.at })
       expect(captures(fixed)[0]).toEqual(captures(application)[0])
-      expect(stageNoteFor(fixed, 'interview_1')?.updated_at).toBe(LATEST.toISOString())
+      expect(stageNoteFor(fixed, 'round_1')?.updated_at).toBe(LATEST.toISOString())
       expect(fixed.updated_at).toBe(LATEST.toISOString())
     })
 
     it('removes the line when it is rewritten blank, leaving the rest of the note', () => {
       const application = withTwoCaptures()
       const [first, second] = captures(application)
-      const removed = reviseStageNoteCapture(application, 'interview_1', second.id, '   ', LATEST)
+      const removed = reviseStageNoteCapture(application, 'round_1', second.id, '   ', LATEST)
 
       expect(captures(removed).map((entry) => entry.id)).toEqual([first.id])
-      expect(stageNoteFor(removed, 'interview_1')?.body).toBe('Ask about the panel')
+      expect(stageNoteFor(removed, 'round_1')?.body).toBe('Ask about the panel')
     })
 
     it('drops a note whose last captured line is removed and which holds nothing else', () => {
       const application = captureStageNote(
         createApplication({ company: 'Northwind' }, REFERENCE),
-        'interview_1',
+        'round_1',
         'Panel is three people',
         REFERENCE,
       )
       const [only] = captures(application)
 
       // The same rule a blank body follows: an empty note is not a record of anything.
-      expect(stageNoteFor(application, 'interview_1')?.body).toBe('')
-      const removed = reviseStageNoteCapture(application, 'interview_1', only.id, '', LATEST)
+      expect(stageNoteFor(application, 'round_1')?.body).toBe('')
+      const removed = reviseStageNoteCapture(application, 'round_1', only.id, '', LATEST)
       expect(removed.stage_notes).toEqual([])
     })
 
@@ -786,12 +786,12 @@ describe('stage prep notes', () => {
       const application = withTwoCaptures()
       const [first] = captures(application)
 
-      expect(reviseStageNoteCapture(application, 'interview_1', first.id, first.body, LATEST))
+      expect(reviseStageNoteCapture(application, 'round_1', first.id, first.body, LATEST))
         .toBe(application)
       // Trimming is applied before the comparison, so whitespace alone is not a change.
-      expect(reviseStageNoteCapture(application, 'interview_1', first.id, ` ${first.body} `, LATEST))
+      expect(reviseStageNoteCapture(application, 'round_1', first.id, ` ${first.body} `, LATEST))
         .toBe(application)
-      expect(reviseStageNoteCapture(application, 'interview_1', 'not-a-line', 'Something', LATEST))
+      expect(reviseStageNoteCapture(application, 'round_1', 'not-a-line', 'Something', LATEST))
         .toBe(application)
       expect(reviseStageNoteCapture(application, 'offer', first.id, 'Something', LATEST))
         .toBe(application)
@@ -833,14 +833,14 @@ describe('stage prep notes', () => {
   it('keeps created_at when a note is rewritten and refreshes updated_at', () => {
     const application = setStageNote(
       createApplication({ company: 'Northwind' }, REFERENCE),
-      'interview_1',
+      'round_1',
       'First draft',
       REFERENCE,
     )
-    const rewritten = setStageNote(application, 'interview_1', 'Second draft', LATER)
+    const rewritten = setStageNote(application, 'round_1', 'Second draft', LATER)
 
-    expect(stageNoteFor(rewritten, 'interview_1')).toEqual({
-      state: 'interview_1',
+    expect(stageNoteFor(rewritten, 'round_1')).toEqual({
+      state: 'round_1',
       body: 'Second draft',
       heard: [],
       created_at: REFERENCE.toISOString(),
@@ -852,20 +852,20 @@ describe('stage prep notes', () => {
   it('treats an unchanged note as a no-op', () => {
     const application = setStageNote(
       createApplication({ company: 'Northwind' }, REFERENCE),
-      'interview_1',
+      'round_1',
       'Ask about the panel',
       REFERENCE,
     )
 
-    expect(setStageNote(application, 'interview_1', '  Ask about the panel ', LATER)).toBe(application)
+    expect(setStageNote(application, 'round_1', '  Ask about the panel ', LATER)).toBe(application)
   })
 
   it('clears a note when the body is blank and leaves other stages alone', () => {
     let application = createApplication({ company: 'Northwind' }, REFERENCE)
-    application = setStageNote(application, 'interview_1', 'Panel notes', REFERENCE)
+    application = setStageNote(application, 'round_1', 'Panel notes', REFERENCE)
     application = setStageNote(application, 'offer', 'Comp notes', REFERENCE)
 
-    const cleared = setStageNote(application, 'interview_1', '   ', LATER)
+    const cleared = setStageNote(application, 'round_1', '   ', LATER)
     expect(cleared.stage_notes.map((note) => note.state)).toEqual(['offer'])
     expect(cleared.updated_at).toBe(LATER.toISOString())
   })
@@ -875,13 +875,13 @@ describe('stage prep notes', () => {
       createApplication({ company: 'Northwind' }, REFERENCE),
       [
         { state: 'offer', body: 'Comp notes' },
-        { state: 'recruiter_interview', body: 'Recruiter notes' },
+        { state: 'screening', body: 'Recruiter notes' },
       ],
       REFERENCE,
     )
 
     expect(application.stage_notes.map((note) => note.state)).toEqual([
-      'recruiter_interview',
+      'screening',
       'offer',
     ])
     expect(() =>
@@ -894,16 +894,16 @@ describe('stage prep notes', () => {
 
   it('updates stage notes through the document without touching other applications', () => {
     const document = createDemoDocument(REFERENCE)
-    const target = document.applications.find((application) => application.state === 'interview_1')!
+    const target = document.applications.find((application) => application.state === 'round_1')!
     const updated = updateApplicationStageNotes(
       document,
       target.id,
-      [{ state: 'interview_1', body: 'Bring the case study' }],
+      [{ state: 'round_1', body: 'Bring the case study' }],
       LATER,
     )
 
     const after = updated.applications.find((application) => application.id === target.id)!
-    expect(stageNoteFor(after, 'interview_1')?.body).toBe('Bring the case study')
+    expect(stageNoteFor(after, 'round_1')?.body).toBe('Bring the case study')
     expect(updated.applications).toHaveLength(document.applications.length)
     expect(updated.applications.filter((application) => application.id !== target.id)).toEqual(
       document.applications.filter((application) => application.id !== target.id),
@@ -927,7 +927,7 @@ describe('stage prep notes', () => {
           state: 'offer',
           stage_notes: [
             { state: 'offer', body: ' Comp notes ', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
-            { state: 'interview_1', body: 'Panel notes', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+            { state: 'round_1', body: 'Panel notes', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
           ],
           created_at: REFERENCE.toISOString(),
           updated_at: REFERENCE.toISOString(),
@@ -937,7 +937,7 @@ describe('stage prep notes', () => {
 
     expect(parsed.applications[0]?.stage_notes).toEqual([])
     expect(parsed.applications[1]?.stage_notes.map((note) => note.state)).toEqual([
-      'interview_1',
+      'round_1',
       'offer',
     ])
     expect(parsed.applications[1]?.stage_notes[1]?.body).toBe('Comp notes')
@@ -976,14 +976,14 @@ describe('stage prep notes', () => {
   it('includes stage note text in search indexes', () => {
     const application = setStageNote(
       createApplication({ company: 'Northwind' }, REFERENCE),
-      'interview_1',
+      'round_1',
       'Rehearse the migration story',
       REFERENCE,
     )
     const indexes = rebuildIndexes([application])
 
     expect(indexes.search_text[application.id]).toContain('rehearse the migration story')
-    expect(indexes.search_text[application.id]).toContain('interview 1')
+    expect(indexes.search_text[application.id]).toContain('round 1')
   })
 
   it('round-trips stage notes through export and import', () => {
@@ -1453,8 +1453,8 @@ describe('calendar invites', () => {
 
   function invite(overrides: Record<string, unknown> = {}) {
     return {
-      state: 'interview_1' as const,
-      summary: 'Interview 1 — panel',
+      state: 'round_1' as const,
+      summary: 'Round 1 — panel',
       starts_at: '2026-08-20T04:00:00.000Z',
       ...overrides,
     }
@@ -1466,8 +1466,8 @@ describe('calendar invites', () => {
     const [event] = withInvite.state_events
 
     expect(event).toMatchObject({
-      state: 'interview_1',
-      summary: 'Interview 1 — panel',
+      state: 'round_1',
+      summary: 'Round 1 — panel',
       starts_at: '2026-08-20T04:00:00.000Z',
       ends_at: '2026-08-20T05:00:00.000Z',
       location: null,
@@ -1511,13 +1511,13 @@ describe('calendar invites', () => {
       createApplication({ company: 'Northwind' }, REFERENCE),
       [
         invite({ state: 'offer', starts_at: '2026-08-19T04:00:00.000Z' }),
-        invite({ state: 'recruiter_interview', starts_at: '2026-08-22T04:00:00.000Z' }),
+        invite({ state: 'screening', starts_at: '2026-08-22T04:00:00.000Z' }),
       ],
       REFERENCE,
     )
 
     expect(application.state_events.map((event) => event.state)).toEqual([
-      'recruiter_interview',
+      'screening',
       'offer',
     ])
   })
@@ -1597,7 +1597,7 @@ describe('calendar invites', () => {
   it('replaces the invite a rescheduled one supersedes, keeping the stage it was filed under', () => {
     const application = addStateEvent(
       createApplication({ company: 'Northwind' }, REFERENCE),
-      invite({ ics_uid: 'panel@example.com', state: 'interview_2' }),
+      invite({ ics_uid: 'panel@example.com', state: 'round_2' }),
       REFERENCE,
     )
     const rescheduled = addStateEvent(
@@ -1613,7 +1613,7 @@ describe('calendar invites', () => {
 
     expect(rescheduled.state_events).toHaveLength(1)
     expect(rescheduled.state_events[0]).toMatchObject({
-      state: 'interview_2',
+      state: 'round_2',
       starts_at: '2026-08-27T04:00:00.000Z',
       sequence: 1,
       created_at: REFERENCE.toISOString(),
@@ -1741,7 +1741,7 @@ describe('calendar invites', () => {
 
     expect(indexes.search_text[application.id]).toContain('panel with the platform team')
     expect(indexes.search_text[application.id]).toContain('level 4, example st')
-    expect(indexes.search_text[application.id]).toContain('interview 1')
+    expect(indexes.search_text[application.id]).toContain('round 1')
   })
 
   it('round-trips invites through export and import', () => {
@@ -2096,7 +2096,7 @@ describe('hiring correspondence', () => {
       [
         // Filed against a later stage but sent first: send order wins, because a log is read
         // as a timeline rather than one stage at a time.
-        message({ state: 'interview_2', body: 'Second', at: '2026-08-10T23:30:00.000Z' }),
+        message({ state: 'round_2', body: 'Second', at: '2026-08-10T23:30:00.000Z' }),
         message({ state: 'applied', body: 'First', at: '2026-08-09T23:30:00.000Z' }),
       ],
       REFERENCE,
@@ -2319,7 +2319,7 @@ describe('external note editing', () => {
   })
 
   it('names the scratch file after the stage and rejects an invalid one', () => {
-    expect(stageNoteEditFilename('interview_2')).toBe('interview_2.md')
+    expect(stageNoteEditFilename('round_2')).toBe('round_2.md')
     expect(stageNoteEditUrl('018f0000-0000-7000-8000-000000000015', 'offer')).toBe(
       '/__note-edit/018f0000-0000-7000-8000-000000000015/offer',
     )
@@ -2459,7 +2459,7 @@ describe('document validation and persistence', () => {
   })
 
   it.each([
-    [{ schema_version: 4, applications: [] }, 'schema_version'],
+    [{ schema_version: 5, applications: [] }, 'schema_version'],
     [{ schema_version: 2, applications: [{
       id: 'one', company: 'Northwind', state: 'auto_rejected', outcome: 'active',
       created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString(),
@@ -2621,7 +2621,7 @@ describe('ending an application clears an outstanding next action', () => {
   })
 
   it('keeps the action when moving between stages', () => {
-    const moved = moveApplicationStatus(withAction(), { state: 'recruiter_interview' }, REJECTED_AT)
+    const moved = moveApplicationStatus(withAction(), { state: 'screening' }, REJECTED_AT)
 
     expect(moved.next_action).toBe('Follow up with the recruiter')
     expect(moved.next_action_at).toBe(new Date('2026-08-30T09:00:00+10:00').toISOString())
@@ -2642,7 +2642,7 @@ describe('ending an application clears an outstanding next action', () => {
   it('keeps a task set after the rejection when the stage is corrected', () => {
     const rejected = moveApplicationStatus(withAction(), { outcome: 'rejected' }, REJECTED_AT)
     const replanned = editApplication(rejected, { next_action: 'Ask for feedback' }, REJECTED_AT)
-    const corrected = moveApplicationStatus(replanned, { state: 'interview_1' }, REJECTED_AT)
+    const corrected = moveApplicationStatus(replanned, { state: 'round_1' }, REJECTED_AT)
 
     expect(corrected.next_action).toBe('Ask for feedback')
   })
@@ -2737,7 +2737,7 @@ describe('migrating version-1 documents', () => {
       state: 'interview_1_rejected',
       state_history: [
         { state: 'applied', at: AT },
-        { state: 'interview_1', at: AT },
+        { state: 'round_1', at: AT },
         { state: 'interview_1_rejected', at: LATER },
       ],
       created_at: AT,
@@ -2747,8 +2747,9 @@ describe('migrating version-1 documents', () => {
   }
 
   it('reads every version-1 state as the stage and outcome it meant', () => {
-    expect(legacyStatus('interview_1')).toEqual({ state: 'interview_1', outcome: 'active' })
-    expect(legacyStatus('interview_1_rejected')).toEqual({ state: 'interview_1', outcome: 'rejected' })
+    expect(legacyStatus('interview_1')).toEqual({ state: 'round_1', outcome: 'active' })
+    expect(legacyStatus('recruiter_interview')).toEqual({ state: 'screening', outcome: 'active' })
+    expect(legacyStatus('interview_1_rejected')).toEqual({ state: 'round_1', outcome: 'rejected' })
     expect(legacyStatus('auto_rejected')).toEqual({ state: 'applied', outcome: 'rejected' })
     expect(legacyStatus('no_openings')).toEqual({ state: 'headhunted', outcome: 'closed' })
     expect(legacyStatus('accepted')).toEqual({ state: 'accepted', outcome: 'active' })
@@ -2762,13 +2763,13 @@ describe('migrating version-1 documents', () => {
     const application = parsed.applications[0]!
 
     expect(parsed.schema_version).toBe(DATA_VERSION)
-    expect(application.state).toBe('interview_1')
+    expect(application.state).toBe('round_1')
     expect(application.outcome).toBe('rejected')
     expect(application.archived_at).toBeNull()
     expect(application.state_history).toEqual([
       { state: 'applied', outcome: 'active', at: AT },
-      { state: 'interview_1', outcome: 'active', at: AT },
-      { state: 'interview_1', outcome: 'rejected', at: LATER },
+      { state: 'round_1', outcome: 'active', at: AT },
+      { state: 'round_1', outcome: 'rejected', at: LATER },
     ])
   })
 
@@ -2805,15 +2806,15 @@ describe('migrating version-1 documents', () => {
     })
     const parsed = parseTrackerDocument(JSON.stringify({ schema_version: 1, applications: [application] }))
 
-    expect(parsed.applications[0]!.state_events[0]!.state).toBe('interview_1')
-    expect(parsed.applications[0]!.correspondence[0]!.state).toBe('interview_1')
+    expect(parsed.applications[0]!.state_events[0]!.state).toBe('round_1')
+    expect(parsed.applications[0]!.correspondence[0]!.state).toBe('round_1')
   })
 
   it('joins a stage note and its rejection note into one, losing nothing', () => {
     const application = legacyApplication({
       stage_notes: [
         {
-          state: 'interview_1',
+          state: 'round_1',
           body: 'Lead with the migration story.',
           heard: [{ id: 'heard-1', body: 'Team of six', at: AT }],
           created_at: AT,
@@ -2832,7 +2833,7 @@ describe('migrating version-1 documents', () => {
     const notes = parsed.applications[0]!.stage_notes
 
     expect(notes).toHaveLength(1)
-    expect(notes[0]!.state).toBe('interview_1')
+    expect(notes[0]!.state).toBe('round_1')
     expect(notes[0]!.body).toBe('Lead with the migration story.\n\nFeedback: wanted more system design.')
     expect(notes[0]!.heard.map(({ id }) => id)).toEqual(['heard-1', 'heard-2'])
     expect(notes[0]!.created_at).toBe(AT)

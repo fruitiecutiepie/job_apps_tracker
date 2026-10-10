@@ -197,7 +197,7 @@ describe('the panel in a real browser', () => {
     // Enough tabs that the strip overflows, which is the only state this is about. None
     // of them is a stage the fixture already has open — the picker offers a row's other
     // stages, and one already on a tab is not among them.
-    const opening = ['applied', 'recruiter_messaged', 'recruiter_interview', 'take_home_assessment'] as const
+    const opening = ['applied', 'recruiter_messaged', 'screening', 'take_home_assessment'] as const
     for (const state of opening) {
       await userEvent.click(screen.getByRole('button', { name: 'Open' }))
       await userEvent.selectOptions(
@@ -219,7 +219,7 @@ describe('the panel in a real browser', () => {
     const { halcyon } = renderPanel()
     await page.viewport(640, 800)
     const strip = () => document.querySelector<HTMLElement>('.panel__tabs')!
-    for (const state of ['applied', 'recruiter_messaged', 'recruiter_interview', 'take_home_assessment'] as const) {
+    for (const state of ['applied', 'recruiter_messaged', 'screening', 'take_home_assessment'] as const) {
       await userEvent.click(screen.getByRole('button', { name: 'Open' }))
       await userEvent.selectOptions(
         screen.getByRole('combobox', { name: new RegExp(`Other stages for ${halcyon.company}`) }),
@@ -744,7 +744,7 @@ describe('the stage pill in the title bar', () => {
      * off, because a pill held to 9rem spent the value to buy the width. jsdom cannot
      * answer either half: it lays nothing out and every box measures zero.
      */
-    for (const state of ['interview_2', 'take_home_assessment'] as const) {
+    for (const state of ['round_2', 'take_home_assessment'] as const) {
       await userEvent.selectOptions(pill, stateLabel(state))
       expect(pill.getBoundingClientRect().width).toBeGreaterThanOrEqual(needed(pill) - 1)
     }

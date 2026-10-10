@@ -6,9 +6,18 @@ import {
 } from './compensation'
 import { isCorrespondenceDirection } from './correspondence'
 import { createUuidV7 } from './id'
-import { prepareTrackerDatabase } from './database'
+import { documentStages, prepareTrackerDatabase } from './database'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
-import { isOutcomeId, isStateId, outcomeAbandonsTask, stateRank } from './states'
+import {
+  isOutcomeId,
+  isStateId,
+  outcomeAbandonsTask,
+  roundId,
+  roundNumber,
+  stageConfigFrom,
+  stateRank,
+  type StageConfig,
+} from './states'
 import { safeAttachmentFilename } from './attachmentPaths'
 import type {
   Application,
@@ -29,6 +38,7 @@ import type {
   RatingDraft,
   StageNote,
   StageNoteDraft,
+  StageSetting,
   StateEvent,
   StateEventDraft,
   StateId,
@@ -663,8 +673,8 @@ export function removeStateEvent(
  * Correspondence is stored in send order rather than in configured state order the way
  * invites are. Invites are read one stage at a time and their times and their stages agree
  * by construction; a log is read as a timeline, and the stage a message is filed under does
- * not predict when it was sent — a coordinator apologising for the delay on Interview 1
- * arrives after the Interview 2 invite, and filing-first order would read backwards at
+ * not predict when it was sent — a coordinator apologising for the delay on Round 1
+ * arrives after the Round 2 invite, and filing-first order would read backwards at
  * exactly the moment that matters.
  *
  * Compare parsed instants rather than strings, unlike `heard` and `completed_actions`: those
@@ -1257,5 +1267,53 @@ export function deleteApplication(document: TrackerDocument, id: string): Tracke
 export function renameTracker(document: TrackerDocument, name: string): TrackerDocument {
   const named = name.trim() || undefined
   if (named === document.name) return document
-  return prepareTrackerDatabase(document.applications, named)
+  return prepareTrackerDatabase(document.applications, named, documentStages(document))
+}
+
+/**
+ * A document carrying these stages. The applications array is copied although no application
+ * changes: what a stage is called is read wherever an application is drawn, and a view that
+ * derived its rows from the same array as before would go on showing the old name.
+ */
+function withStages(document: TrackerDocument, stages: StageConfig): TrackerDocument {
+  return prepareTrackerDatabase([...document.applications], document.name, stages)
+}
+
+/**
+ * Gives the tracker these stages: what each is called, and how many rounds there are. Only
+ * labels move — the id the data files things under stays — so no application, note, invite or
+ * message is touched by a rename. A blank label is the stage's default. A round left out is
+ * taken away only when nothing is filed under it, since otherwise its applications would be
+ * at a stage the tracker no longer has; one that holds something is kept, and so is every
+ * round before it. Unchanged stages return the same document.
+ */
+export function setStages(document: TrackerDocument, stages: readonly StageSetting[]): TrackerDocument {
+  const current = documentStages(document)
+  const asked = stageConfigFrom(stages)
+  let rounds = asked.rounds
+  for (let round = current.rounds; round > rounds; round--) {
+    if (stageInUse(document, roundId(round))) rounds = round
+  }
+  const kept = current.stages.filter(({ id }) => {
+    const round = roundNumber(id)
+    return round !== null && round > asked.rounds && round <= rounds
+  })
+  const next = stageConfigFrom([...asked.stages, ...kept])
+  const unchanged = next.stages.length === current.stages.length
+    && next.stages.every((stage, index) => stage.label === current.stages[index]!.label)
+  return unchanged ? document : withStages(document, next)
+}
+
+/**
+ * Whether anything in the tracker is filed under this stage: an application at it, a move
+ * through it, a prep note, an invite or a message. A stage holding something cannot be taken
+ * away, since that would leave it filed under a stage the tracker no longer has.
+ */
+export function stageInUse(document: TrackerDocument, state: StateId): boolean {
+  return document.applications.some((application) =>
+    application.state === state
+    || application.state_history.some((entry) => entry.state === state)
+    || application.stage_notes.some((note) => note.state === state)
+    || application.state_events.some((event) => event.state === state)
+    || application.correspondence.some((entry) => entry.state === state))
 }

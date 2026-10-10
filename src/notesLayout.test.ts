@@ -55,11 +55,11 @@ const refKeys = (tree: LayoutNode): string[] => orderedRefs(tree).map(noteRefKey
 
 describe('noteRefKey', () => {
   it('tells two applications apart at the same stage', () => {
-    expect(noteRefKey(acme('interview_1'))).not.toBe(noteRefKey(globex('interview_1')))
+    expect(noteRefKey(acme('round_1'))).not.toBe(noteRefKey(globex('round_1')))
   })
 
   it('tells two stages of one application apart', () => {
-    expect(noteRefKey(acme('interview_1'))).not.toBe(noteRefKey(acme('interview_2')))
+    expect(noteRefKey(acme('round_1'))).not.toBe(noteRefKey(acme('round_2')))
   })
 })
 
@@ -75,12 +75,12 @@ describe('posting refs', () => {
 
   it('keys a stage note exactly as it did before postings existed', () => {
     // Frozen deliberately: every arrangement in storage is keyed by this string.
-    expect(noteRefKey(stageRef('acme', 'interview_1'))).toBe('acme::interview_1')
+    expect(noteRefKey(stageRef('acme', 'round_1'))).toBe('acme::round_1')
     expect(noteRefKey(postingRef('acme'))).toBe('acme::posting')
   })
 
   it('reads every key back as the ref it names', () => {
-    const refs = [stageRef('acme', 'interview_1'), postingRef('acme')]
+    const refs = [stageRef('acme', 'round_1'), postingRef('acme')]
     for (const ref of refs) {
       expect(parseNoteRefKey(noteRefKey(ref))).toEqual(ref)
       expect(parseTabId(tabId('pane-2', ref))).toEqual({ groupId: 'pane-2', ref })
@@ -101,7 +101,7 @@ describe('posting refs', () => {
 
   it('carries a posting through the layout operations beside a stage note', () => {
     const posting = postingRef('acme')
-    const group = makeGroup('g1', [posting, acme('interview_1')])
+    const group = makeGroup('g1', [posting, acme('round_1')])
     expect(group.tabs).toHaveLength(2)
 
     // Opening it again activates the tab that is there rather than adding a second.
@@ -113,7 +113,7 @@ describe('posting refs', () => {
     expect(orderedRefs(split!)).toContainEqual(posting)
 
     const closed = closeTab(group, 'g1', noteRefKey(posting))
-    expect(orderedRefs(closed!)).toEqual([acme('interview_1')])
+    expect(orderedRefs(closed!)).toEqual([acme('round_1')])
   })
 })
 
@@ -136,7 +136,7 @@ describe('makeGroup', () => {
 describe('openPrepNoteFor', () => {
   it('finds this pane\'s own prep note of the application first, whatever stage it is for', () => {
     let tree: LayoutNode = makeGroup('g1', [globex('applied'), postingRef('acme'), acme('offer')], noteRefKey(postingRef('acme')))
-    tree = splitWith(tree, 'g1', 'right', acme('interview_1'), ids('g2', 's1'), 'g1')
+    tree = splitWith(tree, 'g1', 'right', acme('round_1'), ids('g2', 's1'), 'g1')
 
     expect(openPrepNoteFor(tree, 'g1', 'acme')).toEqual(acme('offer'))
   })
@@ -200,12 +200,12 @@ describe('revealOrOpen', () => {
   })
 
   it('opens into the pane asked for when no pane has the note', () => {
-    const shown = revealOrOpen(twoPanes(), 'g1', globex('interview_1'))
+    const shown = revealOrOpen(twoPanes(), 'g1', globex('round_1'))
 
     expect(shown.groupId).toBe('g1')
     expect(findGroup(shown.layout, 'g1')!.tabs.map(noteRefKey)).toEqual([
       noteRefKey(acme('applied')),
-      noteRefKey(globex('interview_1')),
+      noteRefKey(globex('round_1')),
     ])
   })
 
@@ -221,15 +221,15 @@ describe('revealOrOpen', () => {
 
 describe('openInGroup', () => {
   it('adds a note from another application beside the first', () => {
-    const tree = openInGroup(singleGroup('g1', acme('interview_1')), 'g1', globex('interview_1'))
+    const tree = openInGroup(singleGroup('g1', acme('round_1')), 'g1', globex('round_1'))
     expect(refKeys(tree)).toEqual([
-      noteRefKey(acme('interview_1')),
-      noteRefKey(globex('interview_1')),
+      noteRefKey(acme('round_1')),
+      noteRefKey(globex('round_1')),
     ])
   })
 
   it('activates what it opened', () => {
-    const tree = openInGroup(singleGroup('g1', acme('interview_1')), 'g1', globex('offer'))
+    const tree = openInGroup(singleGroup('g1', acme('round_1')), 'g1', globex('offer'))
     expect(findGroup(tree, 'g1')!.activeKey).toBe(noteRefKey(globex('offer')))
   })
 
@@ -270,15 +270,15 @@ describe('openInGroup', () => {
 
 describe('replaceTab', () => {
   it('swaps the tab for a different stage in the same place, and focuses it', () => {
-    const group = makeGroup('g1', [acme('applied'), acme('interview_1'), acme('offer')])
-    const swapped = replaceTab(group, 'g1', noteRefKey(acme('interview_1')), acme('interview_2'))
+    const group = makeGroup('g1', [acme('applied'), acme('round_1'), acme('offer')])
+    const swapped = replaceTab(group, 'g1', noteRefKey(acme('round_1')), acme('round_2'))
 
     expect(refKeys(swapped)).toEqual([
       noteRefKey(acme('applied')),
-      noteRefKey(acme('interview_2')),
+      noteRefKey(acme('round_2')),
       noteRefKey(acme('offer')),
     ])
-    expect(findGroup(swapped, 'g1')!.activeKey).toBe(noteRefKey(acme('interview_2')))
+    expect(findGroup(swapped, 'g1')!.activeKey).toBe(noteRefKey(acme('round_2')))
   })
 
   it('does nothing when the stage picked is the tab already showing', () => {
@@ -334,11 +334,11 @@ describe('closeTab', () => {
 
   it('falls back to the tab before the one closed', () => {
     let tree: LayoutNode = singleGroup('g1', acme('applied'))
-    tree = openInGroup(tree, 'g1', acme('interview_1'))
+    tree = openInGroup(tree, 'g1', acme('round_1'))
     tree = openInGroup(tree, 'g1', acme('offer'))
 
     const closed = closeTab(tree, 'g1', noteRefKey(acme('offer')))!
-    expect(findGroup(closed, 'g1')!.activeKey).toBe(noteRefKey(acme('interview_1')))
+    expect(findGroup(closed, 'g1')!.activeKey).toBe(noteRefKey(acme('round_1')))
   })
 
   it('keeps the active tab when a different one closes', () => {
@@ -377,7 +377,7 @@ describe('closeGroup', () => {
       globex('offer'),
       ids('g2', 's1'),
     )
-    tree = openInGroup(tree, 'g2', globex('interview_1'))
+    tree = openInGroup(tree, 'g2', globex('round_1'))
 
     const closed = closeGroup(tree, 'g2')!
     expect(paneNames(closed)).toEqual(['g1'])
@@ -429,7 +429,7 @@ describe('splitWith', () => {
       globex('offer'),
       ids('g2', 's1'),
     )
-    tree = splitWith(tree, 'g2', 'right', globex('interview_1'), ids('g3', 's2'))
+    tree = splitWith(tree, 'g2', 'right', globex('round_1'), ids('g3', 's2'))
 
     expect(isSplit(tree)).toBe(true)
     const split = tree as SplitNode
@@ -447,7 +447,7 @@ describe('splitWith', () => {
       globex('offer'),
       ids('g2', 's1'),
     )
-    tree = splitWith(tree, 'g2', 'bottom', globex('interview_1'), ids('g3', 's2'))
+    tree = splitWith(tree, 'g2', 'bottom', globex('round_1'), ids('g3', 's2'))
 
     const split = tree as SplitNode
     expect(split.direction).toBe('row')
@@ -476,7 +476,7 @@ describe('splitWith', () => {
       globex('offer'),
       ids('g2', 's1'),
     )
-    tree = splitWith(tree, 'g2', 'right', globex('interview_1'), ids('g3', 's2'))
+    tree = splitWith(tree, 'g2', 'right', globex('round_1'), ids('g3', 's2'))
 
     const { sizes } = tree as SplitNode
     expect(sizes).toHaveLength(3)
@@ -517,14 +517,14 @@ describe('splitWith', () => {
 describe('moveTab', () => {
   it('reorders a tab within its own pane', () => {
     let tree: LayoutNode = singleGroup('g1', acme('applied'))
-    tree = openInGroup(tree, 'g1', acme('interview_1'))
+    tree = openInGroup(tree, 'g1', acme('round_1'))
     tree = openInGroup(tree, 'g1', acme('offer'))
 
     const moved = moveTab(tree, 'g1', noteRefKey(acme('offer')), 'g1', 0)
     expect(findGroup(moved, 'g1')!.tabs.map(noteRefKey)).toEqual([
       noteRefKey(acme('offer')),
       noteRefKey(acme('applied')),
-      noteRefKey(acme('interview_1')),
+      noteRefKey(acme('round_1')),
     ])
   })
 
@@ -536,12 +536,12 @@ describe('moveTab', () => {
       globex('offer'),
       ids('g2', 's1'),
     )
-    tree = openInGroup(tree, 'g1', acme('interview_1'))
+    tree = openInGroup(tree, 'g1', acme('round_1'))
 
-    const moved = moveTab(tree, 'g1', noteRefKey(acme('interview_1')), 'g2', 0)
+    const moved = moveTab(tree, 'g1', noteRefKey(acme('round_1')), 'g2', 0)
     expect(findGroup(moved, 'g1')!.tabs.map(noteRefKey)).toEqual([noteRefKey(acme('applied'))])
     expect(findGroup(moved, 'g2')!.tabs.map(noteRefKey)).toEqual([
-      noteRefKey(acme('interview_1')),
+      noteRefKey(acme('round_1')),
       noteRefKey(globex('offer')),
     ])
   })
@@ -554,10 +554,10 @@ describe('moveTab', () => {
       globex('offer'),
       ids('g2', 's1'),
     )
-    tree = openInGroup(tree, 'g1', acme('interview_1'))
+    tree = openInGroup(tree, 'g1', acme('round_1'))
 
-    const moved = moveTab(tree, 'g1', noteRefKey(acme('interview_1')), 'g2', 0)
-    expect(findGroup(moved, 'g2')!.activeKey).toBe(noteRefKey(acme('interview_1')))
+    const moved = moveTab(tree, 'g1', noteRefKey(acme('round_1')), 'g2', 0)
+    expect(findGroup(moved, 'g2')!.activeKey).toBe(noteRefKey(acme('round_1')))
   })
 
   it('collapses the split when the tab moved was the last one in its pane', () => {
@@ -582,12 +582,12 @@ describe('moveTab', () => {
       globex('offer'),
       ids('g2', 's1'),
     )
-    tree = openInGroup(tree, 'g1', acme('interview_1'))
+    tree = openInGroup(tree, 'g1', acme('round_1'))
 
-    const moved = moveTab(tree, 'g1', noteRefKey(acme('interview_1')), 'g2', 99)
+    const moved = moveTab(tree, 'g1', noteRefKey(acme('round_1')), 'g2', 99)
     expect(findGroup(moved, 'g2')!.tabs.map(noteRefKey)).toEqual([
       noteRefKey(globex('offer')),
-      noteRefKey(acme('interview_1')),
+      noteRefKey(acme('round_1')),
     ])
   })
 
@@ -617,7 +617,7 @@ describe('neighbourGroup', () => {
 
   it('answers for a pane nested inside another split', () => {
     let tree: LayoutNode = row()
-    tree = splitWith(tree, 'g2', 'bottom', globex('interview_1'), ids('g3', 's2'))
+    tree = splitWith(tree, 'g2', 'bottom', globex('round_1'), ids('g3', 's2'))
 
     // g2 and g3 are stacked inside the right-hand half of the row.
     expect(neighbourGroup(tree, 'g2', 'bottom')).toBe('g3')
@@ -629,7 +629,7 @@ describe('neighbourGroup', () => {
 
   it('reaches the nearest pane of a neighbouring split rather than its outermost', () => {
     let tree: LayoutNode = row()
-    tree = splitWith(tree, 'g1', 'bottom', globex('interview_1'), ids('g3', 's2'))
+    tree = splitWith(tree, 'g1', 'bottom', globex('round_1'), ids('g3', 's2'))
     // g1 over g3 on the left, g2 on the right. Coming left from g2, the nearest pane in
     // that stack is the last one, not the first.
     expect(neighbourGroup(tree, 'g2', 'left')).toBe('g3')
@@ -684,7 +684,7 @@ describe('resizeSplit', () => {
 
   it('leaves panes either side of other dividers untouched', () => {
     let tree: LayoutNode = twoPanes()
-    tree = splitWith(tree, 'g2', 'right', globex('interview_1'), ids('g3', 's2'))
+    tree = splitWith(tree, 'g2', 'right', globex('round_1'), ids('g3', 's2'))
     const before = (tree as SplitNode).sizes[2]
 
     const resized = resizeSplit(tree, 's1', 0, 0.1) as SplitNode
@@ -693,7 +693,7 @@ describe('resizeSplit', () => {
 
   it('reaches a divider nested inside another split', () => {
     let tree: LayoutNode = twoPanes()
-    tree = splitWith(tree, 'g2', 'bottom', globex('interview_1'), ids('g3', 's2'))
+    tree = splitWith(tree, 'g2', 'bottom', globex('round_1'), ids('g3', 's2'))
 
     const resized = resizeSplit(tree, 's2', 0, 0.1) as SplitNode
     const nested = resized.children[1] as SplitNode
@@ -728,7 +728,7 @@ describe('taking a pane out', () => {
       direction: 'row',
       children: [
         makeGroup('g1', [acme('applied')]),
-        makeGroup('g2', [acme('interview_1')]),
+        makeGroup('g2', [acme('round_1')]),
         makeGroup('g3', [globex('offer')]),
       ],
       sizes: [0.2, 0.6, 0.2],
@@ -760,15 +760,15 @@ describe('taking a pane out', () => {
 describe('orderedRefs', () => {
   it('reads panes left to right, and their tabs in order', () => {
     let tree: LayoutNode = singleGroup('g1', acme('applied'))
-    tree = openInGroup(tree, 'g1', acme('interview_1'))
+    tree = openInGroup(tree, 'g1', acme('round_1'))
     tree = splitWith(tree, 'g1', 'right', globex('offer'), ids('g2', 's1'))
-    tree = openInGroup(tree, 'g2', globex('interview_2'))
+    tree = openInGroup(tree, 'g2', globex('round_2'))
 
     expect(refKeys(tree)).toEqual([
       noteRefKey(acme('applied')),
-      noteRefKey(acme('interview_1')),
+      noteRefKey(acme('round_1')),
       noteRefKey(globex('offer')),
-      noteRefKey(globex('interview_2')),
+      noteRefKey(globex('round_2')),
     ])
   })
 
@@ -860,7 +860,7 @@ describe('tabId', () => {
 
 describe('parseNoteRefKey', () => {
   it('reads back what noteRefKey wrote', () => {
-    expect(parseNoteRefKey(noteRefKey(acme('interview_1')))).toEqual(acme('interview_1'))
+    expect(parseNoteRefKey(noteRefKey(acme('round_1')))).toEqual(acme('round_1'))
   })
 
   it('refuses anything that is not one', () => {

@@ -72,11 +72,11 @@ const NO_PRESSURE: PressureTerm = { pressure: 0, detail: "", kind: "none", dueAt
 /**
  * Further along weighs more: the first stage is 1/9, an offer is 1. Counted over the stages
  * an application can be ranked at, which leaves out Accepted — reached, the search is done.
+ * Counted when asked rather than once, because a tracker that adds a round has one more.
  */
-const RANKED_STAGES = STATE_IDS.filter((state) => state !== FINAL_STATE).length;
-
 function stageWeight(state: StateId): number {
-  return Math.min(1, (stateRank(state) + 1) / RANKED_STAGES);
+  const ranked = STATE_IDS.filter((stage) => stage !== FINAL_STATE).length;
+  return Math.min(1, (stateRank(state) + 1) / ranked);
 }
 
 /** Whole browser-local calendar days from today, so a time earlier today is still day 0. */

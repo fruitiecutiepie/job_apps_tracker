@@ -2,6 +2,7 @@ import '@testing-library/jest-dom/vitest'
 import { afterEach, beforeEach, vi } from 'vitest'
 import { cleanup } from '@testing-library/react'
 
+import { DEFAULT_STAGE_CONFIG, applyStages } from '../domain/states'
 import { loadTrackerDocument, resetTrackerDocument, saveTrackerDocument } from '../domain/storage'
 import { seedNamedCompanies } from './fixture'
 import { handleTestAttachmentFetch, wipeTestAttachments } from './attachmentStore'
@@ -25,6 +26,8 @@ import { testTrackerStore } from './trackerStore'
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  // The open tracker's stages are module state; one test's rounds must not leak into the next.
+  applyStages(DEFAULT_STAGE_CONFIG)
 })
 
 beforeEach(() => {

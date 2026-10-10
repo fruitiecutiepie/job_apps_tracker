@@ -66,7 +66,7 @@ describe('reading an imported file', () => {
     expect(readTrackerImport(bytesOf('this is not JSON'))).toMatchObject({ ok: false })
     expect(readTrackerImport(new Uint8Array())).toMatchObject({ ok: false })
     expect(readTrackerImport(bytesOf('{"applications":"nope"}'))).toMatchObject({ ok: false })
-    expect(readTrackerImport(bytesOf(JSON.stringify({ schema_version: 4, applications: [] })))).toMatchObject({
+    expect(readTrackerImport(bytesOf(JSON.stringify({ schema_version: 5, applications: [] })))).toMatchObject({
       ok: false,
     })
   })

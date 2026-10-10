@@ -39,7 +39,7 @@ const PASTED = [
 
 const message = (overrides: Partial<CorrespondenceEntry> = {}): CorrespondenceEntry => ({
   id: '018f0000-0000-7001-8000-000000000001',
-  state: 'interview_2',
+  state: 'round_2',
   direction: 'received',
   subject: 'After Thursday — next steps',
   channel: 'Email',
@@ -51,7 +51,7 @@ const message = (overrides: Partial<CorrespondenceEntry> = {}): CorrespondenceEn
   ...overrides,
 })
 
-/** Halcyon Maps is the fixture's Interview 2 application, which is the pane that opens. */
+/** Halcyon Maps is the fixture's Round 2 application, which is the pane that opens. */
 function withMessages(entries: CorrespondenceEntry[]): Application[] {
   return fixtureApplications().map((application) =>
     application.company === 'Halcyon Maps'
@@ -60,7 +60,7 @@ function withMessages(entries: CorrespondenceEntry[]): Application[] {
   )
 }
 
-const DOCK_LABEL = 'Halcyon Maps · Interview 2'
+const DOCK_LABEL = 'Halcyon Maps · Round 2'
 
 async function openCorrespondence() {
   await userEvent.click(

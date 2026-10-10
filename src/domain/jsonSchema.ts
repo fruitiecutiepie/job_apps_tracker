@@ -1,7 +1,7 @@
 import { COMPENSATION_STAGE_IDS } from './compensation'
 import { CORRESPONDENCE_DIRECTION_IDS } from './correspondence'
 import { MAX_RATING_SCORE, MIN_RATING_SCORE, RATING_IDS } from './ratings'
-import { OUTCOME_IDS, STATE_IDS } from './states'
+import { OUTCOME_IDS } from './states'
 
 export const TRACKER_JSON_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -12,11 +12,12 @@ export const TRACKER_JSON_SCHEMA = {
   additionalProperties: false,
   properties: {
     schema_version: {
-      const: 3,
+      const: 4,
       description:
         'The layout this file is written in. Files with no version are version 1, which kept '
         + 'how an application ended inside its state; version 2 had taking the job as an '
-        + 'outcome rather than the last stage. Both are migrated on load.',
+        + 'outcome rather than the last stage; version 3 named three stages by their old '
+        + 'labels (`recruiter_interview`, `interview_1`, `interview_2`). All are migrated on load.',
     },
     schema: {
       type: 'object',
@@ -27,6 +28,22 @@ export const TRACKER_JSON_SCHEMA = {
       minLength: 1,
       description: 'What the reader called this tracker. Absent until they name it.',
     },
+    stages: {
+      type: 'array',
+      description:
+        'Every stage in order and what this tracker calls it. Absent while they are the '
+        + 'defaults. Rounds after `round_2` exist only in a tracker that lists them; a blank '
+        + 'label reads as the default.',
+      items: {
+        type: 'object',
+        required: ['id', 'label'],
+        additionalProperties: false,
+        properties: {
+          id: { $ref: '#/$defs/state' },
+          label: { type: 'string' },
+        },
+      },
+    },
     applications: {
       type: 'array',
       items: { $ref: '#/$defs/application' },
@@ -34,6 +51,15 @@ export const TRACKER_JSON_SCHEMA = {
     indexes: { $ref: '#/$defs/indexes' },
   },
   $defs: {
+    state: {
+      type: 'string',
+      pattern:
+        '^(headhunted|applied|recruiter_messaged|online_assessment|screening'
+        + '|take_home_assessment|round_[1-9][0-9]*|offer|accepted)$',
+      description:
+        'A stage id. It says what the stage is, never what it is called, so a renamed stage '
+        + 'keeps its id. Which rounds a tracker has is in its `stages`.',
+    },
     application: {
       type: 'object',
       required: [
@@ -69,8 +95,7 @@ export const TRACKER_JSON_SCHEMA = {
         url: { type: ['string', 'null'] },
         source: { type: ['string', 'null'] },
         state: {
-          type: 'string',
-          enum: [...STATE_IDS],
+          $ref: '#/$defs/state',
           description: 'The stage the application is at, or was at when it ended.',
         },
         outcome: {
@@ -89,7 +114,7 @@ export const TRACKER_JSON_SCHEMA = {
             required: ['state', 'outcome', 'at'],
             additionalProperties: false,
             properties: {
-              state: { type: 'string', enum: [...STATE_IDS] },
+              state: { $ref: '#/$defs/state' },
               outcome: { type: 'string', enum: [...OUTCOME_IDS] },
               at: { type: 'string' },
             },
@@ -143,7 +168,7 @@ export const TRACKER_JSON_SCHEMA = {
       required: ['state', 'body', 'heard', 'created_at', 'updated_at'],
       additionalProperties: false,
       properties: {
-        state: { type: 'string', enum: [...STATE_IDS] },
+        state: { $ref: '#/$defs/state' },
         // Blank when the stage holds captured lines and nothing was prepared for it.
         body: { type: 'string' },
         heard: {
@@ -196,7 +221,7 @@ export const TRACKER_JSON_SCHEMA = {
       additionalProperties: false,
       properties: {
         id: { type: 'string', minLength: 1 },
-        state: { type: 'string', enum: [...STATE_IDS] },
+        state: { $ref: '#/$defs/state' },
         summary: { type: 'string', minLength: 1 },
         starts_at: { type: 'string' },
         ends_at: { type: ['string', 'null'] },
@@ -233,7 +258,7 @@ export const TRACKER_JSON_SCHEMA = {
       additionalProperties: false,
       properties: {
         id: { type: 'string', minLength: 1 },
-        state: { type: 'string', enum: [...STATE_IDS] },
+        state: { $ref: '#/$defs/state' },
         direction: { type: 'string', enum: [...CORRESPONDENCE_DIRECTION_IDS] },
         subject: {
           type: ['string', 'null'],

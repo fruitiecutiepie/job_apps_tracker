@@ -46,7 +46,7 @@ function application(id: string, noted: StateId[] = [], state: StateId = 'applie
   }
 }
 
-const acme = application('acme', ['applied', 'interview_1'])
+const acme = application('acme', ['applied', 'round_1'])
 const globex = application('globex', ['applied'])
 
 const split = (children: LayoutNode[], sizes: number[]): LayoutNode => ({
@@ -78,23 +78,23 @@ describe('highestPaneNumber', () => {
 
 describe('openingLayout', () => {
   const posted = (id: string): Application => ({
-    ...application(id, ['applied', 'interview_1']),
+    ...application(id, ['applied', 'round_1']),
     posting: { body: 'Staff Engineer', captured_at: '2026-01-01T00:00:00.000Z', source_url: null },
   })
 
   it('leads the fan with the application’s posting', () => {
-    const layout = openingLayout(posted('acme'), 'interview_1')
+    const layout = openingLayout(posted('acme'), 'round_1')
 
     expect(orderedRefs(layout).map(noteRefKey))
-      .toEqual(['acme::posting', 'acme::interview_1', 'acme::applied'])
+      .toEqual(['acme::posting', 'acme::round_1', 'acme::applied'])
     // Still the stage you are interviewing for: the posting is context, not the errand.
-    expect(layout.activeKey).toBe('acme::interview_1')
+    expect(layout.activeKey).toBe('acme::round_1')
   })
 
   it('leaves the fan as it was when there is no posting', () => {
-    const layout = openingLayout(acme, 'interview_1')
+    const layout = openingLayout(acme, 'round_1')
 
-    expect(orderedRefs(layout).map(noteRefKey)).toEqual(['acme::interview_1', 'acme::applied'])
+    expect(orderedRefs(layout).map(noteRefKey)).toEqual(['acme::round_1', 'acme::applied'])
   })
 })
 
@@ -102,7 +102,7 @@ describe('restoreArrangement', () => {
   it('round-trips a layout, its active tab and the focused pane', () => {
     const layout = split(
       [
-        makeGroup('pane-1', [ref('acme', 'applied'), ref('acme', 'interview_1')], noteRefKey(ref('acme', 'applied'))),
+        makeGroup('pane-1', [ref('acme', 'applied'), ref('acme', 'round_1')], noteRefKey(ref('acme', 'applied'))),
         makeGroup('pane-2', [ref('globex', 'applied')]),
       ],
       [0.6, 0.4],
@@ -171,23 +171,23 @@ describe('restoreArrangement', () => {
       layout: {
         kind: 'group',
         id: 'pane-1',
-        tabs: [{ applicationId: 'acme', state: 'applied' }, { applicationId: 'acme', state: 'interview_1' }],
-        activeKey: 'acme::interview_1',
+        tabs: [{ applicationId: 'acme', state: 'applied' }, { applicationId: 'acme', state: 'round_1' }],
+        activeKey: 'acme::round_1',
       },
       focusedGroupId: 'pane-1',
     })
     const restored = restoreArrangement(raw, [acme])
 
-    expect(keys(restored!.layout)).toEqual(['acme::applied', 'acme::interview_1'])
-    expect((restored!.layout as TabGroup).activeKey).toBe('acme::interview_1')
+    expect(keys(restored!.layout)).toEqual(['acme::applied', 'acme::round_1'])
+    expect((restored!.layout as TabGroup).activeKey).toBe('acme::round_1')
     expect(orderedRefs(restored!.layout).every((entry) => entry.kind === 'stage')).toBe(true)
   })
 
   it('round-trips a posting tab open beside a stage note', () => {
-    const layout = makeGroup('pane-1', [postingRef('acme'), ref('acme', 'interview_1')])
+    const layout = makeGroup('pane-1', [postingRef('acme'), ref('acme', 'round_1')])
     const restored = restoreArrangement(stored(layout, 'pane-1'), [acme])
 
-    expect(keys(restored!.layout)).toEqual(['acme::posting', 'acme::interview_1'])
+    expect(keys(restored!.layout)).toEqual(['acme::posting', 'acme::round_1'])
     expect(orderedRefs(restored!.layout)[0]).toEqual(postingRef('acme'))
   })
 
@@ -439,12 +439,12 @@ describe("the sidebar's own division", () => {
 
 describe('openingLayout', () => {
   it('opens the current stage first, then the stages already noted', () => {
-    const layout = openingLayout(acme, 'interview_1')
+    const layout = openingLayout(acme, 'round_1')
 
     expect(keys(layout)).toEqual([
-      noteRefKey(ref('acme', 'interview_1')),
+      noteRefKey(ref('acme', 'round_1')),
       noteRefKey(ref('acme', 'applied')),
     ])
-    expect((layout as { activeKey: string }).activeKey).toBe(noteRefKey(ref('acme', 'interview_1')))
+    expect((layout as { activeKey: string }).activeKey).toBe(noteRefKey(ref('acme', 'round_1')))
   })
 })

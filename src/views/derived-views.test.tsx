@@ -64,8 +64,8 @@ function application(
 function stateEvent(overrides: Partial<StateEvent> = {}): StateEvent {
   return {
     id: `00000000-0000-7000-9000-${String(Math.abs(Date.parse(overrides.starts_at ?? localDate(1)))).slice(-12)}`,
-    state: 'interview_1',
-    summary: 'Interview 1 — panel',
+    state: 'round_1',
+    summary: 'Round 1 — panel',
     starts_at: localDate(1),
     ends_at: null,
     location: null,
@@ -542,8 +542,8 @@ describe('TableView', () => {
         state_events: [
           {
             id: '00000000-0000-7000-8000-000000000009',
-            state: 'recruiter_interview',
-            summary: 'Recruiter interview',
+            state: 'screening',
+            summary: 'Screening call',
             starts_at: localDate(6),
             ends_at: null,
             location: null,
@@ -576,7 +576,7 @@ describe('TableView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
     const onMove = vi.fn()
-    const waiting = application('Waiting Co', { state: 'recruiter_interview' })
+    const waiting = application('Waiting Co', { state: 'screening' })
 
     render(
       <TableView
@@ -604,7 +604,7 @@ describe('TableView', () => {
     vi.setSystemTime(now)
     const onArchive = vi.fn()
     const onMove = vi.fn()
-    const running = application('Paused Co', { state: 'interview_1' })
+    const running = application('Paused Co', { state: 'round_1' })
 
     render(
       <TableView
@@ -625,7 +625,7 @@ describe('TableView', () => {
     vi.useFakeTimers()
     vi.setSystemTime(now)
     const onMove = vi.fn()
-    const waiting = application('Waiting Co', { state: 'interview_1' })
+    const waiting = application('Waiting Co', { state: 'round_1' })
 
     render(
       <TableView
@@ -642,15 +642,15 @@ describe('TableView', () => {
     fireEvent.click(end)
     expect(end).toHaveAttribute('aria-expanded', 'true')
 
-    fireEvent.click(screen.getByRole('button', { name: 'Move Waiting Co to Interview 1 — Withdrawn' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Move Waiting Co to Round 1 — Withdrawn' }))
     expect(onMove).toHaveBeenLastCalledWith(waiting.id, { outcome: 'withdrawn' })
     // Choosing closes the menu and hands focus back to what opened it.
     expect(end).toHaveAttribute('aria-expanded', 'false')
     expect(end).toHaveFocus()
 
     fireEvent.click(end)
-    expect(screen.getByRole('button', { name: 'Move Waiting Co to Interview 1 — Rejected' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Move Waiting Co to Interview 1 — Closed' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Move Waiting Co to Round 1 — Rejected' })).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Move Waiting Co to Round 1 — Closed' })).toBeInTheDocument()
   })
 
   it('uses Auto-rejected for a rejection at Applied, and makes Accepted the ordinary step on from an offer', () => {
@@ -683,8 +683,8 @@ describe('TableView', () => {
     const onMove = vi.fn()
     const onArchive = vi.fn()
     const turnedDown = application('Turned Down', {
-      state: 'interview_1', outcome: 'rejected',
-      state_history: [{ state: 'interview_1', outcome: 'rejected', at: localDate(-2) }],
+      state: 'round_1', outcome: 'rejected',
+      state_history: [{ state: 'round_1', outcome: 'rejected', at: localDate(-2) }],
     })
 
     render(
@@ -710,7 +710,7 @@ describe('TableView', () => {
     const row = screen.getByRole('rowheader', { name: 'Turned Down' }).closest('tr')!
     expect(within(row).getByText('Rejected')).toBeInTheDocument()
 
-    fireEvent.click(screen.getByRole('button', { name: 'Reopen Turned Down at Interview 1' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Reopen Turned Down at Round 1' }))
     expect(onMove).toHaveBeenLastCalledWith(turnedDown.id, { outcome: 'active' })
     fireEvent.click(screen.getByRole('button', { name: 'Archive Turned Down' }))
     expect(onArchive).toHaveBeenLastCalledWith(turnedDown.id, true)
@@ -1201,19 +1201,19 @@ describe('StatisticsView', () => {
       source: 'LinkedIn',
     }),
     application('Nearly Co', {
-      state: 'recruiter_interview', outcome: 'rejected',
+      state: 'screening', outcome: 'rejected',
       state_history: [
         { state: 'applied', outcome: 'active', at: localDate(-40) },
-        { state: 'recruiter_interview', outcome: 'active', at: localDate(-30) },
-        { state: 'recruiter_interview', outcome: 'rejected', at: localDate(-20) },
+        { state: 'screening', outcome: 'active', at: localDate(-30) },
+        { state: 'screening', outcome: 'rejected', at: localDate(-20) },
       ],
       source: 'LinkedIn',
     }),
     application('Talking Co', {
-      state: 'recruiter_interview',
+      state: 'screening',
       state_history: [
         { state: 'applied', outcome: 'active', at: localDate(-25) },
-        { state: 'recruiter_interview', outcome: 'active', at: localDate(-12) },
+        { state: 'screening', outcome: 'active', at: localDate(-12) },
       ],
       source: 'Referral',
     }),
@@ -1304,18 +1304,18 @@ describe('StatisticsView', () => {
     expect(answerOf('Where am I losing?')).toBe(
       'Too few decided applications to say where you lose the most yet. A stage needs 5 before it\'s compared.',
     )
-    // Silent Co is still at Applied and Talking Co at the recruiter interview: neither is a
+    // Silent Co is still at Applied and Talking Co at the screening call: neither is a
     // loss yet, so both are left out of the stage they sit in.
     expect(rowCells(passTable(), 'Applied')).toEqual(['3', '2', '1'])
-    expect(rowCells(passTable(), 'Recruiter interview')).toEqual(['1', '0', '1'])
+    expect(rowCells(passTable(), 'Screening call')).toEqual(['1', '0', '1'])
     unmount()
 
     const { container } = renderStats(searched, { minStageDecided: 1 })
     expect(answerOf('Where am I losing?')).toBe(
-      'You lose the most at Recruiter interview: 1 of 1 went no further.',
+      'You lose the most at Screening call: 1 of 1 went no further.',
     )
     // The row the answer names is the one marked in the chart.
-    expect(container.querySelector('[data-bar="recruiter_interview"]')).toHaveClass(
+    expect(container.querySelector('[data-bar="screening"]')).toHaveClass(
       'outcome-bars__row--emphasis',
     )
     expect(container.querySelector('[data-bar="applied"]')).not.toHaveClass(
@@ -1361,9 +1361,9 @@ describe('StatisticsView', () => {
       // A move is between a stage-and-outcome pair on each end, so a rejection lands on the
       // stage it happened at.
       ['applied:active>applied:rejected', 'stage-flow__link stage-flow__link--rest'],
-      ['applied:active>recruiter_interview:active', 'stage-flow__link stage-flow__link--strong'],
+      ['applied:active>screening:active', 'stage-flow__link stage-flow__link--strong'],
       [
-        'recruiter_interview:active>recruiter_interview:rejected',
+        'screening:active>screening:rejected',
         'stage-flow__link stage-flow__link--rest',
       ],
     ])
@@ -1372,7 +1372,7 @@ describe('StatisticsView', () => {
       'Of 4 recorded moves, 2 went to a later stage and 2 to a rejection.',
     )
     const table = tableNamed('Every recorded move, from the state it left to the state it reached')
-    expect(rowCells(table, 'Recruiter interview')).toEqual(['Recruiter interview — Rejected', '1'])
+    expect(rowCells(table, 'Screening call')).toEqual(['Screening call — Rejected', '1'])
   })
 
   it('compares sources only once each has enough applications, and ranks by progress', () => {
@@ -1514,8 +1514,8 @@ describe('kanbanColumnGroups', () => {
   })
 
   it('draws the one lane a filter names at every stage it admits, empty or not', () => {
-    expect(kanbanColumnGroups([], ['interview_1'], ['withdrawn'])).toEqual([
-      { state: 'interview_1', lanes: [{ state: 'interview_1', outcome: 'withdrawn' }] },
+    expect(kanbanColumnGroups([], ['round_1'], ['withdrawn'])).toEqual([
+      { state: 'round_1', lanes: [{ state: 'round_1', outcome: 'withdrawn' }] },
     ])
   })
 
@@ -1598,11 +1598,11 @@ describe('KanbanView', () => {
   it('opens a card\'s messages on the stage the card is in', () => {
     const onOpenMessages = vi.fn()
     const record = application('Mailbox Co', {
-      state: 'interview_1',
+      state: 'round_1',
       correspondence: [
         {
           id: 'm1',
-          state: 'interview_1',
+          state: 'round_1',
           direction: 'received',
           subject: 'Next steps',
           channel: 'Email',
@@ -1633,7 +1633,7 @@ describe('KanbanView', () => {
 
     fireEvent.click(button)
     // The card's own stage: that is the conversation most likely to be live.
-    expect(onOpenMessages).toHaveBeenCalledWith(record.id, 'interview_1')
+    expect(onOpenMessages).toHaveBeenCalledWith(record.id, 'round_1')
   })
 
   it('offers to log the first message on a card that has none', () => {
@@ -1764,7 +1764,7 @@ describe('KanbanView', () => {
     const toast = () => document.querySelector('.move-toast-region')!
     const settle = () => act(() => vi.advanceTimersByTime(5000))
 
-    let record = application('Feedback Co', { state: 'interview_1' })
+    let record = application('Feedback Co', { state: 'round_1' })
     const { rerender } = render(<KanbanView applications={[record]} {...props} />)
     const show = (change: Partial<Application>) => {
       record = { ...record, ...change }
@@ -1772,8 +1772,8 @@ describe('KanbanView', () => {
     }
 
     // On by the arrow: a quick pop and a cheer.
-    fireEvent.click(screen.getByRole('button', { name: 'Move Feedback Co to Interview 2' }))
-    show({ state: 'interview_2' })
+    fireEvent.click(screen.getByRole('button', { name: 'Move Feedback Co to Round 2' }))
+    show({ state: 'round_2' })
     expect(card()).toHaveClass('application-card--landed')
     expect(toast()).toHaveTextContent('Keep it up!')
     // Gone on its own, not left as a state the card sits in.
@@ -1782,8 +1782,8 @@ describe('KanbanView', () => {
     expect(toast()).toBeEmptyDOMElement()
 
     // Back is most often a correction: it moves and says nothing.
-    fireEvent.click(screen.getByRole('button', { name: 'Move Feedback Co back to Interview 1' }))
-    show({ state: 'interview_1' })
+    fireEvent.click(screen.getByRole('button', { name: 'Move Feedback Co back to Round 1' }))
+    show({ state: 'round_1' })
     expect(card()).not.toHaveClass('application-card--landed')
     expect(toast()).toBeEmptyDOMElement()
 
@@ -1808,9 +1808,9 @@ describe('KanbanView', () => {
     expect(card().querySelector('.confetti')).toBeNull()
 
     // Ended from the End menu: no fanfare on the card, and a word of encouragement.
-    show({ state: 'interview_1' })
+    show({ state: 'round_1' })
     fireEvent.click(screen.getByRole('button', { name: /^End Feedback Co/ }))
-    fireEvent.click(screen.getByRole('button', { name: /Move Feedback Co to Interview 1 — Rejected/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Move Feedback Co to Round 1 — Rejected/ }))
     show({ outcome: 'rejected' })
     expect(card()).not.toHaveClass('application-card--landed')
     expect(toast().querySelector('.move-toast--ended')).not.toBeNull()

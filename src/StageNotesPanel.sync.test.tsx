@@ -7,7 +7,7 @@ import { createDemoDocument } from './domain/demo'
 import type { Application, StateId } from './domain'
 import { openingLayout } from './notesArrangement'
 import { StageNotesPanel, type StageNoteDraftBatch } from './StageNotesPanel'
-import { STATE_LABELS } from './domain'
+import { stateLabel } from './domain'
 
 /*
  * Another tab holding the same tracker writes the same note. A note autosaves its whole
@@ -63,7 +63,7 @@ function mount() {
   }
 
   render(<Harness />)
-  const label = `Halcyon Maps · ${STATE_LABELS[halcyon.state]}`
+  const label = `Halcyon Maps · ${stateLabel(halcyon.state)}`
   return {
     halcyon,
     label,

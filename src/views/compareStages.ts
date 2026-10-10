@@ -19,8 +19,8 @@ export interface CompareStage {
  * The stages worth comparing, in pipeline order, and who belongs at each.
  *
  * An application belongs at a stage when it holds a note for it, whatever state it is in
- * now — a rejected application's Interview 1 prep is still the thing to reread before the
- * next Interview 1 — or when it is live and at that stage now with nothing written, which
+ * now — a rejected application's Round 1 prep is still the thing to reread before the
+ * next Round 1 — or when it is live and at that stage now with nothing written, which
  * is the gap worth seeing. A live application with no note for some *other* stage is not a
  * gap: every application lacks notes for most of the ten, and listing them all is how
  * the board used to fill with empty editors for stages nobody was heading into.

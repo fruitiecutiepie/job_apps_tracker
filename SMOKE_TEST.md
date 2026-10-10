@@ -17,8 +17,8 @@ demo-data reset.
 
 Ending an application from the End menu (and the next action it clears), reopening and
 archiving one, the stage and outcome filters and the archive filter, **Archive all ended** with
-its confirmation, and opening a pre-split version-1 file are covered by the app integration
-tests; the move buttons' names and targets for each kind of row, and the Kanban lanes, by
+its confirmation, opening a pre-split version-1 file, and renaming a stage and adding and
+removing a round from **Stages** are covered by the app integration tests; the move buttons' names and targets for each kind of row, and the Kanban lanes, by
 `src/views/derived-views.test.tsx`; the migration itself, archiving and the move mutations by
 `src/domain/domain.test.ts`.
 
@@ -179,7 +179,9 @@ neither a finger nor any browser automation.
    outside; confirm focus returns to the trigger each time. Reopen it and export the
    data, confirming a timestamped zip file is downloaded. Try an invalid
    import and confirm the saved data is unchanged; try a valid zip or JSON import and
-   confirm the replacement prompt appears.
+   confirm the replacement prompt appears. Open **Stages** from the same menu, rename
+   **Screening call** and add a round, save, and confirm the Kanban column and the stage
+   filter use the new name and show **Round 3**; reload and confirm both remain.
 8. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
    app goes to the **Prep** destination in the header rather than opening a dialog over the
    board, that the view strip no longer marks any view as current, that the bar above the panel offers none of the

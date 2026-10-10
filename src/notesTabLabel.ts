@@ -13,7 +13,7 @@
  *
  * Given every tab in the panel, not one pane's worth. Asked pane by pane, two panes holding
  * one company each would both find nothing to separate and both drop the name, leaving
- * "Interview 2" beside "Offer" with nothing on screen saying whose.
+ * "Round 2" beside "Offer" with nothing on screen saying whose.
  */
 
 export interface TabSubject {

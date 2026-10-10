@@ -8,7 +8,13 @@ import {
 import { isCorrespondenceDirection } from './correspondence'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
 import { DATA_VERSION, documentVersion, isOlderVersion, migrateDocument } from './migrate'
-import { isOutcomeId, isStateId, stateRank } from './states'
+import {
+  DEFAULT_STAGE_CONFIG,
+  isOutcomeId,
+  isStageIdShape,
+  stageConfigFrom,
+  type StageConfig,
+} from './states'
 import type {
   Application,
   Attachment,
@@ -20,8 +26,10 @@ import type {
   Posting,
   Rating,
   StageNote,
+  StageSetting,
   StateEvent,
   StateHistoryEntry,
+  StateId,
   TrackerDatabase,
 } from './types'
 import { prepareTrackerDatabase } from './database'
@@ -46,6 +54,22 @@ export type ValidationResult = ValidationSuccess | ValidationFailure
 
 const QUALIFIED_ISO =
   /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|([+-])(\d{2}):(\d{2}))$/
+
+/*
+ * The stages of the document being validated. A document's applications are checked against
+ * its own stages rather than against those of the tracker on screen — an import may well have
+ * rounds this one does not — so `validateTrackerDocument` sets this for the length of one
+ * synchronous call.
+ */
+let validating: StageConfig = DEFAULT_STAGE_CONFIG
+
+function isStateId(value: unknown): value is StateId {
+  return validating.has(value)
+}
+
+function stateRank(state: StateId): number {
+  return validating.rank(state)
+}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -804,20 +828,58 @@ function validateApplications(value: unknown, errors: ValidationError[]): Applic
   return applications
 }
 
+/**
+ * A document's own stages. Absent is the defaults, which is every document written before
+ * stages could be changed. An entry must name a stage that can exist and carry a string label;
+ * a blank label reads as that stage's default, and the order is the configured one whatever
+ * the file lists them in.
+ */
+function stagesValue(value: unknown, errors: ValidationError[]): StageConfig {
+  if (value === undefined || value === null) return DEFAULT_STAGE_CONFIG
+  if (!Array.isArray(value)) {
+    addError(errors, 'stages', 'must be an array')
+    return DEFAULT_STAGE_CONFIG
+  }
+  const stages: StageSetting[] = []
+  const seen = new Set<string>()
+  value.forEach((entry, index) => {
+    const path = `stages[${index}]`
+    if (!isRecord(entry)) {
+      addError(errors, path, 'must be an object')
+      return
+    }
+    if (!isStageIdShape(entry.id)) addError(errors, `${path}.id`, 'is invalid')
+    if (typeof entry.label !== 'string') addError(errors, `${path}.label`, 'must be a string')
+    if (!isStageIdShape(entry.id) || typeof entry.label !== 'string') return
+    if (seen.has(entry.id)) addError(errors, `${path}.id`, 'duplicates another stage')
+    seen.add(entry.id)
+    stages.push({ id: entry.id, label: entry.label })
+  })
+  return stageConfigFrom(stages)
+}
+
 export function validateTrackerDocument(raw: unknown): ValidationResult {
   const errors: ValidationError[] = []
   if (!isRecord(raw)) return { ok: false, errors: [{ path: '$', message: 'must be a JSON object' }] }
 
   const version = documentVersion(raw)
   if (!isOlderVersion(version) && version !== DATA_VERSION) {
-    addError(errors, 'schema_version', `must be 1, 2 or ${DATA_VERSION}`)
+    addError(errors, 'schema_version', `must be 1, 2, 3 or ${DATA_VERSION}`)
     return { ok: false, errors }
   }
   // An older document is rewritten in the current layout first, so that everything below
   // checks one layout rather than several.
   const value = migrateDocument(raw)
 
-  const applications = validateApplications(value.applications, errors)
+  const stages = stagesValue(value.stages, errors)
+  const outer = validating
+  validating = stages
+  let applications: Application[] | null
+  try {
+    applications = validateApplications(value.applications, errors)
+  } finally {
+    validating = outer
+  }
   if (!applications) return { ok: false, errors }
 
   // Absent on every document written before trackers had names, which stay valid unnamed.
@@ -829,7 +891,7 @@ export function validateTrackerDocument(raw: unknown): ValidationResult {
 
   return errors.length > 0
     ? { ok: false, errors }
-    : { ok: true, value: prepareTrackerDatabase(applications, name), errors: [] }
+    : { ok: true, value: prepareTrackerDatabase(applications, name, stages), errors: [] }
 }
 
 export function parseTrackerDocument(text: string): TrackerDatabase {

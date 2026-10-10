@@ -853,7 +853,7 @@ export function StageNotesPanel({
   /**
    * What each tab says, worked out over every tab in the panel rather than strip by strip.
    * A pane is not an island: two panes holding one company each would both find nothing to
-   * tell their tabs from their neighbours and both drop the company, leaving "Interview 2"
+   * tell their tabs from their neighbours and both drop the company, leaving "Round 2"
    * beside "Offer" with nothing on screen saying whose. What a tab competes with is
    * everything else open, wherever it is.
    */

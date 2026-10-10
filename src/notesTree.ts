@@ -2,7 +2,7 @@
  * Every prep note worth going back to, as a tree grouped by the stage it prepares for.
  *
  * Grouped by stage rather than by company because that is the question a reader browses
- * with: what does my Interview 2 prep look like across everything, not what have I written
+ * with: what does my Round 2 prep look like across everything, not what have I written
  * about one company — the tabs and the picker already answer the second. Empty stages are
  * left out: the tree is a list of places to go, and a stage with nothing in it is not one.
  *

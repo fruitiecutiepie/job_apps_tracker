@@ -5,17 +5,31 @@
  * message is filed against the conversation it belongs to rather than against how that
  * conversation turned out.
  */
-export type StateId =
+export type StateId = BuiltinStateId | RoundId
+
+/** The stages every tracker has, whatever it calls them. */
+export type BuiltinStateId =
   | 'headhunted'
   | 'applied'
   | 'recruiter_messaged'
   | 'online_assessment'
-  | 'recruiter_interview'
+  | 'screening'
   | 'take_home_assessment'
-  | 'interview_1'
-  | 'interview_2'
   | 'offer'
   | 'accepted'
+
+/**
+ * An interview round, counted from 1. Every tracker has two; more are added per tracker, and
+ * a tracker holds exactly the rounds from 1 up to its count, so an id is only a valid stage in
+ * a tracker that has that round.
+ */
+export type RoundId = `round_${number}`
+
+/** One stage of a tracker and what it is called there. */
+export interface StageSetting {
+  id: StateId
+  label: string
+}
 
 /**
  * Whether an application is still running and, when it is not, who ended it. `withdrawn` is
@@ -335,7 +349,7 @@ export interface TrackerIndexes {
 
 export interface TrackerDatabase {
   /** The document layout this file is written in; see `DATA_VERSION`. */
-  schema_version: 3
+  schema_version: 4
   schema: JsonSchemaObject
   /**
    * What the reader called this tracker, absent until they name it. In the document rather
@@ -343,6 +357,12 @@ export interface TrackerDatabase {
    * folder, an export, and a move to another browser, none of which browser storage does.
    */
   name?: string
+  /**
+   * Every stage in order with what this tracker calls it, absent while they are the defaults.
+   * In the document for the reason `name` is: a stage renamed or a round added is part of
+   * what the applications mean, and has to travel with them.
+   */
+  stages?: StageSetting[]
   applications: Application[]
   indexes: TrackerIndexes
 }

@@ -2746,6 +2746,49 @@ tbody tr:hover {
   font-size: var(--t3);
 }
 
+/* ------------------------------------------------------------- stages --- */
+
+/* The tracker's stages, one name per row, in the order an application meets them. */
+.stage-list {
+  display: grid;
+  gap: var(--s2);
+  margin: 0 0 var(--s5);
+  padding: 0;
+  list-style: none;
+}
+
+.stage-list__row {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  min-width: 0;
+}
+
+.stage-list__row input {
+  flex: 1;
+  min-width: 0;
+  min-height: var(--control-form);
+  padding: 0 var(--s3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--surface);
+  font-size: var(--t4);
+}
+
+.stage-list__row .icon-button,
+.stage-list__add {
+  flex: none;
+}
+
+/* Square, and as tall as the name beside it. */
+.stage-list__row .icon-button {
+  display: grid;
+  width: var(--control-form);
+  min-height: var(--control-form);
+  place-items: center;
+}
+
 /* --------------------------------------------------------- attachments --- */
 
 .attachment-field {

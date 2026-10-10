@@ -7,6 +7,7 @@ import {
   Columns3,
   Download,
   KanbanSquare,
+  ListOrdered,
   MoreHorizontal,
   NotebookPen,
   Plus,
@@ -56,6 +57,10 @@ import {
   subscribeTrackerChanges,
   updateTrackerDatabase,
   renameTracker,
+  setStages,
+  applyStages,
+  DEFAULT_STAGE_CONFIG,
+  stageConfigFrom,
   tryLoadLegacyLocalStorage,
   updateApplication,
   reviseApplicationStageCapture,
@@ -91,6 +96,7 @@ import { TrackerSwitcher } from './TrackerSwitcher'
 import { navigation, NEW_TRACKER, trackerHref } from './backend/trackerAddress'
 import { useFileImport } from './useFileImport'
 import { DisclosureMenu } from './DisclosureMenu'
+import { StagesDialog } from './StagesDialog'
 import { ARCHIVE_BULK_NOTHING, archiveBulkConfirmation, archiveBulkLabel, archiveBulkNotice } from './archiveCopy'
 import { ThemeMenu } from './ThemeMenu'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
@@ -692,6 +698,19 @@ export default function App() {
   // External editor saves arrive asynchronously, so they must read the newest document
   // rather than whichever one was current when their handler was created.
   const trackerRef = useRef<TrackerDocument | null>(null)
+  /*
+   * The open tracker's stages are module state that every label, column and filter reads,
+   * since few of those places have the document to hand. They are applied here, during
+   * render, because the components that read them render after this one in the same pass —
+   * an effect would leave the first render after a rename showing the old names.
+   */
+  const storedStages = tracker?.stages
+  const stages = useMemo(
+    () => (storedStages ? stageConfigFrom(storedStages) : DEFAULT_STAGE_CONFIG),
+    [storedStages],
+  )
+  applyStages(stages)
+  const [stagesOpen, setStagesOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<ViewId>('kanban')
@@ -1738,6 +1757,13 @@ export default function App() {
               <Archive aria-hidden="true" size={16} />
               {archiveBulkLabel(archivable)}
             </button>
+            <button
+              className="actions-menu__item"
+              onClick={() => setStagesOpen(true)}
+              type="button"
+            >
+              <ListOrdered aria-hidden="true" size={16} /> Stages
+            </button>
             {isDemoTrackerProfile() && (
               <button
                 className="actions-menu__item"
@@ -1860,7 +1886,7 @@ export default function App() {
             <div className="context-bar__filters">
               {/*
                 * Stage and outcome are two selects because they are two questions, and
-                * every pairing of them is one somebody asks: "Interview 1, rejected".
+                * every pairing of them is one somebody asks: "Round 1, rejected".
                 */}
               <select
                 aria-label="Filter by stage"
@@ -1898,7 +1924,7 @@ export default function App() {
                 * Activity gets its own control rather than joining the state select's
                 * groups. The outcome groups could share that control because they answer
                 * the same question a single state does; idleness is orthogonal to stage,
-                * so "Interview 1 and idle" is a combination worth expressing and one
+                * so "Round 1 and idle" is a combination worth expressing and one
                 * select cannot hold both halves of it.
                 */}
               <select
@@ -1980,6 +2006,18 @@ export default function App() {
             onAdd={(opener) => openNewApplication(opener)}
             onImport={() => importInputRef.current?.click()}
             showDemoLink={!isDemoTrackerProfile()}
+          />
+        )}
+
+        {stagesOpen && tracker && (
+          <StagesDialog
+            tracker={tracker}
+            onClose={() => setStagesOpen(false)}
+            onSave={(next) => {
+              setStagesOpen(false)
+              void commit((current) => setStages(current, next), 'Stages saved.')
+            }}
+            stages={stages}
           />
         )}
 

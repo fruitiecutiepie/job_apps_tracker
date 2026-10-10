@@ -13,7 +13,7 @@ interface CompareNotesViewProps {
 
 /**
  * One stage at a time, laid out across every application it concerns: what you wrote for
- * Interview 1 at each company side by side, and the live applications at Interview 1 with
+ * Round 1 at each company side by side, and the live applications at Round 1 with
  * nothing written yet as gaps to fill in here. Which applications those are is the global
  * filters' business — the view has no picker of its own, since a second filter over the
  * same collection is two ways to narrow one thing.

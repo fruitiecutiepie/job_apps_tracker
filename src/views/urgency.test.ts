@@ -57,7 +57,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
 function invite(daysFromToday: number, overrides: Partial<StateEvent> = {}): StateEvent {
   return {
     id: `00000000-0000-7000-8000-${String(daysFromToday + 100).padStart(12, '0')}`,
-    state: 'interview_1',
+    state: 'round_1',
     summary: 'Research panel',
     starts_at: at(daysFromToday, 14),
     ends_at: null,
@@ -99,10 +99,10 @@ describe('lifecycle classification', () => {
       application(company, { state, outcome, state_history: [{ state, outcome, at: at(-3) }] })
     const applications = [
       application('Live Co'),
-      ended('Rejected Co', 'interview_1', 'rejected'),
+      ended('Rejected Co', 'round_1', 'rejected'),
       ended('Accepted Co', 'accepted', 'active'),
       ended('Closed Co', 'headhunted', 'closed'),
-      ended('Withdrawn Co', 'interview_2', 'withdrawn'),
+      ended('Withdrawn Co', 'round_2', 'withdrawn'),
     ]
 
     for (const finished of applications.slice(1)) expect(urgencyFor(finished, today)).toBeNull()
@@ -392,8 +392,8 @@ describe('ranking order', () => {
   it('applies the tiebreak to scores that only differ by floating-point noise', () => {
     // 6/7 x 7/9 and 1 x 2/3 are the same number reached two ways, so these tie in practice.
     const soon = application('Soon Co', {
-      state: 'recruiter_interview',
-      state_history: [{ state: 'recruiter_interview', outcome: 'active', at: at(-2) }],
+      state: 'screening',
+      state_history: [{ state: 'screening', outcome: 'active', at: at(-2) }],
       next_action: 'Prepare',
       next_action_at: at(1),
       updated_at: at(-2),

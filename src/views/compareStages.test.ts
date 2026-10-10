@@ -12,7 +12,7 @@ describe('compareStages', () => {
   it('lists a stage for every note written, whatever state the application is in now', () => {
     const stages = compareStages(demo())
     const offer = stages.find((stage) => stage.state === 'offer')!
-    // Halcyon Maps is at Interview 2 and wrote for Offer ahead of it.
+    // Halcyon Maps is at Round 2 and wrote for Offer ahead of it.
     expect(offer.entries.map((entry) => entry.application.company)).toEqual(['Lumen Pantry', 'Halcyon Maps'])
     expect(offer.entries.map((entry) => entry.isHere)).toEqual([true, false])
   })
@@ -36,9 +36,9 @@ describe('compareStages', () => {
     const onlyHeard: Application = {
       ...halcyon,
       state: 'applied',
-      stage_notes: [{ ...halcyon.stage_notes.find((note) => note.state === 'interview_2')!, body: '' }],
+      stage_notes: [{ ...halcyon.stage_notes.find((note) => note.state === 'round_2')!, body: '' }],
     }
-    const [stage] = compareStages([onlyHeard]).filter((item) => item.state === 'interview_2')
+    const [stage] = compareStages([onlyHeard]).filter((item) => item.state === 'round_2')
     expect(stage!.entries[0]!.hasNote).toBe(true)
   })
 
@@ -49,10 +49,10 @@ describe('compareStages', () => {
       'applied',
       'recruiter_messaged',
       'online_assessment',
-      'recruiter_interview',
+      'screening',
       'take_home_assessment',
-      'interview_1',
-      'interview_2',
+      'round_1',
+      'round_2',
       'offer',
     ])
   })
@@ -60,7 +60,7 @@ describe('compareStages', () => {
 
 describe('defaultCompareStage', () => {
   it('opens on the stage with the most to compare, the later one on a tie', () => {
-    // Recruiter messaged, Interview 1 and Offer each hold two; Offer is furthest along.
+    // Recruiter messaged, Round 1 and Offer each hold two; Offer is furthest along.
     expect(defaultCompareStage(compareStages(demo()))).toBe('offer')
   })
 
