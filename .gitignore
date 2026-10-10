@@ -15,3 +15,12 @@ data/demo/
 .claude/settings.local.json
 __screenshots__/
 .vitest-attachments/
+.dev.vars*
+
+# opentofu
+.terraform/
+*.tfstate
+*.tfstate.*
+!infra/cloudflare/terraform.tfstate
+*.tfvars
+!*.tfvars.example

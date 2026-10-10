@@ -2,11 +2,11 @@
 
 A polished, local-first job search organizer built with React and TypeScript. It keeps every application in one JSON file that you hold, and provides focused views for tracking progress, upcoming work, and pipeline statistics — without an account, a backend, or a synchronization service.
 
-**[Try the demo](https://fruitiecutiepie.com/job_apps_tracker/demo/)** — nineteen fictional applications, one still running at every stage and the rest ended every way there is, nothing to install. **[Open the tracker](https://fruitiecutiepie.com/job_apps_tracker/)** when you want to enter your own.
+**[Try the demo](https://fruitiecutiepie.com/projects/job_apps_tracker/app/demo)** — nineteen fictional applications, one still running at every stage and the rest ended every way there is, nothing to install. **[Open the tracker](https://fruitiecutiepie.com/projects/job_apps_tracker/app)** when you want to enter your own.
 
 ## Start here
 
-**Use the hosted app.** Open [the tracker](https://fruitiecutiepie.com/job_apps_tracker/) and it starts empty. Every change saves as you make it — there is no Save button anywhere in this app.
+**Use the hosted app.** Open [the tracker](https://fruitiecutiepie.com/projects/job_apps_tracker/app) and it starts empty. Every change saves as you make it — there is no Save button anywhere in this app.
 
 Press **Add your first application** and start. Everything is kept in the browser to begin with, and the top bar does the remembering for you: the moment a change exists only in the browser, it asks you to keep a copy, and it goes on asking — across reloads — until you have one.
 
@@ -66,15 +66,13 @@ pnpm start
 
 Use `pnpm start:demo` after a build to preview against the demo database. It serves on port 4273, leaving `pnpm start` on its own 4173.
 
-To build the static site that GitHub Pages serves — the same app with browser storage in place of the dev server's filesystem routes:
+To build the hosted app — the same app with browser storage in place of the dev server's filesystem routes — and serve it through its Worker locally, feedback route included:
 
 ```sh
-pnpm build:pages
-pnpm build:pages-demo
-pnpm preview:pages
+pnpm preview:workers
 ```
 
-`build:pages-demo` writes the demo under `dist/demo/`, so one artifact serves both. Preview shows the tracker at the base path and the demo at `/demo/`. `pnpm preview:site` runs all three.
+It builds both sites with `pnpm build:workers`, the tracker at `/projects/job_apps_tracker/app` and the demo at `…/app/demo`, and runs `wrangler dev` on <http://localhost:8787/projects/job_apps_tracker/app>. Feedback goes to a local stand-in for the R2 bucket under `.wrangler/`. The inbox stays shut unless a `.dev.vars` file (gitignored) sets a token, e.g. `FEEDBACK_ADMIN_TOKEN=local`.
 
 This is the only local setup where the demo's **Open my tracker** and the tracker's **Try the demo** links go anywhere. Each link works out the other build's address from its own base path, and a dev server — `pnpm dev:demo`, or `VITE_TRACKER_BACKEND=browser pnpm dev` — serves one build at `/`, so there each link points back at the page it is on.
 
@@ -362,7 +360,7 @@ The global search, stage, outcome, archive, activity, company, and source filter
 - **Import** accepts zip archives or legacy JSON. On the hosted app, **From a file…** under **New or existing tracker** in the switcher opens a file as a tracker of its own, beside the ones you have. Dropping a file anywhere on the window, or pasting one you have copied, asks first: open it as a new tracker, or replace what the tracker you are in holds — and only if you replace, whether to save a copy of what would be lost. Running it yourself, Import is under **More actions** and replaces the tracker, like the drop and the paste.
 
   Whichever way the file arrives it is parsed into the domain model and checked against the schema and its invariants *before* you are asked to replace anything, so a hand-edited export that no longer holds together names the field that broke rather than half-replacing your data. A file that is not a tracker export is refused with what it is you can drop. Dragging a Kanban card or a notes tab is untouched: only a drag carrying files from outside the page is an import.
-- **Reset demo data** appears only in the demo — `pnpm dev:demo`, `pnpm start:demo`, or the [hosted demo](https://fruitiecutiepie.com/job_apps_tracker/demo/). It asks for confirmation and restores the original 19 examples.
+- **Reset demo data** appears only in the demo — `pnpm dev:demo`, `pnpm start:demo`, or the [hosted demo](https://fruitiecutiepie.com/projects/job_apps_tracker/app/demo). It asks for confirmation and restores the original 19 examples.
 
 On the hosted app, a file dropped over a tracker with applications asks: open it as a new tracker beside this one, or **Replace** — open it in this tab and close the tracker that was here. Replacing never writes over a tracker; closing is the same as removing it from the browser, so a tracker saved to a folder loses nothing (its folder is untouched, and **From a folder…** opens it again), and only one kept nowhere but the browser is offered a copy first. Running it yourself, importing does replace the one `data/tracker.json`, after offering to save a copy. An empty tracker is simply replaced. In Chrome and Edge, a file that already is one of your trackers is recognised first — a folder's own `tracker.json`, or the file a tracker was opened from — by the browser checking it is the same file on disk, not by what it contains: the tracker you are in ignores its own file, and another tracker's file offers to switch to it. Browsers never tell a page a file's full path, so the switcher shows the nearest thing: which folder a tracker is in, or which file it came from.
 
@@ -414,25 +412,19 @@ Durability follows from that: a connected folder is a file you own, and browser 
 
 ### The demo
 
-<https://fruitiecutiepie.com/job_apps_tracker/demo/> is a second build of the same app under the demo profile: the 19 fictional examples, one still running at every stage and the rest ended every way there is, seeded on a first visit. **Reset demo data** restores them and exists only there.
+<https://fruitiecutiepie.com/projects/job_apps_tracker/app/demo> is a second build of the same app under the demo profile: the 19 fictional examples, one still running at every stage and the rest ended every way there is, seeded on a first visit. **Reset demo data** restores them and exists only there.
 
 It is the same origin as the tracker, so the one thing keeping them apart is that each gets its own IndexedDB database. Emptying the demo sticks — it is not reseeded on every load — and a standing banner says whose data it is, with a link back.
 
 ### Publishing it yourself
 
-The Cloudflare deploy (`pnpm deploy`) also runs the feedback route, which needs two one-off steps before the first deploy that includes it:
+The hosted app is a Cloudflare Worker serving the static build, plus the feedback route. `.github/workflows/deploy.yml` deploys it whenever the **Test** workflow passes on a push to `master`, building exactly the commit Test checked. Merging is going live; there is no separate step.
 
-```sh
-pnpm wrangler r2 bucket create job-apps-tracker-feedback
-pnpm wrangler secret put FEEDBACK_ADMIN_TOKEN
-```
+What it runs on is declared in the repository rather than set up by hand. The Worker, its route and its binding to the feedback bucket are in `wrangler.jsonc`. The R2 bucket itself is OpenTofu in `infra/cloudflare/`, with its state committed and encrypted. Secrets — the Cloudflare tokens, the state passphrase and `FEEDBACK_ADMIN_TOKEN` — are in Bitwarden, pushed by scripts in `scripts/`. [`infra/cloudflare/README.md`](./infra/cloudflare/README.md) has the setup, the token permissions, and how to rotate each secret.
 
-Without the secret, reports are still accepted and stored, but the inbox page refuses to list them.
+Without `FEEDBACK_ADMIN_TOKEN`, reports are still accepted and stored, but the inbox page refuses to list them.
 
-
-`.github/workflows/pages.yml` typechecks, lints, tests, builds both sites and deploys on every push to `master`. A fork needs two things: **Settings → Pages → Source** set to **GitHub Actions**, and the `VITE_BASE_PATH` values in `package.json`'s `build:pages` and `build:pages-demo` changed to match the repository name.
-
-The base path is the repository name because that is where GitHub serves a project page, and it has to be baked in at build time — the asset URLs carry it. A custom domain does not change that. This repository is served at `fruitiecutiepie.com` rather than `fruitiecutiepie.github.io` because the domain is configured on the account's user-site repository, and project pages are then served underneath it at the same `/{repository}/` path. No `CNAME` file belongs in this repository; the one on the user site covers it.
+A fork deploys to its own Cloudflare account by changing `account_id` and the route in `wrangler.jsonc`, the account in `infra/cloudflare/variables.tf`, and the base paths in `package.json`'s `build:workers` to match the route.
 
 ## Development checks
 
@@ -442,7 +434,7 @@ pnpm lint
 pnpm test
 pnpm test:smoke
 pnpm build
-pnpm build:pages && pnpm build:pages-demo
+pnpm build:workers
 ```
 
 The last line is what CI deploys, and it is the only check that exercises the browser

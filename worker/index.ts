@@ -24,7 +24,7 @@ interface R2Bucket {
 interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> }
   FEEDBACK: R2Bucket
-  /** Set with `wrangler secret put FEEDBACK_ADMIN_TOKEN`. Unset, the inbox stays shut. */
+  /** Set from Bitwarden by `scripts/push-worker-secrets`. Unset, the inbox stays shut. */
   FEEDBACK_ADMIN_TOKEN?: string
 }
 
