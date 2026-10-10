@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import { COMPENSATION_STAGE_IDS, STATE_IDS, emptyCompensation } from '../domain'
@@ -1745,6 +1745,78 @@ describe('KanbanView', () => {
     fireEvent.drop(destination!, { dataTransfer })
 
     expect(onMove).toHaveBeenCalledWith(record.id, { state: 'applied', outcome: 'rejected' })
+  })
+
+  it('reacts to a move by how it went, however the card was moved', () => {
+    vi.useFakeTimers()
+    const values = new Map<string, string>()
+    const dataTransfer = {
+      effectAllowed: 'none',
+      dropEffect: 'none',
+      setData: (type: string, value: string) => values.set(type, value),
+      getData: (type: string) => values.get(type) ?? '',
+    }
+    const props = {
+      onOpen: vi.fn(), onOpenStageNotes: vi.fn(), onOpenPosting: vi.fn(), onOpenMessages: vi.fn(),
+      onCompleteAction: vi.fn(), onArchive: vi.fn(), onMove: vi.fn(),
+    }
+    const card = () => screen.getByText('Feedback Co').closest('article')!
+    const toast = () => document.querySelector('.move-toast-region')!
+    const settle = () => act(() => vi.advanceTimersByTime(5000))
+
+    let record = application('Feedback Co', { state: 'interview_1' })
+    const { rerender } = render(<KanbanView applications={[record]} {...props} />)
+    const show = (change: Partial<Application>) => {
+      record = { ...record, ...change }
+      rerender(<KanbanView applications={[record]} {...props} />)
+    }
+
+    // On by the arrow: a quick pop and a cheer.
+    fireEvent.click(screen.getByRole('button', { name: 'Move Feedback Co to Interview 2' }))
+    show({ state: 'interview_2' })
+    expect(card()).toHaveClass('application-card--landed')
+    expect(toast()).toHaveTextContent('Keep it up!')
+    // Gone on its own, not left as a state the card sits in.
+    settle()
+    expect(card()).not.toHaveClass('application-card--landed')
+    expect(toast()).toBeEmptyDOMElement()
+
+    // Back is most often a correction: it moves and says nothing.
+    fireEvent.click(screen.getByRole('button', { name: 'Move Feedback Co back to Interview 1' }))
+    show({ state: 'interview_1' })
+    expect(card()).not.toHaveClass('application-card--landed')
+    expect(toast()).toBeEmptyDOMElement()
+
+    // The stage select is a move like any other.
+    fireEvent.change(screen.getByRole('combobox', { name: 'Move Feedback Co to stage' }), {
+      target: { value: 'offer' },
+    })
+    show({ state: 'offer' })
+    expect(toast()).not.toBeEmptyDOMElement()
+    settle()
+
+    // Dropped on Accepted: confetti, the lane lit, and congratulations.
+    fireEvent.dragStart(card(), { dataTransfer })
+    const accepted = screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section')!
+    fireEvent.drop(accepted, { dataTransfer })
+    show({ state: 'accepted' })
+    expect(card().querySelector('.confetti')).toHaveAttribute('aria-hidden', 'true')
+    expect(screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section'))
+      .toHaveClass('kanban-lane--celebrate')
+    expect(toast()).toHaveTextContent('Congratulations')
+    settle()
+    expect(card().querySelector('.confetti')).toBeNull()
+
+    // Ended from the End menu: no fanfare on the card, and a word of encouragement.
+    show({ state: 'interview_1' })
+    fireEvent.click(screen.getByRole('button', { name: /^End Feedback Co/ }))
+    fireEvent.click(screen.getByRole('button', { name: /Move Feedback Co to Interview 1 — Rejected/ }))
+    show({ outcome: 'rejected' })
+    expect(card()).not.toHaveClass('application-card--landed')
+    expect(toast().querySelector('.move-toast--ended')).not.toBeNull()
+    expect(toast()).toHaveTextContent('Sorry, that one stings.')
+
+    vi.useRealTimers()
   })
 
   it('marks an archived card apart from the ones beside it', () => {

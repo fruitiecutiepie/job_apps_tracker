@@ -162,7 +162,12 @@ neither a finger nor any browser automation.
    that the next action was not restored. Search for the text of a completed action and confirm
    it finds the application.
 5. Add an application with a next action and date. Drag it to another Kanban column,
-   then use its **Move** control to move it again — by mouse, and again by Tab plus the
+   confirming a later stage gives the card a quick pop and a "Keep it up!" message at the
+   foot of the window, and that the → arrow and the Stage select do the same. Move it back
+   a stage and confirm nothing plays. End it as Rejected, I withdrew and Employer closed,
+   confirming each shows its own encouraging message and no card animation. Move one onto
+   **Accepted** and confirm the confetti, the lane pulse and the congratulations; with the
+   OS set to reduce motion, confirm nothing moves and the messages only fade. Then use its **Move** control to move it again — by mouse, and again by Tab plus the
    arrow keys — confirming the control shows a focus ring and sits on one row beside
    **Prep**. Reload the page and confirm it remains.
    Add a second application with only a deadline and no next action, and confirm the
