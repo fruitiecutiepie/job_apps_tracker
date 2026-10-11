@@ -10,7 +10,17 @@ data/tracker.json.tmp
 data/backups/
 data/attachments/
 data/editing/
+data/feedback/
 data/demo/
 .claude/settings.local.json
 __screenshots__/
 .vitest-attachments/
+.dev.vars*
+
+# opentofu
+.terraform/
+*.tfstate
+*.tfstate.*
+!infra/cloudflare/terraform.tfstate
+*.tfvars
+!*.tfvars.example

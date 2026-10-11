@@ -31,7 +31,9 @@ afterEach(() => {
 })
 
 beforeEach(() => {
-  window.localStorage.clear()
+  // Absent under `@vitest-environment node`, which the feedback route's tests run in so the
+  // multipart parsing they exercise is Node's own rather than half jsdom's.
+  if (typeof window !== 'undefined') window.localStorage.clear()
   testTrackerStore.clear()
   wipeTestAttachments()
   wipeTestEditorSessions()

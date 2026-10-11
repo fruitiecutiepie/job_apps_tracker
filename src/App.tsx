@@ -98,6 +98,7 @@ import { TrackerSwitcher } from './TrackerSwitcher'
 import { navigation, NEW_TRACKER, trackerHref } from './backend/trackerAddress'
 import { useFileImport } from './useFileImport'
 import { DisclosureMenu } from './DisclosureMenu'
+import { FeedbackWidget } from './feedback/FeedbackWidget'
 import { StagesDialog } from './StagesDialog'
 import { ARCHIVE_BULK_NOTHING, archiveBulkConfirmation, archiveBulkLabel, archiveBulkNotice } from './archiveCopy'
 import { ThemeMenu } from './ThemeMenu'
@@ -1703,6 +1704,14 @@ export default function App() {
               state={storageState}
             />
           )}
+
+          {/*
+            * On every view, Prep included, because a problem can be on any of them. The
+            * report it sends says which one the reader was on.
+            */}
+          <FeedbackWidget
+            where={notesOpen ? NOTES_VIEW.label : VIEW_OPTIONS.find((view) => view.id === activeView)?.label ?? activeView}
+          />
 
           <ThemeMenu />
 
