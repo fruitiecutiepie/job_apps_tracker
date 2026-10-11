@@ -12,9 +12,3 @@ resource "cloudflare_r2_bucket" "feedback" {
   }
 }
 
-# Created by hand with wrangler on 2026-10-08, before this config existed. Delete this
-# block once the import has been applied and the state committed.
-import {
-  to = cloudflare_r2_bucket.feedback
-  id = "${local.account_id}/job-apps-tracker-feedback/default"
-}
