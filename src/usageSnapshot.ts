@@ -3,6 +3,9 @@ import { STATE_CONFIG } from './domain/states'
 import type { StateId, Status, TrackerDocument } from './domain/types'
 import { USAGE_FEATURES, type UsageFeature, type UsageProps } from './usageEvent'
 
+type UsageReferrer = UsageProps<'open'>['referrer']
+type UsageDuration = UsageProps<'view_time'>['duration']
+
 /*
  * The pure half of usage reporting: what a tracker looks like, coarsely enough that the
  * answer is the same for thousands of trackers, and what a write changed. Kept apart from
@@ -82,11 +85,70 @@ function featureInUse(document: TrackerDocument, feature: UsageFeature): boolean
   })
 }
 
-/** The `open` report: how big, how old, how far, how safe, and which features are in use. */
+/*
+ * Hosts are matched by their registrable end, so `www.google.com.au` is a search and
+ * `uk.linkedin.com` is social. Lists rather than patterns, so what counts as each is
+ * readable at a glance; anything not on one is `other`.
+ */
+const SEARCH_HOSTS = ['google', 'bing.com', 'duckduckgo.com', 'yahoo.com', 'ecosia.org', 'kagi.com', 'baidu.com', 'yandex', 'brave.com', 'startpage.com']
+const SOCIAL_HOSTS = ['linkedin.com', 'lnkd.in', 'twitter.com', 'x.com', 't.co', 'facebook.com', 'instagram.com', 'reddit.com', 'news.ycombinator.com', 'threads.net', 'bsky.app', 'mastodon.social', 'discord.com', 'slack.com', 'whatsapp.com']
+
+function hostMatches(host: string, names: readonly string[]): boolean {
+  return names.some((name) =>
+    name.includes('.')
+      ? host === name || host.endsWith(`.${name}`)
+      // A bare name like `google` stands for every country domain it has.
+      : host.split('.').includes(name),
+  )
+}
+
+/**
+ * Where a visit came from, as one of a few kinds: the demo and the tracker share an origin,
+ * so a visit from the demo is told from a reload by its path. The referrer itself never leaves the page:
+ * a URL can carry anything, a search query included.
+ */
+export function referrerKind(
+  referrer: string,
+  ownOrigin: string,
+  /** The demo's path, given only on the real tracker: arriving from it is the demo working. */
+  demoPath: string | null = null,
+): UsageReferrer {
+  if (referrer === '') return 'direct'
+  let url: URL
+  try {
+    url = new URL(referrer)
+  } catch {
+    return 'other'
+  }
+  if (url.origin === ownOrigin) {
+    return demoPath !== null && url.pathname.startsWith(demoPath) ? 'demo' : 'internal'
+  }
+  const host = url.hostname.toLowerCase()
+  if (host === 'github.com' || host.endsWith('.github.com') || host.endsWith('.github.io')) return 'github'
+  if (hostMatches(host, SEARCH_HOSTS)) return 'search'
+  if (hostMatches(host, SOCIAL_HOSTS)) return 'social'
+  return 'other'
+}
+
+/** A stretch of time on screen, coarsely: whether a place is glanced at or worked in. */
+export function durationBucket(ms: number): UsageDuration {
+  const seconds = ms / 1000
+  if (seconds < 10) return '<10s'
+  if (seconds < 60) return '10s-1m'
+  if (seconds < 300) return '1-5m'
+  if (seconds < 1800) return '5-30m'
+  return '30m+'
+}
+
+/**
+ * The `open` report: how big, how old, how far, how safe, which features are in use, and
+ * what kind of site the visit came from.
+ */
 export function usageSnapshot(
   document: TrackerDocument,
   storage: StorageState | null,
   now: Date,
+  referrer: UsageReferrer = 'direct',
 ): UsageProps<'open'> {
   const oldest = document.applications.reduce<string | null>(
     (min, application) => (min === null || application.created_at < min ? application.created_at : min),
@@ -103,6 +165,7 @@ export function usageSnapshot(
     storage: connection === 'connected' ? 'folder' : connection === 'unsupported' ? 'unsupported' : 'browser',
     backlog: backlogBucket(storage?.unbackedSince ?? null, now),
     ...features,
+    referrer,
   }
 }
 

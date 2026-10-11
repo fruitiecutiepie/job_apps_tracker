@@ -22,7 +22,7 @@ This file applies to the entire repository. Keep changes within the app's curren
 - `src/StorageStatus.tsx` is the static build's storage control and first-visit prompt, following `src/useStorageState.ts`. `src/TrackerSwitcher.tsx` names the tracker this tab holds and links to the others; `src/ReplaceTrackerDialog.tsx` is the one question asked before an import or a removal. Both render nothing under the dev-server backend, which has no choice to offer.
 - `src/domain/import.ts` turns the bytes of a chosen, dropped or pasted file into a validated document; `src/useFileImport.ts` is the window-level drop and paste listener that feeds it.
 - `src/views/` contains view components and their derived-data helpers. `compareStages.ts` decides which stages the Compare view offers and who belongs at each. `urgency.ts` scores and explains the ranking; `urgencyBands.ts` reads that ranking coarsely enough to band a sorted table, and is the only source for band ids, order and headings. A band is not a second ranking: it never changes a score, and the Urgency column still says on the row itself what the band is too coarse to.
-- `src/usageEvent.ts` is every usage report the app may send and the check both ends run on it; `src/usageSnapshot.ts` derives the reports from a document and a write; `src/usage.ts` sends them and holds the reader's on/off choice; `worker/index.ts` stores them.
+- `src/usageEvent.ts` is every usage report the app may send and the check both ends run on it; `src/usageSnapshot.ts` derives the reports from a document and a write; `src/usage.ts` sends them and holds the reader's on/off choice; `worker/index.ts` stores them; `src/usageReport.ts` turns stored rows into the figures `pnpm usage:report` (`scripts/usage-report.ts`) prints.
 - `src/test/` contains app integration and smoke tests; view-focused tests live beside the views.
 - `src/styles.css` contains the responsive visual system. Spacing, radius, type size, colour,
   control height, shadow, and focus all come from the token scale in its `:root` block; reuse a
@@ -296,6 +296,10 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - Applications added and moves are counted in `commit`, off `usageChanges` on the documents the mutation took and returned, not at each call site, so a new way to add or move is counted without anyone remembering to. Imports and resets do not pass through it and must not be counted as additions.
 - On by default, off through **Share usage counts** in More actions or the line on the empty tracker's intro, and off from the start where the browser sends Global Privacy Control or Do Not Track. The choice is per-machine interface state in `localStorage` (`usage-counts`), like the theme, and never part of the document. The copy says what is counted and what never is, plainly and once; it is not a banner, a prompt or a question.
 - Counting must never cost the reader anything: a failed send is swallowed, and nothing waits on one.
+- A failure the reader is told about goes through `reportFailure` in `App.tsx`, which sets the notice and counts it by kind. A new failure notice should too. An unreadable import is counted as `imported` with `ok: n` and not again as a failure.
+- `usageEvent.ts` imports nothing, so the stage and outcome lists are repeated there; a test holds them equal to `STATE_CONFIG` and `OUTCOME_CONFIG`.
+- Every property of every event has a test in `src/usage.test.ts`, every event has one showing the UI sends it in `src/test/staticApp.test.tsx`, and every figure in the report has one in `src/usageReport.test.ts`. A new event, property or figure brings its test.
+- The report measures the live tracker only, apart from page loads, which count the demo too. A retention week leaves out trackers that had already reached Accepted before it, since not coming back after taking a job is the search succeeding.
 
 ### Demo data
 

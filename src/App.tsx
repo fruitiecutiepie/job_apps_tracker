@@ -88,8 +88,10 @@ import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
 import { ReplaceTrackerDialog, type ExistingTracker, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
 import type { FileHandleLike } from './backend/fileSystem'
 import { useStorageState } from './useStorageState'
-import { recordUsage, setUsageTracker, usageAvailable, useUsagePreference } from './usage'
-import { usageChanges, usageSnapshot } from './usageSnapshot'
+import { demoSiteUrl } from './siteLinks'
+import { recordUsage, setUsageTracker, usageAvailable, useUsagePreference, useViewTime } from './usage'
+import type { UsageProps } from './usageEvent'
+import { referrerKind, usageChanges, usageSnapshot } from './usageSnapshot'
 import { TrackerSwitcher } from './TrackerSwitcher'
 import { navigation, NEW_TRACKER, trackerHref } from './backend/trackerAddress'
 import { useFileImport } from './useFileImport'
@@ -838,11 +840,22 @@ export default function App() {
   useEffect(() => {
     if (reportedOpen.current || !tracker || !storageState?.tracker) return
     reportedOpen.current = true
-    recordUsage('open', usageSnapshot(tracker, storageState, new Date()))
+    recordUsage(
+      'open',
+      usageSnapshot(
+        tracker,
+        storageState,
+        new Date(),
+        referrerKind(document.referrer, window.location.origin, isDemoTrackerProfile() ? null : demoSiteUrl()),
+      ),
+    )
   }, [tracker, storageState])
   useEffect(() => {
-    if (loadError) recordUsage('error', { kind: 'load' })
-  }, [loadError])
+    if (!loadError) return
+    recordUsage('error', { kind: 'load' })
+    // A load that failed may never learn its tracker, and the report would wait forever.
+    if (trackerId === null) setUsageTracker(null)
+  }, [loadError, trackerId])
   // Where the reader went, not where the page opened: the first render is not a choice.
   const place = notesOpen ? 'prep' : activeView
   const reportedPlace = useRef(place)
@@ -851,6 +864,13 @@ export default function App() {
     reportedPlace.current = place
     recordUsage('view', { place })
   }, [place])
+  useViewTime(place)
+
+  /** A failure the reader is told about, counted by what they were doing when it failed. */
+  const reportFailure = (kind: UsageProps<'error'>['kind'], message: string) => {
+    setNotice(message)
+    recordUsage('error', { kind })
+  }
 
   useEffect(() => {
     if (dialogIsOpen) {
@@ -919,8 +939,7 @@ export default function App() {
         }
         return true
       } catch (error) {
-        setNotice(`Save failed: ${errorMessage(error)}`)
-        recordUsage('error', { kind: 'save' })
+        reportFailure('save', `Save failed: ${errorMessage(error)}`)
         return false
       }
     })
@@ -941,6 +960,7 @@ export default function App() {
     try {
       const result = readTrackerImport(await readFileAsUint8Array(file))
       recordUsage('imported', { ok: result.ok ? 'y' : 'n' })
+      // Counted above as a file that could not be read, rather than again as a failure.
       if (!result.ok) {
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
@@ -986,7 +1006,7 @@ export default function App() {
         openAsNew: () => openAsTracker(result, file.name, source),
       })
     } catch (error) {
-      setNotice(`Import failed: ${errorMessage(error)}`)
+      reportFailure('import', `Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1036,7 +1056,7 @@ export default function App() {
       if (closing) await backend.storage!.removeTracker(closing)
       navigation.open(trackerHref(created.id))
     } catch (error) {
-      setNotice(`Import failed: ${errorMessage(error)}`)
+      reportFailure('import', `Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1061,7 +1081,7 @@ export default function App() {
       setTracker(saved)
       setNotice(`Imported ${saved.applications.length} applications.`)
     } catch (error) {
-      setNotice(`Import failed: ${errorMessage(error)}`)
+      reportFailure('import', `Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1089,7 +1109,7 @@ export default function App() {
         setNotice(`Removed ${target.name} from this browser.`)
       }
     } catch (error) {
-      setNotice(`Could not remove ${target.name}: ${errorMessage(error)}`)
+      reportFailure('tracker', `Could not remove ${target.name}: ${errorMessage(error)}`)
     }
   }
 
@@ -1106,7 +1126,7 @@ export default function App() {
       await backend.storage!.renameOtherTracker(target.id, name)
       return true
     } catch (error) {
-      setNotice(`Could not rename ${target.name}: ${errorMessage(error)}`)
+      reportFailure('tracker', `Could not rename ${target.name}: ${errorMessage(error)}`)
       return false
     }
   }
@@ -1116,7 +1136,7 @@ export default function App() {
       const result = await backend.storage!.openFolder()
       if (result.outcome === 'opened') navigation.open(trackerHref(result.tracker.id))
     } catch (error) {
-      setNotice(`Could not open the folder: ${errorMessage(error)}`)
+      reportFailure('folder', `Could not open the folder: ${errorMessage(error)}`)
     }
   }
 
@@ -1127,6 +1147,7 @@ export default function App() {
   const newTrackerFromFile = async (file: File, source: FileHandleLike | null = null) => {
     try {
       const result = readTrackerImport(await readFileAsUint8Array(file))
+      recordUsage('imported', { ok: result.ok ? 'y' : 'n' })
       if (!result.ok) {
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
@@ -1134,7 +1155,7 @@ export default function App() {
       if (await answeredAsExisting(file, source, result)) return
       await openAsTracker(result, file.name, source)
     } catch (error) {
-      setNotice(`Import failed: ${errorMessage(error)}`)
+      reportFailure('import', `Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1158,7 +1179,7 @@ export default function App() {
     } catch (error) {
       // Dismissing the picker is a decision, not a failure.
       if (error instanceof DOMException && error.name === 'AbortError') return
-      setNotice(`Import failed: ${errorMessage(error)}`)
+      reportFailure('import', `Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1179,7 +1200,7 @@ export default function App() {
       return
     }
     saveOtherCopy(target).catch((error) => {
-      setNotice(`Export failed: ${errorMessage(error)}`)
+      reportFailure('export', `Export failed: ${errorMessage(error)}`)
     })
   }
 
@@ -1224,7 +1245,7 @@ export default function App() {
       try {
         await pending.openAsNew?.()
       } catch (error) {
-        setNotice(`Import failed: ${errorMessage(error)}`)
+        reportFailure('import', `Import failed: ${errorMessage(error)}`)
       }
       return
     }
@@ -1233,7 +1254,7 @@ export default function App() {
         await pending.saveCopy()
       } catch (error) {
         // No copy, no replacement: the viewer asked for the two together.
-        setNotice(`Nothing was replaced, because saving a copy failed: ${errorMessage(error)}`)
+        reportFailure('export', `Nothing was replaced, because saving a copy failed: ${errorMessage(error)}`)
         return
       }
     }
@@ -1301,7 +1322,7 @@ export default function App() {
       await navigator.clipboard.writeText(rolesToCopy.join('\n'))
       setNotice(`Copied ${rolesToCopy.length} ${rolesToCopy.length === 1 ? 'role' : 'roles'}.`)
     } catch (error) {
-      setNotice(`Copy failed: ${errorMessage(error)}`)
+      reportFailure('copy', `Copy failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1480,7 +1501,7 @@ export default function App() {
       setTracker(loaded)
       setNotice(message)
     } catch (error) {
-      setNotice(`Could not open the folder: ${errorMessage(error)}`)
+      reportFailure('folder', `Could not open the folder: ${errorMessage(error)}`)
     }
   }
 
@@ -1518,7 +1539,7 @@ export default function App() {
         return backend.storage?.markBackedUp()
       })
       .catch((error) => {
-        setNotice(`Export failed: ${errorMessage(error)}`)
+        reportFailure('export', `Export failed: ${errorMessage(error)}`)
       })
   }
 
@@ -1803,7 +1824,7 @@ export default function App() {
                       setSourceFilter('all')
                       setNotice('Demo data restored.')
                     } catch (error) {
-                      setNotice(`Reset failed: ${errorMessage(error)}`)
+                      reportFailure('reset', `Reset failed: ${errorMessage(error)}`)
                     }
                   }
                 }}

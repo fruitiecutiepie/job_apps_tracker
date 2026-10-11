@@ -16,6 +16,7 @@
     "preview:site": "pnpm build:pages && pnpm build:pages-demo && pnpm preview:pages",
     "build:workers": "rm -rf dist && VITE_USAGE_URL=/projects/job_apps_tracker/app/__usage VITE_TRACKER_BACKEND=browser VITE_BASE_PATH=/projects/job_apps_tracker/app/ VITE_OUT_DIR=dist/projects/job_apps_tracker/app vite build && VITE_USAGE_URL=/projects/job_apps_tracker/app/__usage VITE_TRACKER_BACKEND=browser VITE_TRACKER_PROFILE=demo VITE_BASE_PATH=/projects/job_apps_tracker/app/demo/ VITE_OUT_DIR=dist/projects/job_apps_tracker/app/demo vite build",
     "deploy": "pnpm build:workers && wrangler deploy",
+    "usage:report": "node scripts/usage-report.ts",
     "typecheck": "tsc -b --pretty false",
     "lint": "eslint .",
     "test": "vitest run",

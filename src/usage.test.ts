@@ -1,8 +1,10 @@
+import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { handleUsage } from '../worker'
-import { addApplication, createDemoDocument, createEmptyDocument, moveApplication } from './domain'
+import { addApplication, createDemoDocument, createEmptyDocument, migrateDocument, moveApplication, OUTCOME_CONFIG, STATE_CONFIG } from './domain'
 import { DEFAULT_DEMO_REFERENCE } from './domain/demo'
+import type { Application, TrackerDocument } from './domain'
 import type { StorageState } from './backend'
 import {
   readUsagePreference,
@@ -12,10 +14,20 @@ import {
   USAGE_STORAGE_KEY,
   usageAvailable,
   usageTag,
+  useViewTime,
   writeUsagePreference,
 } from './usage'
-import { parseUsageReport, USAGE_EVENTS, usageDataPoint } from './usageEvent'
-import { usageChanges, usageSnapshot } from './usageSnapshot'
+import {
+  parseUsageReport,
+  UNKNOWN_TRACKER,
+  USAGE_EVENTS,
+  USAGE_FEATURES,
+  USAGE_OUTCOMES,
+  USAGE_STAGES,
+  usageDataPoint,
+  type UsageFeature,
+} from './usageEvent'
+import { durationBucket, referrerKind, usageChanges, usageSnapshot } from './usageSnapshot'
 
 const reference = new Date(DEFAULT_DEMO_REFERENCE)
 const TRACKER_ID = '0199a1b2-c3d4-7e5f-8a6b-1234567890ab'
@@ -72,6 +84,164 @@ describe('usage reports', () => {
     for (const props of Object.values(USAGE_EVENTS)) {
       expect(Object.keys(props).length + 2).toBeLessThanOrEqual(20)
     }
+  })
+})
+
+describe('the stage and outcome lists', () => {
+  it('match the domain’s, which the event module cannot import', () => {
+    expect([...USAGE_STAGES]).toEqual(STATE_CONFIG.map((state) => state.id))
+    expect([...USAGE_OUTCOMES]).toEqual(OUTCOME_CONFIG.map((outcome) => outcome.id))
+  })
+})
+
+/** A document of `count` bare applications, each created `daysAgo` before the reference. */
+function documentOf(count: number, daysAgo = 0): TrackerDocument {
+  let document = createEmptyDocument()
+  for (let index = 0; index < count; index += 1) {
+    document = addApplication(document, { company: `Company ${index}` }, new Date(reference.getTime() - daysAgo * 86_400_000))
+  }
+  return document
+}
+
+/** One application, edited by hand to hold exactly one thing. */
+function withOne(change: (application: Application) => Partial<Application>): TrackerDocument {
+  const document = documentOf(1)
+  const [application] = document.applications
+  return { ...document, applications: [{ ...application, ...change(application) }] }
+}
+
+const at = reference.toISOString()
+const FEATURE_FIXTURES: Record<UsageFeature, (application: Application) => Partial<Application>> = {
+  notes: () => ({ stage_notes: [{ state: 'applied', body: 'Ask about the team', heard: [], created_at: at, updated_at: at }] }),
+  captures: () => ({ stage_notes: [{ state: 'applied', body: '', heard: [{ id: 'h1', body: 'Two rounds', at }], created_at: at, updated_at: at }] }),
+  messages: () => ({ correspondence: [{} as Application['correspondence'][number]] }),
+  invites: () => ({ state_events: [{} as Application['state_events'][number]] }),
+  ratings: () => ({ ratings: [{} as Application['ratings'][number]] }),
+  compensation: (application) => ({ compensation: { ...application.compensation, currency: 'AUD', advertised: { min: 100_000, max: 120_000 } } }),
+  posting: () => ({ posting: { body: 'We are hiring', captured_at: at, source_url: null } }),
+  attachments: () => ({ attachments: [{} as Application['attachments'][number]] }),
+  done: () => ({ completed_actions: [{} as Application['completed_actions'][number]] }),
+  archived: () => ({ archived_at: at }),
+}
+
+describe('usageSnapshot, field by field', () => {
+  const snapshot = (document: TrackerDocument, storage = browserStorage()) => usageSnapshot(document, storage, reference)
+
+  it.each([
+    [0, '0'],
+    [1, '1-2'],
+    [2, '1-2'],
+    [3, '3-10'],
+    [10, '3-10'],
+    [11, '11-50'],
+    [50, '11-50'],
+    [51, '51+'],
+  ])('counts %i applications as %s', (count, bucket) => {
+    expect(snapshot(documentOf(count)).applications).toBe(bucket)
+  })
+
+  it.each([
+    [0, '0d'],
+    [1, '1-7d'],
+    [7, '1-7d'],
+    [8, '8-30d'],
+    [30, '8-30d'],
+    [31, '31-90d'],
+    [90, '31-90d'],
+    [91, '91d+'],
+  ])('ages a tracker whose oldest application is %i days old as %s', (days, bucket) => {
+    expect(snapshot(documentOf(1, days)).age).toBe(bucket)
+  })
+
+  it.each([
+    ['applied', 'none'],
+    ['recruiter_messaged', 'none'],
+    ['recruiter_interview', 'interview'],
+    ['interview_2', 'interview'],
+    ['offer', 'offer'],
+    ['accepted', 'accepted'],
+  ] as const)('reads an application at %s as having reached %s', (state, reached) => {
+    const document = documentOf(1)
+    const moved = moveApplication(document, document.applications[0].id, { state }, reference)
+    expect(snapshot(moved).reached).toBe(reached)
+  })
+
+  it('keeps how far an application got after it ended, and after it was moved back', () => {
+    const document = documentOf(1)
+    const id = document.applications[0].id
+    const offered = moveApplication(document, id, { state: 'offer' }, reference)
+    const back = moveApplication(offered, id, { state: 'applied', outcome: 'rejected' }, reference)
+    expect(snapshot(back).reached).toBe('offer')
+  })
+
+  it.each([
+    [{ kind: 'connected', name: 'Job search' }, 'folder'],
+    [{ kind: 'needs-permission', name: 'Job search' }, 'browser'],
+    [{ kind: 'disconnected' }, 'browser'],
+    [{ kind: 'unsupported' }, 'unsupported'],
+  ] as const)('reports a %o connection as %s', (connection, storage) => {
+    expect(snapshot(documentOf(0), browserStorage({ connection })).storage).toBe(storage)
+  })
+
+  it.each(USAGE_FEATURES)('reports %s in use only once something uses it', (feature) => {
+    expect(snapshot(documentOf(1))[feature]).toBe('n')
+    const used = snapshot(withOne(FEATURE_FIXTURES[feature]))
+    expect(used[feature]).toBe('y')
+    // Exactly that one: the fixture holds nothing else.
+    const others = USAGE_FEATURES.filter((other) => other !== feature && !(feature === 'captures' && other === 'notes'))
+    for (const other of others) expect(used[other]).toBe('n')
+  })
+
+  it('does not count a stage note with nothing written as notes in use', () => {
+    expect(snapshot(withOne(FEATURE_FIXTURES.captures)).notes).toBe('n')
+  })
+
+  it('carries the referrer it is given, and says direct when given none', () => {
+    expect(snapshot(documentOf(0)).referrer).toBe('direct')
+    expect(usageSnapshot(documentOf(0), browserStorage(), reference, 'search').referrer).toBe('search')
+  })
+})
+
+describe('referrerKind', () => {
+  const origin = 'https://fruitiecutiepie.com'
+  it.each([
+    ['', 'direct'],
+    ['https://fruitiecutiepie.com/projects/job_apps_tracker/app/?tracker=x', 'internal'],
+    ['https://fruitiecutiepie.com/projects/job_apps_tracker/app/demo/', 'demo'],
+    ['https://www.google.com.au/', 'search'],
+    ['https://duckduckgo.com/', 'search'],
+    ['https://www.bing.com/search?q=job+tracker', 'search'],
+    ['https://www.linkedin.com/feed/', 'social'],
+    ['https://uk.linkedin.com/in/someone', 'social'],
+    ['https://t.co/abc', 'social'],
+    ['https://news.ycombinator.com/item?id=1', 'social'],
+    ['https://github.com/fruitiecutiepie/job_apps_tracker', 'github'],
+    ['https://fruitiecutiepie.github.io/', 'github'],
+    ['https://example.com/blog', 'other'],
+    ['https://notgoogle.com/', 'other'],
+    ['not a url', 'other'],
+  ])('reads %s as %s', (referrer, kind) => {
+    expect(referrerKind(referrer, origin, '/projects/job_apps_tracker/app/demo/')).toBe(kind)
+  })
+
+  it('reads the demo as internal on the demo itself, which passes no demo path', () => {
+    expect(referrerKind('https://fruitiecutiepie.com/projects/job_apps_tracker/app/demo/', origin)).toBe('internal')
+  })
+})
+
+describe('durationBucket', () => {
+  it.each([
+    [0, '<10s'],
+    [9_999, '<10s'],
+    [10_000, '10s-1m'],
+    [59_999, '10s-1m'],
+    [60_000, '1-5m'],
+    [299_999, '1-5m'],
+    [300_000, '5-30m'],
+    [1_799_999, '5-30m'],
+    [1_800_000, '30m+'],
+  ])('puts %i ms in %s', (ms, bucket) => {
+    expect(durationBucket(ms)).toBe(bucket)
   })
 })
 
@@ -188,6 +358,57 @@ describe('sending', () => {
     await new Promise((resolve) => setTimeout(resolve, 10))
     expect(beacon).not.toHaveBeenCalled()
     expect(readUsagePreference()).toBe(false)
+  })
+
+  it('sends what waited on a tracker that never arrived under the unknown tag', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/app/__usage')
+    recordUsage('error', { kind: 'load' })
+    setUsageTracker(null)
+    const [body] = await sentBodies()
+    expect(JSON.parse(body)).toMatchObject({ tracker: UNKNOWN_TRACKER, event: 'error', props: { kind: 'load' } })
+  })
+
+  it('counts an older file once per layout per page, wherever it was read', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/app/__usage')
+    setUsageTracker(TRACKER_ID)
+    migrateDocument({ applications: [] })
+    migrateDocument({ applications: [] })
+    migrateDocument({ schema_version: 2, applications: [] })
+    migrateDocument({ schema_version: 3, applications: [] })
+    await vi.waitFor(() => expect(beacon).toHaveBeenCalledTimes(2))
+    await new Promise((resolve) => setTimeout(resolve, 10))
+    const reports = beacon.mock.calls.map(([, body]) => JSON.parse(String(body)))
+    expect(reports.map((report) => report.props)).toEqual([{ from: '1' }, { from: '2' }])
+  })
+
+  it('times a place until it is left, and does not count a hidden tab', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/app/__usage')
+    setUsageTracker(TRACKER_ID)
+    vi.useFakeTimers({ toFake: ['Date'] })
+    try {
+      vi.setSystemTime(reference)
+      const view = renderHook(({ place }) => useViewTime(place), { initialProps: { place: 'kanban' as const } })
+
+      vi.setSystemTime(reference.getTime() + 20_000)
+      const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden')
+      act(() => document.dispatchEvent(new Event('visibilitychange')))
+      // An hour away, then back for two more minutes.
+      vi.setSystemTime(reference.getTime() + 3_620_000)
+      visibility.mockReturnValue('visible')
+      act(() => document.dispatchEvent(new Event('visibilitychange')))
+      vi.setSystemTime(reference.getTime() + 3_740_000)
+      view.rerender({ place: 'table' as never })
+      view.unmount()
+    } finally {
+      vi.useRealTimers()
+    }
+    await vi.waitFor(() => expect(beacon).toHaveBeenCalledTimes(3))
+    const reports = beacon.mock.calls.map(([, body]) => JSON.parse(String(body)).props)
+    expect(reports).toEqual([
+      { place: 'kanban', duration: '10s-1m' },
+      { place: 'kanban', duration: '1-5m' },
+      { place: 'table', duration: '<10s' },
+    ])
   })
 
   it('starts off where the browser sends Global Privacy Control, until turned on', () => {

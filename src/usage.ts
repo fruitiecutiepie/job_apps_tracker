@@ -1,7 +1,16 @@
-import { useSyncExternalStore } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 
+import { onMigration } from './domain/migrate'
 import { trackerProfile } from './domain/trackerProfile'
-import { parseUsageReport, USAGE_VERSION, type UsageEventName, type UsageProps } from './usageEvent'
+import {
+  parseUsageReport,
+  UNKNOWN_TRACKER,
+  USAGE_VERSION,
+  type UsageEventName,
+  type UsagePlace,
+  type UsageProps,
+} from './usageEvent'
+import { durationBucket } from './usageSnapshot'
 
 /**
  * Usage counts from the hosted build: which features get used and how far searches get,
@@ -97,10 +106,50 @@ let tag: Promise<string> | null = null
 const queue: Array<{ event: UsageEventName; props: Record<string, string> }> = []
 const QUEUE_LIMIT = 20
 
-/** Names the tracker this page holds; reports are tagged with it from here on. */
-export function setUsageTracker(trackerId: string): void {
-  tag = usageTag(trackerId)
+/**
+ * Names the tracker this page holds; reports are tagged with it from here on. Null says the
+ * page will never know — its load failed — so what is waiting goes under `UNKNOWN_TRACKER`
+ * rather than nowhere: a load that fails is the failure most worth hearing about.
+ */
+export function setUsageTracker(trackerId: string | null): void {
+  tag = trackerId === null ? Promise.resolve(UNKNOWN_TRACKER) : usageTag(trackerId)
   for (const pending of queue.splice(0)) void send(pending.event, pending.props)
+}
+
+/*
+ * An older file is often read more than once in one visit — checked as an import, then
+ * stored — so each layout is counted once per page.
+ */
+const migrationsSeen = new Set<1 | 2>()
+onMigration((from) => {
+  if (migrationsSeen.has(from)) return
+  migrationsSeen.add(from)
+  recordUsage('migrated', { from: from === 1 ? '1' : '2' })
+})
+
+/**
+ * Times each place while it is on screen, and reports it on leaving — for another place,
+ * or for the tab going hidden, which is also the last chance a closing tab gives. A hidden
+ * tab's time is not the place's: the clock starts again when it is shown.
+ */
+export function useViewTime(place: UsagePlace): void {
+  useEffect(() => {
+    let since: number | null = document.visibilityState === 'hidden' ? null : Date.now()
+    const report = () => {
+      if (since === null) return
+      recordUsage('view_time', { place, duration: durationBucket(Date.now() - since) })
+      since = null
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') report()
+      else since = Date.now()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility)
+      report()
+    }
+  }, [place])
 }
 
 export function recordUsage<E extends UsageEventName>(event: E, props: UsageProps<E>): void {
@@ -132,4 +181,5 @@ export function resetUsageForTests(): void {
   tag = null
   queue.length = 0
   sessionChoice = null
+  migrationsSeen.clear()
 }
