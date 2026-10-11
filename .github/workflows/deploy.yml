@@ -6,7 +6,7 @@
 # commit as the one that deploys.
 #
 # Independent of fruitiecutiepie.com's own deploys. The token is this repo's alone — Workers
-# Scripts and the one zone route, nothing else — and lives in the `production` environment,
+# Scripts: Edit, nothing on the zone — and lives in the `production` environment,
 # which only master may use. `scripts/push-github-secrets` sets it from Bitwarden.
 name: Deploy
 
@@ -61,15 +61,25 @@ jobs:
       - name: Build
         run: corepack pnpm build:workers
 
-      # A full deploy rather than a version upload, so a route change in wrangler.jsonc goes
-      # out with the code. Secrets are kept across deploys; vars are not, so a var missing
-      # from wrangler.jsonc is removed from production.
+      # Code only: upload a version, then send all traffic to it. The route is left alone.
+      # `wrangler deploy` would also rewrite the route, through an account-level endpoint
+      # that needs Workers Routes on every zone in the account, and the route sits on the
+      # website's zone. A route change in wrangler.jsonc goes out by hand with
+      # `pnpm wrangler triggers deploy` (see infra/cloudflare/README.md).
+      #
+      # A version carries the vars in wrangler.jsonc, so a var missing there is removed from
+      # production. Secrets carry over from the version before.
       - name: Deploy
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           COMMIT: ${{ github.event.workflow_run.head_sha }}
           SUBJECT: ${{ github.event.workflow_run.head_commit.message }}
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
         run: |
-          corepack pnpm exec wrangler deploy \
-            --tag "${COMMIT:0:7}" \
-            --message "$(printf '%s' "$SUBJECT" | head -1 | cut -c1-100)"
+          message="$(printf '%s' "$SUBJECT" | head -1 | cut -c1-100)"
+          corepack pnpm exec wrangler versions upload --tag "${COMMIT:0:7}" --message "$message"
+          # By id from this upload rather than by tag: a rerun of the same commit uploads a
+          # second version with the same tag.
+          version="$(jq -r 'select(.type == "version-upload") | .version_id' "$WRANGLER_OUTPUT_FILE_PATH" | tail -1)"
+          test -n "$version"
+          corepack pnpm exec wrangler versions deploy "$version@100%" --message "$message" -y
