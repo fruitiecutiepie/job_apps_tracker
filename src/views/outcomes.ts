@@ -1,41 +1,41 @@
-import { FINAL_STATE, OUTCOME_IDS, classifyLifecycle, stateRank } from "../domain";
-import type { Application, StateId, Status } from "../domain";
+import { FINAL_STAGE, OUTCOME_IDS, classifyLifecycle, stageRank } from "../domain";
+import type { Application, StageId, Status } from "../domain";
 import { localDayNumber, parseTimestamp } from "./viewUtils";
 
 /**
  * What a collection of applications says about the search itself, rather than about any
  * one application in it.
  *
- * Everything here reads `state_history`, which is the only record of what actually
+ * Everything here reads `stage_history`, which is the only record of what actually
  * happened: `updated_at` moves when you annotate a row, and the current stage alone cannot
  * say how far something got before it ended. None of it is persisted — these are counts
  * over the document, derived on render like every other view value.
  *
- * Progress is read off the stage alone, in `STATE_CONFIG` order: being turned down changes
+ * Progress is read off the stage alone, in `STAGE_CONFIG` order: being turned down changes
  * the outcome and leaves the stage where it was, so it is never progress, and reaching
  * Accepted — the last stage — is the furthest an application can get.
  */
 
 /** Ordered oldest first, so the first entry is where the application started. */
 function historyInOrder(application: Application) {
-  return [...application.state_history].sort((left, right) => left.at.localeCompare(right.at));
+  return [...application.stage_history].sort((left, right) => left.at.localeCompare(right.at));
 }
 
 /**
  * Whether anything was recorded after the stage and outcome the application started in.
  *
  * This is the closest honest reading of "did they reply" the document supports, and it is
- * named for what it measures rather than for what it is used as: a second recorded state
- * is a second recorded state. It counts a rejection, because a rejection is a reply. It
- * does not count an application filed straight into a rejected state, which has one entry
+ * named for what it measures rather than for what it is used as: a second recorded stage
+ * is a second recorded stage. It counts a rejection, because a rejection is a reply. It
+ * does not count an application filed straight into a rejected stage, which has one entry
  * and never had a first reply to measure.
  */
 export function heardBack(application: Application): boolean {
-  return application.state_history.length > 1;
+  return application.stage_history.length > 1;
 }
 
 /**
- * Days from the starting state to whatever was recorded next, or null if nothing was.
+ * Days from the starting stage to whatever was recorded next, or null if nothing was.
  *
  * Counted in browser-local calendar days like every other span in the app, so two moves on
  * one day read as 0 rather than as a fraction.
@@ -54,7 +54,7 @@ export function daysToFirstReply(application: Application): number | null {
 /**
  * Whether the application ever reached a stage later than the one it started in.
  *
- * Stage order comes from `STATE_CONFIG`, so a move that skips stages still counts and a
+ * Stage order comes from `STAGE_CONFIG`, so a move that skips stages still counts and a
  * move backwards does not. Being turned down is not progress — it changes the outcome and
  * leaves the stage — which is what separates this from `heardBack`.
  */
@@ -62,9 +62,9 @@ export function advanced(application: Application): boolean {
   const history = historyInOrder(application);
   const first = history[0];
   if (!first) return false;
-  const start = stateRank(first.state);
+  const start = stageRank(first.stage);
 
-  return history.slice(1).some((entry) => stateRank(entry.state) > start);
+  return history.slice(1).some((entry) => stageRank(entry.stage) > start);
 }
 
 /** Where a move left or landed: a stage, and how it was going there. */
@@ -78,9 +78,9 @@ export interface StageMove {
 }
 
 /**
- * Every move recorded in `state_history`, grouped by where it left and where it landed.
+ * Every move recorded in `stage_history`, grouped by where it left and where it landed.
  *
- * This is what `movedOn` cannot say: any state may move to any other, so "moved on" from
+ * This is what `movedOn` cannot say: any stage may move to any other, so "moved on" from
  * a stage covers going further, going back, and being turned down, and only the history
  * itself says which. Each consecutive pair of entries is one move — a change of stage, of
  * outcome, or of both — so an application that went back and forth between two stages
@@ -95,9 +95,9 @@ export function stageMoves(applications: Application[]): StageMove[] {
     for (let index = 1; index < history.length; index += 1) {
       const previous = history[index - 1]!;
       const next = history[index]!;
-      const from = { state: previous.state, outcome: previous.outcome };
-      const to = { state: next.state, outcome: next.outcome };
-      if (from.state === to.state && from.outcome === to.outcome) continue;
+      const from = { stage: previous.stage, outcome: previous.outcome };
+      const to = { stage: next.stage, outcome: next.outcome };
+      if (from.stage === to.stage && from.outcome === to.outcome) continue;
       const key = moveKey({ from, to });
       const move = moves.get(key) ?? { from, to, count: 0 };
       move.count += 1;
@@ -110,11 +110,11 @@ export function stageMoves(applications: Application[]): StageMove[] {
   );
 }
 
-const order = ({ state, outcome }: MoveEnd) => stateRank(state) * OUTCOME_IDS.length + OUTCOME_IDS.indexOf(outcome);
+const order = ({ stage, outcome }: MoveEnd) => stageRank(stage) * OUTCOME_IDS.length + OUTCOME_IDS.indexOf(outcome);
 
 /** One move's identity, for grouping and for a row's key. */
 export function moveKey({ from, to }: Pick<StageMove, "from" | "to">): string {
-  return `${from.state}:${from.outcome}>${to.state}:${to.outcome}`;
+  return `${from.stage}:${from.outcome}>${to.stage}:${to.outcome}`;
 }
 
 export type StageMoveKind = "further" | "rejected" | "other";
@@ -126,7 +126,7 @@ export type StageMoveKind = "further" | "rejected" | "other";
  */
 export function stageMoveKind(move: Pick<StageMove, "from" | "to">): StageMoveKind {
   if (move.to.outcome === "rejected" && move.from.outcome !== "rejected") return "rejected";
-  if (stateRank(move.to.state) > stateRank(move.from.state)) return "further";
+  if (stageRank(move.to.stage) > stageRank(move.from.stage)) return "further";
   return "other";
 }
 
@@ -167,7 +167,7 @@ export function sourceOutcomes(applications: Application[]): SourceOutcomeRow[] 
 
 
 export interface StagePassRow {
-  state: StateId;
+  stage: StageId;
   /** Reached the stage and are no longer sitting in it: the ones it has an answer for. */
   decided: number;
   /** Of those, the ones that went on to a later stage, Accepted included. */
@@ -189,32 +189,32 @@ export interface StagePassRow {
  * after it to pass to.
  */
 export function stagePassRates(applications: Application[]): StagePassRow[] {
-  const rows = new Map<StateId, StagePassRow>();
+  const rows = new Map<StageId, StagePassRow>();
 
   for (const application of applications) {
     const history = historyInOrder(application);
-    const seen = new Set<StateId>();
+    const seen = new Set<StageId>();
 
     history.forEach((entry, index) => {
-      if (entry.state === FINAL_STATE || seen.has(entry.state)) return;
-      seen.add(entry.state);
-      const rank = stateRank(entry.state);
+      if (entry.stage === FINAL_STAGE || seen.has(entry.stage)) return;
+      seen.add(entry.stage);
+      const rank = stageRank(entry.stage);
 
-      const row = rows.get(entry.state) ?? { state: entry.state, decided: 0, passed: 0, pending: 0 };
-      const passed = history.slice(index + 1).some((later) => stateRank(later.state) > rank);
+      const row = rows.get(entry.stage) ?? { stage: entry.stage, decided: 0, passed: 0, pending: 0 };
+      const passed = history.slice(index + 1).some((later) => stageRank(later.stage) > rank);
       if (passed) {
         row.decided += 1;
         row.passed += 1;
-      } else if (application.state === entry.state && application.outcome === "active") {
+      } else if (application.stage === entry.stage && application.outcome === "active") {
         row.pending += 1;
       } else {
         row.decided += 1;
       }
-      rows.set(entry.state, row);
+      rows.set(entry.stage, row);
     });
   }
 
-  return [...rows.values()].sort((left, right) => stateRank(left.state) - stateRank(right.state));
+  return [...rows.values()].sort((left, right) => stageRank(left.stage) - stageRank(right.stage));
 }
 
 export interface ReplyWaits {
@@ -238,7 +238,7 @@ export function replyWaits(applications: Application[]): ReplyWaits {
 export interface WeekActivity {
   /** Local midnight on the Monday the week starts. */
   start: Date;
-  /** Applications whose first recorded state falls in the week. */
+  /** Applications whose first recorded stage falls in the week. */
   started: number;
   /** First replies that arrived in the week, whenever their application started. */
   replies: number;
@@ -282,9 +282,9 @@ export function weeklyActivity(
 }
 
 export interface FinishDurations {
-  /** Days from the first recorded state to the rejection, per rejected application. */
+  /** Days from the first recorded stage to the rejection, per rejected application. */
   toRejection: number[];
-  /** Days from the first recorded state to first reaching Offer, per application that did. */
+  /** Days from the first recorded stage to first reaching Offer, per application that did. */
   toOffer: number[];
 }
 
@@ -309,7 +309,7 @@ export function finishDurations(applications: Application[]): FinishDurations {
       const days = span(history[0]?.at, history.at(-1)?.at);
       if (days !== null) toRejection.push(days);
     }
-    const offer = history.find((entry) => entry.state === "offer");
+    const offer = history.find((entry) => entry.stage === "offer");
     if (offer) {
       const days = span(history[0]?.at, offer.at);
       if (days !== null) toOffer.push(days);

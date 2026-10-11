@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { emptyCompensation, legacyStatus } from '../domain'
-import type { Application, StateEvent, StateHistoryEntry } from '../domain'
+import type { Application, StageEvent, StageHistoryEntry } from '../domain'
 import {
   advanced,
   daysToFirstReply,
@@ -30,7 +30,7 @@ function at(daysFromToday: number, hour = 9): string {
  * reader says it — `auto_rejected`, `recruiter_interview_rejected` — and read through the
  * same table that migrates old files, so the tables below stay one word per move.
  */
-function history(entries: readonly (readonly [string, number])[]): StateHistoryEntry[] {
+function history(entries: readonly (readonly [string, number])[]): StageHistoryEntry[] {
   return entries.map(([status, daysAgo]) => ({ ...legacyStatus(status)!, at: at(-daysAgo) }))
 }
 
@@ -44,7 +44,7 @@ function application(
 ): Application {
   const trail = history(entries)
   // Tolerates an empty list so a test can supply an out-of-order or single-entry history
-  // of its own through `overrides` without the helper deriving state from nothing.
+  // of its own through `overrides` without the helper deriving stage from nothing.
   const last = trail.at(-1)
   return {
     id: `00000000-0000-7000-8000-${company.toLowerCase().replace(/[^a-z0-9]/g, '').padEnd(12, '0').slice(0, 12)}`,
@@ -52,9 +52,9 @@ function application(
     role: null,
     url: null,
     source: null,
-    state: last?.state ?? 'applied',
+    stage: last?.stage ?? 'applied',
     outcome: last?.outcome ?? 'active',
-    state_history: trail,
+    stage_history: trail,
     archived_at: null,
     next_action: null,
     next_action_at: null,
@@ -63,7 +63,7 @@ function application(
     compensation: emptyCompensation(),
     ratings: [],
     stage_notes: [],
-    state_events: [] as StateEvent[],
+    stage_events: [] as StageEvent[],
     correspondence: [],
     completed_actions: [],
     attachments: [],
@@ -94,7 +94,7 @@ describe('hearing back', () => {
     const long = application('Slow Co', [
       ['applied', 30],
       ['recruiter_messaged', 25],
-      ['recruiter_interview', 2],
+      ['screening', 2],
     ])
 
     expect(daysToFirstReply(long)).toBe(5)
@@ -102,22 +102,22 @@ describe('hearing back', () => {
 
   it('reads two moves on one day as no days, like every other span', () => {
     const sameDay = application('Fast Co', [])
-    const trail: StateHistoryEntry[] = [
-      { state: 'applied', outcome: 'active', at: at(-3, 9) },
-      { state: 'applied', outcome: 'rejected', at: at(-3, 17) },
+    const trail: StageHistoryEntry[] = [
+      { stage: 'applied', outcome: 'active', at: at(-3, 9) },
+      { stage: 'applied', outcome: 'rejected', at: at(-3, 17) },
     ]
 
-    expect(daysToFirstReply({ ...sameDay, state_history: trail })).toBe(0)
+    expect(daysToFirstReply({ ...sameDay, stage_history: trail })).toBe(0)
   })
 
   it('reads history in time order rather than trusting the stored order', () => {
     const scrambled = application('Jumbled Co', [])
-    const trail: StateHistoryEntry[] = [
-      { state: 'recruiter_messaged', outcome: 'active', at: at(-10) },
-      { state: 'applied', outcome: 'active', at: at(-20) },
+    const trail: StageHistoryEntry[] = [
+      { stage: 'recruiter_messaged', outcome: 'active', at: at(-10) },
+      { stage: 'applied', outcome: 'active', at: at(-20) },
     ]
 
-    expect(daysToFirstReply({ ...scrambled, state_history: trail })).toBe(10)
+    expect(daysToFirstReply({ ...scrambled, stage_history: trail })).toBe(10)
   })
 })
 
@@ -137,7 +137,7 @@ describe('advancing', () => {
     expect(
       advanced(application('Leapt Co', [
         ['applied', 20],
-        ['interview_2', 10],
+        ['round_2', 10],
       ])),
     ).toBe(true)
   })
@@ -145,7 +145,7 @@ describe('advancing', () => {
   it('is false for a move backwards to an earlier live stage', () => {
     expect(
       advanced(application('Restarted Co', [
-        ['recruiter_interview', 20],
+        ['screening', 20],
         ['applied', 10],
       ])),
     ).toBe(false)
@@ -165,7 +165,7 @@ describe('source outcomes', () => {
   const applications = [
     application('A', [['applied', 20]], { source: 'LinkedIn' }),
     application('B', [['applied', 20], ['auto_rejected', 18]], { source: 'LinkedIn' }),
-    application('C', [['applied', 20], ['recruiter_interview', 10]], { source: 'LinkedIn' }),
+    application('C', [['applied', 20], ['screening', 10]], { source: 'LinkedIn' }),
     application('D', [['applied', 20], ['offer', 5]], { source: 'Referral' }),
     application('E', [['applied', 20]], { source: null }),
   ]
@@ -243,51 +243,51 @@ describe('median', () => {
 describe('stageMoves', () => {
   it('counts each consecutive pair of history entries as one move', () => {
     const applications = [
-      application('One Co', [['applied', 20], ['recruiter_interview', 10], ['interview_1', 5]]),
-      application('Two Co', [['applied', 20], ['recruiter_interview', 12]]),
+      application('One Co', [['applied', 20], ['screening', 10], ['round_1', 5]]),
+      application('Two Co', [['applied', 20], ['screening', 12]]),
       application('Three Co', [['applied', 20], ['auto_rejected', 18]]),
     ]
 
-    // In configured state order on both ends: Auto-rejected sits right after Applied.
+    // In configured stage order on both ends: Auto-rejected sits right after Applied.
     expect(stageMoves(applications)).toEqual([
       { from: status('applied'), to: status('auto_rejected'), count: 1 },
-      { from: status('applied'), to: status('recruiter_interview'), count: 2 },
-      { from: status('recruiter_interview'), to: status('interview_1'), count: 1 },
+      { from: status('applied'), to: status('screening'), count: 2 },
+      { from: status('screening'), to: status('round_1'), count: 1 },
     ])
   })
 
   it('counts a stage crossed twice as two moves, backwards included', () => {
     const revisited = application('Back Co', [
-      ['recruiter_interview', 30],
+      ['screening', 30],
       ['applied', 20],
-      ['recruiter_interview', 10],
+      ['screening', 10],
     ])
 
     expect(stageMoves([revisited])).toEqual([
-      { from: status('applied'), to: status('recruiter_interview'), count: 1 },
-      { from: status('recruiter_interview'), to: status('applied'), count: 1 },
+      { from: status('applied'), to: status('screening'), count: 1 },
+      { from: status('screening'), to: status('applied'), count: 1 },
     ])
   })
 
   it('reads history in time order, not in the order it was stored', () => {
     const shuffled = application('Shuffled Co', [], {
-      state: 'recruiter_interview',
-      state_history: [
-        { state: 'recruiter_interview', outcome: 'active', at: at(-5) },
-        { state: 'applied', outcome: 'active', at: at(-10) },
+      stage: 'screening',
+      stage_history: [
+        { stage: 'screening', outcome: 'active', at: at(-5) },
+        { stage: 'applied', outcome: 'active', at: at(-10) },
       ],
     })
 
     expect(stageMoves([shuffled])).toEqual([
-      { from: status('applied'), to: status('recruiter_interview'), count: 1 },
+      { from: status('applied'), to: status('screening'), count: 1 },
     ])
   })
 })
 
 describe('stageMoveKind', () => {
   it('calls a move further only when it lands on a later live stage', () => {
-    expect(stageMoveKind({ from: status('applied'), to: status('interview_1') })).toBe('further')
-    expect(stageMoveKind({ from: status('interview_1'), to: status('applied') })).toBe('other')
+    expect(stageMoveKind({ from: status('applied'), to: status('round_1') })).toBe('further')
+    expect(stageMoveKind({ from: status('round_1'), to: status('applied') })).toBe('other')
   })
 
   it('names a rejection as one, and a close without one as neither', () => {
@@ -301,13 +301,13 @@ describe('stageMoveKind', () => {
 describe('stagePassRates', () => {
   it('leaves the applications still in a stage out of its rate', () => {
     const rows = stagePassRates([
-      application('Through Co', [['applied', 20], ['recruiter_interview', 10]]),
+      application('Through Co', [['applied', 20], ['screening', 10]]),
       application('Stopped Co', [['applied', 20], ['auto_rejected', 15]]),
       application('Waiting Co', [['applied', 5]]),
     ])
 
-    expect(rows.find((row) => row.state === 'applied')).toEqual({
-      state: 'applied',
+    expect(rows.find((row) => row.stage === 'applied')).toEqual({
+      stage: 'applied',
       decided: 2,
       passed: 1,
       pending: 1,
@@ -315,18 +315,18 @@ describe('stagePassRates', () => {
   })
 
   it('counts a skipped stage as passing the one before it', () => {
-    const skipped = application('Skipped Co', [['applied', 20], ['interview_1', 10]])
-    expect(stagePassRates([skipped])[0]).toEqual({ state: 'applied', decided: 1, passed: 1, pending: 0 })
+    const skipped = application('Skipped Co', [['applied', 20], ['round_1', 10]])
+    expect(stagePassRates([skipped])[0]).toEqual({ stage: 'applied', decided: 1, passed: 1, pending: 0 })
   })
 
   it('does not count going back as passing, and counts accepting as passing Offer', () => {
     const rows = stagePassRates([
-      application('Back Co', [['recruiter_interview', 20], ['applied', 10]]),
+      application('Back Co', [['screening', 20], ['applied', 10]]),
       application('Hired Co', [['offer', 10], ['accepted', 5]]),
     ])
 
-    expect(rows.find((row) => row.state === 'recruiter_interview')).toMatchObject({ decided: 1, passed: 0 })
-    expect(rows.find((row) => row.state === 'offer')).toMatchObject({ decided: 1, passed: 1 })
+    expect(rows.find((row) => row.stage === 'screening')).toMatchObject({ decided: 1, passed: 0 })
+    expect(rows.find((row) => row.stage === 'offer')).toMatchObject({ decided: 1, passed: 1 })
   })
 })
 
@@ -356,7 +356,7 @@ describe('finishDurations', () => {
   it('times a rejection to the rejection and an offer to first reaching Offer', () => {
     expect(
       finishDurations([
-        application('Turned Down Co', [['applied', 30], ['recruiter_interview', 20], ['recruiter_interview_rejected', 10]]),
+        application('Turned Down Co', [['applied', 30], ['screening', 20], ['recruiter_interview_rejected', 10]]),
         application('Offered Co', [['applied', 40], ['offer', 5], ['accepted', 1]]),
         application('Live Co', [['applied', 10]]),
       ]),

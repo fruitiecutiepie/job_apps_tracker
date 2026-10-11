@@ -1,9 +1,9 @@
 import { Mail } from "lucide-react";
-import type { Application, StateId } from "../domain";
+import type { Application, StageId } from "../domain";
 
 interface MessagesButtonProps {
   application: Application;
-  onOpenMessages: (id: string, messagesFor: StateId) => void;
+  onOpenMessages: (id: string, messagesFor: StageId) => void;
 }
 
 /**
@@ -25,7 +25,7 @@ export function MessagesButton({ application, onOpenMessages }: MessagesButtonPr
     <button
       aria-label={label}
       className="button button--quiet messages-button messages-button--card"
-      onClick={() => onOpenMessages(application.id, application.state)}
+      onClick={() => onOpenMessages(application.id, application.stage)}
       type="button"
     >
       <Mail aria-hidden="true" size={14} />

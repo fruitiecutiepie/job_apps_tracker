@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { createDemoDocument, emptyCompensation } from '../domain'
-import type { Application, Compensation, StateId } from '../domain'
+import type { Application, Compensation, StageId } from '../domain'
 import {
   compensationFigureFor,
   compensationGapFor,
@@ -43,16 +43,16 @@ function money({ currency = 'AUD', ...stages }: Money): Compensation {
 }
 
 function application(compensation: Compensation, company = 'Fixture'): Application {
-  const state: StateId = 'applied'
+  const stage: StageId = 'applied'
   return {
     id: `00000000-0000-7000-8000-${company.toLowerCase().replace(/[^a-z0-9]/g, '').padEnd(12, '0').slice(0, 12)}`,
     company,
     role: null,
     url: null,
     source: null,
-    state,
+    stage,
     outcome: 'active',
-    state_history: [{ state, outcome: 'active', at }],
+    stage_history: [{ stage, outcome: 'active', at }],
     archived_at: null,
     next_action: null,
     next_action_at: null,
@@ -60,7 +60,7 @@ function application(compensation: Compensation, company = 'Fixture'): Applicati
     notes: null,
     completed_actions: [],
     stage_notes: [],
-    state_events: [],
+    stage_events: [],
     correspondence: [],
     attachments: [],
     posting: null,

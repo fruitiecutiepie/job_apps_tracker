@@ -113,16 +113,16 @@ it('completes the primary tracker journey and persists it across reloads', async
   )
 
   expect(savedAfterEdit.applications).toHaveLength(20)
-  expect(smokeApplication?.state).toBe('offer')
+  expect(smokeApplication?.stage).toBe('offer')
   expect(smokeApplication?.source).toBe('Referral')
   expect(smokeApplication?.outcome).toBe('active')
-  expect(smokeApplication?.state_history.map((entry) => entry.state)).toEqual([
+  expect(smokeApplication?.stage_history.map((entry) => entry.stage)).toEqual([
     'applied',
     'recruiter_messaged',
     'offer',
   ])
   expect(smokeApplication?.stage_notes).toEqual([
-    expect.objectContaining({ state: 'offer', body: 'Confirm the review cycle' }),
+    expect.objectContaining({ stage: 'offer', body: 'Confirm the review cycle' }),
   ])
 
   firstRender.unmount()

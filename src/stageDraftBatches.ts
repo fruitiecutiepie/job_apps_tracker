@@ -1,6 +1,6 @@
 import { rebaseDraft } from './domain/mergeText'
 import { reviseApplicationPosting, updateApplicationStageNotes } from './domain/mutations'
-import type { StateId, TrackerDocument } from './domain/types'
+import type { StageId, TrackerDocument } from './domain/types'
 import type { StageNoteDraftBatch } from './StageNotesPanel'
 
 /**
@@ -22,18 +22,18 @@ import type { StageNoteDraftBatch } from './StageNotesPanel'
 export function saveStageNoteDraft(
   current: TrackerDocument,
   applicationId: string,
-  state: StateId,
+  stage: StageId,
   base: string,
   body: string,
   at: Date,
 ): TrackerDocument {
   const stored = current.applications
     .find((item) => item.id === applicationId)
-    ?.stage_notes.find((note) => note.state === state)?.body ?? ''
+    ?.stage_notes.find((note) => note.stage === stage)?.body ?? ''
   return updateApplicationStageNotes(
     current,
     applicationId,
-    [{ state, body: rebaseDraft(base, body, stored) }],
+    [{ stage, body: rebaseDraft(base, body, stored) }],
     at,
   )
 }
@@ -45,12 +45,12 @@ export function applyStageDraftBatches(
 ): TrackerDocument {
   return batches.reduce((document, batch) => {
     const application = document.applications.find((item) => item.id === batch.applicationId)
-    const drafts = batch.drafts.map(({ state, body, base }) => ({
-      state,
+    const drafts = batch.drafts.map(({ stage, body, base }) => ({
+      stage,
       body: rebaseDraft(
         base,
         body,
-        application?.stage_notes.find((note) => note.state === state)?.body ?? '',
+        application?.stage_notes.find((note) => note.stage === stage)?.body ?? '',
       ),
     }))
     const next = updateApplicationStageNotes(document, batch.applicationId, drafts, at)

@@ -4,10 +4,10 @@ import { useState } from 'react'
 import { describe, expect, it } from 'vitest'
 
 import { createDemoDocument } from './domain/demo'
-import type { Application, StateId } from './domain'
+import type { Application, StageId } from './domain'
 import { openingLayout } from './notesArrangement'
 import { StageNotesPanel, type StageNoteDraftBatch } from './StageNotesPanel'
-import { STATE_LABELS } from './domain'
+import { stageLabel } from './domain'
 
 /*
  * Another tab holding the same tracker writes the same note. A note autosaves its whole
@@ -23,14 +23,14 @@ function halcyonWithNote(): Application {
   const at = application.updated_at
   return {
     ...application,
-    stage_notes: [{ state: application.state, body: BASE, heard: [], created_at: at, updated_at: at }],
+    stage_notes: [{ stage: application.stage, body: BASE, heard: [], created_at: at, updated_at: at }],
   }
 }
 
-function withBody(application: Application, state: StateId, body: string): Application {
+function withBody(application: Application, stage: StageId, body: string): Application {
   return {
     ...application,
-    stage_notes: application.stage_notes.map((note) => (note.state === state ? { ...note, body } : note)),
+    stage_notes: application.stage_notes.map((note) => (note.stage === stage ? { ...note, body } : note)),
   }
 }
 
@@ -38,7 +38,7 @@ function mount() {
   const saved: StageNoteDraftBatch[][] = []
   let setApplications: (applications: Application[]) => void = () => {}
   const halcyon = halcyonWithNote()
-  const layout = openingLayout(halcyon, halcyon.state)
+  const layout = openingLayout(halcyon, halcyon.stage)
 
   function Harness() {
     const [applications, set] = useState([halcyon])
@@ -63,12 +63,12 @@ function mount() {
   }
 
   render(<Harness />)
-  const label = `Halcyon Maps · ${STATE_LABELS[halcyon.state]}`
+  const label = `Halcyon Maps · ${stageLabel(halcyon.stage)}`
   return {
     halcyon,
     label,
     saved,
-    elsewhere: (body: string) => act(() => setApplications([withBody(halcyon, halcyon.state, body)])),
+    elsewhere: (body: string) => act(() => setApplications([withBody(halcyon, halcyon.stage, body)])),
   }
 }
 

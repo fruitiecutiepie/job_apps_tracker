@@ -8,6 +8,7 @@ import {
   Columns3,
   Download,
   KanbanSquare,
+  ListOrdered,
   MoreHorizontal,
   NotebookPen,
   Plus,
@@ -20,7 +21,7 @@ import {
 import {
   OUTCOME_CONFIG,
   SOURCE_SUGGESTIONS,
-  STATE_CONFIG,
+  STAGE_CONFIG,
   DEMO_APPLICATION_COUNT,
   archiveApplication,
   archivableApplications,
@@ -29,8 +30,8 @@ import {
   outcomeAbandonsTask,
   outcomeFilterMatches,
   outcomesForFilter,
-  statesForFilter,
-  stateFilterMatches,
+  stagesForFilter,
+  stageFilterMatches,
   statusLabel,
   addApplication,
   clearLegacyLocalStorage,
@@ -57,6 +58,10 @@ import {
   subscribeTrackerChanges,
   updateTrackerDatabase,
   renameTracker,
+  setStages,
+  applyStages,
+  DEFAULT_STAGE_CONFIG,
+  stageConfigFrom,
   tryLoadLegacyLocalStorage,
   updateApplication,
   reviseApplicationStageCapture,
@@ -64,7 +69,7 @@ import {
   updateApplicationPosting,
   updateApplicationRatings,
   updateApplicationCorrespondence,
-  updateApplicationStateEvents,
+  updateApplicationStageEvents,
   uploadAttachmentFile,
   deleteAttachmentFile,
   type Application,
@@ -76,9 +81,9 @@ import {
   type ArchiveFilter,
   type OutcomeFilter,
   type OutcomeId,
-  type StateEventDraft,
-  type StateFilter,
-  type StateId,
+  type StageEventDraft,
+  type StageFilter,
+  type StageId,
   type Status,
   type TrackerDocument,
 } from './domain'
@@ -93,11 +98,12 @@ import { TrackerSwitcher } from './TrackerSwitcher'
 import { navigation, NEW_TRACKER, trackerHref } from './backend/trackerAddress'
 import { useFileImport } from './useFileImport'
 import { DisclosureMenu } from './DisclosureMenu'
+import { StagesDialog } from './StagesDialog'
 import { ARCHIVE_BULK_NOTHING, archiveBulkConfirmation, archiveBulkLabel, archiveBulkNotice } from './archiveCopy'
 import { ThemeMenu } from './ThemeMenu'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
 import { RatingFields } from './RatingFields'
-import { StateHistory } from './StateHistory'
+import { StageHistory } from './StageHistory'
 import { CompensationFields } from './CompensationFields'
 import {
   compensationFromValues,
@@ -222,7 +228,7 @@ interface EditorValues {
   role: string
   url: string
   source: string
-  state: StateId
+  stage: StageId
   outcome: OutcomeId
   archived: boolean
   nextAction: string
@@ -247,14 +253,14 @@ interface AttachmentSavePlan {
 interface ApplicationEditorProps {
   application: Application | null
   /** A stage whose messages open, and scroll to, when the dialog does. */
-  messagesFor?: StateId
+  messagesFor?: StageId
   onClose: () => void
   onDelete?: () => void
   onOpenStageNotes?: (id: string) => void
   onSave: (
     values: EditorValues,
     attachmentPlan: AttachmentSavePlan,
-    invites: StateEventDraft[],
+    invites: StageEventDraft[],
     completedActions: CompletedActionDraft[],
     posting: PostingDraft | null,
     correspondence: CorrespondenceDraft[],
@@ -271,7 +277,7 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
     role: application?.role ?? '',
     url: application?.url ?? '',
     source: application?.source ?? '',
-    state: application?.state ?? 'applied',
+    stage: application?.stage ?? 'applied',
     outcome: application?.outcome ?? 'active',
     archived: application ? application.archived_at !== null : false,
     nextAction: application?.next_action ?? '',
@@ -474,9 +480,9 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
               */}
             <label className="field">
               <span>Stage</span>
-              <select onChange={(event) => update('state', event.target.value as StateId)} value={values.state}>
-                {STATE_CONFIG.map((state) => (
-                  <option key={state.id} value={state.id}>{state.label}</option>
+              <select onChange={(event) => update('stage', event.target.value as StageId)} value={values.stage}>
+                {STAGE_CONFIG.map((stage) => (
+                  <option key={stage.id} value={stage.id}>{stage.label}</option>
                 ))}
               </select>
             </label>
@@ -500,8 +506,8 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
                 <span>Archived — kept, but hidden from the current search</span>
               </label>
             )}
-            {/* The saved record, so a state picked but not yet saved is deliberately absent. */}
-            {application && <StateHistory history={application.state_history} />}
+            {/* The saved record, so a stage picked but not yet saved is deliberately absent. */}
+            {application && <StageHistory history={application.stage_history} />}
             <label className="field field--wide">
               <span>Deadline</span>
               <input
@@ -568,12 +574,12 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
               />
             </label>
             <InviteFields
-              defaultState={values.state}
+              defaultStage={values.stage}
               onChange={setInvites}
               rows={invites}
             />
             <CorrespondenceFields
-              defaultState={values.state}
+              defaultStage={values.stage}
               messagesFor={messagesFor}
               onChange={setCorrespondence}
               rows={correspondence}
@@ -694,13 +700,26 @@ export default function App() {
   // External editor saves arrive asynchronously, so they must read the newest document
   // rather than whichever one was current when their handler was created.
   const trackerRef = useRef<TrackerDocument | null>(null)
+  /*
+   * The open tracker's stages are module state that every label, column and filter reads,
+   * since few of those places have the document to hand. They are applied here, during
+   * render, because the components that read them render after this one in the same pass —
+   * an effect would leave the first render after a rename showing the old names.
+   */
+  const storedStages = tracker?.stages
+  const stages = useMemo(
+    () => (storedStages ? stageConfigFrom(storedStages) : DEFAULT_STAGE_CONFIG),
+    [storedStages],
+  )
+  applyStages(stages)
+  const [stagesOpen, setStagesOpen] = useState(false)
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
   const [activeView, setActiveView] = useState<ViewId>('kanban')
   /** Whether the prep notes workspace is up over that view. */
   const [notesOpen, setNotesOpen] = useState(false)
   const [search, setSearch] = useState('')
-  const [stateFilter, setStateFilter] = useState<StateFilter>('all')
+  const [stageFilter, setStageFilter] = useState<StageFilter>('all')
   const [idleFilter, setIdleFilter] = useState<IdleFilter>('all')
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>('all')
   const [archiveFilter, setArchiveFilter] = useState<ArchiveFilter>('current')
@@ -713,7 +732,7 @@ export default function App() {
    * looking at is the whole of the annoyance.
    */
   const [editor, setEditor] = useState<
-    { mode: 'add' } | { mode: 'edit'; id: string; messagesFor?: StateId } | null
+    { mode: 'add' } | { mode: 'edit'; id: string; messagesFor?: StageId } | null
   >(null)
   /**
    * The note a card or a row asked for, waiting to be opened into the prep notes view. The
@@ -1226,7 +1245,7 @@ export default function App() {
     const searchText = tracker?.indexes.search_text ?? {}
     return applications.filter((application) => {
       if (!archiveFilterMatches(archiveFilter, application.archived_at)) return false
-      if (!stateFilterMatches(stateFilter, application.state)) return false
+      if (!stageFilterMatches(stageFilter, application.stage)) return false
       if (!outcomeFilterMatches(outcomeFilter, application.outcome)) return false
       if (!idleFilterMatches(idleFilter, application, new Date(), statsSettings.quietDays)) return false
       if (companyFilter !== 'all' && application.company !== companyFilter) return false
@@ -1234,7 +1253,7 @@ export default function App() {
       if (!query) return true
       return searchText[application.id]?.includes(query) ?? false
     })
-  }, [archiveFilter, companyFilter, idleFilter, outcomeFilter, search, sourceFilter, stateFilter, statsSettings.quietDays, tracker?.applications, tracker?.indexes])
+  }, [archiveFilter, companyFilter, idleFilter, outcomeFilter, search, sourceFilter, stageFilter, statsSettings.quietDays, tracker?.applications, tracker?.indexes])
 
   /**
    * The roles of what is showing, one per line. Repeats are dropped: two applications to the
@@ -1308,38 +1327,38 @@ export default function App() {
    */
   const commitStageNote = async (
     applicationId: string,
-    state: StateId,
+    stage: StageId,
     body: string,
     base: string,
     message: string,
   ): Promise<string> => {
     let merged = body
     await commit((current) => {
-      const next = saveStageNoteDraft(current, applicationId, state, base, body, new Date())
+      const next = saveStageNoteDraft(current, applicationId, stage, base, body, new Date())
       merged = next.applications
         .find((item) => item.id === applicationId)
-        ?.stage_notes.find((note) => note.state === state)?.body ?? ''
+        ?.stage_notes.find((note) => note.stage === stage)?.body ?? ''
       return next
     }, message)
     return merged
   }
 
-  const captureStageLine = async (applicationId: string, state: StateId, line: string) => {
+  const captureStageLine = async (applicationId: string, stage: StageId, line: string) => {
     await commit(
-      (current) => updateApplicationStageCapture(current, applicationId, state, line, new Date()),
+      (current) => updateApplicationStageCapture(current, applicationId, stage, line, new Date()),
       'Note captured.',
     )
   }
 
   const reviseStageLine = async (
     applicationId: string,
-    state: StateId,
+    stage: StageId,
     entryId: string,
     revised: string,
   ) => {
     await commit(
       (current) =>
-        reviseApplicationStageCapture(current, applicationId, state, entryId, revised, new Date()),
+        reviseApplicationStageCapture(current, applicationId, stage, entryId, revised, new Date()),
       revised.trim() ? 'Note updated.' : 'Note removed.',
     )
   }
@@ -1365,7 +1384,7 @@ export default function App() {
       ?? (activeElement instanceof HTMLElement && activeElement !== document.body ? activeElement : null)
   }
 
-  const openApplication = (id: string, messagesFor?: StateId) => {
+  const openApplication = (id: string, messagesFor?: StageId) => {
     rememberDialogOpener()
     setEditor({ mode: 'edit', id, messagesFor })
   }
@@ -1396,13 +1415,13 @@ export default function App() {
   }
 
   /**
-   * A state names a note other than the current stage's: the Compare view opens the stage it
+   * A stage names a note other than the current stage's: the Compare view opens the stage it
    * is showing, which is often not where the application is now.
    */
-  const openStageNotes = (id: string, state?: StateId) => {
+  const openStageNotes = (id: string, stage?: StageId) => {
     const application = tracker.applications.find((candidate) => candidate.id === id)
     if (!application) return
-    openNotesAt(stageRef(id, state ?? application.state))
+    openNotesAt(stageRef(id, stage ?? application.stage))
   }
 
   /**
@@ -1480,7 +1499,7 @@ export default function App() {
   const move = (id: string, change: Partial<Status>) => {
     const moving = tracker.applications.find((application) => application.id === id)
     if (!moving) return
-    const target: Status = { state: change.state ?? moving.state, outcome: change.outcome ?? moving.outcome }
+    const target: Status = { stage: change.stage ?? moving.stage, outcome: change.outcome ?? moving.outcome }
     // A rejection or a withdrawal drops an outstanding next action, so the notice says so
     // rather than leaving the task to vanish quietly off the plan.
     const clearing =
@@ -1525,8 +1544,8 @@ export default function App() {
       // Every application, not the filtered set: see `PrepNotesView`.
       applications={tracker.applications}
       onCapture={captureStageLine}
-      onExternalChange={(applicationId: string, state: StateId, body: string, base: string) =>
-        commitStageNote(applicationId, state, body, base, 'Prep notes saved from your editor.')}
+      onExternalChange={(applicationId: string, stage: StageId, body: string, base: string) =>
+        commitStageNote(applicationId, stage, body, base, 'Prep notes saved from your editor.')}
       // The editor opens over the workspace rather than instead of it: the arrangement,
       // the drafts and the captures are all the panel's own state, and unmounting it to
       // change a company name would throw the lot away.
@@ -1565,13 +1584,13 @@ export default function App() {
           <CompareNotesView
             applications={filteredApplications}
             onOpenStageNotes={openStageNotes}
-            onSaveStageNote={async (id, state, body, base) => {
+            onSaveStageNote={async (id, stage, body, base) => {
               let merged = body
               await commit((current) => {
-                const next = saveStageNoteDraft(current, id, state, base, body, new Date())
+                const next = saveStageNoteDraft(current, id, stage, base, body, new Date())
                 merged = next.applications
                   .find((item) => item.id === id)
-                  ?.stage_notes.find((note) => note.state === state)?.body ?? ''
+                  ?.stage_notes.find((note) => note.stage === stage)?.body ?? ''
                 return next
               })
               return merged
@@ -1585,7 +1604,7 @@ export default function App() {
             onArchive={archive}
             onMove={move}
             visibleOutcomes={outcomesForFilter(outcomeFilter)}
-            visibleStates={statesForFilter(stateFilter)}
+            visibleStages={stagesForFilter(stageFilter)}
           />
         )
     }
@@ -1740,6 +1759,13 @@ export default function App() {
               <Archive aria-hidden="true" size={16} />
               {archiveBulkLabel(archivable)}
             </button>
+            <button
+              className="actions-menu__item"
+              onClick={() => setStagesOpen(true)}
+              type="button"
+            >
+              <ListOrdered aria-hidden="true" size={16} /> Stages
+            </button>
             {isDemoTrackerProfile() && (
               <button
                 className="actions-menu__item"
@@ -1749,7 +1775,7 @@ export default function App() {
                       const next = await resetTrackerDatabase()
                       setTracker(next)
                       setSearch('')
-                      setStateFilter('all')
+                      setStageFilter('all')
                       setOutcomeFilter('all')
                       setArchiveFilter('current')
                       setCompanyFilter('all')
@@ -1876,15 +1902,15 @@ export default function App() {
             <div className="context-bar__filters">
               {/*
                 * Stage and outcome are two selects because they are two questions, and
-                * every pairing of them is one somebody asks: "Interview 1, rejected".
+                * every pairing of them is one somebody asks: "Round 1, rejected".
                 */}
               <select
                 aria-label="Filter by stage"
-                onChange={(event) => setStateFilter(event.target.value as StateFilter)}
-                value={stateFilter}
+                onChange={(event) => setStageFilter(event.target.value as StageFilter)}
+                value={stageFilter}
               >
                 <option value="all">All stages</option>
-                {STATE_CONFIG.map((state) => <option key={state.id} value={state.id}>{state.label}</option>)}
+                {STAGE_CONFIG.map((stage) => <option key={stage.id} value={stage.id}>{stage.label}</option>)}
               </select>
               <select
                 aria-label="Filter by outcome"
@@ -1911,10 +1937,10 @@ export default function App() {
                 <option value="all">Current and archived</option>
               </select>
               {/*
-                * Activity gets its own control rather than joining the state select's
+                * Activity gets its own control rather than joining the stage select's
                 * groups. The outcome groups could share that control because they answer
-                * the same question a single state does; idleness is orthogonal to stage,
-                * so "Interview 1 and idle" is a combination worth expressing and one
+                * the same question a single stage does; idleness is orthogonal to stage,
+                * so "Round 1 and idle" is a combination worth expressing and one
                 * select cannot hold both halves of it.
                 */}
               <select
@@ -1968,10 +1994,10 @@ export default function App() {
                 */}
               <button
                   className="button button--quiet"
-                  disabled={!(search || stateFilter !== 'all' || outcomeFilter !== 'all' || archiveFilter !== 'current' || idleFilter !== 'all' || companyFilter !== 'all' || sourceFilter !== 'all')}
+                  disabled={!(search || stageFilter !== 'all' || outcomeFilter !== 'all' || archiveFilter !== 'current' || idleFilter !== 'all' || companyFilter !== 'all' || sourceFilter !== 'all')}
                   onClick={() => {
                     setSearch('')
-                    setStateFilter('all')
+                    setStageFilter('all')
                     setOutcomeFilter('all')
                     setArchiveFilter('current')
                     setIdleFilter('all')
@@ -1996,6 +2022,18 @@ export default function App() {
             onAdd={(opener) => openNewApplication(opener)}
             onImport={() => importInputRef.current?.click()}
             showDemoLink={!isDemoTrackerProfile()}
+          />
+        )}
+
+        {stagesOpen && tracker && (
+          <StagesDialog
+            tracker={tracker}
+            onClose={() => setStagesOpen(false)}
+            onSave={(next) => {
+              setStagesOpen(false)
+              void commit((current) => setStages(current, next), 'Stages saved.')
+            }}
+            stages={stages}
           />
         )}
 
@@ -2050,7 +2088,7 @@ export default function App() {
               role: values.role || null,
               url: values.url || null,
               source: values.source || null,
-              state: values.state,
+              stage: values.stage,
               outcome: values.outcome,
               next_action: values.nextAction || null,
               next_action_at: values.nextAction.trim() ? fromDateTimeInput(values.nextActionAt) : null,
@@ -2070,7 +2108,7 @@ export default function App() {
                 if (attachments.length > 0) {
                   next = updateApplication(next, id, { attachments }, now)
                 }
-                next = updateApplicationStateEvents(next, id, invites, now)
+                next = updateApplicationStageEvents(next, id, invites, now)
                 next = updateApplicationCorrespondence(next, id, correspondence, now)
                 next = updateApplicationCompletedActions(next, id, completedActions, now)
                 next = updateApplicationPosting(next, id, posting, now)
@@ -2086,7 +2124,7 @@ export default function App() {
                 invites,
                 completedActions,
                 posting,
-                state: values.state,
+                stage: values.stage,
                 outcome: values.outcome,
                 archived: values.archived,
                 nextActionAt: values.nextActionAt,

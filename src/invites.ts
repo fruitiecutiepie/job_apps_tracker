@@ -3,15 +3,15 @@
  * an editable row, how rows become drafts the domain can take, and how an
  * imported `.ics` folds into the rows already on screen.
  */
-import { createUuidV7, stateLabel } from './domain'
-import type { Application, StateEventDraft, StateId } from './domain'
+import { createUuidV7, stageLabel } from './domain'
+import type { Application, StageEventDraft, StageId } from './domain'
 import type { IcsEvent } from './calendar'
 import { fromDateTimeInput, toDateTimeInput } from './dateInput'
 
 /** One invite as the editor holds it: local wall-time strings, not timestamps. */
 export interface InviteRow {
   id: string
-  state: StateId
+  stage: StageId
   summary: string
   startsAt: string
   endsAt: string
@@ -23,9 +23,9 @@ export interface InviteRow {
 }
 
 export function inviteRowsFor(application: Application | null): InviteRow[] {
-  return (application?.state_events ?? []).map((event) => ({
+  return (application?.stage_events ?? []).map((event) => ({
     id: event.id,
-    state: event.state,
+    stage: event.stage,
     summary: event.summary,
     startsAt: toDateTimeInput(event.starts_at),
     endsAt: toDateTimeInput(event.ends_at),
@@ -37,12 +37,12 @@ export function inviteRowsFor(application: Application | null): InviteRow[] {
   }))
 }
 
-export function inviteDrafts(rows: InviteRow[]): StateEventDraft[] {
+export function inviteDrafts(rows: InviteRow[]): StageEventDraft[] {
   return rows
     .filter((row) => row.summary.trim() || row.startsAt)
     .map((row) => ({
       id: row.id,
-      state: row.state,
+      stage: row.stage,
       summary: row.summary,
       starts_at: fromDateTimeInput(row.startsAt) ?? '',
       ends_at: fromDateTimeInput(row.endsAt),
@@ -72,11 +72,11 @@ export function firstInviteProblem(rows: InviteRow[]): string | null {
   return null
 }
 
-export function rowFromIcsEvent(event: IcsEvent, state: StateId): InviteRow {
+export function rowFromIcsEvent(event: IcsEvent, stage: StageId): InviteRow {
   return {
     id: createUuidV7(),
-    state,
-    summary: event.summary ?? stateLabel(state),
+    stage,
+    summary: event.summary ?? stageLabel(stage),
     startsAt: toDateTimeInput(event.starts_at),
     endsAt: toDateTimeInput(event.ends_at),
     location: event.location ?? '',
@@ -90,13 +90,13 @@ export function rowFromIcsEvent(event: IcsEvent, state: StateId): InviteRow {
 /**
  * Folds the events of an `.ics` file into the rows on screen. An invite whose
  * calendar UID is already here replaces that row and keeps the stage it was
- * filed under, matching what `addStateEvent` does on save: a reschedule changes
+ * filed under, matching what `addStageEvent` does on save: a reschedule changes
  * the time, not the reader's decision about which stage it belongs to.
  */
 export function mergeIcsEvents(
   rows: InviteRow[],
   events: IcsEvent[],
-  defaultState: StateId,
+  defaultStage: StageId,
 ): { rows: InviteRow[]; added: number; replaced: number; stale: number } {
   const next = [...rows]
   let added = 0
@@ -107,7 +107,7 @@ export function mergeIcsEvents(
     if (!event.starts_at) continue
     const existingIndex = event.uid ? next.findIndex((row) => row.icsUid === event.uid) : -1
     if (existingIndex < 0) {
-      next.push(rowFromIcsEvent(event, defaultState))
+      next.push(rowFromIcsEvent(event, defaultStage))
       added += 1
       continue
     }
@@ -118,7 +118,7 @@ export function mergeIcsEvents(
       continue
     }
     next[existingIndex] = {
-      ...rowFromIcsEvent(event, existing.state),
+      ...rowFromIcsEvent(event, existing.stage),
       id: existing.id,
       summary: event.summary ?? existing.summary,
     }

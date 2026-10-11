@@ -11,7 +11,7 @@ import {
   resolveEditorTarget,
   stageNoteEditFilename,
 } from '../src/domain/noteEditingPaths'
-import { isStateId } from '../src/domain/states'
+import { isStageId } from '../src/domain/stages'
 
 export function editingRootDir(dataDir: string): string {
   return path.join(dataDir, 'editing')
@@ -21,12 +21,12 @@ export function editingRootDir(dataDir: string): string {
 export function resolveStageNoteEditPath(
   dataDir: string,
   applicationId: string,
-  state: string,
+  stage: string,
 ): string | null {
-  if (!isSafeAttachmentId(applicationId) || !isStateId(state)) return null
+  if (!isSafeAttachmentId(applicationId) || !isStageId(stage)) return null
 
   const rootDir = path.resolve(editingRootDir(dataDir))
-  const filePath = path.resolve(rootDir, applicationId, stageNoteEditFilename(state))
+  const filePath = path.resolve(rootDir, applicationId, stageNoteEditFilename(stage))
   if (!filePath.startsWith(`${rootDir}${path.sep}`)) return null
   return filePath
 }

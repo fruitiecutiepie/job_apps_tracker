@@ -7,7 +7,7 @@ import type { CorrespondenceDirection } from './types'
  * prep note. A third direction would reopen the misuse this record was added to end.
  *
  * This is the only source of the ids, their labels and their order, the way `RATING_CONFIG`
- * is for dimensions and `STATE_CONFIG` is for states.
+ * is for dimensions and `STAGE_CONFIG` is for stages.
  */
 export const CORRESPONDENCE_CONFIG = [
   { id: 'received', label: 'Received' },

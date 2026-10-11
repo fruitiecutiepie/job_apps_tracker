@@ -1,7 +1,7 @@
 import { COMPENSATION_STAGE_IDS, emptyCompensation } from './compensation'
 import { prepareTrackerDatabase } from './database'
 import { RATING_IDS } from './ratings'
-import { OUTCOME_IDS, STATE_IDS } from './states'
+import { DEFAULT_STAGE_CONFIG, OUTCOME_IDS } from './stages'
 import type {
   Application,
   CompletedAction,
@@ -12,10 +12,10 @@ import type {
   Rating,
   RatingDimensionId,
   StageNote,
-  StateEvent,
-  StateHistoryEntry,
+  StageEvent,
+  StageHistoryEntry,
   OutcomeId,
-  StateId,
+  StageId,
   Status,
   TrackerDocument,
 } from './types'
@@ -24,18 +24,18 @@ interface DemoSeed {
   company: string
   role: string | null
   /** The stage it is at, or ended at. */
-  state: StateId
+  stage: StageId
   /** How that stage went; absent is still running. Prior stages are always active. */
   outcome?: OutcomeId
   /** Put away this many days before the reference. */
   archivedDaysAgo?: number
   createdDaysAgo: number
   updatedDaysAgo: number
-  priorStates?: StateId[]
+  priorStages?: StageId[]
   nextAction?: string
   nextActionDaysFromNow?: number
   deadlineDaysFromNow?: number
-  /** Edits updated_at without moving state, so silence and last-touched diverge. */
+  /** Edits updated_at without moving stage, so silence and last-touched diverge. */
   editedDaysAgo?: number
   notes?: string
   /** Next actions already carried out, as [days before the reference, what was done]. */
@@ -48,10 +48,10 @@ interface DemoSeed {
   posting?: string
   /** Where the posting was read. Only meaningful alongside `posting`. */
   postingUrl?: string
-  stageNotes?: Partial<Record<StateId, string>>
+  stageNotes?: Partial<Record<StageId, string>>
   /** Lines captured during a stage, in the order they were said. */
-  stageHeard?: Partial<Record<StateId, readonly string[]>>
-  stateEvents?: readonly DemoEventSeed[]
+  stageHeard?: Partial<Record<StageId, readonly string[]>>
+  stageEvents?: readonly DemoEventSeed[]
   /** Messages exchanged, as records logged after the fact. */
   correspondence?: readonly DemoCorrespondenceSeed[]
 }
@@ -68,7 +68,7 @@ interface DemoCompensationSeed {
 }
 
 interface DemoCorrespondenceSeed {
-  state: StateId
+  stage: StageId
   direction: CorrespondenceDirection
   /** What it was about. Omit for a message that arrived without one, like a LinkedIn note. */
   subject?: string
@@ -81,7 +81,7 @@ interface DemoCorrespondenceSeed {
 }
 
 interface DemoEventSeed {
-  state: StateId
+  stage: StageId
   summary: string
   daysFromNow: number
   hour: number
@@ -151,25 +151,25 @@ const CINDER_REJECTION = [
 ].join('\n')
 
 const DEMO_SEEDS: readonly DemoSeed[] = [
-  { company: 'Northstar Labs', role: 'Staff Product Designer', state: 'headhunted', createdDaysAgo: 34, updatedDaysAgo: 34, compensation: { currency: 'AUD', expected: 190_000 }, editedDaysAgo: 1, notes: 'Introduced through a former teammate. Tidied these notes yesterday, but the conversation itself has not moved since the first message.', source: 'Referral' },
-  { company: 'Juniper Works', role: 'Frontend Engineer', state: 'headhunted', outcome: 'closed', createdDaysAgo: 47, updatedDaysAgo: 31, priorStates: ['headhunted'], nextAction: 'Check the careers page next quarter', notes: 'Hiring is paused, but the team asked to stay in touch.', source: 'Company site' },
-  { company: 'Marble & Finch', role: 'Product Manager', posting: '## Product Manager\n\nMarble & Finch is a small studio building tools for independent booksellers.\n\n### What you will do\n\n- Own the roadmap for the inventory product\n- Work directly with booksellers, weekly\n- Write the specs yourself\n\n### What we are looking for\n\n- Five years in product, at least two on a tool people use daily\n- Comfortable reading a query and a stack trace\n- Based in Melbourne or willing to overlap AEST', postingUrl: 'https://example.com/jobs/3', state: 'applied', createdDaysAgo: 9, updatedDaysAgo: 9, compensation: { currency: 'AUD', advertised: [110_000, 125_000] }, nextAction: 'Follow up on the application', nextActionDaysFromNow: -2, deadlineDaysFromNow: -1, notes: 'Applied with a tailored portfolio.', source: 'LinkedIn' },
-  { company: 'Copperline Health', role: 'Data Analyst', state: 'applied', outcome: 'rejected', archivedDaysAgo: 30, createdDaysAgo: 39, updatedDaysAgo: 38, priorStates: ['applied'], notes: 'Automated rejection arrived the following morning.', source: 'Job board' },
-  { company: 'Paper Kite', role: 'Senior UX Researcher', posting: '# Senior UX Researcher\n\nPasted from the recruiter\'s email, so there is no link to go back to.\n\nWe are looking for a researcher to lead discovery across two product teams. You will run the studies end to end: recruiting, moderating, analysis, and the readout that changes what gets built.\n\nMixed methods. Some survey work. A lot of talking to people who do not use our product yet.', state: 'recruiter_messaged', createdDaysAgo: 7, updatedDaysAgo: 3, compensation: { currency: 'AUD', advertised: [100_000, 115_000], expected: 130_000 }, priorStates: ['applied'], nextAction: 'Send availability to the recruiter', nextActionDaysFromNow: -1, notes: 'Recruiter asked for three interview windows.', source: 'Recruiter' },
-  { company: 'Tidal Grove', role: 'Platform Engineer', state: 'recruiter_messaged', outcome: 'rejected', createdDaysAgo: 26, updatedDaysAgo: 17, priorStates: ['applied', 'recruiter_messaged'], notes: 'Role requires a different on-call timezone.', source: 'LinkedIn' },
-  { company: 'Orbit & Oak', role: 'Operations Lead', state: 'online_assessment', createdDaysAgo: 12, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [120_000, 140_000], expected: 135_000 }, priorStates: ['applied', 'recruiter_messaged'], nextAction: 'Complete the scenario assessment', nextActionDaysFromNow: 3, deadlineDaysFromNow: 4, notes: 'Assessment should take about 75 minutes.', source: 'Company site' },
-  { company: 'Bright Harbor', role: 'Software Engineer', state: 'online_assessment', outcome: 'rejected', createdDaysAgo: 44, updatedDaysAgo: 29, priorStates: ['applied', 'online_assessment'], notes: 'Passed most cases; concurrency section was incomplete.' },
-  { company: 'Atlas Thread', role: 'Design Systems Lead', state: 'recruiter_interview', createdDaysAgo: 18, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [160_000, 185_000], expected: 175_000 }, ratings: { work: 4, growth: 4, people: null }, priorStates: ['applied', 'recruiter_messaged'], nextAction: 'Prepare examples of system governance', nextActionDaysFromNow: 1, completedActions: [[9, 'Reply to the recruiter'], [4, 'Send the portfolio link']], notes: 'Thirty-minute video call with the internal recruiter.', source: 'Recruiter', correspondence: [{ state: 'recruiter_messaged', direction: 'received', daysAgo: 12, hour: 9, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Thanks for applying — I would love to set up a half-hour call this week.\n\nCould you send me two or three windows that suit you?' }, { state: 'recruiter_messaged', direction: 'sent', daysAgo: 11, hour: 18, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Wednesday or Thursday after 4pm both work, and Friday morning is open too.' }, { state: 'recruiter_messaged', direction: 'received', daysAgo: 11, hour: 20, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Friday 11:30 it is. Calendar invite to follow.' }, { state: 'recruiter_interview', direction: 'received', daysAgo: 3, hour: 14, subject: 'After Thursday — next steps', channel: 'Email', who: 'Dana Okafor', body: ATLAS_PANEL_EMAIL }, { state: 'recruiter_interview', direction: 'sent', daysAgo: 2, hour: 9, subject: 'After Thursday — next steps', channel: 'Email', who: 'Dana Okafor', body: 'Understood on all three — I will bring the governance story. See you Friday.' }, { state: 'recruiter_interview', direction: 'received', daysAgo: 2, hour: 11, subject: 'Panel logistics — Friday 11:30', channel: 'Email', who: 'Sam Whitfield', body: 'Hi Audrey — I look after scheduling for the design team.\n\nFriday 11:30 is confirmed. The joining link is on the invite, and Ravi may be five minutes late coming out of another call.' }, { state: 'recruiter_interview', direction: 'sent', daysAgo: 2, hour: 12, subject: 'Panel logistics — Friday 11:30', channel: 'Email', who: 'Sam Whitfield', body: 'Thanks Sam — noted, and no problem on Ravi.' }], stateEvents: [{ state: 'recruiter_interview', summary: 'Recruiter interview with Dana', daysFromNow: 1, hour: 11, minutes: 30, location: 'Level 4, 220 Example Street', url: 'https://example.com/meet/atlas-thread' }], stageNotes: { recruiter_messaged: '- Recruiter is **Dana**\n- Asked for salary expectations early — answer with the band, not a number', recruiter_interview: '## Story to lead with\n\n- Consolidating four component libraries into one system\n  - Cut component duplication by half\n  - Adopted by six product teams in a quarter\n\n## Questions to ask\n\n- How is design system work resourced between product teams?\n- What does the loop after this look like?' } },
-  { company: 'Cinder Studio', role: 'Product Designer', state: 'recruiter_interview', outcome: 'rejected', createdDaysAgo: 35, updatedDaysAgo: 20, priorStates: ['applied', 'recruiter_messaged', 'recruiter_interview'], notes: 'Team selected someone with deeper enterprise experience.', source: 'LinkedIn', correspondence: [{ state: 'recruiter_interview', direction: 'received', daysAgo: 21, hour: 16, subject: 'Product Designer — update', who: 'Priya Raman', body: CINDER_REJECTION }] },
-  { company: 'Kindred Cloud', role: 'Developer Advocate', state: 'take_home_assessment', createdDaysAgo: 16, updatedDaysAgo: 1, compensation: { currency: 'USD', advertised: [90_000, 110_000], expected: 105_000 }, priorStates: ['applied', 'recruiter_interview'], nextAction: 'Submit the API tutorial', nextActionDaysFromNow: 9, deadlineDaysFromNow: 12, notes: 'Keep the written exercise under 1,500 words. The window is generous, so this is not pressing yet.', source: 'Company site', stageNotes: { take_home_assessment: '## Brief\n\nWrite an API tutorial under **1,500 words**.\n\n## Outline\n\n1. Problem\n2. Quickstart\n3. One worked example\n4. Troubleshooting\n\nReuse the webhook walkthrough structure that tested well before.' } },
-  { company: 'Willow Finance', role: 'Risk Product Manager', state: 'take_home_assessment', outcome: 'rejected', createdDaysAgo: 51, updatedDaysAgo: 24, priorStates: ['applied', 'recruiter_interview', 'take_home_assessment'], notes: 'Good feedback on structure; domain depth was the deciding factor.', source: 'Job board' },
-  { company: 'Echo Robotics', role: 'Human Factors Researcher', state: 'interview_1', createdDaysAgo: 21, updatedDaysAgo: 4, priorStates: ['applied', 'recruiter_interview'], notes: 'The panel went ahead four days ago. Waiting on feedback with nothing booked in.', source: 'Referral', stageNotes: { interview_1: '## Panel\n\n- Design\n- Engineering\n- Research\n\n## Case study\n\n- The teleoperation study\n  - 12 participants across two rounds\n  - Shipped three safety changes\n  - Task completion rose from **61% to 88%**\n\n## Questions to ask\n\n- Ask each panellist what they would want researched first' } },
-  { company: 'Mosslight Energy', role: 'Senior Data Scientist', state: 'interview_1', outcome: 'rejected', createdDaysAgo: 62, updatedDaysAgo: 34, priorStates: ['applied', 'online_assessment', 'recruiter_interview', 'interview_1'], notes: 'Technical discussion went well; another candidate had energy-market experience.', source: 'LinkedIn' },
-  { company: 'Halcyon Maps', role: 'Engineering Manager', state: 'interview_2', createdDaysAgo: 25, updatedDaysAgo: 1, compensation: { currency: 'AUD', advertised: [180_000, 210_000], expected: 200_000, offered: 215_000 }, ratings: { work: 5, growth: 4, people: 4, company: 4 }, priorStates: ['applied', 'recruiter_interview', 'interview_1'], nextAction: 'Join the leadership interview', nextActionDaysFromNow: 0, notes: 'Final conversation with the VP of Engineering.', source: 'Recruiter', correspondence: [{ state: 'interview_2', direction: 'received', daysAgo: 4, hour: 10, subject: 'Leadership interview — Thursday', channel: 'Email', who: 'Rosa Lindqvist', body: 'Hi Audrey — last one. An hour with Nadia, our VP of Engineering.\n\nShe will want to talk about how you grow senior engineers and where you hold the hiring bar. Nothing to prepare.' }, { state: 'interview_2', direction: 'sent', daysAgo: 4, hour: 19, subject: 'Leadership interview — Thursday', channel: 'Email', who: 'Rosa Lindqvist', body: 'Thanks Rosa — looking forward to it.' }, { state: 'interview_2', direction: 'received', daysAgo: 2, hour: 8, channel: 'LinkedIn', body: 'Moving the leadership interview to 3pm, sorry for the short notice.' }], stateEvents: [{ state: 'interview_1', summary: 'Interview 1 — hiring manager', daysFromNow: -6, hour: 10, minutes: 60, cancelled: true }, { state: 'interview_2', summary: 'Leadership interview with the VP of Engineering', daysFromNow: 0, hour: 15, minutes: 45, url: 'https://example.com/meet/halcyon-maps' }], stageNotes: { interview_1: 'Went well. They pushed hard on incident response — reuse the on-call rotation rebuild story.', interview_2: 'Final conversation with the VP of Engineering.\n\n## Leadership themes\n\n- Growing seniors into leads\n  - The two promotions I sponsored last year\n- Cutting cycle time\n  - Trunk-based release change, two weeks to two days\n- Where I hold the hiring bar\n\n## Questions to ask\n\n- How is platform work prioritised against roadmap commitments?\n- What does the first 90 days look like?', offer: 'Before answering, confirm:\n\n- The level\n  - They hinted at Staff, the ad said Senior\n- The equity refresh policy\n- Remote expectations\n\n> From the ad: "occasional travel to the London office" — pin down what occasional means.' }, stageHeard: { interview_2: ['Team is 40 engineers across four squads', 'Platform work gets a fixed 20% of each quarter', 'Decision comes back by the end of next week'] } },
-  { company: 'Fern & Field', role: 'Brand Director', state: 'interview_2', outcome: 'rejected', createdDaysAgo: 73, updatedDaysAgo: 41, priorStates: ['headhunted', 'recruiter_interview', 'interview_1', 'interview_2'], nextAction: 'Thank the hiring manager and stay connected', notes: 'A thoughtful process and useful portfolio feedback.', source: 'Referral' },
-  { company: 'Lumen Pantry', role: 'Head of Growth', state: 'offer', createdDaysAgo: 33, updatedDaysAgo: 1, compensation: { currency: 'AUD', advertised: [230_000, 260_000], expected: 250_000, offered: 230_000 }, ratings: { work: 5, growth: 5, people: 1, company: 5 }, priorStates: ['applied', 'recruiter_interview', 'interview_1', 'interview_2'], nextAction: 'Review compensation and equity terms', notes: 'Written offer received. No decision date given yet, so the review is not booked in.', source: 'Company site', correspondence: [{ state: 'offer', direction: 'received', daysAgo: 6, hour: 9, subject: 'Offer — Head of Growth', channel: 'Email', who: 'Marta Oyelaran', body: LUMEN_OFFER }, { state: 'offer', direction: 'sent', daysAgo: 4, hour: 21, subject: 'Offer — Head of Growth', channel: 'Email', who: 'Marta Oyelaran', body: 'Thank you — this reads well and I want to say yes.\n\nBase is the one I would ask you to look at. Could we get to 250? I am happy to leave equity where it is.' }, { state: 'offer', direction: 'received', daysAgo: 1, hour: 15, subject: 'Offer — Head of Growth', channel: 'Email', who: 'Marta Oyelaran', body: 'I can do 242 and bring the first review forward to four months. That is the end of what I have. Let me know by Friday?' }], stageNotes: { offer: '## Where the offer stands\n\n- Base is **8% below** target\n- Equity is above target\n- Ask for the base to move first\n\n## Confirm before accepting\n\n- Review cycle\n- Start date flexibility\n- Learning budget' } },
-  { company: 'Redwood Relay', role: 'Principal Engineer', state: 'offer', outcome: 'withdrawn', createdDaysAgo: 88, updatedDaysAgo: 46, priorStates: ['headhunted', 'recruiter_interview', 'interview_1', 'interview_2', 'offer'], notes: 'Declined after the location policy changed.', source: 'Recruiter' },
-  { company: 'Saffron Systems', role: 'Product Operations Manager', state: 'accepted', createdDaysAgo: 58, updatedDaysAgo: 6, priorStates: ['applied', 'recruiter_messaged', 'recruiter_interview', 'interview_1', 'interview_2', 'offer'], nextAction: 'Prepare questions for onboarding', completedActions: [[3, 'Sign and return the contract']], notes: 'Start date confirmed. Background check complete.', source: 'LinkedIn' },
+  { company: 'Northstar Labs', role: 'Staff Product Designer', stage: 'headhunted', createdDaysAgo: 34, updatedDaysAgo: 34, compensation: { currency: 'AUD', expected: 190_000 }, editedDaysAgo: 1, notes: 'Introduced through a former teammate. Tidied these notes yesterday, but the conversation itself has not moved since the first message.', source: 'Referral' },
+  { company: 'Juniper Works', role: 'Frontend Engineer', stage: 'headhunted', outcome: 'closed', createdDaysAgo: 47, updatedDaysAgo: 31, priorStages: ['headhunted'], nextAction: 'Check the careers page next quarter', notes: 'Hiring is paused, but the team asked to stay in touch.', source: 'Company site' },
+  { company: 'Marble & Finch', role: 'Product Manager', posting: '## Product Manager\n\nMarble & Finch is a small studio building tools for independent booksellers.\n\n### What you will do\n\n- Own the roadmap for the inventory product\n- Work directly with booksellers, weekly\n- Write the specs yourself\n\n### What we are looking for\n\n- Five years in product, at least two on a tool people use daily\n- Comfortable reading a query and a stack trace\n- Based in Melbourne or willing to overlap AEST', postingUrl: 'https://example.com/jobs/3', stage: 'applied', createdDaysAgo: 9, updatedDaysAgo: 9, compensation: { currency: 'AUD', advertised: [110_000, 125_000] }, nextAction: 'Follow up on the application', nextActionDaysFromNow: -2, deadlineDaysFromNow: -1, notes: 'Applied with a tailored portfolio.', source: 'LinkedIn' },
+  { company: 'Copperline Health', role: 'Data Analyst', stage: 'applied', outcome: 'rejected', archivedDaysAgo: 30, createdDaysAgo: 39, updatedDaysAgo: 38, priorStages: ['applied'], notes: 'Automated rejection arrived the following morning.', source: 'Job board' },
+  { company: 'Paper Kite', role: 'Senior UX Researcher', posting: '# Senior UX Researcher\n\nPasted from the recruiter\'s email, so there is no link to go back to.\n\nWe are looking for a researcher to lead discovery across two product teams. You will run the studies end to end: recruiting, moderating, analysis, and the readout that changes what gets built.\n\nMixed methods. Some survey work. A lot of talking to people who do not use our product yet.', stage: 'recruiter_messaged', createdDaysAgo: 7, updatedDaysAgo: 3, compensation: { currency: 'AUD', advertised: [100_000, 115_000], expected: 130_000 }, priorStages: ['applied'], nextAction: 'Send availability to the recruiter', nextActionDaysFromNow: -1, notes: 'Recruiter asked for three interview windows.', source: 'Recruiter' },
+  { company: 'Tidal Grove', role: 'Platform Engineer', stage: 'recruiter_messaged', outcome: 'rejected', createdDaysAgo: 26, updatedDaysAgo: 17, priorStages: ['applied', 'recruiter_messaged'], notes: 'Role requires a different on-call timezone.', source: 'LinkedIn' },
+  { company: 'Orbit & Oak', role: 'Operations Lead', stage: 'online_assessment', createdDaysAgo: 12, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [120_000, 140_000], expected: 135_000 }, priorStages: ['applied', 'recruiter_messaged'], nextAction: 'Complete the scenario assessment', nextActionDaysFromNow: 3, deadlineDaysFromNow: 4, notes: 'Assessment should take about 75 minutes.', source: 'Company site' },
+  { company: 'Bright Harbor', role: 'Software Engineer', stage: 'online_assessment', outcome: 'rejected', createdDaysAgo: 44, updatedDaysAgo: 29, priorStages: ['applied', 'online_assessment'], notes: 'Passed most cases; concurrency section was incomplete.' },
+  { company: 'Atlas Thread', role: 'Design Systems Lead', stage: 'screening', createdDaysAgo: 18, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [160_000, 185_000], expected: 175_000 }, ratings: { work: 4, growth: 4, people: null }, priorStages: ['applied', 'recruiter_messaged'], nextAction: 'Prepare examples of system governance', nextActionDaysFromNow: 1, completedActions: [[9, 'Reply to the recruiter'], [4, 'Send the portfolio link']], notes: 'Thirty-minute video call with the internal recruiter.', source: 'Recruiter', correspondence: [{ stage: 'recruiter_messaged', direction: 'received', daysAgo: 12, hour: 9, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Thanks for applying — I would love to set up a half-hour call this week.\n\nCould you send me two or three windows that suit you?' }, { stage: 'recruiter_messaged', direction: 'sent', daysAgo: 11, hour: 18, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Wednesday or Thursday after 4pm both work, and Friday morning is open too.' }, { stage: 'recruiter_messaged', direction: 'received', daysAgo: 11, hour: 20, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Friday 11:30 it is. Calendar invite to follow.' }, { stage: 'screening', direction: 'received', daysAgo: 3, hour: 14, subject: 'After Thursday — next steps', channel: 'Email', who: 'Dana Okafor', body: ATLAS_PANEL_EMAIL }, { stage: 'screening', direction: 'sent', daysAgo: 2, hour: 9, subject: 'After Thursday — next steps', channel: 'Email', who: 'Dana Okafor', body: 'Understood on all three — I will bring the governance story. See you Friday.' }, { stage: 'screening', direction: 'received', daysAgo: 2, hour: 11, subject: 'Panel logistics — Friday 11:30', channel: 'Email', who: 'Sam Whitfield', body: 'Hi Audrey — I look after scheduling for the design team.\n\nFriday 11:30 is confirmed. The joining link is on the invite, and Ravi may be five minutes late coming out of another call.' }, { stage: 'screening', direction: 'sent', daysAgo: 2, hour: 12, subject: 'Panel logistics — Friday 11:30', channel: 'Email', who: 'Sam Whitfield', body: 'Thanks Sam — noted, and no problem on Ravi.' }], stageEvents: [{ stage: 'screening', summary: 'Screening call with Dana', daysFromNow: 1, hour: 11, minutes: 30, location: 'Level 4, 220 Example Street', url: 'https://example.com/meet/atlas-thread' }], stageNotes: { recruiter_messaged: '- Recruiter is **Dana**\n- Asked for salary expectations early — answer with the band, not a number', screening: '## Story to lead with\n\n- Consolidating four component libraries into one system\n  - Cut component duplication by half\n  - Adopted by six product teams in a quarter\n\n## Questions to ask\n\n- How is design system work resourced between product teams?\n- What does the loop after this look like?' } },
+  { company: 'Cinder Studio', role: 'Product Designer', stage: 'screening', outcome: 'rejected', createdDaysAgo: 35, updatedDaysAgo: 20, priorStages: ['applied', 'recruiter_messaged', 'screening'], notes: 'Team selected someone with deeper enterprise experience.', source: 'LinkedIn', correspondence: [{ stage: 'screening', direction: 'received', daysAgo: 21, hour: 16, subject: 'Product Designer — update', who: 'Priya Raman', body: CINDER_REJECTION }] },
+  { company: 'Kindred Cloud', role: 'Developer Advocate', stage: 'take_home_assessment', createdDaysAgo: 16, updatedDaysAgo: 1, compensation: { currency: 'USD', advertised: [90_000, 110_000], expected: 105_000 }, priorStages: ['applied', 'screening'], nextAction: 'Submit the API tutorial', nextActionDaysFromNow: 9, deadlineDaysFromNow: 12, notes: 'Keep the written exercise under 1,500 words. The window is generous, so this is not pressing yet.', source: 'Company site', stageNotes: { take_home_assessment: '## Brief\n\nWrite an API tutorial under **1,500 words**.\n\n## Outline\n\n1. Problem\n2. Quickstart\n3. One worked example\n4. Troubleshooting\n\nReuse the webhook walkthrough structure that tested well before.' } },
+  { company: 'Willow Finance', role: 'Risk Product Manager', stage: 'take_home_assessment', outcome: 'rejected', createdDaysAgo: 51, updatedDaysAgo: 24, priorStages: ['applied', 'screening', 'take_home_assessment'], notes: 'Good feedback on structure; domain depth was the deciding factor.', source: 'Job board' },
+  { company: 'Echo Robotics', role: 'Human Factors Researcher', stage: 'round_1', createdDaysAgo: 21, updatedDaysAgo: 4, priorStages: ['applied', 'screening'], notes: 'The panel went ahead four days ago. Waiting on feedback with nothing booked in.', source: 'Referral', stageNotes: { round_1: '## Panel\n\n- Design\n- Engineering\n- Research\n\n## Case study\n\n- The teleoperation study\n  - 12 participants across two rounds\n  - Shipped three safety changes\n  - Task completion rose from **61% to 88%**\n\n## Questions to ask\n\n- Ask each panellist what they would want researched first' } },
+  { company: 'Mosslight Energy', role: 'Senior Data Scientist', stage: 'round_1', outcome: 'rejected', createdDaysAgo: 62, updatedDaysAgo: 34, priorStages: ['applied', 'online_assessment', 'screening', 'round_1'], notes: 'Technical discussion went well; another candidate had energy-market experience.', source: 'LinkedIn' },
+  { company: 'Halcyon Maps', role: 'Engineering Manager', stage: 'round_2', createdDaysAgo: 25, updatedDaysAgo: 1, compensation: { currency: 'AUD', advertised: [180_000, 210_000], expected: 200_000, offered: 215_000 }, ratings: { work: 5, growth: 4, people: 4, company: 4 }, priorStages: ['applied', 'screening', 'round_1'], nextAction: 'Join the leadership interview', nextActionDaysFromNow: 0, notes: 'Final conversation with the VP of Engineering.', source: 'Recruiter', correspondence: [{ stage: 'round_2', direction: 'received', daysAgo: 4, hour: 10, subject: 'Leadership interview — Thursday', channel: 'Email', who: 'Rosa Lindqvist', body: 'Hi Audrey — last one. An hour with Nadia, our VP of Engineering.\n\nShe will want to talk about how you grow senior engineers and where you hold the hiring bar. Nothing to prepare.' }, { stage: 'round_2', direction: 'sent', daysAgo: 4, hour: 19, subject: 'Leadership interview — Thursday', channel: 'Email', who: 'Rosa Lindqvist', body: 'Thanks Rosa — looking forward to it.' }, { stage: 'round_2', direction: 'received', daysAgo: 2, hour: 8, channel: 'LinkedIn', body: 'Moving the leadership interview to 3pm, sorry for the short notice.' }], stageEvents: [{ stage: 'round_1', summary: 'Round 1 — hiring manager', daysFromNow: -6, hour: 10, minutes: 60, cancelled: true }, { stage: 'round_2', summary: 'Leadership interview with the VP of Engineering', daysFromNow: 0, hour: 15, minutes: 45, url: 'https://example.com/meet/halcyon-maps' }], stageNotes: { round_1: 'Went well. They pushed hard on incident response — reuse the on-call rotation rebuild story.', round_2: 'Final conversation with the VP of Engineering.\n\n## Leadership themes\n\n- Growing seniors into leads\n  - The two promotions I sponsored last year\n- Cutting cycle time\n  - Trunk-based release change, two weeks to two days\n- Where I hold the hiring bar\n\n## Questions to ask\n\n- How is platform work prioritised against roadmap commitments?\n- What does the first 90 days look like?', offer: 'Before answering, confirm:\n\n- The level\n  - They hinted at Staff, the ad said Senior\n- The equity refresh policy\n- Remote expectations\n\n> From the ad: "occasional travel to the London office" — pin down what occasional means.' }, stageHeard: { round_2: ['Team is 40 engineers across four squads', 'Platform work gets a fixed 20% of each quarter', 'Decision comes back by the end of next week'] } },
+  { company: 'Fern & Field', role: 'Brand Director', stage: 'round_2', outcome: 'rejected', createdDaysAgo: 73, updatedDaysAgo: 41, priorStages: ['headhunted', 'screening', 'round_1', 'round_2'], nextAction: 'Thank the hiring manager and stay connected', notes: 'A thoughtful process and useful portfolio feedback.', source: 'Referral' },
+  { company: 'Lumen Pantry', role: 'Head of Growth', stage: 'offer', createdDaysAgo: 33, updatedDaysAgo: 1, compensation: { currency: 'AUD', advertised: [230_000, 260_000], expected: 250_000, offered: 230_000 }, ratings: { work: 5, growth: 5, people: 1, company: 5 }, priorStages: ['applied', 'screening', 'round_1', 'round_2'], nextAction: 'Review compensation and equity terms', notes: 'Written offer received. No decision date given yet, so the review is not booked in.', source: 'Company site', correspondence: [{ stage: 'offer', direction: 'received', daysAgo: 6, hour: 9, subject: 'Offer — Head of Growth', channel: 'Email', who: 'Marta Oyelaran', body: LUMEN_OFFER }, { stage: 'offer', direction: 'sent', daysAgo: 4, hour: 21, subject: 'Offer — Head of Growth', channel: 'Email', who: 'Marta Oyelaran', body: 'Thank you — this reads well and I want to say yes.\n\nBase is the one I would ask you to look at. Could we get to 250? I am happy to leave equity where it is.' }, { stage: 'offer', direction: 'received', daysAgo: 1, hour: 15, subject: 'Offer — Head of Growth', channel: 'Email', who: 'Marta Oyelaran', body: 'I can do 242 and bring the first review forward to four months. That is the end of what I have. Let me know by Friday?' }], stageNotes: { offer: '## Where the offer stands\n\n- Base is **8% below** target\n- Equity is above target\n- Ask for the base to move first\n\n## Confirm before accepting\n\n- Review cycle\n- Start date flexibility\n- Learning budget' } },
+  { company: 'Redwood Relay', role: 'Principal Engineer', stage: 'offer', outcome: 'withdrawn', createdDaysAgo: 88, updatedDaysAgo: 46, priorStages: ['headhunted', 'screening', 'round_1', 'round_2', 'offer'], notes: 'Declined after the location policy changed.', source: 'Recruiter' },
+  { company: 'Saffron Systems', role: 'Product Operations Manager', stage: 'accepted', createdDaysAgo: 58, updatedDaysAgo: 6, priorStages: ['applied', 'recruiter_messaged', 'screening', 'round_1', 'round_2', 'offer'], nextAction: 'Prepare questions for onboarding', completedActions: [[3, 'Sign and return the contract']], notes: 'Start date confirmed. Background check complete.', source: 'LinkedIn' },
 ]
 
 function localDay(reference: Date, daysFromReference: number, hour = 10): Date {
@@ -179,10 +179,10 @@ function localDay(reference: Date, daysFromReference: number, hour = 10): Date {
   return date
 }
 
-function historyFor(seed: DemoSeed, reference: Date): StateHistoryEntry[] {
+function historyFor(seed: DemoSeed, reference: Date): StageHistoryEntry[] {
   const statuses: Status[] = [
-    ...(seed.priorStates ?? []).map((state) => ({ state, outcome: 'active' as const })),
-    { state: seed.state, outcome: seed.outcome ?? 'active' },
+    ...(seed.priorStages ?? []).map((stage) => ({ stage, outcome: 'active' as const })),
+    { stage: seed.stage, outcome: seed.outcome ?? 'active' },
   ]
   const created = localDay(reference, -seed.createdDaysAgo, 9).getTime()
   const updated = localDay(reference, -seed.updatedDaysAgo, 16).getTime()
@@ -233,31 +233,31 @@ function compensationFor(seed: DemoSeed): Compensation {
 function stageNotesFor(
   seed: DemoSeed,
   index: number,
-  history: StateHistoryEntry[],
+  history: StageHistoryEntry[],
   updatedAt: string,
 ): StageNote[] {
-  const reachedAt = new Map(history.map((entry) => [entry.state, entry.at]))
-  return STATE_IDS.flatMap((state) => {
-    const body = seed.stageNotes?.[state]
-    const said = seed.stageHeard?.[state] ?? []
+  const reachedAt = new Map(history.map((entry) => [entry.stage, entry.at]))
+  return DEFAULT_STAGE_CONFIG.ids.flatMap((stage) => {
+    const body = seed.stageNotes?.[stage]
+    const said = seed.stageHeard?.[stage] ?? []
     if (!body && said.length === 0) return []
-    const at = reachedAt.get(state) ?? updatedAt
+    const at = reachedAt.get(stage) ?? updatedAt
     // Captured a minute apart, so the examples read in the order they were said.
     const heard = said.map((line, order) => ({
-      id: demoHeardId(index, STATE_IDS.indexOf(state), order),
+      id: demoHeardId(index, DEFAULT_STAGE_CONFIG.ids.indexOf(stage), order),
       body: line,
       at: new Date(Date.parse(at) + order * 60_000).toISOString(),
     }))
-    return [{ state, body: body ?? '', heard, created_at: at, updated_at: at }]
+    return [{ stage, body: body ?? '', heard, created_at: at, updated_at: at }]
   })
 }
 
-function demoStateEvents(seed: DemoSeed, index: number, reference: Date, updatedAt: string): StateEvent[] {
-  return (seed.stateEvents ?? []).map((event, order) => {
+function demoStageEvents(seed: DemoSeed, index: number, reference: Date, updatedAt: string): StageEvent[] {
+  return (seed.stageEvents ?? []).map((event, order) => {
     const start = localDay(reference, event.daysFromNow, event.hour)
     return {
       id: demoEventId(index, order),
-      state: event.state,
+      stage: event.stage,
       summary: event.summary,
       starts_at: start.toISOString(),
       ends_at: new Date(start.getTime() + event.minutes * 60_000).toISOString(),
@@ -285,7 +285,7 @@ function demoCorrespondence(
 ): CorrespondenceEntry[] {
   return (seed.correspondence ?? []).map((message, order) => ({
     id: demoCorrespondenceId(index, order),
-    state: message.state,
+    stage: message.stage,
     direction: message.direction,
     subject: message.subject ?? null,
     channel: message.channel ?? null,
@@ -301,8 +301,8 @@ function demoId(index: number): string {
   return `018f0000-0000-7000-8000-${String(index + 1).padStart(12, '0')}`
 }
 
-function demoHeardId(index: number, state: number, order: number): string {
-  return `018f0000-0000-7000-a000-${String(index + 1).padStart(6, '0')}${String(state + 1).padStart(3, '0')}${String(order + 1).padStart(3, '0')}`
+function demoHeardId(index: number, stage: number, order: number): string {
+  return `018f0000-0000-7000-a000-${String(index + 1).padStart(6, '0')}${String(stage + 1).padStart(3, '0')}${String(order + 1).padStart(3, '0')}`
 }
 
 function demoCompletedActionId(index: number, order: number): string {
@@ -340,8 +340,8 @@ export function createDemoDocument(
     const history = historyFor(seed, reference)
     const createdAt = history[0].at
     const lastMoveAt = history[history.length - 1].at
-    // An edit refreshes updated_at without moving state, which is why Focus measures
-    // silence from state_history instead.
+    // An edit refreshes updated_at without moving stage, which is why Focus measures
+    // silence from stage_history instead.
     const updatedAt =
       seed.editedDaysAgo !== undefined
         ? localDay(reference, -seed.editedDaysAgo, 16).toISOString()
@@ -352,9 +352,9 @@ export function createDemoDocument(
       role: seed.role,
       url: `https://example.com/jobs/${index + 1}`,
       source: seed.source ?? null,
-      state: seed.state,
+      stage: seed.stage,
       outcome: seed.outcome ?? 'active',
-      state_history: history,
+      stage_history: history,
       archived_at:
         seed.archivedDaysAgo !== undefined
           ? localDay(reference, -seed.archivedDaysAgo, 18).toISOString()
@@ -371,7 +371,7 @@ export function createDemoDocument(
       notes: seed.notes ?? null,
       completed_actions: completedActionsFor(seed, index, reference),
       stage_notes: stageNotesFor(seed, index, history, updatedAt),
-      state_events: demoStateEvents(seed, index, reference, updatedAt),
+      stage_events: demoStageEvents(seed, index, reference, updatedAt),
       correspondence: demoCorrespondence(seed, index, reference, updatedAt),
       attachments: [],
       posting: seed.posting
@@ -392,12 +392,12 @@ export function createDemoDocument(
   // the urgency ranking has something in it; and every way of ending, so every outcome lane,
   // filter and label does too.
   const active = applications.filter((application) => application.outcome === 'active')
-  const activeStates = new Set(active.map((application) => application.state))
+  const activeStages = new Set(active.map((application) => application.stage))
   const outcomes = new Set(applications.map((application) => application.outcome))
   if (
     applications.length !== DEMO_APPLICATION_COUNT
-    || active.length !== STATE_IDS.length
-    || activeStates.size !== STATE_IDS.length
+    || active.length !== DEFAULT_STAGE_CONFIG.ids.length
+    || activeStages.size !== DEFAULT_STAGE_CONFIG.ids.length
     || OUTCOME_IDS.some((outcome) => !outcomes.has(outcome))
     || !applications.some((application) => application.archived_at !== null)
   ) {
