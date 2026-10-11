@@ -1,17 +1,17 @@
-import { OUTCOME_IDS, STATE_CONFIG, STATE_LABELS, statusLabel } from './states'
-import type { Application, OutcomeId, StateId, TrackerIndexes } from './types'
+import { DEFAULT_STAGE_CONFIG, OUTCOME_IDS, statusLabel, type StageConfig } from './stages'
+import type { Application, OutcomeId, StageId, TrackerIndexes } from './types'
 
-function emptyStateArrays(): Record<StateId, string[]> {
-  const record = {} as Record<StateId, string[]>
-  for (const { id } of STATE_CONFIG) {
+function emptyStageArrays(stages: StageConfig): Record<StageId, string[]> {
+  const record = {} as Record<StageId, string[]>
+  for (const id of stages.ids) {
     record[id] = []
   }
   return record
 }
 
-function emptyStateCounts(): Record<StateId, number> {
-  const record = {} as Record<StateId, number>
-  for (const { id } of STATE_CONFIG) {
+function emptyStageCounts(stages: StageConfig): Record<StageId, number> {
+  const record = {} as Record<StageId, number>
+  for (const id of stages.ids) {
     record[id] = 0
   }
   return record
@@ -25,9 +25,17 @@ function emptyOutcomeArrays(): Record<OutcomeId, string[]> {
   return record
 }
 
-export function rebuildIndexes(applications: Application[]): TrackerIndexes {
+/**
+ * The indexes over a tracker's applications. The stages are the tracker's own, since the
+ * search text holds what each stage is called there and the per-stage indexes hold one key
+ * per stage it has.
+ */
+export function rebuildIndexes(
+  applications: Application[],
+  stages: StageConfig = DEFAULT_STAGE_CONFIG,
+): TrackerIndexes {
   const by_id: Record<string, number> = {}
-  const by_state = emptyStateArrays()
+  const by_stage = emptyStageArrays(stages)
   const by_company: Record<string, string[]> = {}
   const by_created_at: string[] = []
   const by_updated_at: string[] = []
@@ -36,28 +44,28 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
   const with_next_action: string[] = []
   const unscheduled: Application[] = []
   const by_outcome = emptyOutcomeArrays()
-  const ever_reached = emptyStateArrays()
+  const ever_reached = emptyStageArrays(stages)
   const search_text: Record<string, string> = {}
-  const stats_current = emptyStateCounts()
-  const stats_ever_reached = emptyStateCounts()
+  const stats_current = emptyStageCounts(stages)
+  const stats_ever_reached = emptyStageCounts(stages)
 
   applications.forEach((application, index) => {
     by_id[application.id] = index
-    by_state[application.state].push(application.id)
+    by_stage[application.stage].push(application.id)
     by_outcome[application.outcome].push(application.id)
     const companyIds = by_company[application.company] ?? (by_company[application.company] = [])
     companyIds.push(application.id)
     by_created_at.push(application.id)
     by_updated_at.push(application.id)
-    stats_current[application.state]++
+    stats_current[application.stage]++
 
-    const reachedStates = new Set<StateId>()
-    for (const entry of application.state_history) {
-      reachedStates.add(entry.state)
+    const reachedStages = new Set<StageId>()
+    for (const entry of application.stage_history) {
+      reachedStages.add(entry.stage)
     }
-    for (const state of reachedStates) {
-      ever_reached[state].push(application.id)
-      stats_ever_reached[state]++
+    for (const stage of reachedStages) {
+      ever_reached[stage].push(application.id)
+      stats_ever_reached[stage]++
     }
 
     if (application.deadline_at) {
@@ -82,14 +90,14 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       // What you did is as findable as what you plan to do; before Done had a field of its
       // own these lines lived in `notes` and were already matched here.
       ...application.completed_actions.map((entry) => entry.action),
-      statusLabel(application),
+      statusLabel(application, stages),
       ...application.stage_notes.map((note) =>
-        [STATE_LABELS[note.state], note.body, ...note.heard.map((entry) => entry.body)]
+        [stages.label(note.stage), note.body, ...note.heard.map((entry) => entry.body)]
           .filter(Boolean)
           .join(' '),
       ),
-      ...application.state_events.map((event) =>
-        [STATE_LABELS[event.state], event.summary, event.location].filter(Boolean).join(' '),
+      ...application.stage_events.map((event) =>
+        [stages.label(event.stage), event.summary, event.location].filter(Boolean).join(' '),
       ),
       // The posting's text, but not its URL: a link is not prose, and indexing it would make
       // every captured posting answer to "https".
@@ -102,7 +110,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
       // every application you have ever emailed. That is the test `source` passes — one value
       // per application, so it partitions the collection — and the one ratings already fail.
       ...application.correspondence.map((entry) =>
-        [STATE_LABELS[entry.state], entry.who, entry.subject, entry.body].filter(Boolean).join(' '),
+        [stages.label(entry.stage), entry.who, entry.subject, entry.body].filter(Boolean).join(' '),
       ),
       ...application.attachments.map((attachment) => attachment.filename),
     ]
@@ -141,7 +149,7 @@ export function rebuildIndexes(applications: Application[]): TrackerIndexes {
 
   return {
     by_id,
-    by_state,
+    by_stage,
     by_company,
     by_created_at,
     by_updated_at,

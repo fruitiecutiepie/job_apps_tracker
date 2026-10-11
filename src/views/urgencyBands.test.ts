@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { emptyCompensation } from '../domain'
-import type { Application, StateEvent, StateId } from '../domain'
+import type { Application, StageEvent, StageId } from '../domain'
 import { URGENCY_BANDS, bandRank, urgencyBandFor } from './urgencyBands'
 
 const today = new Date(2026, 7, 14, 12)
@@ -14,16 +14,16 @@ function at(daysFromToday: number, hour = 9): string {
 }
 
 function application(company: string, overrides: Partial<Application> = {}): Application {
-  const state: StateId = 'applied'
+  const stage: StageId = 'applied'
   return {
     id: `00000000-0000-7000-8000-${company.toLowerCase().replace(/[^a-z0-9]/g, '').padEnd(12, '0').slice(0, 12)}`,
     company,
     role: null,
     url: null,
     source: null,
-    state,
+    stage,
     outcome: 'active',
-    state_history: [{ state, outcome: 'active', at: at(-1) }],
+    stage_history: [{ stage, outcome: 'active', at: at(-1) }],
     archived_at: null,
     next_action: null,
     next_action_at: null,
@@ -32,7 +32,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
     compensation: emptyCompensation(),
     ratings: [],
     stage_notes: [],
-    state_events: [],
+    stage_events: [],
     correspondence: [],
     completed_actions: [],
     attachments: [],
@@ -43,11 +43,11 @@ function application(company: string, overrides: Partial<Application> = {}): App
   }
 }
 
-function invite(overrides: Partial<StateEvent> = {}): StateEvent {
+function invite(overrides: Partial<StageEvent> = {}): StageEvent {
   return {
     id: '00000000-0000-7000-8000-000000000001',
-    state: 'recruiter_interview',
-    summary: 'Recruiter interview',
+    stage: 'screening',
+    summary: 'Screening call',
     starts_at: at(2),
     ends_at: null,
     location: null,
@@ -103,7 +103,7 @@ describe('band membership', () => {
 
   it('bands an invite still ahead', () => {
     expect(
-      urgencyBandFor(application('Invited Co', { state_events: [invite()] }), today),
+      urgencyBandFor(application('Invited Co', { stage_events: [invite()] }), today),
     ).toEqual({ band: 'due', days: 2 })
   })
 
@@ -113,7 +113,7 @@ describe('band membership', () => {
         next_action: 'Follow up',
         next_action_at: at(9),
         deadline_at: at(5),
-        state_events: [invite({ starts_at: at(7) })],
+        stage_events: [invite({ starts_at: at(7) })],
       }),
       today,
     )
@@ -135,7 +135,7 @@ describe('band membership', () => {
   it('treats a cancelled invite as no date at all', () => {
     expect(
       urgencyBandFor(
-        application('Called Off Co', { state_events: [invite({ cancelled: true })] }),
+        application('Called Off Co', { stage_events: [invite({ cancelled: true })] }),
         today,
       ).band,
     ).toBe('undated')
@@ -143,14 +143,14 @@ describe('band membership', () => {
 
   it('treats an invite today as dated, not as something already past', () => {
     expect(
-      urgencyBandFor(application('Today Co', { state_events: [invite({ starts_at: at(0, 17) })] }), today),
+      urgencyBandFor(application('Today Co', { stage_events: [invite({ starts_at: at(0, 17) })] }), today),
     ).toEqual({ band: 'due', days: 0 })
   })
 
   it('separates a finished application that still carries a task from one that does not', () => {
     const rejected = {
       outcome: 'rejected' as const,
-      state_history: [{ state: 'applied' as StateId, outcome: 'rejected' as const, at: at(-2) }],
+      stage_history: [{ stage: 'applied' as StageId, outcome: 'rejected' as const, at: at(-2) }],
     }
 
     expect(
@@ -163,9 +163,9 @@ describe('band membership', () => {
   it('bands a finished application by its outcome, not by a date still on it', () => {
     const placement = urgencyBandFor(
       application('Ended Co', {
-        state: 'accepted',
+        stage: 'accepted',
         outcome: 'active',
-        state_history: [{ state: 'accepted', outcome: 'active', at: at(-2) }],
+        stage_history: [{ stage: 'accepted', outcome: 'active', at: at(-2) }],
         deadline_at: at(1),
       }),
       today,

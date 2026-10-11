@@ -1,8 +1,8 @@
-import type { StateEvent } from "../domain";
+import type { StageEvent } from "../domain";
 import { formatShortDate } from "./viewUtils";
 
 interface InviteSummariesProps {
-  invites: StateEvent[];
+  invites: StageEvent[];
 }
 
 /**

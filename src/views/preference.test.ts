@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { emptyCompensation, RATING_IDS } from '../domain'
-import type { Application, Rating, RatingDimensionId, StateId } from '../domain'
+import type { Application, Rating, RatingDimensionId, StageId } from '../domain'
 import {
   DEFAULT_RATING_WEIGHTS,
   MAX_UNKNOWN_DISCOUNT,
@@ -25,16 +25,16 @@ function ratings(scores: Scores): Rating[] {
 }
 
 function application(scores: Scores): Application {
-  const state: StateId = 'applied'
+  const stage: StageId = 'applied'
   return {
     id: '00000000-0000-7000-8000-000000000001',
     company: 'Fixture',
     role: null,
     url: null,
     source: null,
-    state,
+    stage,
     outcome: 'active',
-    state_history: [{ state, outcome: 'active', at }],
+    stage_history: [{ stage, outcome: 'active', at }],
     archived_at: null,
     next_action: null,
     next_action_at: null,
@@ -42,7 +42,7 @@ function application(scores: Scores): Application {
     notes: null,
     completed_actions: [],
     stage_notes: [],
-    state_events: [],
+    stage_events: [],
     correspondence: [],
     attachments: [],
     posting: null,
@@ -297,7 +297,7 @@ describe('band ordering', () => {
       ...application(scores),
       id: `00000000-0000-7000-8000-00000000000${id}`,
       company,
-      state_history: [{ state: 'applied', outcome: 'active', at: at(-1) }],
+      stage_history: [{ stage: 'applied', outcome: 'active', at: at(-1) }],
       updated_at: at(-1),
       deadline_at: deadline,
     }
@@ -339,7 +339,7 @@ describe('band ordering', () => {
     ]
     const unrated = [row('Aardvark', '1', {}, deadline), row('Zebra', '2', {}, deadline)]
 
-    // Same state, same silence, the same deadline timestamp: the urgency score is identical
+    // Same stage, same silence, the same deadline timestamp: the urgency score is identical
     // and the ranking would otherwise fall through to the id.
     expect(bandedCompanies(unrated)).toEqual(['Aardvark', 'Zebra'])
     expect(bandedCompanies(rated)).toEqual(['Zebra', 'Aardvark'])

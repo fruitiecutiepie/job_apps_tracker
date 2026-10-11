@@ -26,13 +26,13 @@ describe('fuzzyScore', () => {
 
   it('prefers a match that starts earlier', () => {
     const early = fuzzyScore('Applied', 'a')!
-    const late = fuzzyScore('Recruiter interview', 'e')!
+    const late = fuzzyScore('Screening call', 'e')!
     expect(early).toBeLessThan(late)
   })
 
   it('prefers a match that skips fewer characters', () => {
-    const tight = fuzzyScore('Interview 1', 'inte')!
-    const loose = fuzzyScore('Interview 1', 'ine')!
+    const tight = fuzzyScore('Round 1', 'roun')!
+    const loose = fuzzyScore('Round 1', 'rnd')!
     expect(tight).toBeLessThan(loose)
   })
 })

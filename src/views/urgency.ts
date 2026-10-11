@@ -1,10 +1,10 @@
-import { FINAL_STATE, STATE_IDS, classifyLifecycle, stateRank } from "../domain";
-import type { Application, StateId } from "../domain";
+import { FINAL_STAGE, STAGE_IDS, classifyLifecycle, stageRank } from "../domain";
+import type { Application, StageId } from "../domain";
 import {
   applicationAgeInDays,
   localDayNumber,
   parseTimestamp,
-  upcomingStateEvent,
+  upcomingStageEvent,
 } from "./viewUtils";
 
 /**
@@ -13,7 +13,7 @@ import {
  */
 
 /**
- * Re-exported rather than defined here: the state filter needs the same split, and two
+ * Re-exported rather than defined here: the stage filter needs the same split, and two
  * definitions of "still running" would let what a view shows drift from what it ranks.
  */
 export { classifyLifecycle, type Lifecycle } from "../domain";
@@ -72,11 +72,11 @@ const NO_PRESSURE: PressureTerm = { pressure: 0, detail: "", kind: "none", dueAt
 /**
  * Further along weighs more: the first stage is 1/9, an offer is 1. Counted over the stages
  * an application can be ranked at, which leaves out Accepted — reached, the search is done.
+ * Counted when asked rather than once, because a tracker that adds a round has one more.
  */
-const RANKED_STAGES = STATE_IDS.filter((state) => state !== FINAL_STATE).length;
-
-function stageWeight(state: StateId): number {
-  return Math.min(1, (stateRank(state) + 1) / RANKED_STAGES);
+function stageWeight(stage: StageId): number {
+  const ranked = STAGE_IDS.filter((stage) => stage !== FINAL_STAGE).length;
+  return Math.min(1, (stageRank(stage) + 1) / ranked);
 }
 
 /** Whole browser-local calendar days from today, so a time earlier today is still day 0. */
@@ -110,7 +110,7 @@ export function describeDue(kind: DueKind, days: number): string {
  * than pressure — unlike a deadline, which stays urgent precisely because it slipped.
  */
 function invitePressure(application: Application, today: Date): PressureTerm {
-  const event = upcomingStateEvent(application, today);
+  const event = upcomingStageEvent(application, today);
   if (!event) return NO_PRESSURE;
   const days = daysUntil(event.starts_at, today);
   if (days === null) return NO_PRESSURE;
@@ -164,7 +164,7 @@ function actionPressure(application: Application, today: Date): PressureTerm {
  * reset the silence that this term exists to detect.
  */
 export function daysSinceLastMove(application: Application, today: Date = new Date()): number {
-  const lastMove = application.state_history.at(-1)?.at;
+  const lastMove = application.stage_history.at(-1)?.at;
   return lastMove ? applicationAgeInDays(lastMove, today) : 0;
 }
 
@@ -203,7 +203,7 @@ export function urgencyFor(application: Application, today: Date = new Date()): 
   // several mild pressures cannot leapfrog one nearer deadline.
   const stacked = (1 - dominant.pressure) * STACKING_WEIGHT * (total - dominant.pressure);
   const urgency = dominant.pressure + stacked;
-  const stage = STAGE_FLOOR + (1 - STAGE_FLOOR) * stageWeight(application.state);
+  const stage = STAGE_FLOOR + (1 - STAGE_FLOOR) * stageWeight(application.stage);
 
   // A term can win with zero pressure (a deadline beyond the horizon and nothing else), so
   // kind and dueAt collapse to "none" alongside the reason rather than naming a dead term.

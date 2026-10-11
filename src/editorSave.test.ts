@@ -32,7 +32,7 @@ function formFor(application: Application): EditorForm {
     invites: inviteDrafts(inviteRowsFor(application)),
     completedActions: application.completed_actions.map(({ id, action, at }) => ({ id, action, at })),
     posting: postingDraftFrom(postingRowFor(application)),
-    state: application.state,
+    stage: application.stage,
     outcome: application.outcome,
     archived: application.archived_at !== null,
     nextActionAt: toDateTimeInput(application.next_action_at),
@@ -72,7 +72,7 @@ describe('saving the application editor', () => {
     const opened = document.applications[0]
     const extra = {
       id: '01990000-0000-7000-8000-000000000099',
-      state: opened.state,
+      stage: opened.stage,
       direction: 'received' as const,
       channel: 'email',
       who: 'Sam',

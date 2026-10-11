@@ -6,9 +6,18 @@ import {
 } from './compensation'
 import { isCorrespondenceDirection } from './correspondence'
 import { createUuidV7 } from './id'
-import { prepareTrackerDatabase } from './database'
+import { documentStages, prepareTrackerDatabase } from './database'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
-import { isOutcomeId, isStateId, outcomeAbandonsTask, stateRank } from './states'
+import {
+  isOutcomeId,
+  isStageId,
+  outcomeAbandonsTask,
+  roundId,
+  roundNumber,
+  stageConfigFrom,
+  stageRank,
+  type StageConfig,
+} from './stages'
 import { safeAttachmentFilename } from './attachmentPaths'
 import type {
   Application,
@@ -29,9 +38,10 @@ import type {
   RatingDraft,
   StageNote,
   StageNoteDraft,
-  StateEvent,
-  StateEventDraft,
-  StateId,
+  StageSetting,
+  StageEvent,
+  StageEventDraft,
+  StageId,
   Status,
   TrackerDocument,
 } from './types'
@@ -130,8 +140,8 @@ export function createApplication(
   id: string = createUuidV7(at instanceof Date ? at : new Date(at)),
 ): Application {
   const createdAt = timestamp(at)
-  const state = input.state ?? 'applied'
-  if (!isStateId(state)) throw new TypeError('State is invalid')
+  const stage = input.stage ?? 'applied'
+  if (!isStageId(stage)) throw new TypeError('Stage is invalid')
   const outcome = input.outcome ?? 'active'
   if (!isOutcomeId(outcome)) throw new TypeError('Outcome is invalid')
   const nextAction = optionalText(input.next_action)
@@ -142,9 +152,9 @@ export function createApplication(
     role: optionalText(input.role),
     url: checkedUrl(input.url),
     source: optionalText(input.source),
-    state,
+    stage,
     outcome,
-    state_history: [{ state, outcome, at: createdAt }],
+    stage_history: [{ stage, outcome, at: createdAt }],
     archived_at: null,
     next_action: nextAction,
     next_action_at: nextAction ? optionalTimestamp(input.next_action_at) : null,
@@ -152,7 +162,7 @@ export function createApplication(
     notes: optionalText(input.notes),
     completed_actions: [],
     stage_notes: [],
-    state_events: [],
+    stage_events: [],
     correspondence: [],
     attachments: [],
     posting: null,
@@ -256,7 +266,7 @@ export function applyCompletedActions(
  *
  * A blank action returns the same object — there is nothing to resolve. `deadline_at` is
  * untouched because an external closing date is not a task, and completing an action never
- * appends state history because finishing a task is not a stage change.
+ * appends stage history because finishing a task is not a stage change.
  */
 export function completeNextAction(
   application: Application,
@@ -282,12 +292,12 @@ export function completeNextAction(
 }
 
 /** The prep note recorded for one stage of an application, when there is one. */
-export function stageNoteFor(application: Application, state: StateId): StageNote | null {
-  return application.stage_notes.find((note) => note.state === state) ?? null
+export function stageNoteFor(application: Application, stage: StageId): StageNote | null {
+  return application.stage_notes.find((note) => note.stage === stage) ?? null
 }
 
 function sortedStageNotes(notes: StageNote[]): StageNote[] {
-  return [...notes].sort((left, right) => stateRank(left.state) - stateRank(right.state))
+  return [...notes].sort((left, right) => stageRank(left.stage) - stageRank(right.stage))
 }
 
 /**
@@ -302,17 +312,17 @@ export function applyStageNotes(
   drafts: StageNoteDraft[],
   at: Date | string = new Date(),
 ): Application {
-  const seen = new Set<StateId>()
+  const seen = new Set<StageId>()
   const updatedAt = timestamp(at)
   const stageNotes: StageNote[] = []
 
   for (const draft of drafts) {
-    if (!isStateId(draft.state)) throw new TypeError('State is invalid')
-    if (seen.has(draft.state)) throw new TypeError('Each stage may hold only one prep note')
-    seen.add(draft.state)
+    if (!isStageId(draft.stage)) throw new TypeError('Stage is invalid')
+    if (seen.has(draft.stage)) throw new TypeError('Each stage may hold only one prep note')
+    seen.add(draft.stage)
 
     const body = draft.body.trim()
-    const existing = stageNoteFor(application, draft.state)
+    const existing = stageNoteFor(application, draft.stage)
     const heard = existing?.heard ?? []
     if (!body && heard.length === 0) continue
 
@@ -321,7 +331,7 @@ export function applyStageNotes(
       continue
     }
     stageNotes.push({
-      state: draft.state,
+      stage: draft.stage,
       body,
       heard,
       created_at: existing?.created_at ?? updatedAt,
@@ -329,7 +339,7 @@ export function applyStageNotes(
     })
   }
 
-  const kept = application.stage_notes.filter((note) => !seen.has(note.state))
+  const kept = application.stage_notes.filter((note) => !seen.has(note.stage))
   const next = sortedStageNotes([...kept, ...stageNotes])
   const unchanged =
     next.length === application.stage_notes.length
@@ -342,11 +352,11 @@ export function applyStageNotes(
 /** Records, replaces, or (with a blank body) clears the prep note for one stage. */
 export function setStageNote(
   application: Application,
-  state: StateId,
+  stage: StageId,
   body: string,
   at: Date | string = new Date(),
 ): Application {
-  return applyStageNotes(application, [{ state, body }], at)
+  return applyStageNotes(application, [{ stage, body }], at)
 }
 
 /**
@@ -359,26 +369,26 @@ export function setStageNote(
  */
 export function captureStageNote(
   application: Application,
-  state: StateId,
+  stage: StageId,
   line: string,
   at: Date | string = new Date(),
 ): Application {
-  if (!isStateId(state)) throw new TypeError('State is invalid')
+  if (!isStageId(stage)) throw new TypeError('Stage is invalid')
   const body = line.trim()
   if (!body) return application
 
   const updatedAt = timestamp(at)
   const entry: HeardEntry = { id: createUuidV7(new Date(updatedAt)), body, at: updatedAt }
-  const existing = stageNoteFor(application, state)
+  const existing = stageNoteFor(application, stage)
   const note: StageNote = {
-    state,
+    stage,
     body: existing?.body ?? '',
     heard: [...(existing?.heard ?? []), entry],
     created_at: existing?.created_at ?? updatedAt,
     updated_at: updatedAt,
   }
 
-  const kept = application.stage_notes.filter((current) => current.state !== state)
+  const kept = application.stage_notes.filter((current) => current.stage !== stage)
   return {
     ...application,
     stage_notes: sortedStageNotes([...kept, note]),
@@ -401,13 +411,13 @@ export function captureStageNote(
  */
 export function reviseStageNoteCapture(
   application: Application,
-  state: StateId,
+  stage: StageId,
   entryId: string,
   line: string,
   at: Date | string = new Date(),
 ): Application {
-  if (!isStateId(state)) throw new TypeError('State is invalid')
-  const note = stageNoteFor(application, state)
+  if (!isStageId(stage)) throw new TypeError('Stage is invalid')
+  const note = stageNoteFor(application, stage)
   const existing = note?.heard.find((entry) => entry.id === entryId)
   if (!note || !existing) return application
 
@@ -419,7 +429,7 @@ export function reviseStageNoteCapture(
     ? note.heard.map((entry) => (entry.id === entryId ? { ...entry, body } : entry))
     : note.heard.filter((entry) => entry.id !== entryId)
 
-  const kept = application.stage_notes.filter((current) => current.state !== state)
+  const kept = application.stage_notes.filter((current) => current.stage !== stage)
   const remaining: StageNote[] = heard.length === 0 && !note.body
     ? []
     : [{ ...note, heard, updated_at: updatedAt }]
@@ -502,23 +512,23 @@ export function clearRating(
   }
 }
 
-/** The invites filed against one state of an application, soonest first. */
-export function stateEventsFor(application: Application, state: StateId): StateEvent[] {
-  return application.state_events.filter((event) => event.state === state)
+/** The invites filed against one stage of an application, soonest first. */
+export function stageEventsFor(application: Application, stage: StageId): StageEvent[] {
+  return application.stage_events.filter((event) => event.stage === stage)
 }
 
-function sortedStateEvents(events: StateEvent[]): StateEvent[] {
+function sortedStageEvents(events: StageEvent[]): StageEvent[] {
   return [...events].sort(
     (left, right) =>
-      stateRank(left.state) - stateRank(right.state)
+      stageRank(left.stage) - stageRank(right.stage)
       || Date.parse(left.starts_at) - Date.parse(right.starts_at)
       || left.id.localeCompare(right.id),
   )
 }
 
-function sameStateEvent(event: StateEvent, other: StateEvent): boolean {
+function sameStageEvent(event: StageEvent, other: StageEvent): boolean {
   return (
-    event.state === other.state
+    event.stage === other.stage
     && event.summary === other.summary
     && event.starts_at === other.starts_at
     && event.ends_at === other.ends_at
@@ -531,13 +541,13 @@ function sameStateEvent(event: StateEvent, other: StateEvent): boolean {
 }
 
 /** Canonicalizes one invite draft. Throws on anything a stored invite may not hold. */
-function canonicalStateEvent(
-  draft: StateEventDraft,
+function canonicalStageEvent(
+  draft: StageEventDraft,
   id: string,
   createdAt: string,
   updatedAt: string,
-): StateEvent {
-  if (!isStateId(draft.state)) throw new TypeError('State is invalid')
+): StageEvent {
+  if (!isStageId(draft.stage)) throw new TypeError('Stage is invalid')
   const startsAt = timestamp(draft.starts_at)
   const endsAt = optionalTimestamp(draft.ends_at)
   if (endsAt && Date.parse(endsAt) < Date.parse(startsAt)) {
@@ -550,7 +560,7 @@ function canonicalStateEvent(
 
   return {
     id,
-    state: draft.state,
+    stage: draft.stage,
     summary: draft.summary.trim(),
     starts_at: startsAt,
     ends_at: endsAt,
@@ -570,14 +580,14 @@ function canonicalStateEvent(
  * way a blank body drops a prep note, and the application is returned untouched
  * when nothing changed at all.
  */
-export function applyStateEvents(
+export function applyStageEvents(
   application: Application,
-  drafts: StateEventDraft[],
+  drafts: StageEventDraft[],
   at: Date | string = new Date(),
 ): Application {
   const updatedAt = timestamp(at)
-  const existingById = new Map(application.state_events.map((event) => [event.id, event]))
-  const events: StateEvent[] = []
+  const existingById = new Map(application.stage_events.map((event) => [event.id, event]))
+  const events: StageEvent[] = []
   const seenIds = new Set<string>()
   const seenUids = new Set<string>()
 
@@ -589,7 +599,7 @@ export function applyStateEvents(
     if (seenIds.has(id)) throw new TypeError('Invite id already exists on this application')
     seenIds.add(id)
 
-    const candidate = canonicalStateEvent(draft, id, existing?.created_at ?? updatedAt, updatedAt)
+    const candidate = canonicalStageEvent(draft, id, existing?.created_at ?? updatedAt, updatedAt)
     if (candidate.ics_uid) {
       if (seenUids.has(candidate.ics_uid)) {
         throw new TypeError('Each calendar UID may appear once on an application')
@@ -597,74 +607,74 @@ export function applyStateEvents(
       seenUids.add(candidate.ics_uid)
     }
 
-    events.push(existing && sameStateEvent(existing, candidate) ? existing : candidate)
+    events.push(existing && sameStageEvent(existing, candidate) ? existing : candidate)
   }
 
-  const next = sortedStateEvents(events)
+  const next = sortedStageEvents(events)
   const unchanged =
-    next.length === application.state_events.length
-    && next.every((event, index) => event === application.state_events[index])
+    next.length === application.stage_events.length
+    && next.every((event, index) => event === application.stage_events[index])
   if (unchanged) return application
 
-  return { ...application, state_events: next, updated_at: updatedAt }
+  return { ...application, stage_events: next, updated_at: updatedAt }
 }
 
 /**
- * Files one invite against a state. An invite carrying a calendar UID already on
+ * Files one invite against a stage. An invite carrying a calendar UID already on
  * the application replaces that one rather than joining it, which is how a
- * reschedule lands: the stored `state` survives, because which stage an invite
+ * reschedule lands: the stored `stage` survives, because which stage an invite
  * belongs to is the reader's filing decision and not something the invite says.
  * An invite whose `sequence` is behind the stored one is ignored as stale.
  */
-export function addStateEvent(
+export function addStageEvent(
   application: Application,
-  draft: StateEventDraft,
+  draft: StageEventDraft,
   at: Date | string = new Date(),
 ): Application {
   const updatedAt = timestamp(at)
   const uid = optionalText(draft.ics_uid)
   const superseded = uid
-    ? application.state_events.find((event) => event.ics_uid === uid)
+    ? application.stage_events.find((event) => event.ics_uid === uid)
     : undefined
 
   if (superseded && (draft.sequence ?? 0) < superseded.sequence) return application
 
   const id = superseded?.id ?? createUuidV7(at instanceof Date ? at : new Date(at))
-  const candidate = canonicalStateEvent(
-    superseded ? { ...draft, state: superseded.state } : draft,
+  const candidate = canonicalStageEvent(
+    superseded ? { ...draft, stage: superseded.stage } : draft,
     id,
     superseded?.created_at ?? updatedAt,
     updatedAt,
   )
-  if (superseded && sameStateEvent(superseded, candidate)) return application
+  if (superseded && sameStageEvent(superseded, candidate)) return application
 
-  const kept = application.state_events.filter((event) => event.id !== id)
+  const kept = application.stage_events.filter((event) => event.id !== id)
   return {
     ...application,
-    state_events: sortedStateEvents([...kept, candidate]),
+    stage_events: sortedStageEvents([...kept, candidate]),
     updated_at: updatedAt,
   }
 }
 
-export function removeStateEvent(
+export function removeStageEvent(
   application: Application,
   eventId: string,
   at: Date | string = new Date(),
 ): Application {
-  if (!application.state_events.some((event) => event.id === eventId)) return application
+  if (!application.stage_events.some((event) => event.id === eventId)) return application
   return {
     ...application,
-    state_events: application.state_events.filter((event) => event.id !== eventId),
+    stage_events: application.stage_events.filter((event) => event.id !== eventId),
     updated_at: timestamp(at),
   }
 }
 
 /**
- * Correspondence is stored in send order rather than in configured state order the way
+ * Correspondence is stored in send order rather than in configured stage order the way
  * invites are. Invites are read one stage at a time and their times and their stages agree
  * by construction; a log is read as a timeline, and the stage a message is filed under does
- * not predict when it was sent — a coordinator apologising for the delay on Interview 1
- * arrives after the Interview 2 invite, and filing-first order would read backwards at
+ * not predict when it was sent — a coordinator apologising for the delay on Round 1
+ * arrives after the Round 2 invite, and filing-first order would read backwards at
  * exactly the moment that matters.
  *
  * Compare parsed instants rather than strings, unlike `heard` and `completed_actions`: those
@@ -683,7 +693,7 @@ function sortedCorrespondence(entries: CorrespondenceEntry[]): CorrespondenceEnt
 
 function sameCorrespondence(entry: CorrespondenceEntry, other: CorrespondenceEntry): boolean {
   return (
-    entry.state === other.state
+    entry.stage === other.stage
     && entry.direction === other.direction
     && entry.subject === other.subject
     && entry.channel === other.channel
@@ -700,7 +710,7 @@ function canonicalCorrespondence(
   createdAt: string,
   updatedAt: string,
 ): CorrespondenceEntry {
-  if (!isStateId(draft.state)) throw new TypeError('State is invalid')
+  if (!isStageId(draft.stage)) throw new TypeError('Stage is invalid')
   if (!isCorrespondenceDirection(draft.direction)) {
     throw new TypeError('Message direction is invalid')
   }
@@ -711,7 +721,7 @@ function canonicalCorrespondence(
 
   return {
     id,
-    state: draft.state,
+    stage: draft.stage,
     direction: draft.direction,
     subject: optionalText(draft.subject),
     channel: optionalText(draft.channel),
@@ -806,7 +816,7 @@ export function removeAttachment(
 }
 
 /**
- * Moves an application along either axis: `state` is how far it got, `outcome` is whether it
+ * Moves an application along either axis: `stage` is how far it got, `outcome` is whether it
  * is still running. Whatever the change leaves out is kept, so the stage select can correct
  * where an application ended without reopening it, and End can close it where it stands.
  *
@@ -829,11 +839,11 @@ export function moveApplicationStatus(
   change: Partial<Status>,
   at: Date | string = new Date(),
 ): Application {
-  const state = change.state ?? application.state
+  const stage = change.stage ?? application.stage
   const outcome = change.outcome ?? application.outcome
-  if (!isStateId(state)) throw new TypeError('State is invalid')
+  if (!isStageId(stage)) throw new TypeError('Stage is invalid')
   if (!isOutcomeId(outcome)) throw new TypeError('Outcome is invalid')
-  if (application.state === state && application.outcome === outcome) return application
+  if (application.stage === stage && application.outcome === outcome) return application
   const updatedAt = timestamp(at)
   const abandonsNextAction =
     outcome !== application.outcome
@@ -841,10 +851,10 @@ export function moveApplicationStatus(
     && Boolean(optionalText(application.next_action))
   return {
     ...application,
-    state,
+    stage,
     outcome,
     ...(abandonsNextAction ? { next_action: null, next_action_at: null } : null),
-    state_history: [...application.state_history, { state, outcome, at: updatedAt }],
+    stage_history: [...application.stage_history, { stage, outcome, at: updatedAt }],
     updated_at: updatedAt,
   }
 }
@@ -1052,13 +1062,13 @@ export function updateApplicationPosting(
 export function updateApplicationStageCapture(
   document: TrackerDocument,
   id: string,
-  state: StateId,
+  stage: StageId,
   line: string,
   at: Date | string = new Date(),
 ): TrackerDocument {
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
-  const updated = captureStageNote(application, state, line, at)
+  const updated = captureStageNote(application, stage, line, at)
   if (updated === application) return document
 
   return {
@@ -1071,14 +1081,14 @@ export function updateApplicationStageCapture(
 export function reviseApplicationStageCapture(
   document: TrackerDocument,
   id: string,
-  state: StateId,
+  stage: StageId,
   entryId: string,
   line: string,
   at: Date | string = new Date(),
 ): TrackerDocument {
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
-  const updated = reviseStageNoteCapture(application, state, entryId, line, at)
+  const updated = reviseStageNoteCapture(application, stage, entryId, line, at)
   if (updated === application) return document
 
   return {
@@ -1123,15 +1133,15 @@ export function clearApplicationRating(
   }
 }
 
-export function updateApplicationStateEvents(
+export function updateApplicationStageEvents(
   document: TrackerDocument,
   id: string,
-  drafts: StateEventDraft[],
+  drafts: StageEventDraft[],
   at: Date | string = new Date(),
 ): TrackerDocument {
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
-  const updated = applyStateEvents(application, drafts, at)
+  const updated = applyStageEvents(application, drafts, at)
   if (updated === application) return document
 
   return {
@@ -1158,15 +1168,15 @@ export function updateApplicationCorrespondence(
   }
 }
 
-export function addApplicationStateEvent(
+export function addApplicationStageEvent(
   document: TrackerDocument,
   id: string,
-  draft: StateEventDraft,
+  draft: StageEventDraft,
   at: Date | string = new Date(),
 ): TrackerDocument {
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
-  const updated = addStateEvent(application, draft, at)
+  const updated = addStageEvent(application, draft, at)
   if (updated === application) return document
 
   return {
@@ -1257,5 +1267,53 @@ export function deleteApplication(document: TrackerDocument, id: string): Tracke
 export function renameTracker(document: TrackerDocument, name: string): TrackerDocument {
   const named = name.trim() || undefined
   if (named === document.name) return document
-  return prepareTrackerDatabase(document.applications, named)
+  return prepareTrackerDatabase(document.applications, named, documentStages(document))
+}
+
+/**
+ * A document carrying these stages. The applications array is copied although no application
+ * changes: what a stage is called is read wherever an application is drawn, and a view that
+ * derived its rows from the same array as before would go on showing the old name.
+ */
+function withStages(document: TrackerDocument, stages: StageConfig): TrackerDocument {
+  return prepareTrackerDatabase([...document.applications], document.name, stages)
+}
+
+/**
+ * Gives the tracker these stages: what each is called, and how many rounds there are. Only
+ * labels move — the id the data files things under stays — so no application, note, invite or
+ * message is touched by a rename. A blank label is the stage's default. A round left out is
+ * taken away only when nothing is filed under it, since otherwise its applications would be
+ * at a stage the tracker no longer has; one that holds something is kept, and so is every
+ * round before it. Unchanged stages return the same document.
+ */
+export function setStages(document: TrackerDocument, stages: readonly StageSetting[]): TrackerDocument {
+  const current = documentStages(document)
+  const asked = stageConfigFrom(stages)
+  let rounds = asked.rounds
+  for (let round = current.rounds; round > rounds; round--) {
+    if (stageInUse(document, roundId(round))) rounds = round
+  }
+  const kept = current.stages.filter(({ id }) => {
+    const round = roundNumber(id)
+    return round !== null && round > asked.rounds && round <= rounds
+  })
+  const next = stageConfigFrom([...asked.stages, ...kept])
+  const unchanged = next.stages.length === current.stages.length
+    && next.stages.every((stage, index) => stage.label === current.stages[index]!.label)
+  return unchanged ? document : withStages(document, next)
+}
+
+/**
+ * Whether anything in the tracker is filed under this stage: an application at it, a move
+ * through it, a prep note, an invite or a message. A stage holding something cannot be taken
+ * away, since that would leave it filed under a stage the tracker no longer has.
+ */
+export function stageInUse(document: TrackerDocument, stage: StageId): boolean {
+  return document.applications.some((application) =>
+    application.stage === stage
+    || application.stage_history.some((entry) => entry.stage === stage)
+    || application.stage_notes.some((note) => note.stage === stage)
+    || application.stage_events.some((event) => event.stage === stage)
+    || application.correspondence.some((entry) => entry.stage === stage))
 }

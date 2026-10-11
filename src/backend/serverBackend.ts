@@ -2,7 +2,7 @@ import { attachmentFileUrl, ATTACHMENTS_URL } from '../domain/attachmentRoutes'
 import { ensureFreshIndexes, refreshTrackerDatabase } from '../domain/database'
 import { MAX_STAGE_NOTE_BYTES, stageNoteEditUrl } from '../domain/noteEditingPaths'
 import type { StageNoteEditContents, StageNoteEditSession } from '../domain/noteEditing'
-import type { StateId, TrackerDatabase } from '../domain/types'
+import type { StageId, TrackerDatabase } from '../domain/types'
 import { assertTrackerDocument } from '../domain/validation'
 import type { TrackerBackend } from './types'
 
@@ -87,13 +87,13 @@ export function serverBackend(): TrackerBackend {
 
     async openNoteInEditor(
       applicationId: string,
-      state: StateId,
+      stage: StageId,
       body: string,
     ): Promise<StageNoteEditSession> {
       if (new TextEncoder().encode(body).length > MAX_STAGE_NOTE_BYTES) {
         throw new TypeError(`Stage note exceeds the ${MAX_STAGE_NOTE_BYTES} byte limit`)
       }
-      const response = await fetch(stageNoteEditUrl(applicationId, state), {
+      const response = await fetch(stageNoteEditUrl(applicationId, stage), {
         method: 'POST',
         headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
         body,
@@ -104,16 +104,16 @@ export function serverBackend(): TrackerBackend {
 
     async readNoteFromEditor(
       applicationId: string,
-      state: StateId,
+      stage: StageId,
     ): Promise<StageNoteEditContents | null> {
-      const response = await fetch(stageNoteEditUrl(applicationId, state))
+      const response = await fetch(stageNoteEditUrl(applicationId, stage))
       if (response.status === 404) return null
       if (!response.ok) await failure(response, 'Could not read the edited note')
       return (await response.json()) as StageNoteEditContents
     },
 
-    async closeNoteEditor(applicationId: string, state: StateId): Promise<void> {
-      const response = await fetch(stageNoteEditUrl(applicationId, state), { method: 'DELETE' })
+    async closeNoteEditor(applicationId: string, stage: StageId): Promise<void> {
+      const response = await fetch(stageNoteEditUrl(applicationId, stage), { method: 'DELETE' })
       if (!response.ok && response.status !== 404) {
         await failure(response, 'Could not end the editing session')
       }

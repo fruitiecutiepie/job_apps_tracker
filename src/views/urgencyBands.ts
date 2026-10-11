@@ -2,7 +2,7 @@ import { classifyLifecycle } from "../domain";
 import type { Application } from "../domain";
 import type { PreferenceScore } from "./preference";
 import { SCORE_EPSILON, daysUntil, type UrgencyRanking } from "./urgency";
-import { upcomingStateEvent } from "./viewUtils";
+import { upcomingStageEvent } from "./viewUtils";
 
 /**
  * A coarse reading of the urgency ranking, for banding a sorted table.
@@ -53,7 +53,7 @@ export interface BandPlacement {
 function drivingDays(application: Application, today: Date): number | null {
   const candidates: number[] = [];
 
-  const invite = upcomingStateEvent(application, today);
+  const invite = upcomingStageEvent(application, today);
   if (invite) {
     const days = daysUntil(invite.starts_at, today);
     if (days !== null) candidates.push(days);

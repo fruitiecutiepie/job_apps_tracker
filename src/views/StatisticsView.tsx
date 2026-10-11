@@ -1,4 +1,4 @@
-import { MIN_RATING_SCORE, RATING_LABELS, stateLabel, statusLabel } from "../domain";
+import { MIN_RATING_SCORE, RATING_LABELS, stageLabel, statusLabel } from "../domain";
 import type { Application } from "../domain";
 import type { StatsSettingId, StatsSettings } from "../statsSettings";
 import { describeCompensationGap, formatCompensationBand } from "./compensation";
@@ -90,7 +90,7 @@ const WAIT_SERIES: BarSeries[] = [{ id: "count", label: "Applications", tone: "s
  * gone quiet first, because they are the only answer with something to do today, and how
  * you judge roles last, because it is for reflecting rather than steering.
  *
- * Outcomes rather than inventory, as before: how many applications sit in each state is
+ * Outcomes rather than inventory, as before: how many applications sit in each stage is
  * on the Kanban board already. Everything is derived on render and never persisted — it
  * depends on browser-local "today" and on a history that changes underneath it. The three
  * numbers an answer depends on are stated on the card it changes and edited there.
@@ -186,7 +186,7 @@ export function StatisticsView({
                     type="button"
                   >
                     <span className="quiet-list__name">
-                      {application.company} · {stateLabel(application.state)}
+                      {application.company} · {stageLabel(application.stage)}
                     </span>
                     <span className="quiet-list__days">{days} days</span>
                   </button>
@@ -227,8 +227,8 @@ export function StatisticsView({
               rows={passRates.map((row) => {
                 const tooFew = row.decided < settings.minStageDecided;
                 return {
-                  key: row.state,
-                  label: stateLabel(row.state),
+                  key: row.stage,
+                  label: stageLabel(row.stage),
                   values: { passed: row.passed, lost: row.decided - row.passed },
                   value: `${row.passed} of ${row.decided}`,
                   detail: [
@@ -240,7 +240,7 @@ export function StatisticsView({
                   ]
                     .filter(Boolean)
                     .join(" · "),
-                  emphasis: row.state === losing.worst,
+                  emphasis: row.stage === losing.worst,
                   quiet: tooFew,
                 };
               })}
@@ -258,8 +258,8 @@ export function StatisticsView({
                 </thead>
                 <tbody>
                   {passRates.map((row) => (
-                    <tr key={row.state}>
-                      <th scope="row">{stateLabel(row.state)}</th>
+                    <tr key={row.stage}>
+                      <th scope="row">{stageLabel(row.stage)}</th>
                       <td>{row.decided}</td>
                       <td>{row.passed}</td>
                       <td>{row.pending}</td>
@@ -279,13 +279,13 @@ export function StatisticsView({
          */}
         <QuestionCard
           answer={movesAnswer(moves)}
-          method="Every recorded stage change, from the state it left to the state it reached. Going back counts as anywhere else."
+          method="Every recorded stage change, from the stage it left to the stage it reached. Going back counts as anywhere else."
           question="Where do applications go?"
         >
           {moves.length > 0 ? (
             <StageFlow moves={moves}>
               <table>
-                <caption>Every recorded move, from the state it left to the state it reached</caption>
+                <caption>Every recorded move, from the stage it left to the stage it reached</caption>
                 <thead>
                   <tr>
                     <th scope="col">From</th>

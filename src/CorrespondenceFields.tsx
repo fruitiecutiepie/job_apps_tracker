@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useRef, useState } from 'react'
 import { ChevronRight, Plus } from 'lucide-react'
-import { CHANNEL_SUGGESTIONS, CORRESPONDENCE_CONFIG, STATE_CONFIG, createUuidV7 } from './domain'
-import type { StateId } from './domain'
+import { CHANNEL_SUGGESTIONS, CORRESPONDENCE_CONFIG, STAGE_CONFIG, createUuidV7 } from './domain'
+import type { StageId } from './domain'
 import {
   correspondenceRowSummary,
   newCorrespondenceRow,
@@ -29,19 +29,19 @@ function scrollBox(node: HTMLElement): HTMLElement | null {
 
 interface CorrespondenceFieldsProps {
   rows: CorrespondenceRow[]
-  defaultState: StateId
+  defaultStage: StageId
   /**
    * A stage whose messages start open, and which this section scrolls to. Set when the
    * dialog was opened from a message rather than from the application: landing at the top of
    * a long form to hunt for the row you were just reading is the whole of the annoyance.
    */
-  messagesFor?: StateId
+  messagesFor?: StageId
   onChange: (rows: CorrespondenceRow[]) => void
 }
 
 export function CorrespondenceFields({
   rows,
-  defaultState,
+  defaultStage,
   messagesFor,
   onChange,
 }: CorrespondenceFieldsProps) {
@@ -53,7 +53,7 @@ export function CorrespondenceFields({
    * dialog closes.
    */
   const [open, setOpen] = useState<string[]>(() =>
-    messagesFor ? rows.filter((row) => row.state === messagesFor).map((row) => row.id) : [],
+    messagesFor ? rows.filter((row) => row.stage === messagesFor).map((row) => row.id) : [],
   )
 
   /*
@@ -156,11 +156,11 @@ export function CorrespondenceFields({
                 <label className="field">
                   <span>Stage</span>
                   <select
-                    onChange={(event) => update(row.id, { state: event.target.value as StateId })}
-                    value={row.state}
+                    onChange={(event) => update(row.id, { stage: event.target.value as StageId })}
+                    value={row.stage}
                   >
-                    {STATE_CONFIG.map((state) => (
-                      <option key={state.id} value={state.id}>{state.label}</option>
+                    {STAGE_CONFIG.map((stage) => (
+                      <option key={stage.id} value={stage.id}>{stage.label}</option>
                     ))}
                   </select>
                 </label>
@@ -255,7 +255,7 @@ export function CorrespondenceFields({
       <div className="correspondence-field__actions">
         <button
           className="button button--quiet"
-          onClick={() => insert(newCorrespondenceRow(rows, defaultState, createUuidV7()), 0)}
+          onClick={() => insert(newCorrespondenceRow(rows, defaultStage, createUuidV7()), 0)}
           type="button"
         >
           <Plus aria-hidden="true" size={14} />

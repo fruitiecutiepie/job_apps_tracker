@@ -17,14 +17,14 @@ demo-data reset.
 
 Ending an application from the End menu (and the next action it clears), reopening and
 archiving one, the stage and outcome filters and the archive filter, **Archive all ended** with
-its confirmation, and opening a pre-split version-1 file are covered by the app integration
-tests; the move buttons' names and targets for each kind of row, and the Kanban lanes, by
+its confirmation, opening a pre-split version-1 file, and renaming a stage and adding and
+removing a round from **Stages** are covered by the app integration tests; the move buttons' names and targets for each kind of row, and the Kanban lanes, by
 `src/views/derived-views.test.tsx`; the migration itself, archiving and the move mutations by
 `src/domain/domain.test.ts`.
 
-Reading an application's state history back in the editor — one row per move, oldest first, and
+Reading an application's stage history back in the editor — one row per move, oldest first, and
 none at all on a new application — is covered by the app integration tests, and the spans it shows
-by `src/stateTimeline.test.ts`.
+by `src/stageTimeline.test.ts`.
 
 Recording compensation through the editor, reading a stored record back into its boxes, and
 refusing an amount with no currency are covered by the app integration tests.
@@ -150,7 +150,7 @@ neither a finger nor any browser automation.
    remaining reason to appear is its task. Confirm the Next line and the Done control both go,
    that the row moves from the table's **Finished, action outstanding** band to **Finished**,
    and that the stage, the
-   state history, the deadline, and the Notes text are all unchanged.
+   stage history, the deadline, and the Notes text are all unchanged.
    Open Saffron Systems and confirm **Completed actions** lists the task you just closed above
    the Notes box, newest first, with today's date and nothing written into Notes itself. Open
    Atlas Thread and confirm the Next action, its date, and **Done** sit on one row in that
@@ -179,7 +179,9 @@ neither a finger nor any browser automation.
    outside; confirm focus returns to the trigger each time. Reopen it and export the
    data, confirming a timestamped zip file is downloaded. Try an invalid
    import and confirm the saved data is unchanged; try a valid zip or JSON import and
-   confirm the replacement prompt appears.
+   confirm the replacement prompt appears. Open **Stages** from the same menu, rename
+   **Screening call** and add a round, save, and confirm the Kanban column and the stage
+   filter use the new name and show **Round 3**; reload and confirm both remain.
 8. Select **Prep notes** on a Kanban card, for example Halcyon Maps in the demo profile. Confirm the
    app goes to the **Prep** destination in the header rather than opening a dialog over the
    board, that the view strip no longer marks any view as current, that the bar above the panel offers none of the
@@ -305,7 +307,7 @@ neither a finger nor any browser automation.
     **Add invite manually**, and that the difference between them is clear before reading the hint.
     Choose **Import .ics file** and select an `.ics` file saved from a real calendar invite. Confirm
     the description, times, place, and any joining link are filled in, and that the stage defaults to
-    the application's current state. Save, reopen, and confirm the invite persisted. Import the same
+    the application's current stage. Save, reopen, and confirm the invite persisted. Import the same
     file again and confirm it updates that invite rather than adding a second one. Confirm the invite
     appears on the Kanban card and in the table's Invites column,
     and that searching its description finds the application. On Table, sort by **Invites** and
@@ -371,8 +373,8 @@ neither a finger nor any browser automation.
     Clear column filters and confirm the picker returns to **Any stage** with both boxes
     empty.
 15. Open the demo's Saffron Systems application and confirm the **History** list reads down from
-    **Applied** to **Accepted**, each move showing its date and how long that state held, with the
-    last one still running. Move it to another state, save, reopen, and confirm one entry was
+    **Applied** to **Accepted**, each move showing its date and how long that stage held, with the
+    last one still running. Move it to another stage, save, reopen, and confirm one entry was
     appended. Reopen and change nothing but the notes, save, and confirm the list is unchanged.
     Open **Add application** and confirm no History list appears.
 16. Press **Feedback** in the top bar, then **Show me**. Open an application, change its stage,

@@ -13,7 +13,7 @@ function adding(company: string) {
       role: '',
       url: '',
       source: '',
-      state: 'applied',
+      stage: 'applied',
       next_action: '',
       next_action_at: null,
       deadline_at: null,
