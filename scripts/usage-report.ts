@@ -6,9 +6,9 @@
  * CLOUDFLARE_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (the names Wrangler reads), or CF_ACCOUNT_ID
  * and CF_API_TOKEN. Options: --weeks N (default 8), --limit N rows (default 10000), --json.
  *
- * Everything that computes is in `src/usageReport.ts`, which is tested; this file fetches and
- * prints. It loads that module through Vite, since the app's sources import without file
- * extensions and plain Node will not resolve them.
+ * Everything that fetches and computes is in `src/usageReport.ts`, which is tested; this file
+ * only reads options and prints. It loads that module through Vite, since the app's sources
+ * import without file extensions and plain Node will not resolve them.
  */
 import { runnerImport } from 'vite'
 
@@ -34,19 +34,14 @@ const { module: report } = await runnerImport<typeof Report>(new URL('../src/usa
   logLevel: 'error',
 })
 
-const response = await fetch(`https://api.cloudflare.com/client/v4/accounts/${account}/analytics_engine/sql`, {
-  method: 'POST',
-  headers: { Authorization: `Bearer ${token}` },
-  body: report.usageQuery(weeks * 7, limit),
-})
-if (!response.ok) {
-  console.error(`Analytics Engine answered ${response.status}: ${await response.text()}`)
+try {
+  const { rows, truncated } = await report.fetchUsageRows({ account, token, weeks, limit })
+  if (truncated) {
+    console.error(`Warning: the query hit its limit of ${limit} rows, so the oldest weeks are incomplete. Raise --limit.`)
+  }
+  const summary = report.buildUsageReport(rows, new Date(), weeks)
+  console.log(process.argv.includes('--json') ? JSON.stringify(summary, null, 2) : report.formatUsageReport(summary))
+} catch (error) {
+  console.error(error instanceof Error ? error.message : error)
   process.exit(1)
 }
-const { data } = (await response.json()) as { data: Array<Record<string, unknown>> }
-if (data.length >= limit) {
-  console.error(`Warning: the query hit its limit of ${limit} rows, so the oldest weeks are incomplete. Raise --limit.`)
-}
-
-const summary = report.buildUsageReport(report.rowsFromSql(data), new Date(), weeks)
-console.log(process.argv.includes('--json') ? JSON.stringify(summary, null, 2) : report.formatUsageReport(summary))

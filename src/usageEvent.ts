@@ -37,7 +37,8 @@ export const USAGE_STAGES = [
 export const USAGE_OUTCOMES = ['active', 'rejected', 'withdrawn', 'closed'] as const
 
 /** Where a visit came from, by kind of site; never the site itself. */
-export const USAGE_REFERRERS = ['direct', 'internal', 'demo', 'search', 'social', 'github', 'other'] as const
+/** `site` is the rest of the site the tracker is served from, its project page included. */
+export const USAGE_REFERRERS = ['direct', 'internal', 'demo', 'site', 'search', 'social', 'github', 'other'] as const
 
 /** How long a place was on screen, from arriving to leaving or the tab going hidden. */
 export const USAGE_DURATIONS = ['<10s', '10s-1m', '1-5m', '5-30m', '30m+'] as const

@@ -28,7 +28,10 @@
     "binding": "ASSETS",
     // /app and /app/ both open the app. /app is the address that stays.
     "html_handling": "drop-trailing-slash",
-    "run_worker_first": ["/projects/job_apps_tracker/app/__usage"]
+    "run_worker_first": [
+      "/projects/job_apps_tracker/app/__usage",
+      "/projects/job_apps_tracker/app/__progress"
+    ]
   },
   // Usage counts; see src/usageEvent.ts for every value a row can hold. Analytics Engine keeps
   // rows for three months and then drops them.
@@ -38,4 +41,9 @@
       "dataset": "job_apps_tracker_usage"
     }
   ]
+  // Secrets, for the summary the portfolio's progress page fetches (worker/index.ts), set with
+  // `wrangler secret put`:
+  //   ANALYTICS_ACCOUNT_ID  the Cloudflare account the dataset is in
+  //   ANALYTICS_TOKEN       an API token with Account → Account Analytics → Read
+  //   USAGE_REPORT_KEY      shared with the portfolio, which sends it as a bearer token
 }

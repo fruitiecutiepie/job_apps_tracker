@@ -299,6 +299,7 @@ Use pnpm for dependency and script commands. Do not introduce a second package m
 - A failure the reader is told about goes through `reportFailure` in `App.tsx`, which sets the notice and counts it by kind. A new failure notice should too. An unreadable import is counted as `imported` with `ok: n` and not again as a failure.
 - `usageEvent.ts` imports nothing, so the stage and outcome lists are repeated there; a test holds them equal to `STATE_CONFIG` and `OUTCOME_CONFIG`.
 - Every property of every event has a test in `src/usage.test.ts`, every event has one showing the UI sends it in `src/test/staticApp.test.tsx`, and every figure in the report has one in `src/usageReport.test.ts`. A new event, property or figure brings its test.
+- `__progress` in `worker/index.ts` serves `buildUsageReport` as JSON to the portfolio site, whose progress page is visible to the owner and contributors only. It answers only a bearer token equal to `USAGE_REPORT_KEY`, refuses everything while any of its secrets is unset, and never passes Analytics Engine's own error text on. The report's shape is a contract with that site: `USAGE_REPORT_VERSION` in `src/usageReport.ts` moves when a field changes meaning or goes, and the portfolio refuses a version it was not built for.
 - The report measures the live tracker only, apart from page loads, which count the demo too. A retention week leaves out trackers that had already reached Accepted before it, since not coming back after taking a job is the search succeeding.
 
 ### Demo data

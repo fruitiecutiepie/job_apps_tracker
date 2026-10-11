@@ -112,6 +112,11 @@ export function referrerKind(
   ownOrigin: string,
   /** The demo's path, given only on the real tracker: arriving from it is the demo working. */
   demoPath: string | null = null,
+  /**
+   * The tracker's own path, the demo's included. The same origin outside it is the rest of
+   * the site — the project page that links here — which is a way in, not a reload.
+   */
+  appPath: string | null = null,
 ): UsageReferrer {
   if (referrer === '') return 'direct'
   let url: URL
@@ -121,7 +126,9 @@ export function referrerKind(
     return 'other'
   }
   if (url.origin === ownOrigin) {
-    return demoPath !== null && url.pathname.startsWith(demoPath) ? 'demo' : 'internal'
+    if (demoPath !== null && url.pathname.startsWith(demoPath)) return 'demo'
+    if (appPath !== null && !url.pathname.startsWith(appPath)) return 'site'
+    return 'internal'
   }
   const host = url.hostname.toLowerCase()
   if (host === 'github.com' || host.endsWith('.github.com') || host.endsWith('.github.io')) return 'github'

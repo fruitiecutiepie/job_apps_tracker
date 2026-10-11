@@ -1,7 +1,8 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { handleUsage } from '../worker'
+import { handleProgress, handleUsage, PROGRESS_WEEKS } from '../worker'
+import { USAGE_REPORT_VERSION } from './usageReport'
 import { addApplication, createDemoDocument, createEmptyDocument, migrateDocument, moveApplication, OUTCOME_CONFIG, STATE_CONFIG } from './domain'
 import { DEFAULT_DEMO_REFERENCE } from './domain/demo'
 import type { Application, TrackerDocument } from './domain'
@@ -220,8 +221,14 @@ describe('referrerKind', () => {
     ['https://example.com/blog', 'other'],
     ['https://notgoogle.com/', 'other'],
     ['not a url', 'other'],
+    ['https://fruitiecutiepie.com/projects/job-apps-tracker', 'site'],
+    ['https://fruitiecutiepie.com/', 'site'],
   ])('reads %s as %s', (referrer, kind) => {
-    expect(referrerKind(referrer, origin, '/projects/job_apps_tracker/app/demo/')).toBe(kind)
+    expect(referrerKind(referrer, origin, '/projects/job_apps_tracker/app/demo/', '/projects/job_apps_tracker/app/')).toBe(kind)
+  })
+
+  it('reads the whole origin as internal when it is not told where the tracker ends', () => {
+    expect(referrerKind('https://fruitiecutiepie.com/projects/job-apps-tracker', origin)).toBe('internal')
   })
 
   it('reads the demo as internal on the demo itself, which passes no demo path', () => {
@@ -446,5 +453,74 @@ describe('the Worker', () => {
     expect((await handleUsage(post(validOpen(), { 'Sec-Fetch-Site': 'cross-site' }), bindings)).status).toBe(403)
     expect((await handleUsage(new Request('https://example.test/__usage'), bindings)).status).toBe(405)
     expect(bindings.USAGE.writeDataPoint).not.toHaveBeenCalled()
+  })
+})
+
+describe('the Worker’s summary for the progress page', () => {
+  const configured = {
+    ASSETS: { fetch: vi.fn() },
+    ANALYTICS_ACCOUNT_ID: 'acct',
+    ANALYTICS_TOKEN: 'read-token',
+    USAGE_REPORT_KEY: 'shared-key',
+  }
+  const get = (authorization?: string, method = 'GET') =>
+    new Request('https://example.test/projects/job_apps_tracker/app/__progress', {
+      method,
+      headers: authorization ? { Authorization: authorization } : {},
+    })
+  const stored = {
+    timestamp: '2026-08-12 10:00:00',
+    index1: '0123456789abcdef',
+    blob1: 'application_added',
+    blob2: 'live',
+  }
+  const analytics = (data: unknown[] = [stored], status = 200) =>
+    vi.fn(async () => new Response(JSON.stringify({ data }), { status }))
+
+  it('answers the report key with the report, asking Analytics Engine with the read token', async () => {
+    const answer = analytics()
+    const response = await handleProgress(get('Bearer shared-key'), configured, reference, answer)
+    expect(response.status).toBe(200)
+    expect(response.headers.get('Cache-Control')).toBe('private, no-store')
+    const body = await response.json()
+    expect(body.version).toBe(USAGE_REPORT_VERSION)
+    expect(body.weekly).toHaveLength(PROGRESS_WEEKS)
+    expect(body.truncated).toBe(false)
+    expect(body.weekly.at(-1)).toMatchObject({ writing: 1 })
+
+    const [url, init] = answer.mock.calls[0] as unknown as [string, RequestInit]
+    expect(url).toBe('https://api.cloudflare.com/client/v4/accounts/acct/analytics_engine/sql')
+    expect(init.headers).toEqual({ Authorization: 'Bearer read-token' })
+    expect(String(init.body)).toContain(`INTERVAL '${PROGRESS_WEEKS * 7}' DAY`)
+  })
+
+  it('refuses a missing or wrong key without asking Analytics Engine', async () => {
+    const answer = analytics()
+    expect((await handleProgress(get(), configured, reference, answer)).status).toBe(401)
+    expect((await handleProgress(get('Bearer shared-ke'), configured, reference, answer)).status).toBe(401)
+    expect((await handleProgress(get('Bearer shared-keyy'), configured, reference, answer)).status).toBe(401)
+    expect((await handleProgress(get('shared-key', 'POST'), configured, reference, answer)).status).toBe(405)
+    expect(answer).not.toHaveBeenCalled()
+  })
+
+  it('refuses everything while unconfigured, an empty key included', async () => {
+    const answer = analytics()
+    const response = await handleProgress(get('Bearer '), { ...configured, USAGE_REPORT_KEY: '' }, reference, answer)
+    expect(response.status).toBe(503)
+    expect(answer).not.toHaveBeenCalled()
+  })
+
+  it('says Analytics Engine failed without passing on what it said', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {})
+    const response = await handleProgress(get('Bearer shared-key'), configured, reference, analytics([], 403))
+    expect(response.status).toBe(502)
+    expect(await response.json()).toEqual({ error: 'analytics unavailable' })
+    expect(error).toHaveBeenCalled()
+  })
+
+  it('says when the row limit cut the period short', async () => {
+    const full = Array.from({ length: 50_000 }, () => stored)
+    const response = await handleProgress(get('Bearer shared-key'), configured, reference, analytics(full))
+    expect((await response.json()).truncated).toBe(true)
   })
 })

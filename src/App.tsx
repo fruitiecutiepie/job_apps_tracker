@@ -90,7 +90,7 @@ import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
 import { ReplaceTrackerDialog, type ExistingTracker, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
 import type { FileHandleLike } from './backend/fileSystem'
 import { useStorageState } from './useStorageState'
-import { demoSiteUrl } from './siteLinks'
+import { demoSiteUrl, trackerSiteUrl } from './siteLinks'
 import { recordUsage, setUsageTracker, usageAvailable, useUsagePreference, useViewTime } from './usage'
 import type { UsageProps } from './usageEvent'
 import { referrerKind, usageChanges, usageSnapshot } from './usageSnapshot'
@@ -848,7 +848,12 @@ export default function App() {
         tracker,
         storageState,
         new Date(),
-        referrerKind(document.referrer, window.location.origin, isDemoTrackerProfile() ? null : demoSiteUrl()),
+        referrerKind(
+          document.referrer,
+          window.location.origin,
+          isDemoTrackerProfile() ? null : demoSiteUrl(),
+          trackerSiteUrl(),
+        ),
       ),
     )
   }, [tracker, storageState])

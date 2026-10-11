@@ -22,6 +22,13 @@ import {
 
 export const USAGE_DATASET = 'job_apps_tracker_usage'
 
+/**
+ * The shape of `buildUsageReport`'s output, for whoever reads it from elsewhere — the
+ * portfolio's progress page stores it as JSON. Bumped when a field changes meaning or goes,
+ * so a reader built for one shape refuses another rather than misreading it.
+ */
+export const USAGE_REPORT_VERSION = 1
+
 export interface UsageRow {
   at: Date
   tracker: string
@@ -75,6 +82,32 @@ export function rowsFromSql(data: ReadonlyArray<Record<string, unknown>>): Usage
     })
   }
   return rows
+}
+
+/**
+ * The rows for the last `weeks` weeks, from Analytics Engine's SQL API. `truncated` says the
+ * row limit was reached, so the oldest weeks are short. Takes `fetch` so a test can answer.
+ */
+export async function fetchUsageRows(options: {
+  account: string
+  token: string
+  weeks: number
+  limit: number
+  fetch?: typeof fetch
+}): Promise<{ rows: UsageRow[]; truncated: boolean }> {
+  const request = options.fetch ?? fetch
+  const response = await request(
+    `https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(options.account)}/analytics_engine/sql`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${options.token}` },
+      body: usageQuery(options.weeks * 7, options.limit),
+    },
+  )
+  if (!response.ok) throw new Error(`Analytics Engine answered ${response.status}: ${await response.text()}`)
+  const { data } = (await response.json()) as { data?: Array<Record<string, unknown>> }
+  const records = Array.isArray(data) ? data : []
+  return { rows: rowsFromSql(records), truncated: records.length >= options.limit }
 }
 
 export interface Window {
@@ -325,6 +358,7 @@ export function buildUsageReport(rows: readonly UsageRow[], now: Date, weeks: nu
   const windows = reportWeeks(now, weeks)
   const whole: Window = { from: windows[0].from, to: windows[windows.length - 1].to }
   return {
+    version: USAGE_REPORT_VERSION,
     generatedAt: now.toISOString(),
     period: { from: whole.from.toISOString(), to: whole.to.toISOString() },
     weekly: windows.map((window) => ({

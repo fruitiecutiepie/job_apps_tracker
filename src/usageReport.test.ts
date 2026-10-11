@@ -207,7 +207,7 @@ describe('acquisition', () => {
       open('d', 1, { referrer: 'social' }, { profile: 'demo' }),
     ]
     expect(acquisition(rows, WEEK).referrers).toEqual({
-      direct: 0, internal: 0, demo: 2, search: 1, social: 0, github: 0, other: 0,
+      direct: 0, internal: 0, demo: 2, site: 0, search: 1, social: 0, github: 0, other: 0,
     })
   })
 
