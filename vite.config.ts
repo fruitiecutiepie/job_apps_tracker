@@ -1,6 +1,7 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 
+import { feedbackPlugin } from './vite/feedback-plugin'
 import { trackerDbPlugin } from './vite/tracker-db-plugin'
 
 /*
@@ -21,7 +22,11 @@ export default defineConfig({
   build: process.env.VITE_OUT_DIR
     ? { outDir: process.env.VITE_OUT_DIR, emptyOutDir: false }
     : {},
-  plugins: staticBuild ? [react()] : [react(), trackerDbPlugin()],
+  /*
+   * The static build sends feedback to the Worker that serves it (`worker/index.ts`); run
+   * locally, the dev and preview servers answer the same route into `data/feedback/`.
+   */
+  plugins: staticBuild ? [react()] : [react(), trackerDbPlugin(), feedbackPlugin()],
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',
@@ -56,6 +61,8 @@ export default defineConfig({
       '**/.claude/**',
       '**/dist/**',
       'src/**/*.browser.test.tsx',
+      // Real screen capture, in Chromium only: `vitest.capture.config.ts`.
+      'src/**/*.capture.test.tsx',
     ],
   },
 })

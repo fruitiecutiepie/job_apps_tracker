@@ -21,6 +21,15 @@ export function trackerSiteUrl(): string {
   return base.endsWith(`/${DEMO_SEGMENT}`) ? base.slice(0, -DEMO_SEGMENT.length) : base
 }
 
+/*
+ * Where feedback is sent. Always the tracker's own base, from the demo too, so the Worker
+ * answers one route rather than two; on the dev server the base is `/`, and the dev server
+ * answers it there.
+ */
+export function feedbackEndpoint(): string {
+  return `${trackerSiteUrl()}api/feedback`
+}
+
 /**
  * Where the hosted builds ask for support. A plain link rather than Ko-fi's widget: the
  * widget loads Ko-fi's script and frame on every visit, which a private tracker should not

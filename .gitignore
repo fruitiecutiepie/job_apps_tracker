@@ -10,6 +10,7 @@ data/tracker.json.tmp
 data/backups/
 data/attachments/
 data/editing/
+data/feedback/
 data/demo/
 .claude/settings.local.json
 __screenshots__/
