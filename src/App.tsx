@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Archive,
+  ChartNoAxesCombined,
   CircleCheck,
   ChartNoAxesColumnIncreasing,
   ClipboardCopy,
@@ -89,6 +90,10 @@ import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
 import { ReplaceTrackerDialog, type ExistingTracker, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
 import type { FileHandleLike } from './backend/fileSystem'
 import { useStorageState } from './useStorageState'
+import { demoSiteUrl } from './siteLinks'
+import { recordUsage, setUsageTracker, usageAvailable, useUsagePreference, useViewTime } from './usage'
+import type { UsageProps } from './usageEvent'
+import { referrerKind, usageChanges, usageSnapshot } from './usageSnapshot'
 import { TrackerSwitcher } from './TrackerSwitcher'
 import { navigation, NEW_TRACKER, trackerHref } from './backend/trackerAddress'
 import { useFileImport } from './useFileImport'
@@ -730,6 +735,7 @@ export default function App() {
   /* Kept apart from the import input: that one replaces this tracker, this one starts another. */
   const otherTrackerInputRef = useRef<HTMLInputElement>(null)
   const storageState = useStorageState()
+  const [usageOn, setUsageOn] = useUsagePreference()
 
   /*
    * Another tab holding this tracker wrote it, or removed it. A newer document replaces
@@ -823,6 +829,51 @@ export default function App() {
     }
   }, [])
 
+  /*
+   * Usage counts, in the hosted build only (`usage.ts` says what is and is not sent). The
+   * tracker is named as soon as it is known; the snapshot goes once per page load, after
+   * both the document and where it is saved have arrived.
+   */
+  const trackerId = storageState?.tracker?.id ?? null
+  useEffect(() => {
+    if (trackerId !== null) setUsageTracker(trackerId)
+  }, [trackerId])
+  const reportedOpen = useRef(false)
+  useEffect(() => {
+    if (reportedOpen.current || !tracker || !storageState?.tracker) return
+    reportedOpen.current = true
+    recordUsage(
+      'open',
+      usageSnapshot(
+        tracker,
+        storageState,
+        new Date(),
+        referrerKind(document.referrer, window.location.origin, isDemoTrackerProfile() ? null : demoSiteUrl()),
+      ),
+    )
+  }, [tracker, storageState])
+  useEffect(() => {
+    if (!loadError) return
+    recordUsage('error', { kind: 'load' })
+    // A load that failed may never learn its tracker, and the report would wait forever.
+    if (trackerId === null) setUsageTracker(null)
+  }, [loadError, trackerId])
+  // Where the reader went, not where the page opened: the first render is not a choice.
+  const place = notesOpen ? 'prep' : activeView
+  const reportedPlace = useRef(place)
+  useEffect(() => {
+    if (reportedPlace.current === place) return
+    reportedPlace.current = place
+    recordUsage('view', { place })
+  }, [place])
+  useViewTime(place)
+
+  /** A failure the reader is told about, counted by what they were doing when it failed. */
+  const reportFailure = (kind: UsageProps<'error'>['kind'], message: string) => {
+    setNotice(message)
+    recordUsage('error', { kind })
+  }
+
   useEffect(() => {
     if (dialogIsOpen) {
       dialogWasOpenRef.current = true
@@ -864,6 +915,9 @@ export default function App() {
       const current = trackerRef.current
       if (!current) return false
 
+      // The mutation can run more than once where another tab wrote first; the last run is
+      // the one stored, so it is the one counted.
+      let changes: ReturnType<typeof usageChanges> = { added: 0, moved: [] }
       try {
         /*
          * The mutation, not the document, goes to storage: where another tab holds this
@@ -871,15 +925,23 @@ export default function App() {
          * returns the document it was given when there is nothing to do, which is also
          * what keeps a no-op move or an unchanged draft off the disk.
          */
-        const { document: saved, wrote } = await updateTrackerDatabase(current, mutate)
+        const { document: saved, wrote } = await updateTrackerDatabase(current, (document) => {
+          const next = mutate(document)
+          changes = usageChanges(document, next)
+          return next
+        })
         if (saved !== trackerRef.current) {
           trackerRef.current = saved
           setTracker(saved)
         }
         if (wrote && message) setNotice(message)
+        if (wrote) {
+          for (let added = 0; added < changes.added; added += 1) recordUsage('application_added', {})
+          for (const status of changes.moved) recordUsage('moved', { stage: status.state, outcome: status.outcome })
+        }
         return true
       } catch (error) {
-        setNotice(`Save failed: ${errorMessage(error)}`)
+        reportFailure('save', `Save failed: ${errorMessage(error)}`)
         return false
       }
     })
@@ -899,6 +961,8 @@ export default function App() {
   const importFile = async (file: File, handle: Promise<FileHandleLike | null> | null = null) => {
     try {
       const result = readTrackerImport(await readFileAsUint8Array(file))
+      recordUsage('imported', { ok: result.ok ? 'y' : 'n' })
+      // Counted above as a file that could not be read, rather than again as a failure.
       if (!result.ok) {
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
@@ -944,7 +1008,7 @@ export default function App() {
         openAsNew: () => openAsTracker(result, file.name, source),
       })
     } catch (error) {
-      setNotice(`Import failed: ${errorMessage(error)}`)
+      reportFailure('import', `Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -994,7 +1058,7 @@ export default function App() {
       if (closing) await backend.storage!.removeTracker(closing)
       navigation.open(trackerHref(created.id))
     } catch (error) {
-      setNotice(`Import failed: ${errorMessage(error)}`)
+      reportFailure('import', `Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1019,7 +1083,7 @@ export default function App() {
       setTracker(saved)
       setNotice(`Imported ${saved.applications.length} applications.`)
     } catch (error) {
-      setNotice(`Import failed: ${errorMessage(error)}`)
+      reportFailure('import', `Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1047,7 +1111,7 @@ export default function App() {
         setNotice(`Removed ${target.name} from this browser.`)
       }
     } catch (error) {
-      setNotice(`Could not remove ${target.name}: ${errorMessage(error)}`)
+      reportFailure('tracker', `Could not remove ${target.name}: ${errorMessage(error)}`)
     }
   }
 
@@ -1064,7 +1128,7 @@ export default function App() {
       await backend.storage!.renameOtherTracker(target.id, name)
       return true
     } catch (error) {
-      setNotice(`Could not rename ${target.name}: ${errorMessage(error)}`)
+      reportFailure('tracker', `Could not rename ${target.name}: ${errorMessage(error)}`)
       return false
     }
   }
@@ -1074,7 +1138,7 @@ export default function App() {
       const result = await backend.storage!.openFolder()
       if (result.outcome === 'opened') navigation.open(trackerHref(result.tracker.id))
     } catch (error) {
-      setNotice(`Could not open the folder: ${errorMessage(error)}`)
+      reportFailure('folder', `Could not open the folder: ${errorMessage(error)}`)
     }
   }
 
@@ -1085,6 +1149,7 @@ export default function App() {
   const newTrackerFromFile = async (file: File, source: FileHandleLike | null = null) => {
     try {
       const result = readTrackerImport(await readFileAsUint8Array(file))
+      recordUsage('imported', { ok: result.ok ? 'y' : 'n' })
       if (!result.ok) {
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
@@ -1092,7 +1157,7 @@ export default function App() {
       if (await answeredAsExisting(file, source, result)) return
       await openAsTracker(result, file.name, source)
     } catch (error) {
-      setNotice(`Import failed: ${errorMessage(error)}`)
+      reportFailure('import', `Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1116,7 +1181,7 @@ export default function App() {
     } catch (error) {
       // Dismissing the picker is a decision, not a failure.
       if (error instanceof DOMException && error.name === 'AbortError') return
-      setNotice(`Import failed: ${errorMessage(error)}`)
+      reportFailure('import', `Import failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1137,7 +1202,7 @@ export default function App() {
       return
     }
     saveOtherCopy(target).catch((error) => {
-      setNotice(`Export failed: ${errorMessage(error)}`)
+      reportFailure('export', `Export failed: ${errorMessage(error)}`)
     })
   }
 
@@ -1182,7 +1247,7 @@ export default function App() {
       try {
         await pending.openAsNew?.()
       } catch (error) {
-        setNotice(`Import failed: ${errorMessage(error)}`)
+        reportFailure('import', `Import failed: ${errorMessage(error)}`)
       }
       return
     }
@@ -1191,7 +1256,7 @@ export default function App() {
         await pending.saveCopy()
       } catch (error) {
         // No copy, no replacement: the viewer asked for the two together.
-        setNotice(`Nothing was replaced, because saving a copy failed: ${errorMessage(error)}`)
+        reportFailure('export', `Nothing was replaced, because saving a copy failed: ${errorMessage(error)}`)
         return
       }
     }
@@ -1259,7 +1324,7 @@ export default function App() {
       await navigator.clipboard.writeText(rolesToCopy.join('\n'))
       setNotice(`Copied ${rolesToCopy.length} ${rolesToCopy.length === 1 ? 'role' : 'roles'}.`)
     } catch (error) {
-      setNotice(`Copy failed: ${errorMessage(error)}`)
+      reportFailure('copy', `Copy failed: ${errorMessage(error)}`)
     }
   }
 
@@ -1438,7 +1503,7 @@ export default function App() {
       setTracker(loaded)
       setNotice(message)
     } catch (error) {
-      setNotice(`Could not open the folder: ${errorMessage(error)}`)
+      reportFailure('folder', `Could not open the folder: ${errorMessage(error)}`)
     }
   }
 
@@ -1454,7 +1519,9 @@ export default function App() {
         navigation.open(trackerHref(result.tracker.id))
         return null
       }
-      return result.outcome === 'connected' ? result.connection : null
+      if (result.outcome !== 'connected') return null
+      recordUsage('folder_connected', {})
+      return result.connection
     }, 'Changes are now saved to that folder too.')
   }
 
@@ -1469,9 +1536,12 @@ export default function App() {
    */
   const exportTracker = () => {
     downloadTrackerArchive(tracker, new Date(), storageState?.tracker?.name)
-      .then(() => backend.storage?.markBackedUp())
+      .then(() => {
+        recordUsage('exported', {})
+        return backend.storage?.markBackedUp()
+      })
       .catch((error) => {
-        setNotice(`Export failed: ${errorMessage(error)}`)
+        reportFailure('export', `Export failed: ${errorMessage(error)}`)
       })
   }
 
@@ -1756,13 +1826,33 @@ export default function App() {
                       setSourceFilter('all')
                       setNotice('Demo data restored.')
                     } catch (error) {
-                      setNotice(`Reset failed: ${errorMessage(error)}`)
+                      reportFailure('reset', `Reset failed: ${errorMessage(error)}`)
                     }
                   }
                 }}
                 type="button"
               >
                 <RotateCcw aria-hidden="true" size={16} /> Reset demo data
+              </button>
+            )}
+            {/*
+              * The switch for usage counts, for everyone past the first screen. A switch
+              * rather than a toggle phrased as a command, so it says what is true now; the
+              * tooltip says what is counted, in the intro's words.
+              */}
+            {usageAvailable() && (
+              <button
+                aria-checked={usageOn}
+                className="actions-menu__item"
+                onClick={() => setUsageOn(!usageOn)}
+                role="switch"
+                title="Counts things like how many applications you have and which views you use, never what you write."
+                type="button"
+              >
+                <ChartNoAxesCombined aria-hidden="true" size={16} />
+                Share usage counts
+                {/* The switch's state is `aria-checked`'s to announce; this is for the eye. */}
+                <span aria-hidden="true" className="actions-menu__state">{usageOn ? 'On' : 'Off'}</span>
               </button>
             )}
             {/*
@@ -1996,6 +2086,7 @@ export default function App() {
             onAdd={(opener) => openNewApplication(opener)}
             onImport={() => importInputRef.current?.click()}
             showDemoLink={!isDemoTrackerProfile()}
+            usage={usageAvailable() ? { on: usageOn, onChange: setUsageOn } : undefined}
           />
         )}
 

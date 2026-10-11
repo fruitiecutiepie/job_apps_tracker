@@ -10,7 +10,7 @@ A polished, local-first job search organizer built with React and TypeScript. It
 
 Press **Add your first application** and start. Everything is kept in the browser to begin with, and the top bar does the remembering for you: the moment a change exists only in the browser, it asks you to keep a copy, and it goes on asking — across reloads — until you have one.
 
-In Chrome and Edge that copy is a folder. **Choose a folder** puts a real `tracker.json` on your disk that you can back up, sync, or open in any text editor, written on every change. The same button opens one you already have: pick a folder with a `tracker.json` in it and that tracker opens; pick an empty folder and your tracker starts saving there. If you already have applications in the browser, a folder holding a different tracker opens as a tracker of its own rather than replacing them. A page cannot write anywhere you have not pointed it, so there is no folder it could pick for you, but the picker opens in Documents. Firefox and Safari cannot write to a folder at all, so there the top bar offers **Export a backup** instead. Either way nothing is uploaded — the site is static files, with no account and nowhere to send anything.
+In Chrome and Edge that copy is a folder. **Choose a folder** puts a real `tracker.json` on your disk that you can back up, sync, or open in any text editor, written on every change. The same button opens one you already have: pick a folder with a `tracker.json` in it and that tracker opens; pick an empty folder and your tracker starts saving there. If you already have applications in the browser, a folder holding a different tracker opens as a tracker of its own rather than replacing them. A page cannot write anywhere you have not pointed it, so there is no folder it could pick for you, but the picker opens in Documents. Firefox and Safari cannot write to a folder at all, so there the top bar offers **Export a backup** instead. Either way nothing you write is uploaded — the site is static files, with no account. The copy at `fruitiecutiepie.com/projects/job_apps_tracker/app` also sends a few [usage counts](#usage-counts), never what you write, and you can turn them off.
 
 The catch worth knowing up front: without a connected folder, your data lives only in that browser profile. Clearing site data takes it with it. See [Where your data lives](#where-your-data-lives).
 
@@ -396,7 +396,25 @@ The top bar always says which of these you have:
 | **Reconnect `<folder>`** | The folder is still yours but its permission lapsed, which browsers do. Edits are still being saved to browser storage; click to grant it again and the folder catches up. |
 | **Export a backup** | Firefox or Safari, which cannot write to a folder, with changes your last export does not have. Click to export; hover it to see since when. An import counts as a backup too, since you are holding the file you imported. |
 
-Durability follows from that: a connected folder is a file you own, and browser storage is only as durable as the browser profile. The first time a change lands only in browser storage, the app asks the browser to keep that storage persistent, which makes it less likely to be cleared to free up space; Firefox may ask you to allow it. That makes the browser copy harder to lose, but it is still not a file you hold, so the reminder does not go away because of it. Nothing is uploaded in either build — the hosted app is static files, with no account and no endpoint to send anything to.
+Durability follows from that: a connected folder is a file you own, and browser storage is only as durable as the browser profile. The first time a change lands only in browser storage, the app asks the browser to keep that storage persistent, which makes it less likely to be cleared to free up space; Firefox may ask you to allow it. That makes the browser copy harder to lose, but it is still not a file you hold, so the reminder does not go away because of it. Nothing you write is uploaded in either build — the hosted app is static files, with no account.
+
+### Usage counts
+
+The copy served from Cloudflare (`pnpm deploy`) counts how it is used, so it is clear what is worth improving. The GitHub Pages build, the dev server and anything you run yourself send nothing.
+
+What a count can say is fixed by a list in `src/usageEvent.ts`: every value is one of a few set words, so a company, a note, a name or a date cannot fit in one. Per page load it sends roughly how many applications the tracker has (in ranges like *3–10*), roughly how long it has been in use, how far the furthest application got (*interview*, *offer*, *accepted*), whether it saves to a folder, which features are in use (prep notes, messages, ratings and so on), each as yes or no, and what kind of site the visit came from (search, social, GitHub, the demo, or none) — never the site itself. As you work it counts an application added, a move to a stage and outcome, a view chosen and roughly how long each view stayed on screen (in ranges like *1–5 minutes*), an export, an import and whether the file could be read, a folder connected, an older file brought up to date, and anything that failed, by what you were doing at the time.
+
+Each count carries a hash of the tracker's id, so counts from one tracker can be told apart from another's, and nothing else about you: no address, no browser details, no cookie. The Cloudflare Worker that receives them refuses anything not on the list, keeps no request logs, and stores them in Workers Analytics Engine, which drops them after three months.
+
+To read them, create a Cloudflare API token with **Account Analytics: Read** and run:
+
+```sh
+CLOUDFLARE_ACCOUNT_ID=… CLOUDFLARE_API_TOKEN=… pnpm usage:report
+```
+
+It prints the last eight weeks: active trackers and those that recorded something, new trackers, how many added an application on their first day and three in their first week, how many came back in their second and fifth weeks (leaving out anyone who had already taken a job), applications added and moves, where visits came from, how many save to a folder, which features and views are used and for how long, how far searches get, and what failed. `--weeks N` changes the period, `--json` prints the numbers instead of a table, and `--limit N` raises the row limit if it warns that it hit it. Rows are kept for three months, so a tracker's age (in the snapshot) is what says how long people stay beyond that.
+
+**Share usage counts** under More actions (the `…` button) turns them off, and the first screen of an empty tracker says the same in a line. A browser that sends Global Privacy Control or Do Not Track starts with them off.
 
 ### The demo
 

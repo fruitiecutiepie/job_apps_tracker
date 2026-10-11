@@ -783,6 +783,30 @@ p {
   font-size: var(--t2);
 }
 
+/* The usage line is small print, not a warning: the hint's colour and size, and no rule
+   above it to make it read as a section of its own. */
+.storage-intro p.storage-intro__usage {
+  margin: var(--s3) 0 0;
+  color: var(--ink-3);
+  font-size: var(--t2);
+}
+
+/* A button that reads as a link in running text: an action inside a sentence. */
+.text-button {
+  padding: 0;
+  border: 0;
+  color: var(--accent);
+  background: none;
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+
+.text-button:hover {
+  color: var(--accent-strong);
+}
+
 /*
  * The demo's standing warning. It borrows the notice's accent treatment rather than the
  * danger colours: nothing is wrong here, and a red bar over a working app would read as
@@ -869,6 +893,13 @@ a.actions-menu__item {
 
 .actions-menu__item svg {
   flex-shrink: 0;
+  color: var(--ink-3);
+}
+
+/* A switch's current value, at the item's far end like a settings row. */
+.actions-menu__state {
+  margin-left: auto;
+  padding-left: var(--s4);
   color: var(--ink-3);
 }
 

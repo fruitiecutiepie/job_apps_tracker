@@ -159,6 +159,18 @@ function mapApplications(
   return Array.isArray(value.applications) ? value.applications.map(step) : value.applications
 }
 
+const migrationListeners = new Set<(from: 1 | 2) => void>()
+
+/**
+ * Hears every document brought forward from an older layout, wherever it was read — the
+ * dev server's file, a connected folder, an import. Only usage counts listen, to learn how
+ * many older files are still about; nothing here may depend on a listener.
+ */
+export function onMigration(listener: (from: 1 | 2) => void): () => void {
+  migrationListeners.add(listener)
+  return () => migrationListeners.delete(listener)
+}
+
 /**
  * Walks a document forward to the current layout, leaving validation to decide whether what
  * came out is sound. Raw in, raw out: the validator is the one place a document is
@@ -168,6 +180,7 @@ function mapApplications(
  */
 export function migrateDocument(value: Record<string, unknown>): Record<string, unknown> {
   const version = documentVersion(value)
+  if (version === 1 || version === 2) for (const listener of migrationListeners) listener(version)
   if (version === 1) {
     return { ...value, schema_version: DATA_VERSION, applications: mapApplications(value, migratedApplication) }
   }

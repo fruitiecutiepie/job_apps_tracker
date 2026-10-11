@@ -641,6 +641,14 @@ describe('the static build', () => {
     expect(link).toHaveAttribute('href', '/demo/')
   })
 
+  it('says nothing about usage counts, which this build never sends', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    expect(screen.queryByText(/never what you write/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.queryByRole('switch', { name: 'Share usage counts' })).not.toBeInTheDocument()
+  })
+
   it('shows no demo banner, because this is not the demo', async () => {
     await renderStaticApp()
     expect(screen.queryByText(/This is the demo/)).not.toBeInTheDocument()
@@ -1037,5 +1045,143 @@ describe('the hosted demo', () => {
       () => expect(screen.getByText('0 of 0 applications shown')).toBeInTheDocument(),
       { timeout: 5000 },
     )
+  })
+})
+
+/*
+ * The Cloudflare build is the static build plus an endpoint for usage counts. What matters
+ * here is what a reader sees and what leaves the page: one line on the empty tracker, a
+ * switch that stops the counts, and never a word anyone typed in what is sent.
+ */
+describe('the static build, with usage counts', () => {
+  let beacon: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    beacon = vi.fn(() => true)
+    Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: beacon })
+  })
+
+  afterEach(() => {
+    cleanup()
+    Reflect.deleteProperty(navigator, 'sendBeacon')
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  const sent = () => beacon.mock.calls.map(([, body]) => JSON.parse(String(body)) as { event: string })
+
+  it('says what is counted in a line, and stops counting when turned off', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+
+    expect(screen.getByText(/never what you write/)).toBeInTheDocument()
+    await waitFor(() => expect(sent().map((report) => report.event)).toContain('open'))
+
+    await addApplication(user, 'Northwind')
+    await waitFor(() => expect(sent().map((report) => report.event)).toContain('application_added'))
+    for (const [, body] of beacon.mock.calls) expect(String(body)).not.toContain('Northwind')
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    const toggle = screen.getByRole('switch', { name: 'Share usage counts' })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    await user.click(toggle)
+
+    const before = beacon.mock.calls.length
+    await addApplication(user, 'Contoso')
+    await waitFor(() => expect(screen.getByRole('button', { name: /Open Contoso/ })).toBeInTheDocument())
+    expect(beacon.mock.calls.length).toBe(before)
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.getByRole('switch', { name: 'Share usage counts' })).toHaveAttribute('aria-checked', 'false')
+  })
+  const reports = () =>
+    beacon.mock.calls.map(([, body]) => JSON.parse(String(body)) as { event: string; props: Record<string, string> })
+  const reportsOf = (event: string) => reports().filter((report) => report.event === event).map((report) => report.props)
+
+  it('describes the tracker once per load, with where the visit came from', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    await waitFor(() => expect(reportsOf('open')).toHaveLength(1))
+    expect(reportsOf('open')[0]).toMatchObject({ applications: '0', age: 'none', storage: 'unsupported', referrer: 'direct' })
+  })
+
+  it('counts a view chosen, and the time spent on the one left', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    await user.click(within(screen.getByRole('navigation', { name: 'Tracker views' })).getByRole('button', { name: 'Table' }))
+    await waitFor(() => expect(reportsOf('view')).toEqual([{ place: 'table' }]))
+    expect(reportsOf('view_time')).toEqual([{ place: 'kanban', duration: '<10s' }])
+
+    await user.click(within(topbar()).getByRole('button', { name: 'Prep' }))
+    await waitFor(() => expect(reportsOf('view')).toEqual([{ place: 'table' }, { place: 'prep' }]))
+  })
+
+  it('counts a move by its stage and outcome', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    await addApplication(user, 'Northwind')
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Move Northwind to stage' }), 'interview_1')
+    await waitFor(() => expect(reportsOf('moved')).toEqual([{ stage: 'interview_1', outcome: 'active' }]))
+  })
+
+  it('counts an export, and an export that failed as a failure', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    await addApplication(user, 'Northwind')
+
+    const objectUrls = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL }
+    URL.createObjectURL = vi.fn(() => 'blob:tracker')
+    URL.revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    try {
+      await user.click(await within(topbar()).findByRole('button', { name: 'Export a backup' }))
+      await waitFor(() => expect(reportsOf('exported')).toHaveLength(1))
+
+      URL.createObjectURL = vi.fn(() => {
+        throw new Error('No space')
+      })
+      await addApplication(user, 'Contoso')
+      await user.click(await within(topbar()).findByRole('button', { name: 'Export a backup' }))
+      await waitFor(() => expect(reportsOf('error')).toEqual([{ kind: 'export' }]))
+      expect(reportsOf('exported')).toHaveLength(1)
+    } finally {
+      click.mockRestore()
+      Object.assign(URL, objectUrls)
+    }
+  })
+
+  it('counts a dropped file by whether it could be read', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    const drop = (file: File) => {
+      const dataTransfer = { types: ['Files'], files: [file], items: [] }
+      fireEvent.dragEnter(window, { dataTransfer })
+      fireEvent.drop(window, { dataTransfer })
+    }
+    drop(new File(['{ not json'], 'broken.json', { type: 'application/json' }))
+    await waitFor(() => expect(reportsOf('imported')).toEqual([{ ok: 'n' }]))
+    drop(trackerFile('Northwind'))
+    await waitFor(() => expect(reportsOf('imported')).toEqual([{ ok: 'n' }, { ok: 'y' }]))
+    // An unreadable file is counted as such, not a second time as a failure.
+    expect(reportsOf('error')).toEqual([])
+  })
+
+  it('counts a folder connected', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    const folder = new FakeDirectory('job-apps')
+    Object.assign(window, { showDirectoryPicker: vi.fn(async () => folder) })
+    try {
+      await renderStaticApp()
+      await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
+      await within(topbar()).findByRole('button', { name: 'Saved to job-apps' })
+      await waitFor(() => expect(reportsOf('folder_connected')).toHaveLength(1))
+    } finally {
+      Reflect.deleteProperty(window, 'showDirectoryPicker')
+    }
   })
 })

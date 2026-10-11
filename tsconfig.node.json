@@ -17,6 +17,8 @@
     "vite.config.ts",
     "vitest.browser.config.ts",
     "eslint.config.js",
-    "vite/**/*.ts"
+    "vite/**/*.ts",
+    "worker/**/*.ts",
+    "scripts/**/*.ts"
   ]
 }
