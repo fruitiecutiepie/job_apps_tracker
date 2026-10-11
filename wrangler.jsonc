@@ -1,6 +1,8 @@
 {
 	"$schema": "./node_modules/wrangler/config-schema.json",
 	"name": "job-apps-tracker",
+	// Named so the deploy token needs no permission to list accounts.
+	"account_id": "7828891633435b5779e79eb47ae80873",
 	// Only the feedback route runs code; everything else is the static build below.
 	"main": "worker/index.ts",
 	"compatibility_date": "2026-10-07",
@@ -27,17 +29,13 @@
 			"/projects/job_apps_tracker/app/api/*"
 		]
 	},
-	// Feedback reports and their screenshots. Create once with
-	// `wrangler r2 bucket create job-apps-tracker-feedback`, and set the inbox's secret with
-	// `wrangler secret put FEEDBACK_ADMIN_TOKEN`.
+	// Feedback reports and their screenshots. The bucket is infra/cloudflare/r2.tf.
 	"r2_buckets": [
 		{
 			"binding": "FEEDBACK",
 			"bucket_name": "job-apps-tracker-feedback"
-		},
-		{
-			"bucket_name": "job-apps-tracker-feedback",
-			"binding": "job_apps_tracker_feedback"
 		}
 	]
+	// Secrets (in Bitwarden, uploaded with scripts/push-worker-secrets):
+	//   FEEDBACK_ADMIN_TOKEN  the feedback inbox's token; unset, the inbox stays shut
 }
