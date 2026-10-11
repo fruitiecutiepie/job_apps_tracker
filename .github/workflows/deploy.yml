@@ -1,0 +1,75 @@
+# Deploys the tracker to its Worker once master is green.
+#
+# It waits for Test rather than testing again: the commit that goes live is the one Test
+# passed, checked out by its SHA, so a push landing in between cannot slip in untested. A
+# Test run that a newer push cancelled never reaches here, which leaves the newest green
+# commit as the one that deploys.
+#
+# Independent of fruitiecutiepie.com's own deploys. The token is this repo's alone — Workers
+# Scripts and the one zone route, nothing else — and lives in the `production` environment,
+# which only master may use. `scripts/push-github-secrets` sets it from Bitwarden.
+name: Deploy
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types: [completed]
+    branches: [master]
+
+permissions:
+  contents: read
+
+# One deploy at a time, never cancelled midway. GitHub keeps only the newest waiting run,
+# so a burst of merges deploys the last of them rather than each in turn.
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    # `branches` matches a branch name, and a fork's pull request can come from a branch
+    # called master. Only a push to this repository's master deploys.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'push' &&
+      github.event.workflow_run.head_repository.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment:
+      name: production
+      url: https://fruitiecutiepie.com/projects/job_apps_tracker/app
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      # Same pinned pnpm and Node as Test, so what deploys is built the way it was tested.
+      - name: Use the pinned pnpm
+        run: |
+          corepack enable
+          corepack pnpm --version
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: corepack pnpm install --frozen-lockfile
+
+      - name: Build
+        run: corepack pnpm build:workers
+
+      # A full deploy rather than a version upload, so a route change in wrangler.jsonc goes
+      # out with the code. Secrets are kept across deploys; vars are not, so a var missing
+      # from wrangler.jsonc is removed from production.
+      - name: Deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          COMMIT: ${{ github.event.workflow_run.head_sha }}
+          SUBJECT: ${{ github.event.workflow_run.head_commit.message }}
+        run: |
+          corepack pnpm exec wrangler deploy \
+            --tag "${COMMIT:0:7}" \
+            --message "$(printf '%s' "$SUBJECT" | head -1 | cut -c1-100)"

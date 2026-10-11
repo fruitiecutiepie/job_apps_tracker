@@ -1,0 +1,10 @@
+# Unlocks Bitwarden once for this shell so scripts/* stop prompting.
+# Usage: source scripts/bw-unlock      End it with: bw lock
+# Sourced, not executed: it has to export BW_SESSION into your shell.
+
+source "$(git rev-parse --show-toplevel)/scripts/lib/bw.sh"
+if [ "$(bw status | jq -r .status)" = unlocked ]; then
+  echo "Already unlocked"
+elif bw_unlock; then
+  echo "Unlocked for this shell. Run 'bw lock' when done."
+fi
