@@ -75,9 +75,9 @@ dash.cloudflare.com/profile/api-tokens:
 
 - **`CLOUDFLARE_API_TOKEN`** (for Tofu, on your machine):
   Account → Workers R2 Storage: Edit.
-- **`CLOUDFLARE_DEPLOY_API_TOKEN`** (for GitHub): Account → Workers Scripts: Edit;
-  Zone (fruitiecutiepie.com) → Workers Routes: Edit and Zone: Read. It cannot touch the
-  bucket, the zone's DNS, or anything else of the website's.
+- **`CLOUDFLARE_DEPLOY_API_TOKEN`** (for GitHub): Account → Workers Scripts: Edit, and
+  nothing on the zone. It cannot touch the bucket, the route, or anything of the
+  website's.
 
 Then save both, plus a generated `TOFU_STATE_PASSPHRASE` and the `FEEDBACK_ADMIN_TOKEN`
 already set on the Worker, and from the repo root:
@@ -102,6 +102,17 @@ scripts/push-github-secrets   # creates the production environment and its token
 `.github/workflows/deploy.yml` deploys the Worker whenever the **Test** workflow passes on a
 push to `master`, building the commit Test checked. Nothing else needs doing to go live. A
 deploy that fails leaves the previous version serving. Rerun it from the Actions tab.
+
+It deploys code only: it uploads a version and sends all traffic to it, and never touches
+the route. `wrangler deploy` would rewrite the route too, through an account-level endpoint
+that needs Workers Routes on every zone in the account. Wrangler's per-zone fallback does
+not catch the error a single-zone token gets, and a token over every zone is more than the
+tracker should hold. So a change to `routes` in `wrangler.jsonc` goes out by hand, after
+the code that serves it has deployed:
+
+```sh
+pnpm wrangler triggers deploy
+```
 
 `pnpm deploy` still deploys from a laptop. It skips the test gate and ships whatever is
 checked out, so keep it for emergencies.

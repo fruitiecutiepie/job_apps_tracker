@@ -420,7 +420,7 @@ It is the same origin as the tracker, so the one thing keeping them apart is tha
 
 ### Publishing it yourself
 
-The hosted app is a Cloudflare Worker serving the static build, plus the feedback route. `.github/workflows/deploy.yml` deploys it whenever the **Test** workflow passes on a push to `master`, building exactly the commit Test checked. Merging is going live; there is no separate step.
+The hosted app is a Cloudflare Worker serving the static build, plus the feedback route. `.github/workflows/deploy.yml` deploys it whenever the **Test** workflow passes on a push to `master`, building exactly the commit Test checked. Merging is going live; there is no separate step. CI deploys code only, so a change to the route in `wrangler.jsonc` goes out by hand with `pnpm wrangler triggers deploy`.
 
 What it runs on is declared in the repository rather than set up by hand. The Worker, its route and its binding to the feedback bucket are in `wrangler.jsonc`. The R2 bucket itself is OpenTofu in `infra/cloudflare/`, with its state committed and encrypted. Secrets — the Cloudflare tokens, the state passphrase and `FEEDBACK_ADMIN_TOKEN` — are in Bitwarden, pushed by scripts in `scripts/`. [`infra/cloudflare/README.md`](./infra/cloudflare/README.md) has the setup, the token permissions, and how to rotate each secret.
 
