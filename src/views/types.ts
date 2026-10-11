@@ -1,4 +1,4 @@
-import type { Application, OutcomeId, StateId, Status } from "../domain";
+import type { Application, OutcomeId, StageId, Status } from "../domain";
 
 /** Moves an application along either axis; whatever the change leaves out is kept. */
 export type MoveHandler = (id: string, change: Partial<Status>) => void;
@@ -13,7 +13,7 @@ export interface ApplicationsViewProps {
   /** Opens an application's captured job posting. Does nothing for one that has none. */
   onOpenPosting: (id: string) => void;
   /** Opens the application's form on one stage's messages. */
-  onOpenMessages: (id: string, messagesFor: StateId) => void;
+  onOpenMessages: (id: string, messagesFor: StageId) => void;
   /** Clears the next action and logs it in the notes. Views without a task row ignore it. */
   onCompleteAction: (id: string) => void;
   /**
@@ -27,7 +27,7 @@ export interface ApplicationsViewProps {
 export interface MovableApplicationsViewProps extends ApplicationsViewProps {
   onMove: MoveHandler;
   onArchive: ArchiveHandler;
-  visibleStates?: readonly StateId[];
+  visibleStages?: readonly StageId[];
   /** The outcomes the filter admits, or undefined for all of them. */
   visibleOutcomes?: readonly OutcomeId[];
 }

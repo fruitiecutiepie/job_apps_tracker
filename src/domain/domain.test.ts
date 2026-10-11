@@ -1,14 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
-  STATE_CONFIG,
-  STATE_IDS,
+  STAGE_CONFIG,
+  STAGE_IDS,
   addApplication,
   addAttachment,
-  addStateEvent,
+  addStageEvent,
   applyRatings,
   applyStageNotes,
-  applyStateEvents,
+  applyStageEvents,
   applyCompletedActions,
   applyCorrespondence,
   clearRating,
@@ -39,16 +39,16 @@ import {
   rebuildIndexes,
   OUTCOME_IDS,
   classifyLifecycle,
-  nextState,
-  previousState,
+  nextStage,
+  previousStage,
   statusLabel,
   setPosting,
   revisePosting,
   reviseApplicationPosting,
   clearPosting,
   updateApplicationPosting,
-  statesForFilter,
-  stateFilterMatches,
+  stagesForFilter,
+  stageFilterMatches,
   outcomeFilterMatches,
   outcomesForFilter,
   archiveFilterMatches,
@@ -59,7 +59,7 @@ import {
   removeAttachment,
   editorUrlFor,
   looksLikeRemoteHost,
-  removeStateEvent,
+  removeStageEvent,
   resolveEditorCommand,
   resolveEditorTarget,
   saveTrackerDocument,
@@ -71,12 +71,12 @@ import {
   reviseStageNoteCapture,
   reviseApplicationStageCapture,
   stageNoteFor,
-  stateEventsFor,
+  stageEventsFor,
   trackerDatabasePath,
   unpackTrackerArchive,
   updateApplicationRatings,
   updateApplicationStageNotes,
-  updateApplicationStateEvents,
+  updateApplicationStageEvents,
   updateApplicationCorrespondence,
   prepareTrackerDatabase,
   validateTrackerDocument,
@@ -95,66 +95,66 @@ const REFERENCE = new Date('2026-08-14T12:00:00+10:00')
 
 class MemoryStorage extends MemoryTrackerStore {}
 
-describe('state configuration and demo content', () => {
+describe('stage configuration and demo content', () => {
   it('defines the stages in order, apart from how each one ends', () => {
-    expect(STATE_IDS).toEqual([
+    expect(STAGE_IDS).toEqual([
       'headhunted',
       'applied',
       'recruiter_messaged',
       'online_assessment',
-      'recruiter_interview',
+      'screening',
       'take_home_assessment',
-      'interview_1',
-      'interview_2',
+      'round_1',
+      'round_2',
       'offer',
       'accepted',
     ])
-    expect(STATE_CONFIG).toHaveLength(10)
+    expect(STAGE_CONFIG).toHaveLength(10)
     // Taking the job is the last stage, so every outcome means something at every stage.
     expect(OUTCOME_IDS).toEqual(['active', 'rejected', 'withdrawn', 'closed'])
   })
 
   it('reads a stage and an outcome together as the words people use for them', () => {
-    expect(statusLabel({ state: 'interview_1', outcome: 'active' })).toBe('Interview 1')
+    expect(statusLabel({ stage: 'round_1', outcome: 'active' })).toBe('Round 1')
     // The old rejection labels, em dashes included, come out of the pair unchanged.
-    expect(statusLabel({ state: 'interview_1', outcome: 'rejected' })).toBe('Interview 1 — Rejected')
-    expect(statusLabel({ state: 'offer', outcome: 'rejected' })).toBe('Offer — Rejected')
-    expect(statusLabel({ state: 'applied', outcome: 'rejected' })).toBe('Auto-rejected')
-    expect(statusLabel({ state: 'headhunted', outcome: 'closed' })).toBe('No openings')
-    expect(statusLabel({ state: 'accepted', outcome: 'active' })).toBe('Accepted')
+    expect(statusLabel({ stage: 'round_1', outcome: 'rejected' })).toBe('Round 1 — Rejected')
+    expect(statusLabel({ stage: 'offer', outcome: 'rejected' })).toBe('Offer — Rejected')
+    expect(statusLabel({ stage: 'applied', outcome: 'rejected' })).toBe('Auto-rejected')
+    expect(statusLabel({ stage: 'headhunted', outcome: 'closed' })).toBe('No openings')
+    expect(statusLabel({ stage: 'accepted', outcome: 'active' })).toBe('Accepted')
     // Backing out of a job you took, and an offer rescinded after you said yes.
-    expect(statusLabel({ state: 'accepted', outcome: 'withdrawn' })).toBe('Accepted — Withdrawn')
-    expect(statusLabel({ state: 'accepted', outcome: 'closed' })).toBe('Accepted — Closed')
-    expect(statusLabel({ state: 'interview_2', outcome: 'withdrawn' })).toBe('Interview 2 — Withdrawn')
-    expect(statusLabel({ state: 'take_home_assessment', outcome: 'closed' })).toBe(
+    expect(statusLabel({ stage: 'accepted', outcome: 'withdrawn' })).toBe('Accepted — Withdrawn')
+    expect(statusLabel({ stage: 'accepted', outcome: 'closed' })).toBe('Accepted — Closed')
+    expect(statusLabel({ stage: 'round_2', outcome: 'withdrawn' })).toBe('Round 2 — Withdrawn')
+    expect(statusLabel({ stage: 'take_home_assessment', outcome: 'closed' })).toBe(
       'Take-home assessment — Closed',
     )
   })
 
   it('steps a stage on and back, stopping at either end', () => {
-    expect(nextState('applied')).toBe('recruiter_messaged')
+    expect(nextStage('applied')).toBe('recruiter_messaged')
     // Accepting is the ordinary step on from an offer.
-    expect(nextState('offer')).toBe('accepted')
-    expect(nextState('accepted')).toBeNull()
-    expect(previousState('applied')).toBe('headhunted')
-    expect(previousState('headhunted')).toBeNull()
+    expect(nextStage('offer')).toBe('accepted')
+    expect(nextStage('accepted')).toBeNull()
+    expect(previousStage('applied')).toBe('headhunted')
+    expect(previousStage('headhunted')).toBeNull()
   })
 
   it('reads a status as live, rejected or closed', () => {
-    expect(classifyLifecycle({ state: 'offer', outcome: 'active' })).toBe('live')
-    expect(classifyLifecycle({ state: 'offer', outcome: 'rejected' })).toBe('rejected')
-    expect(classifyLifecycle({ state: 'offer', outcome: 'withdrawn' })).toBe('closed')
-    expect(classifyLifecycle({ state: 'offer', outcome: 'closed' })).toBe('closed')
+    expect(classifyLifecycle({ stage: 'offer', outcome: 'active' })).toBe('live')
+    expect(classifyLifecycle({ stage: 'offer', outcome: 'rejected' })).toBe('rejected')
+    expect(classifyLifecycle({ stage: 'offer', outcome: 'withdrawn' })).toBe('closed')
+    expect(classifyLifecycle({ stage: 'offer', outcome: 'closed' })).toBe('closed')
     // The job you took is finished for the search, though it is active as an application.
-    expect(classifyLifecycle({ state: 'accepted', outcome: 'active' })).toBe('closed')
-    expect(classifyLifecycle({ state: 'accepted', outcome: 'rejected' })).toBe('rejected')
+    expect(classifyLifecycle({ stage: 'accepted', outcome: 'active' })).toBe('closed')
+    expect(classifyLifecycle({ stage: 'accepted', outcome: 'rejected' })).toBe('rejected')
   })
 
   it('filters by stage and by outcome independently', () => {
-    expect(STATE_IDS.filter((id) => stateFilterMatches('all', id))).toEqual([...STATE_IDS])
-    expect(STATE_IDS.filter((id) => stateFilterMatches('applied', id))).toEqual(['applied'])
-    expect(statesForFilter('all')).toBeUndefined()
-    expect(statesForFilter('offer')).toEqual(['offer'])
+    expect(STAGE_IDS.filter((id) => stageFilterMatches('all', id))).toEqual([...STAGE_IDS])
+    expect(STAGE_IDS.filter((id) => stageFilterMatches('applied', id))).toEqual(['applied'])
+    expect(stagesForFilter('all')).toBeUndefined()
+    expect(stagesForFilter('offer')).toEqual(['offer'])
 
     expect(outcomesForFilter('all')).toEqual([...OUTCOME_IDS])
     expect(outcomesForFilter('ended')).toEqual(['rejected', 'withdrawn', 'closed'])
@@ -175,12 +175,12 @@ describe('state configuration and demo content', () => {
 
     expect(document.applications).toHaveLength(19)
     const running = document.applications.filter(({ outcome }) => outcome === 'active')
-    expect(running.map(({ state }) => state)).toEqual(STATE_IDS)
+    expect(running.map(({ stage }) => stage)).toEqual(STAGE_IDS)
     expect(new Set(document.applications.map(({ outcome }) => outcome))).toEqual(new Set(OUTCOME_IDS))
     expect(document.applications.some(({ archived_at }) => archived_at !== null)).toBe(true)
     expect(document.applications.every((application) =>
-      application.state_history.at(-1)?.state === application.state
-      && application.state_history.at(-1)?.outcome === application.outcome,
+      application.stage_history.at(-1)?.stage === application.stage
+      && application.stage_history.at(-1)?.outcome === application.outcome,
     )).toBe(true)
     expect(document.schema).toBeDefined()
     expect(document.indexes.by_id).toHaveProperty(document.applications[0]!.id)
@@ -207,9 +207,9 @@ describe('state configuration and demo content', () => {
     expect(document.applications.some(({ deadline_at }) => deadline_at === null)).toBe(true)
 
     // At least one example was edited after it last moved, so silence measured from
-    // state_history and staleness measured from updated_at genuinely disagree.
-    expect(document.applications.some(({ state_history, updated_at }) =>
-      Date.parse(updated_at) > Date.parse(state_history.at(-1)!.at),
+    // stage_history and staleness measured from updated_at genuinely disagree.
+    expect(document.applications.some(({ stage_history, updated_at }) =>
+      Date.parse(updated_at) > Date.parse(stage_history.at(-1)!.at),
     )).toBe(true)
 
     const messages = document.applications.flatMap(({ correspondence }) => correspondence)
@@ -220,16 +220,16 @@ describe('state configuration and demo content', () => {
     expect(messages.some(({ subject }) => subject === null)).toBe(true)
     // A subject shared by more than one message in a stage, which is what the log groups on.
     const threads = new Map<string, number>()
-    for (const { state, subject } of messages) {
+    for (const { stage, subject } of messages) {
       if (!subject) continue
-      const key = `${state}:${subject}`
+      const key = `${stage}:${subject}`
       threads.set(key, (threads.get(key) ?? 0) + 1)
     }
     expect([...threads.values()].some((count) => count > 1)).toBe(true)
     // A message filed against a stage the application was rejected at, and one written down
     // well after it arrived — the shape the record exists for.
-    expect(document.applications.some(({ outcome, state, correspondence }) =>
-      outcome === 'rejected' && correspondence.some((message) => message.state === state),
+    expect(document.applications.some(({ outcome, stage, correspondence }) =>
+      outcome === 'rejected' && correspondence.some((message) => message.stage === stage),
     )).toBe(true)
     expect(messages.some(({ at, created_at }) => Date.parse(at) < Date.parse(created_at))).toBe(true)
 
@@ -262,7 +262,7 @@ describe('state configuration and demo content', () => {
       application.id,
       ...application.stage_notes.flatMap((note) => note.heard.map((entry) => entry.id)),
       ...application.completed_actions.map((entry) => entry.id),
-      ...application.state_events.map((event) => event.id),
+      ...application.stage_events.map((event) => event.id),
       ...application.correspondence.map((entry) => entry.id),
     ])
 
@@ -309,7 +309,7 @@ describe('application mutations', () => {
         company: '  Northwind  ',
         role: ' Engineer ',
         url: ' https://example.com/jobs/1 ',
-        state: 'applied',
+        stage: 'applied',
       },
       REFERENCE,
     )
@@ -320,8 +320,8 @@ describe('application mutations', () => {
     expect(application.source).toBeNull()
     expect(application.outcome).toBe('active')
     expect(application.archived_at).toBeNull()
-    expect(application.state_history).toEqual([
-      { state: 'applied', outcome: 'active', at: REFERENCE.toISOString() },
+    expect(application.stage_history).toEqual([
+      { stage: 'applied', outcome: 'active', at: REFERENCE.toISOString() },
     ])
     expect(application.attachments).toEqual([])
     expect(() => createApplication({ company: 'Northwind', url: 'ftp://example.com' }, REFERENCE))
@@ -343,7 +343,7 @@ describe('application mutations', () => {
     expect(edited.source).toBeNull()
   })
 
-  it('separates ordinary edits from state history and clears orphan dates', () => {
+  it('separates ordinary edits from stage history and clears orphan dates', () => {
     const original = createApplication(
       { company: 'Northwind', next_action: 'Follow up', next_action_at: '2026-08-20T09:00:00+10:00' },
       REFERENCE,
@@ -351,7 +351,7 @@ describe('application mutations', () => {
     const editTime = new Date('2026-08-15T12:00:00+10:00')
     const edited = editApplication(original, { role: 'Staff Engineer', next_action: null }, editTime)
 
-    expect(edited.state_history).toEqual(original.state_history)
+    expect(edited.stage_history).toEqual(original.stage_history)
     expect(edited.updated_at).toBe(editTime.toISOString())
     expect(edited.next_action).toBeNull()
     expect(edited.next_action_at).toBeNull()
@@ -393,39 +393,39 @@ describe('application mutations', () => {
     expect(created.deadline_at).toBe(new Date('2026-08-22T17:00:00+10:00').toISOString())
   })
 
-  it('appends state history for moves and makes same-state moves a no-op', () => {
+  it('appends stage history for moves and makes same-stage moves a no-op', () => {
     const original = createApplication({ company: 'Northwind' }, REFERENCE)
     const moveTime = new Date('2026-08-16T12:00:00+10:00')
-    const moved = moveApplicationStatus(original, { state: 'offer' }, moveTime)
+    const moved = moveApplicationStatus(original, { stage: 'offer' }, moveTime)
 
-    expect(moved.state).toBe('offer')
+    expect(moved.stage).toBe('offer')
     expect(moved.outcome).toBe('active')
-    expect(moved.state_history).toEqual([
-      ...original.state_history,
-      { state: 'offer', outcome: 'active', at: moveTime.toISOString() },
+    expect(moved.stage_history).toEqual([
+      ...original.stage_history,
+      { stage: 'offer', outcome: 'active', at: moveTime.toISOString() },
     ])
-    expect(moveApplicationStatus(moved, { state: 'offer' }, new Date())).toBe(moved)
-    expect(moveApplicationStatus(moved, { state: 'offer', outcome: 'active' }, new Date())).toBe(moved)
+    expect(moveApplicationStatus(moved, { stage: 'offer' }, new Date())).toBe(moved)
+    expect(moveApplicationStatus(moved, { stage: 'offer', outcome: 'active' }, new Date())).toBe(moved)
   })
 
   it('keeps whichever axis a move leaves out', () => {
-    const original = createApplication({ company: 'Northwind', state: 'interview_1' }, REFERENCE)
+    const original = createApplication({ company: 'Northwind', stage: 'round_1' }, REFERENCE)
     const ended = moveApplicationStatus(original, { outcome: 'rejected' }, REFERENCE)
-    expect(ended.state).toBe('interview_1')
+    expect(ended.stage).toBe('round_1')
     expect(ended.outcome).toBe('rejected')
 
     // Correcting where it ended does not reopen it.
-    const corrected = moveApplicationStatus(ended, { state: 'interview_2' }, REFERENCE)
-    expect(corrected.state).toBe('interview_2')
+    const corrected = moveApplicationStatus(ended, { stage: 'round_2' }, REFERENCE)
+    expect(corrected.stage).toBe('round_2')
     expect(corrected.outcome).toBe('rejected')
 
     const reopened = moveApplicationStatus(corrected, { outcome: 'active' }, REFERENCE)
-    expect(reopened.state).toBe('interview_2')
+    expect(reopened.stage).toBe('round_2')
     expect(reopened.outcome).toBe('active')
-    expect(reopened.state_history).toHaveLength(4)
+    expect(reopened.stage_history).toHaveLength(4)
   })
 
-  it('does not replace a document for a same-state move', () => {
+  it('does not replace a document for a same-stage move', () => {
     const document = createDemoDocument(REFERENCE)
     const target = document.applications[2]!
 
@@ -433,7 +433,7 @@ describe('application mutations', () => {
       moveApplication(
         document,
         target.id,
-        { state: target.state, outcome: target.outcome },
+        { stage: target.stage, outcome: target.outcome },
         new Date('2026-08-20T12:00:00+10:00'),
       ),
     ).toBe(document)
@@ -447,7 +447,7 @@ describe('completing a next action', () => {
     return createApplication(
       {
         company: 'Northwind',
-        state: 'applied',
+        stage: 'applied',
         next_action: 'Email the recruiter',
         next_action_at: '2026-08-18T09:00:00+10:00',
         deadline_at: '2026-08-30T17:00:00+10:00',
@@ -497,12 +497,12 @@ describe('completing a next action', () => {
     expect(completeNextAction(application, LATER).deadline_at).toBe(application.deadline_at)
   })
 
-  it('never appends state history, because finishing a task is not a stage change', () => {
+  it('never appends stage history, because finishing a task is not a stage change', () => {
     const application = planned()
     const done = completeNextAction(application, LATER)
 
-    expect(done.state).toBe(application.state)
-    expect(done.state_history).toEqual(application.state_history)
+    expect(done.stage).toBe(application.stage)
+    expect(done.stage_history).toEqual(application.stage_history)
   })
 
   it('is a no-op when there is no action to resolve', () => {
@@ -665,13 +665,13 @@ describe('attachments', () => {
     expect(parsed.applications[0]?.attachments).toEqual([])
   })
 
-  it('adds and removes attachment metadata without changing state history', () => {
+  it('adds and removes attachment metadata without changing stage history', () => {
     const application = createApplication({ company: 'Northwind' }, REFERENCE)
     const attachment = createAttachmentMetadata('resume.pdf', 'application/pdf', 1200, REFERENCE)
     const withAttachment = addAttachment(application, attachment, REFERENCE)
 
     expect(withAttachment.attachments).toHaveLength(1)
-    expect(withAttachment.state_history).toEqual(application.state_history)
+    expect(withAttachment.stage_history).toEqual(application.stage_history)
 
     const removed = removeAttachment(
       withAttachment,
@@ -707,11 +707,11 @@ describe('stage prep notes', () => {
 
   it('records a prep note for a stage with its own timestamps', () => {
     const application = createApplication({ company: 'Northwind' }, REFERENCE)
-    const withNote = setStageNote(application, 'interview_1', '  Ask about the panel  ', REFERENCE)
+    const withNote = setStageNote(application, 'round_1', '  Ask about the panel  ', REFERENCE)
 
     expect(withNote.stage_notes).toEqual([
       {
-        state: 'interview_1',
+        stage: 'round_1',
         body: 'Ask about the panel',
         heard: [],
         created_at: REFERENCE.toISOString(),
@@ -719,7 +719,7 @@ describe('stage prep notes', () => {
       },
     ])
     expect(withNote.updated_at).toBe(REFERENCE.toISOString())
-    expect(withNote.state_history).toEqual(application.state_history)
+    expect(withNote.stage_history).toEqual(application.stage_history)
   })
 
   describe('rewriting a captured line', () => {
@@ -728,23 +728,23 @@ describe('stage prep notes', () => {
     const withTwoCaptures = () => {
       const application = setStageNote(
         createApplication({ company: 'Northwind' }, REFERENCE),
-        'interview_1',
+        'round_1',
         'Ask about the panel',
         REFERENCE,
       )
-      const first = captureStageNote(application, 'interview_1', 'Panel is three people', REFERENCE)
-      return captureStageNote(first, 'interview_1', 'Dana runs the lop', LATER)
+      const first = captureStageNote(application, 'round_1', 'Panel is three people', REFERENCE)
+      return captureStageNote(first, 'round_1', 'Dana runs the lop', LATER)
     }
 
     const captures = (application: Application) =>
-      stageNoteFor(application, 'interview_1')?.heard ?? []
+      stageNoteFor(application, 'round_1')?.heard ?? []
 
     it('rewrites the line and leaves the moment it was captured alone', () => {
       const application = withTwoCaptures()
       const [, typo] = captures(application)
       const fixed = reviseStageNoteCapture(
         application,
-        'interview_1',
+        'round_1',
         typo.id,
         '  Dana runs the loop  ',
         LATEST,
@@ -754,31 +754,31 @@ describe('stage prep notes', () => {
       // later, and the day it reads under is a reading of `at`.
       expect(captures(fixed)[1]).toEqual({ id: typo.id, body: 'Dana runs the loop', at: typo.at })
       expect(captures(fixed)[0]).toEqual(captures(application)[0])
-      expect(stageNoteFor(fixed, 'interview_1')?.updated_at).toBe(LATEST.toISOString())
+      expect(stageNoteFor(fixed, 'round_1')?.updated_at).toBe(LATEST.toISOString())
       expect(fixed.updated_at).toBe(LATEST.toISOString())
     })
 
     it('removes the line when it is rewritten blank, leaving the rest of the note', () => {
       const application = withTwoCaptures()
       const [first, second] = captures(application)
-      const removed = reviseStageNoteCapture(application, 'interview_1', second.id, '   ', LATEST)
+      const removed = reviseStageNoteCapture(application, 'round_1', second.id, '   ', LATEST)
 
       expect(captures(removed).map((entry) => entry.id)).toEqual([first.id])
-      expect(stageNoteFor(removed, 'interview_1')?.body).toBe('Ask about the panel')
+      expect(stageNoteFor(removed, 'round_1')?.body).toBe('Ask about the panel')
     })
 
     it('drops a note whose last captured line is removed and which holds nothing else', () => {
       const application = captureStageNote(
         createApplication({ company: 'Northwind' }, REFERENCE),
-        'interview_1',
+        'round_1',
         'Panel is three people',
         REFERENCE,
       )
       const [only] = captures(application)
 
       // The same rule a blank body follows: an empty note is not a record of anything.
-      expect(stageNoteFor(application, 'interview_1')?.body).toBe('')
-      const removed = reviseStageNoteCapture(application, 'interview_1', only.id, '', LATEST)
+      expect(stageNoteFor(application, 'round_1')?.body).toBe('')
+      const removed = reviseStageNoteCapture(application, 'round_1', only.id, '', LATEST)
       expect(removed.stage_notes).toEqual([])
     })
 
@@ -786,12 +786,12 @@ describe('stage prep notes', () => {
       const application = withTwoCaptures()
       const [first] = captures(application)
 
-      expect(reviseStageNoteCapture(application, 'interview_1', first.id, first.body, LATEST))
+      expect(reviseStageNoteCapture(application, 'round_1', first.id, first.body, LATEST))
         .toBe(application)
       // Trimming is applied before the comparison, so whitespace alone is not a change.
-      expect(reviseStageNoteCapture(application, 'interview_1', first.id, ` ${first.body} `, LATEST))
+      expect(reviseStageNoteCapture(application, 'round_1', first.id, ` ${first.body} `, LATEST))
         .toBe(application)
-      expect(reviseStageNoteCapture(application, 'interview_1', 'not-a-line', 'Something', LATEST))
+      expect(reviseStageNoteCapture(application, 'round_1', 'not-a-line', 'Something', LATEST))
         .toBe(application)
       expect(reviseStageNoteCapture(application, 'offer', first.id, 'Something', LATEST))
         .toBe(application)
@@ -808,14 +808,14 @@ describe('stage prep notes', () => {
       const updated = reviseApplicationStageCapture(
         document,
         target.id,
-        note.state,
+        note.stage,
         line.id,
         'What they actually said',
         LATEST,
       )
 
       const after = updated.applications.find((application) => application.id === target.id)!
-      expect(stageNoteFor(after, note.state)?.heard[0].body).toBe('What they actually said')
+      expect(stageNoteFor(after, note.stage)?.heard[0].body).toBe('What they actually said')
       expect(updated.applications.filter((application) => application.id !== target.id)).toEqual(
         document.applications.filter((application) => application.id !== target.id),
       )
@@ -823,24 +823,24 @@ describe('stage prep notes', () => {
   })
 
   it('records notes for a stage the application has not reached yet', () => {
-    const application = createApplication({ company: 'Northwind', state: 'applied' }, REFERENCE)
+    const application = createApplication({ company: 'Northwind', stage: 'applied' }, REFERENCE)
     const withNote = setStageNote(application, 'offer', 'Target band', REFERENCE)
 
     expect(stageNoteFor(withNote, 'offer')?.body).toBe('Target band')
-    expect(withNote.state).toBe('applied')
+    expect(withNote.stage).toBe('applied')
   })
 
   it('keeps created_at when a note is rewritten and refreshes updated_at', () => {
     const application = setStageNote(
       createApplication({ company: 'Northwind' }, REFERENCE),
-      'interview_1',
+      'round_1',
       'First draft',
       REFERENCE,
     )
-    const rewritten = setStageNote(application, 'interview_1', 'Second draft', LATER)
+    const rewritten = setStageNote(application, 'round_1', 'Second draft', LATER)
 
-    expect(stageNoteFor(rewritten, 'interview_1')).toEqual({
-      state: 'interview_1',
+    expect(stageNoteFor(rewritten, 'round_1')).toEqual({
+      stage: 'round_1',
       body: 'Second draft',
       heard: [],
       created_at: REFERENCE.toISOString(),
@@ -852,65 +852,65 @@ describe('stage prep notes', () => {
   it('treats an unchanged note as a no-op', () => {
     const application = setStageNote(
       createApplication({ company: 'Northwind' }, REFERENCE),
-      'interview_1',
+      'round_1',
       'Ask about the panel',
       REFERENCE,
     )
 
-    expect(setStageNote(application, 'interview_1', '  Ask about the panel ', LATER)).toBe(application)
+    expect(setStageNote(application, 'round_1', '  Ask about the panel ', LATER)).toBe(application)
   })
 
   it('clears a note when the body is blank and leaves other stages alone', () => {
     let application = createApplication({ company: 'Northwind' }, REFERENCE)
-    application = setStageNote(application, 'interview_1', 'Panel notes', REFERENCE)
+    application = setStageNote(application, 'round_1', 'Panel notes', REFERENCE)
     application = setStageNote(application, 'offer', 'Comp notes', REFERENCE)
 
-    const cleared = setStageNote(application, 'interview_1', '   ', LATER)
-    expect(cleared.stage_notes.map((note) => note.state)).toEqual(['offer'])
+    const cleared = setStageNote(application, 'round_1', '   ', LATER)
+    expect(cleared.stage_notes.map((note) => note.stage)).toEqual(['offer'])
     expect(cleared.updated_at).toBe(LATER.toISOString())
   })
 
-  it('keeps notes in configured state order and rejects duplicate stages', () => {
+  it('keeps notes in configured stage order and rejects duplicate stages', () => {
     const application = applyStageNotes(
       createApplication({ company: 'Northwind' }, REFERENCE),
       [
-        { state: 'offer', body: 'Comp notes' },
-        { state: 'recruiter_interview', body: 'Recruiter notes' },
+        { stage: 'offer', body: 'Comp notes' },
+        { stage: 'screening', body: 'Recruiter notes' },
       ],
       REFERENCE,
     )
 
-    expect(application.stage_notes.map((note) => note.state)).toEqual([
-      'recruiter_interview',
+    expect(application.stage_notes.map((note) => note.stage)).toEqual([
+      'screening',
       'offer',
     ])
     expect(() =>
       applyStageNotes(application, [
-        { state: 'offer', body: 'One' },
-        { state: 'offer', body: 'Two' },
+        { stage: 'offer', body: 'One' },
+        { stage: 'offer', body: 'Two' },
       ], REFERENCE),
     ).toThrow(/only one prep note/)
   })
 
   it('updates stage notes through the document without touching other applications', () => {
     const document = createDemoDocument(REFERENCE)
-    const target = document.applications.find((application) => application.state === 'interview_1')!
+    const target = document.applications.find((application) => application.stage === 'round_1')!
     const updated = updateApplicationStageNotes(
       document,
       target.id,
-      [{ state: 'interview_1', body: 'Bring the case study' }],
+      [{ stage: 'round_1', body: 'Bring the case study' }],
       LATER,
     )
 
     const after = updated.applications.find((application) => application.id === target.id)!
-    expect(stageNoteFor(after, 'interview_1')?.body).toBe('Bring the case study')
+    expect(stageNoteFor(after, 'round_1')?.body).toBe('Bring the case study')
     expect(updated.applications).toHaveLength(document.applications.length)
     expect(updated.applications.filter((application) => application.id !== target.id)).toEqual(
       document.applications.filter((application) => application.id !== target.id),
     )
   })
 
-  it('canonicalizes missing stage notes and sorts supplied ones by state order', () => {
+  it('canonicalizes missing stage notes and sorts supplied ones by stage order', () => {
     const parsed = parseTrackerDocument(JSON.stringify({
       schema_version: 1,
       applications: [
@@ -927,7 +927,7 @@ describe('stage prep notes', () => {
           state: 'offer',
           stage_notes: [
             { state: 'offer', body: ' Comp notes ', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
-            { state: 'interview_1', body: 'Panel notes', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+            { state: 'round_1', body: 'Panel notes', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
           ],
           created_at: REFERENCE.toISOString(),
           updated_at: REFERENCE.toISOString(),
@@ -936,8 +936,8 @@ describe('stage prep notes', () => {
     }))
 
     expect(parsed.applications[0]?.stage_notes).toEqual([])
-    expect(parsed.applications[1]?.stage_notes.map((note) => note.state)).toEqual([
-      'interview_1',
+    expect(parsed.applications[1]?.stage_notes.map((note) => note.stage)).toEqual([
+      'round_1',
       'offer',
     ])
     expect(parsed.applications[1]?.stage_notes[1]?.body).toBe('Comp notes')
@@ -957,18 +957,18 @@ describe('stage prep notes', () => {
     })
 
     const blank = validateTrackerDocument(stageNotes([
-      { state: 'applied', body: '   ', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+      { stage: 'applied', body: '   ', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
     ]))
     expect(blank.ok).toBe(false)
 
-    const invalidState = validateTrackerDocument(stageNotes([
-      { state: 'nope', body: 'Notes', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+    const invalidStage = validateTrackerDocument(stageNotes([
+      { stage: 'nope', body: 'Notes', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
     ]))
-    expect(invalidState.ok).toBe(false)
+    expect(invalidStage.ok).toBe(false)
 
     const duplicated = validateTrackerDocument(stageNotes([
-      { state: 'applied', body: 'One', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
-      { state: 'applied', body: 'Two', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+      { stage: 'applied', body: 'One', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
+      { stage: 'applied', body: 'Two', created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString() },
     ]))
     expect(duplicated.ok).toBe(false)
   })
@@ -976,14 +976,14 @@ describe('stage prep notes', () => {
   it('includes stage note text in search indexes', () => {
     const application = setStageNote(
       createApplication({ company: 'Northwind' }, REFERENCE),
-      'interview_1',
+      'round_1',
       'Rehearse the migration story',
       REFERENCE,
     )
     const indexes = rebuildIndexes([application])
 
     expect(indexes.search_text[application.id]).toContain('rehearse the migration story')
-    expect(indexes.search_text[application.id]).toContain('interview 1')
+    expect(indexes.search_text[application.id]).toContain('round 1')
   })
 
   it('round-trips stage notes through export and import', () => {
@@ -1006,7 +1006,7 @@ describe('preference ratings', () => {
     return applyRatings(createApplication({ company: 'Northwind' }, REFERENCE), overrides, RATED)
   }
 
-  it('records a judgement with its own timestamps and no state history', () => {
+  it('records a judgement with its own timestamps and no stage history', () => {
     const application = rated([{ dimension: 'work', score: 4 }])
     const [rating] = application.ratings
 
@@ -1017,8 +1017,8 @@ describe('preference ratings', () => {
       updated_at: RATED.toISOString(),
     })
     expect(application.updated_at).toBe(RATED.toISOString())
-    expect(application.state_history).toHaveLength(1)
-    expect(application.state).toBe('applied')
+    expect(application.stage_history).toHaveLength(1)
+    expect(application.stage).toBe('applied')
   })
 
   it('keeps an explicit unknown distinct from never having been assessed', () => {
@@ -1341,7 +1341,7 @@ describe('compensation', () => {
     expect(edited.compensation.offered).toEqual({ min: 152_000, max: 152_000 })
     expect(edited.updated_at).toBe(later.toISOString())
     // No history is appended: this is an ordinary field edit, not a state change.
-    expect(edited.state_history).toEqual(application.state_history)
+    expect(edited.stage_history).toEqual(application.stage_history)
     // An edit that does not mention compensation leaves it exactly as it was.
     expect(editApplication(edited, { notes: 'Called back' }, later).compensation).toBe(
       edited.compensation,
@@ -1453,21 +1453,21 @@ describe('calendar invites', () => {
 
   function invite(overrides: Record<string, unknown> = {}) {
     return {
-      state: 'interview_1' as const,
-      summary: 'Interview 1 — panel',
+      stage: 'round_1' as const,
+      summary: 'Round 1 — panel',
       starts_at: '2026-08-20T04:00:00.000Z',
       ...overrides,
     }
   }
 
-  it('files an invite against a state with its own timestamps', () => {
+  it('files an invite against a stage with its own timestamps', () => {
     const application = createApplication({ company: 'Northwind' }, REFERENCE)
-    const withInvite = addStateEvent(application, invite({ ends_at: '2026-08-20T05:00:00.000Z' }), REFERENCE)
-    const [event] = withInvite.state_events
+    const withInvite = addStageEvent(application, invite({ ends_at: '2026-08-20T05:00:00.000Z' }), REFERENCE)
+    const [event] = withInvite.stage_events
 
     expect(event).toMatchObject({
-      state: 'interview_1',
-      summary: 'Interview 1 — panel',
+      stage: 'round_1',
+      summary: 'Round 1 — panel',
       starts_at: '2026-08-20T04:00:00.000Z',
       ends_at: '2026-08-20T05:00:00.000Z',
       location: null,
@@ -1479,19 +1479,19 @@ describe('calendar invites', () => {
       updated_at: REFERENCE.toISOString(),
     })
     expect(withInvite.updated_at).toBe(REFERENCE.toISOString())
-    expect(withInvite.state_history).toEqual(application.state_history)
+    expect(withInvite.stage_history).toEqual(application.stage_history)
   })
 
-  it('files an invite against a state the application has not reached', () => {
-    const application = createApplication({ company: 'Northwind', state: 'applied' }, REFERENCE)
-    const withInvite = addStateEvent(application, invite({ state: 'offer' }), REFERENCE)
+  it('files an invite against a stage the application has not reached', () => {
+    const application = createApplication({ company: 'Northwind', stage: 'applied' }, REFERENCE)
+    const withInvite = addStageEvent(application, invite({ stage: 'offer' }), REFERENCE)
 
-    expect(stateEventsFor(withInvite, 'offer')).toHaveLength(1)
-    expect(withInvite.state).toBe('applied')
+    expect(stageEventsFor(withInvite, 'offer')).toHaveLength(1)
+    expect(withInvite.stage).toBe('applied')
   })
 
-  it('keeps several invites for one state in start order', () => {
-    const application = applyStateEvents(
+  it('keeps several invites for one stage in start order', () => {
+    const application = applyStageEvents(
       createApplication({ company: 'Northwind' }, REFERENCE),
       [
         invite({ summary: 'Afternoon panel', starts_at: '2026-08-20T06:00:00.000Z' }),
@@ -1500,53 +1500,53 @@ describe('calendar invites', () => {
       REFERENCE,
     )
 
-    expect(application.state_events.map((event) => event.summary)).toEqual([
+    expect(application.stage_events.map((event) => event.summary)).toEqual([
       'Morning panel',
       'Afternoon panel',
     ])
   })
 
-  it('orders invites by configured state order before start time', () => {
-    const application = applyStateEvents(
+  it('orders invites by configured stage order before start time', () => {
+    const application = applyStageEvents(
       createApplication({ company: 'Northwind' }, REFERENCE),
       [
-        invite({ state: 'offer', starts_at: '2026-08-19T04:00:00.000Z' }),
-        invite({ state: 'recruiter_interview', starts_at: '2026-08-22T04:00:00.000Z' }),
+        invite({ stage: 'offer', starts_at: '2026-08-19T04:00:00.000Z' }),
+        invite({ stage: 'screening', starts_at: '2026-08-22T04:00:00.000Z' }),
       ],
       REFERENCE,
     )
 
-    expect(application.state_events.map((event) => event.state)).toEqual([
-      'recruiter_interview',
+    expect(application.stage_events.map((event) => event.stage)).toEqual([
+      'screening',
       'offer',
     ])
   })
 
   it('drops an invite whose description was cleared', () => {
-    const application = applyStateEvents(
+    const application = applyStageEvents(
       createApplication({ company: 'Northwind' }, REFERENCE),
       [invite()],
       REFERENCE,
     )
-    const cleared = applyStateEvents(
+    const cleared = applyStageEvents(
       application,
-      [{ ...invite(), id: application.state_events[0]!.id, summary: '   ' }],
+      [{ ...invite(), id: application.stage_events[0]!.id, summary: '   ' }],
       LATER,
     )
 
-    expect(cleared.state_events).toEqual([])
+    expect(cleared.stage_events).toEqual([])
     expect(cleared.updated_at).toBe(LATER.toISOString())
   })
 
   it('keeps timestamps when nothing about an invite changed', () => {
-    const application = applyStateEvents(
+    const application = applyStageEvents(
       createApplication({ company: 'Northwind' }, REFERENCE),
       [invite()],
       REFERENCE,
     )
-    const resaved = applyStateEvents(
+    const resaved = applyStageEvents(
       application,
-      [{ ...invite(), id: application.state_events[0]!.id }],
+      [{ ...invite(), id: application.stage_events[0]!.id }],
       LATER,
     )
 
@@ -1554,29 +1554,29 @@ describe('calendar invites', () => {
   })
 
   it('keeps created_at and refreshes updated_at when an invite is rescheduled', () => {
-    const application = applyStateEvents(
+    const application = applyStageEvents(
       createApplication({ company: 'Northwind' }, REFERENCE),
       [invite()],
       REFERENCE,
     )
-    const moved = applyStateEvents(
+    const moved = applyStageEvents(
       application,
       [{
         ...invite(),
-        id: application.state_events[0]!.id,
+        id: application.stage_events[0]!.id,
         starts_at: '2026-08-21T04:00:00.000Z',
       }],
       LATER,
     )
 
-    expect(moved.state_events[0]!.created_at).toBe(REFERENCE.toISOString())
-    expect(moved.state_events[0]!.updated_at).toBe(LATER.toISOString())
+    expect(moved.stage_events[0]!.created_at).toBe(REFERENCE.toISOString())
+    expect(moved.stage_events[0]!.updated_at).toBe(LATER.toISOString())
     expect(moved.updated_at).toBe(LATER.toISOString())
   })
 
   it('rejects an invite that ends before it starts', () => {
     expect(() =>
-      addStateEvent(
+      addStageEvent(
         createApplication({ company: 'Northwind' }, REFERENCE),
         invite({ ends_at: '2026-08-20T03:00:00.000Z' }),
         REFERENCE,
@@ -1586,7 +1586,7 @@ describe('calendar invites', () => {
 
   it('rejects two invites sharing one calendar UID', () => {
     expect(() =>
-      applyStateEvents(
+      applyStageEvents(
         createApplication({ company: 'Northwind' }, REFERENCE),
         [invite({ ics_uid: 'shared@example.com' }), invite({ ics_uid: 'shared@example.com' })],
         REFERENCE,
@@ -1595,40 +1595,40 @@ describe('calendar invites', () => {
   })
 
   it('replaces the invite a rescheduled one supersedes, keeping the stage it was filed under', () => {
-    const application = addStateEvent(
+    const application = addStageEvent(
       createApplication({ company: 'Northwind' }, REFERENCE),
-      invite({ ics_uid: 'panel@example.com', state: 'interview_2' }),
+      invite({ ics_uid: 'panel@example.com', stage: 'round_2' }),
       REFERENCE,
     )
-    const rescheduled = addStateEvent(
+    const rescheduled = addStageEvent(
       application,
       invite({
         ics_uid: 'panel@example.com',
-        state: 'applied',
+        stage: 'applied',
         starts_at: '2026-08-27T04:00:00.000Z',
         sequence: 1,
       }),
       LATER,
     )
 
-    expect(rescheduled.state_events).toHaveLength(1)
-    expect(rescheduled.state_events[0]).toMatchObject({
-      state: 'interview_2',
+    expect(rescheduled.stage_events).toHaveLength(1)
+    expect(rescheduled.stage_events[0]).toMatchObject({
+      stage: 'round_2',
       starts_at: '2026-08-27T04:00:00.000Z',
       sequence: 1,
       created_at: REFERENCE.toISOString(),
       updated_at: LATER.toISOString(),
     })
-    expect(rescheduled.state_events[0]!.id).toBe(application.state_events[0]!.id)
+    expect(rescheduled.stage_events[0]!.id).toBe(application.stage_events[0]!.id)
   })
 
   it('ignores an invite that is older than the one already stored', () => {
-    const application = addStateEvent(
+    const application = addStageEvent(
       createApplication({ company: 'Northwind' }, REFERENCE),
       invite({ ics_uid: 'panel@example.com', sequence: 3 }),
       REFERENCE,
     )
-    const stale = addStateEvent(
+    const stale = addStageEvent(
       application,
       invite({ ics_uid: 'panel@example.com', sequence: 2, starts_at: '2026-09-01T04:00:00.000Z' }),
       LATER,
@@ -1638,53 +1638,53 @@ describe('calendar invites', () => {
   })
 
   it('re-importing the same invite changes nothing', () => {
-    const application = addStateEvent(
+    const application = addStageEvent(
       createApplication({ company: 'Northwind' }, REFERENCE),
       invite({ ics_uid: 'panel@example.com' }),
       REFERENCE,
     )
 
-    expect(addStateEvent(application, invite({ ics_uid: 'panel@example.com' }), LATER)).toBe(
+    expect(addStageEvent(application, invite({ ics_uid: 'panel@example.com' }), LATER)).toBe(
       application,
     )
   })
 
   it('keeps invites with different UIDs side by side', () => {
-    let application = addStateEvent(
+    let application = addStageEvent(
       createApplication({ company: 'Northwind' }, REFERENCE),
       invite({ ics_uid: 'one@example.com' }),
       REFERENCE,
     )
-    application = addStateEvent(
+    application = addStageEvent(
       application,
       invite({ ics_uid: 'two@example.com', starts_at: '2026-08-21T04:00:00.000Z' }),
       LATER,
     )
 
-    expect(application.state_events).toHaveLength(2)
+    expect(application.stage_events).toHaveLength(2)
   })
 
   it('removes an invite and leaves an unknown id alone', () => {
-    const application = addStateEvent(
+    const application = addStageEvent(
       createApplication({ company: 'Northwind' }, REFERENCE),
       invite(),
       REFERENCE,
     )
-    const removed = removeStateEvent(application, application.state_events[0]!.id, LATER)
+    const removed = removeStageEvent(application, application.stage_events[0]!.id, LATER)
 
-    expect(removed.state_events).toEqual([])
+    expect(removed.stage_events).toEqual([])
     expect(removed.updated_at).toBe(LATER.toISOString())
-    expect(removeStateEvent(application, 'missing', LATER)).toBe(application)
+    expect(removeStageEvent(application, 'missing', LATER)).toBe(application)
   })
 
   it('updates invites through the document without touching other applications', () => {
     const document = createDemoDocument(REFERENCE)
     const target = document.applications[0]!
-    const next = updateApplicationStateEvents(document, target.id, [invite()], LATER)
+    const next = updateApplicationStageEvents(document, target.id, [invite()], LATER)
 
-    expect(next.applications[0]!.state_events).toHaveLength(1)
+    expect(next.applications[0]!.stage_events).toHaveLength(1)
     expect(next.applications[1]).toBe(document.applications[1])
-    expect(updateApplicationStateEvents(document, 'missing', [invite()], LATER)).toBe(document)
+    expect(updateApplicationStageEvents(document, 'missing', [invite()], LATER)).toBe(document)
   })
 
   it('canonicalizes missing invites on import and rejects invalid ones', () => {
@@ -1702,11 +1702,11 @@ describe('calendar invites', () => {
 
     const missing = validateTrackerDocument(withEvents(undefined))
     expect(missing.ok).toBe(true)
-    if (missing.ok) expect(missing.value.applications[0]!.state_events).toEqual([])
+    if (missing.ok) expect(missing.value.applications[0]!.stage_events).toEqual([])
 
     const stored = {
       id: '018f24c0-0000-7000-8000-0000000000aa',
-      state: 'applied',
+      stage: 'applied',
       summary: 'Screening call',
       starts_at: REFERENCE.toISOString(),
       created_at: REFERENCE.toISOString(),
@@ -1715,7 +1715,7 @@ describe('calendar invites', () => {
 
     expect(validateTrackerDocument(withEvents([stored])).ok).toBe(true)
     expect(validateTrackerDocument(withEvents([{ ...stored, summary: '  ' }])).ok).toBe(false)
-    expect(validateTrackerDocument(withEvents([{ ...stored, state: 'nope' }])).ok).toBe(false)
+    expect(validateTrackerDocument(withEvents([{ ...stored, stage: 'nope' }])).ok).toBe(false)
     expect(validateTrackerDocument(withEvents([{ ...stored, starts_at: 'soon' }])).ok).toBe(false)
     expect(
       validateTrackerDocument(withEvents([{ ...stored, ends_at: '2026-08-13T12:00:00.000Z' }])).ok,
@@ -1732,7 +1732,7 @@ describe('calendar invites', () => {
   })
 
   it('includes invite text in search indexes', () => {
-    const application = addStateEvent(
+    const application = addStageEvent(
       createApplication({ company: 'Northwind' }, REFERENCE),
       invite({ summary: 'Panel with the platform team', location: 'Level 4, Example St' }),
       REFERENCE,
@@ -1741,18 +1741,18 @@ describe('calendar invites', () => {
 
     expect(indexes.search_text[application.id]).toContain('panel with the platform team')
     expect(indexes.search_text[application.id]).toContain('level 4, example st')
-    expect(indexes.search_text[application.id]).toContain('interview 1')
+    expect(indexes.search_text[application.id]).toContain('round 1')
   })
 
   it('round-trips invites through export and import', () => {
     const document = createDemoDocument(REFERENCE)
     const roundTrip = parseTrackerDocument(serializeTrackerDocument(document))
 
-    expect(roundTrip.applications.map((application) => application.state_events)).toEqual(
-      document.applications.map((application) => application.state_events),
+    expect(roundTrip.applications.map((application) => application.stage_events)).toEqual(
+      document.applications.map((application) => application.stage_events),
     )
     expect(
-      document.applications.some((application) => application.state_events.length > 0),
+      document.applications.some((application) => application.stage_events.length > 0),
     ).toBe(true)
   })
 })
@@ -1968,7 +1968,7 @@ describe('hiring correspondence', () => {
 
   function message(overrides: Record<string, unknown> = {}) {
     return {
-      state: 'recruiter_messaged' as const,
+      stage: 'recruiter_messaged' as const,
       direction: 'received' as const,
       body: 'Could you send me two or three windows that suit you?',
       at: SENT_AT,
@@ -1978,7 +1978,7 @@ describe('hiring correspondence', () => {
 
   const log = (application: Application) => application.correspondence
 
-  it('records a message against a stage with its own timestamps and no state history', () => {
+  it('records a message against a stage with its own timestamps and no stage history', () => {
     const application = createApplication({ company: 'Northwind' }, REFERENCE)
     const logged = applyCorrespondence(
       application,
@@ -1987,7 +1987,7 @@ describe('hiring correspondence', () => {
     )
 
     expect(log(logged)[0]).toMatchObject({
-      state: 'recruiter_messaged',
+      stage: 'recruiter_messaged',
       direction: 'received',
       channel: 'Email',
       who: 'Dana Okafor',
@@ -1997,7 +1997,7 @@ describe('hiring correspondence', () => {
       updated_at: REFERENCE.toISOString(),
     })
     expect(logged.updated_at).toBe(REFERENCE.toISOString())
-    expect(logged.state_history).toEqual(application.state_history)
+    expect(logged.stage_history).toEqual(application.stage_history)
   })
 
   it('keeps the time a message was sent, which is supplied rather than minted', () => {
@@ -2053,12 +2053,12 @@ describe('hiring correspondence', () => {
     ).toThrow(/direction/i)
   })
 
-  it('files a message against a state the application has not reached', () => {
-    const application = createApplication({ company: 'Northwind', state: 'applied' }, REFERENCE)
-    const logged = applyCorrespondence(application, [message({ state: 'offer' })], REFERENCE)
+  it('files a message against a stage the application has not reached', () => {
+    const application = createApplication({ company: 'Northwind', stage: 'applied' }, REFERENCE)
+    const logged = applyCorrespondence(application, [message({ stage: 'offer' })], REFERENCE)
 
-    expect(log(logged)[0]!.state).toBe('offer')
-    expect(logged.state).toBe('applied')
+    expect(log(logged)[0]!.stage).toBe('offer')
+    expect(logged.stage).toBe('applied')
   })
 
   it('treats an unchanged list as a no-op', () => {
@@ -2096,8 +2096,8 @@ describe('hiring correspondence', () => {
       [
         // Filed against a later stage but sent first: send order wins, because a log is read
         // as a timeline rather than one stage at a time.
-        message({ state: 'interview_2', body: 'Second', at: '2026-08-10T23:30:00.000Z' }),
-        message({ state: 'applied', body: 'First', at: '2026-08-09T23:30:00.000Z' }),
+        message({ stage: 'round_2', body: 'Second', at: '2026-08-10T23:30:00.000Z' }),
+        message({ stage: 'applied', body: 'First', at: '2026-08-09T23:30:00.000Z' }),
       ],
       REFERENCE,
     )
@@ -2175,7 +2175,7 @@ describe('hiring correspondence', () => {
 
     const stored = {
       id: '018f24c0-0000-7000-8000-0000000000aa',
-      state: 'recruiter_messaged',
+      stage: 'recruiter_messaged',
       direction: 'received',
       body: 'Could you send me some windows?',
       at: SENT_AT,
@@ -2194,7 +2194,7 @@ describe('hiring correspondence', () => {
     }
 
     expect(validateTrackerDocument(withMessages([{ ...stored, body: '  ' }])).ok).toBe(false)
-    expect(validateTrackerDocument(withMessages([{ ...stored, state: 'nope' }])).ok).toBe(false)
+    expect(validateTrackerDocument(withMessages([{ ...stored, stage: 'nope' }])).ok).toBe(false)
     expect(
       validateTrackerDocument(withMessages([{ ...stored, direction: 'forwarded' }])).ok,
     ).toBe(false)
@@ -2206,12 +2206,12 @@ describe('hiring correspondence', () => {
     expect(validateTrackerDocument(withMessages([stored, stored])).ok).toBe(false)
     expect(validateTrackerDocument(withMessages('nope')).ok).toBe(false)
 
-    const badState = validateTrackerDocument(withMessages([{ ...stored, state: 'nope' }]))
-    expect(badState.ok).toBe(false)
-    if (!badState.ok) {
+    const badStage = validateTrackerDocument(withMessages([{ ...stored, stage: 'nope' }]))
+    expect(badStage.ok).toBe(false)
+    if (!badStage.ok) {
       expect(
-        badState.errors.some((error) =>
-          error.path.includes('correspondence[0].state'),
+        badStage.errors.some((error) =>
+          error.path.includes('correspondence[0].stage'),
         ),
       ).toBe(true)
     }
@@ -2319,11 +2319,11 @@ describe('external note editing', () => {
   })
 
   it('names the scratch file after the stage and rejects an invalid one', () => {
-    expect(stageNoteEditFilename('interview_2')).toBe('interview_2.md')
+    expect(stageNoteEditFilename('round_2')).toBe('round_2.md')
     expect(stageNoteEditUrl('018f0000-0000-7000-8000-000000000015', 'offer')).toBe(
       '/__note-edit/018f0000-0000-7000-8000-000000000015/offer',
     )
-    expect(() => stageNoteEditFilename('nope' as never)).toThrow(/State is invalid/)
+    expect(() => stageNoteEditFilename('nope' as never)).toThrow(/Stage is invalid/)
   })
 })
 
@@ -2382,8 +2382,8 @@ describe('document validation and persistence', () => {
     expect(parsed.indexes).toBeDefined()
     expect(parsed.applications[0]).not.toHaveProperty('ignored_application_field')
     expect(parsed.applications[0]?.next_action_at).toBeNull()
-    expect(parsed.applications[0]?.state_history).toEqual([
-      { state: 'applied', outcome: 'active', at: '2026-08-14T09:00:00+10:00' },
+    expect(parsed.applications[0]?.stage_history).toEqual([
+      { stage: 'applied', outcome: 'active', at: '2026-08-14T09:00:00+10:00' },
     ])
   })
 
@@ -2459,11 +2459,11 @@ describe('document validation and persistence', () => {
   })
 
   it.each([
-    [{ schema_version: 4, applications: [] }, 'schema_version'],
+    [{ schema_version: 5, applications: [] }, 'schema_version'],
     [{ schema_version: 2, applications: [{
       id: 'one', company: 'Northwind', state: 'auto_rejected', outcome: 'active',
       created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString(),
-    }] }, 'applications[0].state'],
+    }] }, 'applications[0].stage'],
     [{ schema_version: 2, applications: [{
       id: 'one', company: 'Northwind', state: 'applied', outcome: 'ghosted',
       created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString(),
@@ -2498,9 +2498,9 @@ describe('document validation and persistence', () => {
         },
       },
       {
-        path: 'applications[0].state_history[0].at',
+        path: 'applications[0].stage_history[0].at',
         mutate: (document) => {
-          document.applications[0]!.state_history[0]!.at = impossible
+          document.applications[0]!.stage_history[0]!.at = impossible
         },
       },
       {
@@ -2585,7 +2585,7 @@ describe('ending an application clears an outstanding next action', () => {
   it('drops the action and its date when the application is rejected', () => {
     const moved = moveApplicationStatus(withAction(), { outcome: 'rejected' }, REJECTED_AT)
 
-    expect(moved.state).toBe('applied')
+    expect(moved.stage).toBe('applied')
     expect(moved.outcome).toBe('rejected')
     expect(moved.next_action).toBeNull()
     expect(moved.next_action_at).toBeNull()
@@ -2614,21 +2614,21 @@ describe('ending an application clears an outstanding next action', () => {
     const application = withAction()
     const moved = moveApplicationStatus(application, { outcome: 'rejected' }, REJECTED_AT)
 
-    expect(moved.state_history).toEqual([
-      ...application.state_history,
-      { state: 'applied', outcome: 'rejected', at: REJECTED_AT.toISOString() },
+    expect(moved.stage_history).toEqual([
+      ...application.stage_history,
+      { stage: 'applied', outcome: 'rejected', at: REJECTED_AT.toISOString() },
     ])
   })
 
   it('keeps the action when moving between stages', () => {
-    const moved = moveApplicationStatus(withAction(), { state: 'recruiter_interview' }, REJECTED_AT)
+    const moved = moveApplicationStatus(withAction(), { stage: 'screening' }, REJECTED_AT)
 
     expect(moved.next_action).toBe('Follow up with the recruiter')
     expect(moved.next_action_at).toBe(new Date('2026-08-30T09:00:00+10:00').toISOString())
   })
 
   it('keeps the action when accepted, where a task is still live work', () => {
-    const moved = moveApplicationStatus(withAction(), { state: 'accepted', outcome: 'active' }, REJECTED_AT)
+    const moved = moveApplicationStatus(withAction(), { stage: 'accepted', outcome: 'active' }, REJECTED_AT)
 
     expect(moved.next_action).toBe('Follow up with the recruiter')
   })
@@ -2642,7 +2642,7 @@ describe('ending an application clears an outstanding next action', () => {
   it('keeps a task set after the rejection when the stage is corrected', () => {
     const rejected = moveApplicationStatus(withAction(), { outcome: 'rejected' }, REJECTED_AT)
     const replanned = editApplication(rejected, { next_action: 'Ask for feedback' }, REJECTED_AT)
-    const corrected = moveApplicationStatus(replanned, { state: 'interview_1' }, REJECTED_AT)
+    const corrected = moveApplicationStatus(replanned, { stage: 'round_1' }, REJECTED_AT)
 
     expect(corrected.next_action).toBe('Ask for feedback')
   })
@@ -2682,7 +2682,7 @@ describe('archiving', () => {
     expect(archived.archived_at).toBe(ARCHIVED_AT.toISOString())
     expect(archived.updated_at).toBe(ARCHIVED_AT.toISOString())
     expect(archived.outcome).toBe('rejected')
-    expect(archived.state_history).toBe(rejected.state_history)
+    expect(archived.stage_history).toBe(rejected.stage_history)
     expect(setApplicationArchived(archived, true, new Date())).toBe(archived)
 
     const restored = setApplicationArchived(archived, false, ARCHIVED_AT)
@@ -2693,7 +2693,7 @@ describe('archiving', () => {
   it('archives every ended application at once, and nothing still active', () => {
     let document = addApplication(createEmptyDocument(), { company: 'Live' }, REFERENCE)
     document = addApplication(document, { company: 'Rejected', outcome: 'rejected' }, REFERENCE)
-    document = addApplication(document, { company: 'Accepted', state: 'accepted', outcome: 'active' }, REFERENCE)
+    document = addApplication(document, { company: 'Accepted', stage: 'accepted', outcome: 'active' }, REFERENCE)
 
     document = addApplication(document, { company: 'Withdrawn', outcome: 'withdrawn' }, REFERENCE)
 
@@ -2747,47 +2747,55 @@ describe('migrating version-1 documents', () => {
   }
 
   it('reads every version-1 state as the stage and outcome it meant', () => {
-    expect(legacyStatus('interview_1')).toEqual({ state: 'interview_1', outcome: 'active' })
-    expect(legacyStatus('interview_1_rejected')).toEqual({ state: 'interview_1', outcome: 'rejected' })
-    expect(legacyStatus('auto_rejected')).toEqual({ state: 'applied', outcome: 'rejected' })
-    expect(legacyStatus('no_openings')).toEqual({ state: 'headhunted', outcome: 'closed' })
-    expect(legacyStatus('accepted')).toEqual({ state: 'accepted', outcome: 'active' })
-    expect(legacyStatus('offer_rejected')).toEqual({ state: 'offer', outcome: 'rejected' })
+    expect(legacyStatus('interview_1')).toEqual({ stage: 'round_1', outcome: 'active' })
+    expect(legacyStatus('recruiter_interview')).toEqual({ stage: 'screening', outcome: 'active' })
+    expect(legacyStatus('interview_1_rejected')).toEqual({ stage: 'round_1', outcome: 'rejected' })
+    expect(legacyStatus('auto_rejected')).toEqual({ stage: 'applied', outcome: 'rejected' })
+    expect(legacyStatus('no_openings')).toEqual({ stage: 'headhunted', outcome: 'closed' })
+    expect(legacyStatus('accepted')).toEqual({ stage: 'accepted', outcome: 'active' })
+    expect(legacyStatus('offer_rejected')).toEqual({ stage: 'offer', outcome: 'rejected' })
     expect(legacyStatus('invented')).toBeNull()
     expect(legacyStatus('constructor')).toBeNull()
   })
 
-  it('splits the state and every history entry into a stage and an outcome', () => {
+  it('splits the state and every history entry into a stage and an outcome, under the new keys', () => {
     const parsed = parseTrackerDocument(JSON.stringify({ schema_version: 1, applications: [legacyApplication()] }))
     const application = parsed.applications[0]!
 
     expect(parsed.schema_version).toBe(DATA_VERSION)
-    expect(application.state).toBe('interview_1')
+    expect(application.stage).toBe('round_1')
     expect(application.outcome).toBe('rejected')
     expect(application.archived_at).toBeNull()
-    expect(application.state_history).toEqual([
-      { state: 'applied', outcome: 'active', at: AT },
-      { state: 'interview_1', outcome: 'active', at: AT },
-      { state: 'interview_1', outcome: 'rejected', at: LATER },
+    expect(application.stage_history).toEqual([
+      { stage: 'applied', outcome: 'active', at: AT },
+      { stage: 'round_1', outcome: 'active', at: AT },
+      { stage: 'round_1', outcome: 'rejected', at: LATER },
     ])
   })
 
   it('migrates a file that carries no version at all, which is every file written before this', () => {
     const raw = JSON.parse(JSON.stringify(createDemoDocument(REFERENCE))) as Record<string, unknown>
     delete raw.schema_version
-    ;(raw.applications as Record<string, unknown>[])[0]!.state = 'auto_rejected'
+    // Written the way version 1 wrote it: the stage under `state`, and no outcome.
     for (const application of raw.applications as Record<string, unknown>[]) {
+      const { stage, stage_history: history, stage_events: events, ...rest } = application
+      for (const key of Object.keys(application)) delete application[key]
+      Object.assign(application, rest, {
+        state: stage,
+        state_events: events,
+        state_history: (history as Record<string, unknown>[]).map(({ stage: entry, at }) => ({ state: entry, at })),
+      })
       delete application.outcome
       delete application.archived_at
-      for (const entry of application.state_history as Record<string, unknown>[]) delete entry.outcome
     }
+    ;(raw.applications as Record<string, unknown>[])[0]!.state = 'auto_rejected'
     ;(raw.applications as Record<string, unknown>[])[0]!.state_history = [
       { state: 'auto_rejected', at: AT },
     ]
 
     expect(needsMigration(raw)).toBe(true)
     const parsed = parseTrackerDocument(JSON.stringify(raw))
-    expect(parsed.applications[0]!.state).toBe('applied')
+    expect(parsed.applications[0]!.stage).toBe('applied')
     expect(parsed.applications[0]!.outcome).toBe('rejected')
     expect(needsMigration(parsed)).toBe(false)
   })
@@ -2805,8 +2813,8 @@ describe('migrating version-1 documents', () => {
     })
     const parsed = parseTrackerDocument(JSON.stringify({ schema_version: 1, applications: [application] }))
 
-    expect(parsed.applications[0]!.state_events[0]!.state).toBe('interview_1')
-    expect(parsed.applications[0]!.correspondence[0]!.state).toBe('interview_1')
+    expect(parsed.applications[0]!.stage_events[0]!.stage).toBe('round_1')
+    expect(parsed.applications[0]!.correspondence[0]!.stage).toBe('round_1')
   })
 
   it('joins a stage note and its rejection note into one, losing nothing', () => {
@@ -2832,7 +2840,7 @@ describe('migrating version-1 documents', () => {
     const notes = parsed.applications[0]!.stage_notes
 
     expect(notes).toHaveLength(1)
-    expect(notes[0]!.state).toBe('interview_1')
+    expect(notes[0]!.stage).toBe('round_1')
     expect(notes[0]!.body).toBe('Lead with the migration story.\n\nFeedback: wanted more system design.')
     expect(notes[0]!.heard.map(({ id }) => id)).toEqual(['heard-1', 'heard-2'])
     expect(notes[0]!.created_at).toBe(AT)
@@ -2858,10 +2866,10 @@ describe('migrating version-1 documents', () => {
     expect(needsMigration(raw)).toBe(true)
     const parsed = parseTrackerDocument(JSON.stringify(raw))
     expect(parsed.schema_version).toBe(DATA_VERSION)
-    expect(parsed.applications[0]).toMatchObject({ state: 'accepted', outcome: 'active' })
-    expect(parsed.applications[0]!.state_history).toEqual([
-      { state: 'offer', outcome: 'active', at: AT },
-      { state: 'accepted', outcome: 'active', at: LATER },
+    expect(parsed.applications[0]).toMatchObject({ stage: 'accepted', outcome: 'active' })
+    expect(parsed.applications[0]!.stage_history).toEqual([
+      { stage: 'offer', outcome: 'active', at: AT },
+      { stage: 'accepted', outcome: 'active', at: LATER },
     ])
   })
 
@@ -2881,7 +2889,7 @@ describe('migrating version-1 documents', () => {
     expect(migrateDocument(raw)).toBe(raw)
   })
 
-  it('refuses a version-2 document that still uses a version-1 state', () => {
+  it('refuses a current document that still uses a version-1 state', () => {
     const result = validateTrackerDocument({
       schema_version: DATA_VERSION,
       applications: [{ ...legacyApplication(), outcome: 'rejected' }],

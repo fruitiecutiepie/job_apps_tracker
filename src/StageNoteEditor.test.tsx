@@ -52,11 +52,11 @@ function editor(query: string, currentMatch: number | null = null) {
       <section className="stage-note">
         <StageNoteEditor
           currentMatch={currentMatch}
-          label="Interview 2"
+          label="Round 2"
           matchBase={0}
           onChange={() => {}}
           query={query}
-          sourceId="interview_2"
+          sourceId="round_2"
           value={NOTE}
         />
       </section>
@@ -125,14 +125,14 @@ describe('the layer behind a note being written', () => {
     // name, which is how it first shipped and how this was caught.
     const { getByLabelText } = render(
       <StageNoteEditor
-        label="Interview 2"
+        label="Round 2"
         onChange={() => {}}
         query="leads"
-        sourceId="interview_2"
+        sourceId="round_2"
         value={NOTE}
       />,
     )
-    expect(getByLabelText('Interview 2 prep notes').tagName).toBe('TEXTAREA')
+    expect(getByLabelText('Round 2 prep notes').tagName).toBe('TEXTAREA')
   })
 })
 
@@ -155,30 +155,30 @@ const FOLDABLE = [
 function Writing({ note = FOLDABLE }: { note?: string }) {
   const [value, setValue] = useState(note)
   return (
-    <StageNoteEditor label="Interview 2" onChange={setValue} sourceId="interview_2" value={value} />
+    <StageNoteEditor label="Round 2" onChange={setValue} sourceId="round_2" value={value} />
   )
 }
 
 function box() {
-  return screen.getByLabelText('Interview 2 prep notes') as HTMLTextAreaElement
+  return screen.getByLabelText('Round 2 prep notes') as HTMLTextAreaElement
 }
 
 describe('folding a note that is open for writing', () => {
   it('closes a heading over what is written under it, and opens it again', () => {
     render(<Writing />)
 
-    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Round 2'))
     expect(box().value).not.toContain('Growing seniors into leads.')
     expect(box().value).toContain('## Questions')
 
-    fireEvent.click(screen.getByLabelText('Expand Themes in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Expand Themes in Round 2'))
     expect(box().value).toBe(FOLDABLE)
   })
 
   it('folds a point onto the detail under it', () => {
     render(<Writing />)
 
-    fireEvent.click(screen.getByLabelText('Collapse On-call in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Collapse On-call in Round 2'))
     expect(box().value).not.toContain('weekend rotation')
     expect(box().value).toContain('- On-call')
   })
@@ -186,18 +186,18 @@ describe('folding a note that is open for writing', () => {
   it('collapses the whole note at once, and says so on the same control', () => {
     render(<Writing />)
 
-    fireEvent.click(screen.getByLabelText('Collapse all points in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Collapse all points in Round 2'))
     // What a folded heading holds is folded with it, the point under `## Questions`
     // included, which is the shape Collapse all leaves in the reading view too.
     expect(box().value).toBe('## Themes\n\n## Questions')
 
-    fireEvent.click(screen.getByLabelText('Expand all points in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Expand all points in Round 2'))
     expect(box().value).toBe(FOLDABLE)
   })
 
   it('writes what is typed into the whole note, not just the part on show', () => {
     render(<Writing />)
-    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Round 2'))
 
     const typed = box().value.replace('## Questions', '## Questions to ask')
     // The caret is where typing left it, which is what says where the edit was: two
@@ -208,13 +208,13 @@ describe('folding a note that is open for writing', () => {
 
     // The heading is still folded, and what it folds is still in the note.
     expect(box().value).not.toContain('Growing seniors into leads.')
-    fireEvent.click(screen.getByLabelText('Expand Themes in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Expand Themes in Round 2'))
     expect(box().value).toBe(FOLDABLE.replace('## Questions', '## Questions to ask'))
   })
 
   it('opens a fold an edit reaches into rather than writing through it', () => {
     render(<Writing />)
-    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Round 2'))
 
     // Backspace at the end of the folded heading: in the box it joins two lines that have
     // everything folded sitting between them.
@@ -227,16 +227,16 @@ describe('folding a note that is open for writing', () => {
 
   it('opens the fold a jump from the outline lands in, and says so to the panel', () => {
     const { rerender } = render(
-      <StageNoteEditor label="Interview 2" onChange={() => {}} value={FOLDABLE} />,
+      <StageNoteEditor label="Round 2" onChange={() => {}} value={FOLDABLE} />,
     )
-    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Round 2'))
     // The lines the box is not showing, which is how the panel counts a caret or a jump
     // back into the note's own lines.
     expect(box().getAttribute('data-fold-hidden')).toBe('[{"start":1,"end":2}]')
 
     rerender(
       <StageNoteEditor
-        label="Interview 2"
+        label="Round 2"
         onChange={() => {}}
         revealKeys={new Set(['root.h1'])}
         value={FOLDABLE}
@@ -248,13 +248,13 @@ describe('folding a note that is open for writing', () => {
 
   it('keeps a fold open while the find has a match inside it', () => {
     const { rerender } = render(
-      <StageNoteEditor label="Interview 2" onChange={() => {}} query="" value={FOLDABLE} />,
+      <StageNoteEditor label="Round 2" onChange={() => {}} query="" value={FOLDABLE} />,
     )
-    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Round 2'))
     expect(box().value).not.toContain('Growing seniors into leads.')
 
     rerender(
-      <StageNoteEditor label="Interview 2" onChange={() => {}} query="seniors" value={FOLDABLE} />,
+      <StageNoteEditor label="Round 2" onChange={() => {}} query="seniors" value={FOLDABLE} />,
     )
     // A folded match would be one the find counts and cannot show.
     expect(box().value).toContain('Growing seniors into leads.')
@@ -282,7 +282,7 @@ describe('line numbers beside the note being written', () => {
 
   it('jumps across a closed fold rather than renumbering what is still shown', () => {
     const { container } = render(<Writing />)
-    fireEvent.click(screen.getByLabelText('Collapse Themes in Interview 2'))
+    fireEvent.click(screen.getByLabelText('Collapse Themes in Round 2'))
     // Lines 2 and 3 (the blank line and the point folded under Themes) are hidden, so the
     // numbers on either side of the fold keep the source line they always named.
     expect(lineNumbers(container)).toEqual(['1', '4', '5', '6', '7', '8', '9'])

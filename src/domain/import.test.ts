@@ -13,7 +13,7 @@ function oneApplication(company = 'Northwind') {
       role: 'Engineer',
       url: '',
       source: '',
-      state: 'applied',
+      stage: 'applied',
       next_action: '',
       next_action_at: null,
       deadline_at: null,
@@ -66,14 +66,14 @@ describe('reading an imported file', () => {
     expect(readTrackerImport(bytesOf('this is not JSON'))).toMatchObject({ ok: false })
     expect(readTrackerImport(new Uint8Array())).toMatchObject({ ok: false })
     expect(readTrackerImport(bytesOf('{"applications":"nope"}'))).toMatchObject({ ok: false })
-    expect(readTrackerImport(bytesOf(JSON.stringify({ schema_version: 4, applications: [] })))).toMatchObject({
+    expect(readTrackerImport(bytesOf(JSON.stringify({ schema_version: 5, applications: [] })))).toMatchObject({
       ok: false,
     })
   })
 
   it('says which field is wrong, not just that something is', () => {
     const broken = JSON.stringify({
-      applications: [{ id: 'not-a-uuid', company: '', state: 'invented_state' }],
+      applications: [{ id: 'not-a-uuid', company: '', stage: 'invented_stage' }],
     })
     const result = readTrackerImport(bytesOf(broken))
     expect(result.ok).toBe(false)

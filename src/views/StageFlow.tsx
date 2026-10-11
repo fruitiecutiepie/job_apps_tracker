@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-import { OUTCOME_IDS, stateRank, statusLabel } from "../domain";
+import { OUTCOME_IDS, stageRank, statusLabel } from "../domain";
 import { ChartKey } from "./ChartKey";
 import type { ChartTone } from "./ChartKey";
 import { moveKey, stageMoveKind } from "./outcomes";
@@ -17,8 +17,8 @@ const LABEL = 18;
 const GAP = 6;
 
 /** Stage first, then outcome: the order the moves are listed in, on either side. */
-const order = ({ state, outcome }: MoveEnd) => stateRank(state) * OUTCOME_IDS.length + OUTCOME_IDS.indexOf(outcome);
-const endKey = ({ state, outcome }: MoveEnd) => `${state}:${outcome}`;
+const order = ({ stage, outcome }: MoveEnd) => stageRank(stage) * OUTCOME_IDS.length + OUTCOME_IDS.indexOf(outcome);
+const endKey = ({ stage, outcome }: MoveEnd) => `${stage}:${outcome}`;
 
 const TONE: Record<StageMoveKind, ChartTone> = {
   further: "strong",
@@ -69,7 +69,7 @@ interface StageFlowProps {
 /**
  * Where applications went from each stage: every stage and outcome something left on one
  * side, every one something arrived in on the other, and a band between them as wide as
- * the moves. "Interview 1 → Interview 1 — Rejected" is a band like any other.
+ * the moves. "Round 1 → Round 1 — Rejected" is a band like any other.
  *
  * Two columns rather than one per stage, because any stage may move to any other: a flow
  * laid out stage after stage has no place to draw a move backwards, and this one draws it

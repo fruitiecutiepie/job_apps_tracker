@@ -1,7 +1,7 @@
 import type { StageNoteEditContents, StageNoteEditSession } from '../domain/noteEditing'
 import type { TrackerDatabase } from '../domain/types'
 import type { FileHandleLike } from './fileSystem'
-import type { StateId } from '../domain/types'
+import type { StageId } from '../domain/types'
 
 /**
  * What the app needs from whatever is holding the data. Two implementations ship: the
@@ -41,9 +41,9 @@ export interface TrackerBackend {
   wipeAttachments(): Promise<void>
 
   /* Present only when `capabilities.externalEditor` is true. */
-  openNoteInEditor?(applicationId: string, state: StateId, body: string): Promise<StageNoteEditSession>
-  readNoteFromEditor?(applicationId: string, state: StateId): Promise<StageNoteEditContents | null>
-  closeNoteEditor?(applicationId: string, state: StateId): Promise<void>
+  openNoteInEditor?(applicationId: string, stage: StageId, body: string): Promise<StageNoteEditSession>
+  readNoteFromEditor?(applicationId: string, stage: StageId): Promise<StageNoteEditContents | null>
+  closeNoteEditor?(applicationId: string, stage: StageId): Promise<void>
 
   /* Present only when `capabilities.connectableStorage` is true. */
   storage?: ConnectableStorage

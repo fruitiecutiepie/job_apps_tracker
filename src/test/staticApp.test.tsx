@@ -53,7 +53,7 @@ function trackerFile(company: string): File {
       role: '',
       url: '',
       source: '',
-      state: 'applied',
+      stage: 'applied',
       next_action: '',
       next_action_at: null,
       deadline_at: null,
@@ -1123,8 +1123,8 @@ describe('the static build, with usage counts', () => {
     vi.stubEnv('VITE_USAGE_URL', '/__usage')
     await renderStaticApp()
     await addApplication(user, 'Northwind')
-    await user.selectOptions(await screen.findByRole('combobox', { name: 'Move Northwind to stage' }), 'interview_1')
-    await waitFor(() => expect(reportsOf('moved')).toEqual([{ stage: 'interview_1', outcome: 'active' }]))
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Move Northwind to stage' }), 'round_1')
+    await waitFor(() => expect(reportsOf('moved')).toEqual([{ stage: 'round_1', outcome: 'active' }]))
   })
 
   it('counts an export, and an export that failed as a failure', async () => {

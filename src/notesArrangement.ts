@@ -9,12 +9,12 @@
  *
  * Nothing here is React. Restoring is a pure function of what was stored and which
  * applications still exist, so every way a stored arrangement can have gone stale — an
- * application deleted, a state renamed, a file hand-edited — is answerable in a test
+ * application deleted, a stage renamed, a file hand-edited — is answerable in a test
  * without rendering a panel.
  */
 
-import type { Application, StateId } from './domain'
-import { isStateId, legacyState, stateRank } from './domain'
+import type { Application, StageId } from './domain'
+import { isStageId, legacyStage, stageRank } from './domain'
 import type { StorageLike } from './domain/storage'
 import { trackerProfile } from './domain/trackerProfile'
 import {
@@ -177,15 +177,15 @@ export function sidebarWidthWithin(width: number): number {
  * You still land on the stage you are interviewing for. The posting is context for the note
  * being written, not the thing you came to write.
  */
-export function openingLayout(application: Application, state: StateId): TabGroup {
-  const rest = [...new Set(application.stage_notes.map((note) => note.state))]
-    .filter((noted) => noted !== state)
-    .sort((left, right) => stateRank(left) - stateRank(right))
-  const stages = [state, ...rest].map((stage) => stageRef(application.id, stage))
+export function openingLayout(application: Application, stage: StageId): TabGroup {
+  const rest = [...new Set(application.stage_notes.map((note) => note.stage))]
+    .filter((noted) => noted !== stage)
+    .sort((left, right) => stageRank(left) - stageRank(right))
+  const stages = [stage, ...rest].map((stage) => stageRef(application.id, stage))
   const tabs: NoteRef[] = application.posting
     ? [postingRef(application.id), ...stages]
     : stages
-  return makeGroup(FIRST_PANE_ID, tabs, noteRefKey(stageRef(application.id, state)))
+  return makeGroup(FIRST_PANE_ID, tabs, noteRefKey(stageRef(application.id, stage)))
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -235,6 +235,21 @@ function readableSizes(sizes: number[]): number[] {
  * is two tabs to the same place and two elements claiming one id, which is why the tab's
  * own id is the pane and the note together.
  */
+/**
+ * A stored note key in the ids this build uses. The stage half of a key is an id, so a key
+ * stored before version 4 renamed one, or before stages and outcomes split, names the note by
+ * an id that is not a stage any more; without this the pane would come back showing its first
+ * tab rather than the one that was open.
+ */
+function currentNoteKey(key: string): string {
+  const [applicationId, segment, ...rest] = key.split('::')
+  if (applicationId === undefined || segment === undefined || rest.length > 0 || segment === POSTING_SEGMENT) {
+    return key
+  }
+  const stage = legacyStage(segment)
+  return typeof stage === 'string' ? `${applicationId}::${stage}` : key
+}
+
 function readNode(value: unknown, known: ReadonlySet<string>): LayoutNode | null {
   if (!isRecord(value) || typeof value.id !== 'string') return null
 
@@ -245,9 +260,13 @@ function readNode(value: unknown, known: ReadonlySet<string>): LayoutNode | null
     for (const tab of value.tabs) {
       if (!isRecord(tab)) continue
       const { applicationId, kind } = tab
-      // An arrangement stored before stages and outcomes split names a note by a state
-      // like `interview_1_rejected`, which is that stage's note now.
-      const state = legacyState(tab.state)
+      /*
+       * An arrangement stored before data version 4 names the stage under `state`, and one
+       * stored before stages and outcomes split names it by a state like
+       * `interview_1_rejected`, which is that stage's note now. `legacyStage` reads both, and
+       * the ids version 4 renamed.
+       */
+      const stage = legacyStage('stage' in tab ? tab.stage : tab.state)
       if (typeof applicationId !== 'string' || !known.has(applicationId)) continue
       /*
        * A tab with no `kind` is a stage note: that is every tab written before postings
@@ -258,7 +277,7 @@ function readNode(value: unknown, known: ReadonlySet<string>): LayoutNode | null
       const ref = kind === POSTING_SEGMENT
         ? postingRef(applicationId)
         : kind === undefined || kind === 'stage'
-          ? isStateId(state) ? stageRef(applicationId, state) : null
+          ? isStageId(stage) ? stageRef(applicationId, stage) : null
           : null
       if (!ref) continue
       const key = noteRefKey(ref)
@@ -266,7 +285,7 @@ function readNode(value: unknown, known: ReadonlySet<string>): LayoutNode | null
       seen.add(key)
       tabs.push(ref)
     }
-    const activeKey = typeof value.activeKey === 'string' ? value.activeKey : null
+    const activeKey = typeof value.activeKey === 'string' ? currentNoteKey(value.activeKey) : null
     /*
      * A pane stored empty is one the reader opened and has not filled yet, and it comes
      * back as it was. A pane that held notes and holds none now lost them to an

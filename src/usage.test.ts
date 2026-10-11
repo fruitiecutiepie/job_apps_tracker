@@ -1,8 +1,8 @@
 import { act, renderHook } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { handleUsage } from '../worker'
-import { addApplication, createDemoDocument, createEmptyDocument, migrateDocument, moveApplication, OUTCOME_CONFIG, STATE_CONFIG } from './domain'
+import worker, { handleUsage } from '../worker'
+import { addApplication, createDemoDocument, createEmptyDocument, DEFAULT_STAGES, migrateDocument, moveApplication, OUTCOME_CONFIG } from './domain'
 import { DEFAULT_DEMO_REFERENCE } from './domain/demo'
 import type { Application, TrackerDocument } from './domain'
 import type { StorageState } from './backend'
@@ -23,7 +23,9 @@ import {
   USAGE_EVENTS,
   USAGE_FEATURES,
   USAGE_OUTCOMES,
+  USAGE_BUILTIN_STAGES,
   USAGE_STAGES,
+  usageStage,
   usageDataPoint,
   type UsageFeature,
 } from './usageEvent'
@@ -89,7 +91,8 @@ describe('usage reports', () => {
 
 describe('the stage and outcome lists', () => {
   it('match the domain’s, which the event module cannot import', () => {
-    expect([...USAGE_STAGES]).toEqual(STATE_CONFIG.map((state) => state.id))
+    expect([...USAGE_BUILTIN_STAGES]).toEqual(DEFAULT_STAGES.map((stage) => stage.id))
+    expect([...USAGE_STAGES]).toEqual([...USAGE_BUILTIN_STAGES, 'later_round'])
     expect([...USAGE_OUTCOMES]).toEqual(OUTCOME_CONFIG.map((outcome) => outcome.id))
   })
 })
@@ -112,10 +115,10 @@ function withOne(change: (application: Application) => Partial<Application>): Tr
 
 const at = reference.toISOString()
 const FEATURE_FIXTURES: Record<UsageFeature, (application: Application) => Partial<Application>> = {
-  notes: () => ({ stage_notes: [{ state: 'applied', body: 'Ask about the team', heard: [], created_at: at, updated_at: at }] }),
-  captures: () => ({ stage_notes: [{ state: 'applied', body: '', heard: [{ id: 'h1', body: 'Two rounds', at }], created_at: at, updated_at: at }] }),
+  notes: () => ({ stage_notes: [{ stage: 'applied', body: 'Ask about the team', heard: [], created_at: at, updated_at: at }] }),
+  captures: () => ({ stage_notes: [{ stage: 'applied', body: '', heard: [{ id: 'h1', body: 'Two rounds', at }], created_at: at, updated_at: at }] }),
   messages: () => ({ correspondence: [{} as Application['correspondence'][number]] }),
-  invites: () => ({ state_events: [{} as Application['state_events'][number]] }),
+  invites: () => ({ stage_events: [{} as Application['stage_events'][number]] }),
   ratings: () => ({ ratings: [{} as Application['ratings'][number]] }),
   compensation: (application) => ({ compensation: { ...application.compensation, currency: 'AUD', advertised: { min: 100_000, max: 120_000 } } }),
   posting: () => ({ posting: { body: 'We are hiring', captured_at: at, source_url: null } }),
@@ -156,21 +159,21 @@ describe('usageSnapshot, field by field', () => {
   it.each([
     ['applied', 'none'],
     ['recruiter_messaged', 'none'],
-    ['recruiter_interview', 'interview'],
-    ['interview_2', 'interview'],
+    ['screening', 'interview'],
+    ['round_2', 'interview'],
     ['offer', 'offer'],
     ['accepted', 'accepted'],
-  ] as const)('reads an application at %s as having reached %s', (state, reached) => {
+  ] as const)('reads an application at %s as having reached %s', (stage, reached) => {
     const document = documentOf(1)
-    const moved = moveApplication(document, document.applications[0].id, { state }, reference)
+    const moved = moveApplication(document, document.applications[0].id, { stage }, reference)
     expect(snapshot(moved).reached).toBe(reached)
   })
 
   it('keeps how far an application got after it ended, and after it was moved back', () => {
     const document = documentOf(1)
     const id = document.applications[0].id
-    const offered = moveApplication(document, id, { state: 'offer' }, reference)
-    const back = moveApplication(offered, id, { state: 'applied', outcome: 'rejected' }, reference)
+    const offered = moveApplication(document, id, { stage: 'offer' }, reference)
+    const back = moveApplication(offered, id, { stage: 'applied', outcome: 'rejected' }, reference)
     expect(snapshot(back).reached).toBe('offer')
   })
 
@@ -296,8 +299,16 @@ describe('usageChanges', () => {
     expect(usageChanges(added, added)).toEqual({ added: 0, moved: [] })
 
     const id = added.applications[0].id
-    const moved = moveApplication(added, id, { state: 'interview_1', outcome: 'rejected' }, reference)
-    expect(usageChanges(added, moved)).toEqual({ added: 0, moved: [{ state: 'interview_1', outcome: 'rejected' }] })
+    const moved = moveApplication(added, id, { stage: 'round_1', outcome: 'rejected' }, reference)
+    expect(usageChanges(added, moved)).toEqual({ added: 0, moved: [{ stage: 'round_1', outcome: 'rejected' }] })
+  })
+
+  it('reports a round the tracker added after Round 2 as a later round, never by its own id', () => {
+    const added = addApplication(createEmptyDocument(), { company: 'Acme' }, reference)
+    const later = { ...added, applications: added.applications.map((a) => ({ ...a, stage: 'round_4' as const })) }
+    expect(usageChanges(added, later).moved).toEqual([{ stage: 'later_round', outcome: 'active' }])
+    expect(usageStage('round_3')).toBe('later_round')
+    expect(usageStage('round_2')).toBe('round_2')
   })
 })
 
@@ -452,5 +463,23 @@ describe('the Worker', () => {
     expect((await handleUsage(post(validOpen(), { 'Sec-Fetch-Site': 'cross-site' }), bindings)).status).toBe(403)
     expect((await handleUsage(new Request('https://example.test/__usage'), bindings)).status).toBe(405)
     expect(bindings.USAGE.writeDataPoint).not.toHaveBeenCalled()
+  })
+})
+
+describe('the Worker’s routes', () => {
+  it('sends /api/usage to the usage handler, and the rest of /api on to feedback or the assets', async () => {
+    const assets = vi.fn(async () => new Response('asset', { status: 404 }))
+    const writeDataPoint = vi.fn()
+    const env = { ASSETS: { fetch: assets }, USAGE: { writeDataPoint } }
+    const base = 'https://fruitiecutiepie.com/projects/job_apps_tracker/app/api'
+    const report = { v: 1, tracker: '0123456789abcdef', profile: 'live', event: 'exported', props: {} }
+
+    const counted = await worker.fetch(new Request(`${base}/usage`, { method: 'POST', body: JSON.stringify(report) }), env)
+    expect(counted.status).toBe(204)
+    expect(writeDataPoint).toHaveBeenCalledTimes(1)
+
+    const other = await worker.fetch(new Request(`${base}/elsewhere`), env)
+    expect(other.status).toBe(404)
+    expect(assets).toHaveBeenCalledTimes(1)
   })
 })

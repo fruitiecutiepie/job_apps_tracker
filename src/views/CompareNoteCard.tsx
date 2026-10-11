@@ -4,9 +4,9 @@ import { ExternalLink } from "lucide-react";
 import { AUTOSAVE_MS } from "../StageNotesPanel";
 import { StageNoteEditor } from "../StageNoteEditor";
 import { CAPTURE_SECTION, MarkdownNotes, capturedMarkdown } from "../markdown";
-import { stageNoteFor, stateLabel } from "../domain";
+import { stageNoteFor, stageLabel } from "../domain";
 import { rebaseDraft } from "../domain/mergeText";
-import type { Application, StateId } from "../domain";
+import type { Application, StageId } from "../domain";
 import { formatShortDate, formatTimeOfDay } from "./viewUtils";
 import {
   CARD_STEP,
@@ -24,7 +24,7 @@ type Axis = "width" | "height";
 
 interface CompareNoteCardProps {
   application: Application;
-  state: StateId;
+  stage: StageId;
   /** The application is at this stage now; otherwise the card says where it is instead. */
   isHere: boolean;
   onSave: (body: string, base: string) => Promise<string | void>;
@@ -37,9 +37,9 @@ interface CompareNoteCardProps {
  * and correcting live lines, the external-editor handoff, and split-pane focus to the prep
  * notes view — none of those make sense once several applications are already on screen.
  */
-export function CompareNoteCard({ application, state, isHere, onSave, onOpenFull }: CompareNoteCardProps) {
-  const saved = stageNoteFor(application, state);
-  const label = `${application.company} · ${stateLabel(state)}`;
+export function CompareNoteCard({ application, stage, isHere, onSave, onOpenFull }: CompareNoteCardProps) {
+  const saved = stageNoteFor(application, stage);
+  const label = `${application.company} · ${stageLabel(stage)}`;
 
   const [draft, setDraft] = useState(saved?.body ?? "");
   const [isEditing, setIsEditing] = useState(!saved);
@@ -102,7 +102,7 @@ export function CompareNoteCard({ application, state, isHere, onSave, onOpenFull
     return flush;
   }, [flush]);
 
-  const titleId = `compare-${application.id}-${state}`;
+  const titleId = `compare-${application.id}-${stage}`;
 
   /*
    * The card's own size, and what it measures at. `size` is what the reader asked for, null
@@ -221,7 +221,7 @@ export function CompareNoteCard({ application, state, isHere, onSave, onOpenFull
           {isHere ? (
             <span className="stage-note__badge">Current stage</span>
           ) : (
-            <span>Now {stateLabel(application.state)}</span>
+            <span>Now {stageLabel(application.stage)}</span>
           )}
           {saved ? (
             <time dateTime={saved.updated_at}>
@@ -244,7 +244,7 @@ export function CompareNoteCard({ application, state, isHere, onSave, onOpenFull
         }}
       >
         {isEditing ? (
-          <StageNoteEditor label={label} onChange={setDraft} sourceId={`${application.id}:${state}`} value={draft} />
+          <StageNoteEditor label={label} onChange={setDraft} sourceId={`${application.id}:${stage}`} value={draft} />
         ) : draft.trim() ? (
           <MarkdownNotes foldAll label={label} source={draft} />
         ) : (

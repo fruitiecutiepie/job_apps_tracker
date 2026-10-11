@@ -3,7 +3,7 @@
  * editable row, and how rows become drafts the domain can take. The shape mirrors `invites.ts`,
  * including keeping the `datetime-local` conversion here rather than in the component.
  */
-import type { Application, CorrespondenceDirection, CorrespondenceDraft, StateId } from './domain'
+import type { Application, CorrespondenceDirection, CorrespondenceDraft, StageId } from './domain'
 import { fromDateTimeInput, toDateTimeInput } from './dateInput'
 import { correspondenceSender, preview } from './markdown'
 import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
@@ -11,7 +11,7 @@ import { formatShortDate, formatTimeOfDay } from './views/viewUtils'
 /** One message as the editor holds it: local wall-time strings, not timestamps. */
 export interface CorrespondenceRow {
   id: string
-  state: StateId
+  stage: StageId
   direction: CorrespondenceDirection
   subject: string
   channel: string
@@ -31,7 +31,7 @@ export function correspondenceRowsFor(application: Application | null): Correspo
   return (application?.correspondence ?? [])
     .map((entry) => ({
       id: entry.id,
-      state: entry.state,
+      stage: entry.stage,
       direction: entry.direction,
       subject: entry.subject ?? '',
       channel: entry.channel ?? '',
@@ -55,7 +55,7 @@ export function opensThread(rows: CorrespondenceRow[], index: number): boolean {
   const subject = rows[index]?.subject.trim()
   if (!subject) return false
   const previous = rows[index - 1]
-  return !previous || previous.subject.trim() !== subject || previous.state !== rows[index]!.state
+  return !previous || previous.subject.trim() !== subject || previous.stage !== rows[index]!.stage
 }
 
 /**
@@ -71,7 +71,7 @@ export function opensThread(rows: CorrespondenceRow[], index: number): boolean {
 export function newThreadRow(source: CorrespondenceRow, id: string): CorrespondenceRow {
   return {
     id,
-    state: source.state,
+    stage: source.stage,
     direction: 'received',
     subject: source.subject,
     channel: source.channel,
@@ -93,13 +93,13 @@ export function newThreadRow(source: CorrespondenceRow, id: string): Corresponde
  */
 export function newCorrespondenceRow(
   rows: CorrespondenceRow[],
-  defaultState: StateId,
+  defaultStage: StageId,
   id: string,
 ): CorrespondenceRow {
   const recent = rows.find((row) => row.who.trim() || row.channel.trim() || row.subject.trim())
   return {
     id,
-    state: defaultState,
+    stage: defaultStage,
     // Received far more often than sent, and the row above is no guide: a reply follows a
     // message rather than another reply.
     direction: 'received',
@@ -144,7 +144,7 @@ export function correspondenceDrafts(rows: CorrespondenceRow[]): CorrespondenceD
     .filter((row) => row.body.trim() || row.at)
     .map((row) => ({
       id: row.id,
-      state: row.state,
+      stage: row.stage,
       direction: row.direction,
       subject: row.subject || null,
       channel: row.channel || null,

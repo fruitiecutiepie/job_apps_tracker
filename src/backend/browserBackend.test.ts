@@ -23,7 +23,7 @@ function withApplication(company = 'Northwind'): TrackerDatabase {
       role: 'Engineer',
       url: '',
       source: 'referral',
-      state: 'applied',
+      stage: 'applied',
       next_action: '',
       next_action_at: null,
       deadline_at: null,
@@ -263,7 +263,7 @@ describe('browser backend, with a folder connected', () => {
     const backend = connected(store, folder)
     await backend.storage!.connect()
     const loaded = await backend.loadDocument()
-    expect(loaded.applications[0]).toMatchObject({ state: 'applied', outcome: 'rejected' })
+    expect(loaded.applications[0]).toMatchObject({ stage: 'applied', outcome: 'rejected' })
     expect(folder.readText(MIGRATION_BACKUP_FILENAME)).toBe(legacy)
 
     await backend.saveDocument(loaded)
@@ -1218,7 +1218,7 @@ function adding(company: string) {
       role: '',
       url: '',
       source: '',
-      state: 'applied',
+      stage: 'applied',
       next_action: '',
       next_action_at: null,
       deadline_at: null,

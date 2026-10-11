@@ -10,20 +10,20 @@ describe('what a tab says', () => {
     // reader nothing and costs the width that the stages are competing for.
     expect(
       tabLabels([
-        tab('Halcyon Maps', 'Engineering Manager', 'Recruiter interview'),
-        tab('Halcyon Maps', 'Engineering Manager', 'Interview 1'),
+        tab('Halcyon Maps', 'Engineering Manager', 'Screening call'),
+        tab('Halcyon Maps', 'Engineering Manager', 'Round 1'),
         tab('Halcyon Maps', 'Engineering Manager', 'Offer'),
       ]),
-    ).toEqual(['Recruiter interview', 'Interview 1', 'Offer'])
+    ).toEqual(['Screening call', 'Round 1', 'Offer'])
   })
 
   it('names the company as soon as a second one is open beside it', () => {
     expect(
       tabLabels([
         tab('Halcyon Maps', 'Engineering Manager', 'Offer'),
-        tab('Canva', 'Senior Software Engineer', 'Recruiter interview'),
+        tab('Canva', 'Senior Software Engineer', 'Screening call'),
       ]),
-    ).toEqual(['Halcyon Maps · Offer', 'Canva · Recruiter interview'])
+    ).toEqual(['Halcyon Maps · Offer', 'Canva · Screening call'])
   })
 
   it('names the role only where one company has two of them open', () => {
@@ -31,13 +31,13 @@ describe('what a tab says', () => {
     // role does not, even though it shares the strip with them.
     expect(
       tabLabels([
-        tab('Canva', 'Senior Software Engineer', 'Recruiter interview'),
-        tab('Canva', 'Frontend Engineer', 'Recruiter interview'),
+        tab('Canva', 'Senior Software Engineer', 'Screening call'),
+        tab('Canva', 'Frontend Engineer', 'Screening call'),
         tab('Halcyon Maps', 'Engineering Manager', 'Offer'),
       ]),
     ).toEqual([
-      'Canva · Senior Software Engineer · Recruiter interview',
-      'Canva · Frontend Engineer · Recruiter interview',
+      'Canva · Senior Software Engineer · Screening call',
+      'Canva · Frontend Engineer · Screening call',
       'Halcyon Maps · Offer',
     ])
   })
@@ -55,16 +55,16 @@ describe('what a tab says', () => {
   it('counts what is open in every pane, not only in this one', () => {
     /*
      * Two panes side by side, one company each. Asked pane by pane, neither pane has a
-     * second company in it and both drop the name — so the screen reads "Interview 2" and
+     * second company in it and both drop the name — so the screen reads "Round 2" and
      * "Offer" with nothing anywhere saying whose. What a tab competes with is everything
      * else on screen, not everything else in its own strip.
      */
     expect(
       tabLabels([
-        tab('Halcyon Maps', 'Engineering Manager', 'Interview 2'),
+        tab('Halcyon Maps', 'Engineering Manager', 'Round 2'),
         tab('Lumen Pantry', 'Head of Growth', 'Offer'),
       ]),
-    ).toEqual(['Halcyon Maps · Interview 2', 'Lumen Pantry · Offer'])
+    ).toEqual(['Halcyon Maps · Round 2', 'Lumen Pantry · Offer'])
   })
 
   it('says the stage alone for a strip of one', () => {

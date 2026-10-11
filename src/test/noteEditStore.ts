@@ -11,8 +11,8 @@ export function setTestEditorLaunchResponse(response: Record<string, unknown> | 
   launchResponse = response
 }
 
-function key(applicationId: string, state: string): string {
-  return `${applicationId}/${state}`
+function key(applicationId: string, stage: string): string {
+  return `${applicationId}/${stage}`
 }
 
 export function wipeTestEditorSessions(): void {
@@ -25,14 +25,14 @@ export function testEditorSessionCount(): number {
   return scratchFiles.size
 }
 
-export function readTestEditorNote(applicationId: string, state: string): string | undefined {
-  return scratchFiles.get(key(applicationId, state))?.body
+export function readTestEditorNote(applicationId: string, stage: string): string | undefined {
+  return scratchFiles.get(key(applicationId, stage))?.body
 }
 
 /** Stands in for the user saving the file in their editor. */
-export function writeTestEditorNote(applicationId: string, state: string, body: string): void {
+export function writeTestEditorNote(applicationId: string, stage: string, body: string): void {
   clock += 1
-  scratchFiles.set(key(applicationId, state), { body, modified_at: clock })
+  scratchFiles.set(key(applicationId, stage), { body, modified_at: clock })
 }
 
 export async function handleTestNoteEditFetch(url: string, init?: RequestInit): Promise<Response> {
@@ -40,7 +40,7 @@ export async function handleTestNoteEditFetch(url: string, init?: RequestInit): 
   if (segments[0] !== '__note-edit') throw new Error(`Unhandled note edit fetch: ${url}`)
 
   const applicationId = segments[1]
-  const state = segments[2]
+  const stage = segments[2]
   const method = init?.method ?? 'GET'
 
   if (method === 'DELETE' && !applicationId) {
@@ -48,17 +48,17 @@ export async function handleTestNoteEditFetch(url: string, init?: RequestInit): 
     return new Response('OK', { status: 200 })
   }
 
-  if (!applicationId || !state) {
+  if (!applicationId || !stage) {
     return new Response('An application id and stage are required', { status: 400 })
   }
 
   if (method === 'POST') {
-    writeTestEditorNote(applicationId, state, String(init?.body ?? ''))
+    writeTestEditorNote(applicationId, stage, String(init?.body ?? ''))
     return new Response(
       JSON.stringify(
         launchResponse ?? {
-          path: `data/editing/${applicationId}/${state}.md`,
-          absolute_path: `/repo/data/editing/${applicationId}/${state}.md`,
+          path: `data/editing/${applicationId}/${stage}.md`,
+          absolute_path: `/repo/data/editing/${applicationId}/${stage}.md`,
           editor: 'test-editor',
           source: 'env',
         },
@@ -68,11 +68,11 @@ export async function handleTestNoteEditFetch(url: string, init?: RequestInit): 
   }
 
   if (method === 'DELETE') {
-    scratchFiles.delete(key(applicationId, state))
+    scratchFiles.delete(key(applicationId, stage))
     return new Response('OK', { status: 200 })
   }
 
-  const stored = scratchFiles.get(key(applicationId, state))
+  const stored = scratchFiles.get(key(applicationId, stage))
   if (!stored) return new Response('No editing session for this stage', { status: 404 })
   return new Response(JSON.stringify(stored), {
     status: 200,

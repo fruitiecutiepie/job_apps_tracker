@@ -37,3 +37,14 @@ describe('links between the two hosted builds', () => {
     expect(demoSiteUrl()).toBe('/job_apps_tracker/demo/')
   })
 })
+
+describe('where feedback is sent', () => {
+  /* The demo sends to the tracker's route, so the Worker answers one path, not two. */
+  it('is the tracker’s own api route, from the tracker and from the demo', async () => {
+    expect((await linksWithBase('/projects/job_apps_tracker/app/')).feedbackEndpoint())
+      .toBe('/projects/job_apps_tracker/app/api/feedback')
+    expect((await linksWithBase('/projects/job_apps_tracker/app/demo/')).feedbackEndpoint())
+      .toBe('/projects/job_apps_tracker/app/api/feedback')
+    expect((await linksWithBase('/')).feedbackEndpoint()).toBe('/api/feedback')
+  })
+})

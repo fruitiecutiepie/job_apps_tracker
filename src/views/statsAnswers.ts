@@ -1,5 +1,5 @@
-import { RATING_LABELS, classifyLifecycle, stateLabel } from "../domain";
-import type { Application, StateId } from "../domain";
+import { RATING_LABELS, classifyLifecycle, stageLabel } from "../domain";
+import type { Application, StageId } from "../domain";
 import { compensationFigureFor, compensationGapFor } from "./compensation";
 import type { CompensationGap, CompensationVerdict } from "./compensation";
 import { idleStatusFor } from "./idle";
@@ -84,7 +84,7 @@ export function answeringAnswer(total: number, waits: ReplyWaits): string {
 export interface LosingAnswer {
   answer: string;
   /** The stage the answer names, or null when it names none. */
-  worst: StateId | null;
+  worst: StageId | null;
 }
 
 /**
@@ -116,8 +116,8 @@ export function losingAnswer(rows: StagePassRow[], minimum: number): LosingAnswe
   }
 
   return {
-    answer: `You lose the most at ${stateLabel(worst.state)}: ${lost} of ${worst.decided} went no further.`,
-    worst: worst.state,
+    answer: `You lose the most at ${stageLabel(worst.stage)}: ${lost} of ${worst.decided} went no further.`,
+    worst: worst.stage,
   };
 }
 

@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState, type ReactNode } from "react";
-import { COMPENSATION_CONFIG, SOURCE_SUGGESTIONS, STATE_CONFIG, outcomeRank, stateRank } from "../domain";
-import type { Application, StateId } from "../domain";
+import { COMPENSATION_CONFIG, SOURCE_SUGGESTIONS, STAGE_CONFIG, outcomeRank, stageRank } from "../domain";
+import type { Application, StageId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import { CompleteActionButton } from "./CompleteActionButton";
 import { InviteSummaries } from "./InviteSummaries";
@@ -29,14 +29,14 @@ import {
   formatShortDate,
   inviteFilterText,
   parseTimestamp,
-  upcomingStateEvent,
+  upcomingStageEvent,
 } from "./viewUtils";
 
 type SortField =
   | "company"
   | "role"
   | "source"
-  | "state"
+  | "stage"
   | "activity"
   | "next_action"
   | "invites"
@@ -47,14 +47,14 @@ type SortField =
   | "created_at"
   | "updated_at";
 type SortDirection = "ascending" | "descending";
-type StateColumnFilter = StateId | "all";
+type StageColumnFilter = StageId | "all";
 type ColumnKey = SortField | "attachments" | "prep_notes";
 
 const COLUMN_ORDER: readonly ColumnKey[] = [
   "company",
   "role",
   "source",
-  "state",
+  "stage",
   "activity",
   "next_action",
   "invites",
@@ -100,15 +100,15 @@ function estimateTextWidth(characterCount: number): number {
   return Math.round(characterCount * CHAR_WIDTH_PX + CELL_HORIZONTAL_PADDING);
 }
 
-/** The column filters that are one plain text box. State is its own select, and
+/** The column filters that are one plain text box. Stage is its own select, and
  * compensation is a stage plus a min/max range, so both are excluded here. */
-type TextFilterField = Exclude<keyof ColumnFilters, "state" | "compensation">;
+type TextFilterField = Exclude<keyof ColumnFilters, "stage" | "compensation">;
 
 interface ColumnFilters {
   company: string;
   role: string;
   source: string;
-  state: StateColumnFilter;
+  stage: StageColumnFilter;
   activity: string;
   next_action: string;
   invites: string;
@@ -125,7 +125,7 @@ const EMPTY_COLUMN_FILTERS: ColumnFilters = {
   company: "",
   role: "",
   source: "",
-  state: "all",
+  stage: "all",
   activity: "",
   next_action: "",
   invites: "",
@@ -158,10 +158,10 @@ function comparableValue(
 ): string | number | null {
   // Stage first, then how it went, so each stage's running rows sit together ahead of the
   // ones that ended there.
-  if (field === "state") return stateRank(application.state) * 10 + outcomeRank(application.outcome);
+  if (field === "stage") return stageRank(application.stage) * 10 + outcomeRank(application.outcome);
   // Sorting by invite means sorting by what is next, so rows with nothing ahead sink.
   if (field === "invites") {
-    const next = upcomingStateEvent(application);
+    const next = upcomingStageEvent(application);
     return next ? Date.parse(next.starts_at) : null;
   }
   // Null, not zero: an application that is not idle has no silence to measure, and a
@@ -193,7 +193,7 @@ function matchesColumnFilters(
   preference: PreferenceLookup,
   quietDays: number | undefined,
 ): boolean {
-  if (filters.state !== "all" && application.state !== filters.state) return false;
+  if (filters.stage !== "all" && application.stage !== filters.stage) return false;
   if (!includesQuery(application.company, filters.company)) return false;
   if (!includesQuery(application.role ?? "", filters.role)) return false;
   if (!includesQuery(application.source ?? "", filters.source)) return false;
@@ -203,7 +203,7 @@ function matchesColumnFilters(
     .filter((value) => value && value !== "Not scheduled")
     .join(" ");
   if (!includesQuery(nextActionText, filters.next_action)) return false;
-  if (!includesQuery(inviteFilterText(application.state_events), filters.invites)) return false;
+  if (!includesQuery(inviteFilterText(application.stage_events), filters.invites)) return false;
   const deadlineText = application.deadline_at ? formatShortDate(application.deadline_at) : "";
   if (!includesQuery(deadlineText, filters.deadline_at)) return false;
   if (!includesQuery(urgency.get(application.id)?.reason ?? "", filters.urgency)) return false;
@@ -237,7 +237,7 @@ function sourceFilterSuggestions(applications: Application[]): string[] {
 
 function columnFiltersAreActive(filters: ColumnFilters): boolean {
   return (
-    filters.state !== "all" ||
+    filters.stage !== "all" ||
     Boolean(
       filters.company.trim() ||
         filters.role.trim() ||
@@ -322,11 +322,11 @@ export function TableView({
     }));
   };
 
-  const stateFilterOptions = useMemo(() => {
-    const present = new Set(applications.map((application) => application.state));
-    if (filters.state !== "all") present.add(filters.state);
-    return STATE_CONFIG.filter((state) => present.has(state.id));
-  }, [applications, filters.state]);
+  const stageFilterOptions = useMemo(() => {
+    const present = new Set(applications.map((application) => application.stage));
+    if (filters.stage !== "all") present.add(filters.stage);
+    return STAGE_CONFIG.filter((stage) => present.has(stage.id));
+  }, [applications, filters.stage]);
 
   const companySuggestions = useMemo(
     () => uniqueSorted(applications.map((application) => application.company)),
@@ -597,18 +597,18 @@ export function TableView({
       {bodyCell("role", application.role || <span aria-label="Not set">—</span>)}
       {bodyCell("source", application.source || <span aria-label="Not set">—</span>)}
       {bodyCell(
-        "state",
+        "stage",
         <>
-          <span className="table-state">
+          <span className="table-stage">
             <select
               aria-label={`Move ${application.company} to stage`}
-              className="table-state-select"
-              value={application.state}
-              onChange={(event) => onMove(application.id, { state: event.target.value as StateId })}
+              className="table-stage-select"
+              value={application.stage}
+              onChange={(event) => onMove(application.id, { stage: event.target.value as StageId })}
             >
-              {STATE_CONFIG.map((state) => (
-                <option key={state.id} value={state.id}>
-                  {state.label}
+              {STAGE_CONFIG.map((stage) => (
+                <option key={stage.id} value={stage.id}>
+                  {stage.label}
                 </option>
               ))}
             </select>
@@ -644,8 +644,8 @@ export function TableView({
       )}
       {bodyCell(
         "invites",
-        application.state_events.length > 0 ? (
-          <InviteSummaries invites={application.state_events} />
+        application.stage_events.length > 0 ? (
+          <InviteSummaries invites={application.stage_events} />
         ) : (
           <span aria-label="Not set">—</span>
         ),
@@ -773,20 +773,20 @@ export function TableView({
                   onChange={(event) =>
                     setFilters((current) => ({
                       ...current,
-                      state: event.target.value as StateColumnFilter,
+                      stage: event.target.value as StageColumnFilter,
                     }))
                   }
-                  value={filters.state}
+                  value={filters.stage}
                 >
                   <option value="all">All stages</option>
-                  {stateFilterOptions.map((state) => (
-                    <option key={state.id} value={state.id}>
-                      {state.label}
+                  {stageFilterOptions.map((stage) => (
+                    <option key={stage.id} value={stage.id}>
+                      {stage.label}
                     </option>
                   ))}
                 </select>,
-                "state",
-                "state",
+                "stage",
+                "stage",
               )}
               {headerCell("Activity", textFilter("activity", "Activity"), "activity", "activity")}
               {headerCell(

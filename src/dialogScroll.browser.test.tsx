@@ -25,7 +25,7 @@ function Harness() {
         ))}
         <div className="form-grid">
           <CorrespondenceFields
-            defaultState="recruiter_messaged"
+            defaultStage="recruiter_messaged"
             messagesFor="recruiter_messaged"
             onChange={setRows}
             rows={rows}

@@ -1,7 +1,7 @@
 import { COMPENSATION_STAGE_IDS } from './compensation'
 import { CORRESPONDENCE_DIRECTION_IDS } from './correspondence'
 import { MAX_RATING_SCORE, MIN_RATING_SCORE, RATING_IDS } from './ratings'
-import { OUTCOME_IDS, STATE_IDS } from './states'
+import { OUTCOME_IDS } from './stages'
 
 export const TRACKER_JSON_SCHEMA = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
@@ -12,11 +12,13 @@ export const TRACKER_JSON_SCHEMA = {
   additionalProperties: false,
   properties: {
     schema_version: {
-      const: 3,
+      const: 4,
       description:
         'The layout this file is written in. Files with no version are version 1, which kept '
         + 'how an application ended inside its state; version 2 had taking the job as an '
-        + 'outcome rather than the last stage. Both are migrated on load.',
+        + 'outcome rather than the last stage; version 3 named three stages by their old '
+        + 'labels (`recruiter_interview`, `interview_1`, `interview_2`) and called the field '
+        + '`state`, `state_history` and `state_events`. All are migrated on load.',
     },
     schema: {
       type: 'object',
@@ -27,6 +29,22 @@ export const TRACKER_JSON_SCHEMA = {
       minLength: 1,
       description: 'What the reader called this tracker. Absent until they name it.',
     },
+    stages: {
+      type: 'array',
+      description:
+        'Every stage in order and what this tracker calls it. Absent while they are the '
+        + 'defaults. Rounds after `round_2` exist only in a tracker that lists them; a blank '
+        + 'label reads as the default.',
+      items: {
+        type: 'object',
+        required: ['id', 'label'],
+        additionalProperties: false,
+        properties: {
+          id: { $ref: '#/$defs/stage' },
+          label: { type: 'string' },
+        },
+      },
+    },
     applications: {
       type: 'array',
       items: { $ref: '#/$defs/application' },
@@ -34,6 +52,15 @@ export const TRACKER_JSON_SCHEMA = {
     indexes: { $ref: '#/$defs/indexes' },
   },
   $defs: {
+    stage: {
+      type: 'string',
+      pattern:
+        '^(headhunted|applied|recruiter_messaged|online_assessment|screening'
+        + '|take_home_assessment|round_[1-9][0-9]*|offer|accepted)$',
+      description:
+        'A stage id. It says what the stage is, never what it is called, so a renamed stage '
+        + 'keeps its id. Which rounds a tracker has is in its `stages`.',
+    },
     application: {
       type: 'object',
       required: [
@@ -42,9 +69,9 @@ export const TRACKER_JSON_SCHEMA = {
         'role',
         'url',
         'source',
-        'state',
+        'stage',
         'outcome',
-        'state_history',
+        'stage_history',
         'archived_at',
         'next_action',
         'next_action_at',
@@ -52,7 +79,7 @@ export const TRACKER_JSON_SCHEMA = {
         'notes',
         'completed_actions',
         'stage_notes',
-        'state_events',
+        'stage_events',
         'correspondence',
         'attachments',
         'posting',
@@ -68,9 +95,8 @@ export const TRACKER_JSON_SCHEMA = {
         role: { type: ['string', 'null'] },
         url: { type: ['string', 'null'] },
         source: { type: ['string', 'null'] },
-        state: {
-          type: 'string',
-          enum: [...STATE_IDS],
+        stage: {
+          $ref: '#/$defs/stage',
           description: 'The stage the application is at, or was at when it ended.',
         },
         outcome: {
@@ -81,15 +107,15 @@ export const TRACKER_JSON_SCHEMA = {
             + '`withdrawn` by you, or `closed` by them without a rejection. Taking the job is the '
             + 'last stage, `accepted`, not an outcome.',
         },
-        state_history: {
+        stage_history: {
           type: 'array',
           minItems: 1,
           items: {
             type: 'object',
-            required: ['state', 'outcome', 'at'],
+            required: ['stage', 'outcome', 'at'],
             additionalProperties: false,
             properties: {
-              state: { type: 'string', enum: [...STATE_IDS] },
+              stage: { $ref: '#/$defs/stage' },
               outcome: { type: 'string', enum: [...OUTCOME_IDS] },
               at: { type: 'string' },
             },
@@ -111,9 +137,9 @@ export const TRACKER_JSON_SCHEMA = {
           type: 'array',
           items: { $ref: '#/$defs/stage_note' },
         },
-        state_events: {
+        stage_events: {
           type: 'array',
-          items: { $ref: '#/$defs/state_event' },
+          items: { $ref: '#/$defs/stage_event' },
         },
         correspondence: {
           type: 'array',
@@ -140,10 +166,10 @@ export const TRACKER_JSON_SCHEMA = {
       description:
         'Notes for one stage of an application: what was prepared, and what was captured'
         + ' during it.',
-      required: ['state', 'body', 'heard', 'created_at', 'updated_at'],
+      required: ['stage', 'body', 'heard', 'created_at', 'updated_at'],
       additionalProperties: false,
       properties: {
-        state: { type: 'string', enum: [...STATE_IDS] },
+        stage: { $ref: '#/$defs/stage' },
         // Blank when the stage holds captured lines and nothing was prepared for it.
         body: { type: 'string' },
         heard: {
@@ -176,12 +202,12 @@ export const TRACKER_JSON_SCHEMA = {
         at: { type: 'string' },
       },
     },
-    state_event: {
+    stage_event: {
       type: 'object',
-      description: 'A calendar invite filed against one state of an application.',
+      description: 'A calendar invite filed against one stage of an application.',
       required: [
         'id',
-        'state',
+        'stage',
         'summary',
         'starts_at',
         'ends_at',
@@ -196,7 +222,7 @@ export const TRACKER_JSON_SCHEMA = {
       additionalProperties: false,
       properties: {
         id: { type: 'string', minLength: 1 },
-        state: { type: 'string', enum: [...STATE_IDS] },
+        stage: { $ref: '#/$defs/stage' },
         summary: { type: 'string', minLength: 1 },
         starts_at: { type: 'string' },
         ends_at: { type: ['string', 'null'] },
@@ -215,12 +241,12 @@ export const TRACKER_JSON_SCHEMA = {
     correspondence_entry: {
       type: 'object',
       description:
-        'One message exchanged with the employer, filed against one state. `at` is when the '
+        'One message exchanged with the employer, filed against one stage. `at` is when the '
         + 'message was sent — supplied rather than taken from the clock, because a message is '
         + 'logged after it arrives — while `created_at` is when the record was written.',
       required: [
         'id',
-        'state',
+        'stage',
         'direction',
         'subject',
         'channel',
@@ -233,7 +259,7 @@ export const TRACKER_JSON_SCHEMA = {
       additionalProperties: false,
       properties: {
         id: { type: 'string', minLength: 1 },
-        state: { type: 'string', enum: [...STATE_IDS] },
+        stage: { $ref: '#/$defs/stage' },
         direction: { type: 'string', enum: [...CORRESPONDENCE_DIRECTION_IDS] },
         subject: {
           type: ['string', 'null'],
@@ -343,7 +369,7 @@ export const TRACKER_JSON_SCHEMA = {
       type: 'object',
       required: [
         'by_id',
-        'by_state',
+        'by_stage',
         'by_company',
         'by_created_at',
         'by_updated_at',
@@ -363,7 +389,7 @@ export const TRACKER_JSON_SCHEMA = {
           type: 'object',
           additionalProperties: { type: 'integer', minimum: 0 },
         },
-        by_state: {
+        by_stage: {
           type: 'object',
           additionalProperties: {
             type: 'array',

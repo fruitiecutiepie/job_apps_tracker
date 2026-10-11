@@ -2,7 +2,7 @@ import type { Application } from "../domain";
 import { classifyLifecycle, daysSinceLastMove } from "./urgency";
 
 /**
- * Idle is a second axis, not a twentieth state: it qualifies an application's stage
+ * Idle is a second axis, not a stage of its own: it qualifies an application's stage
  * without ever changing it, so an idle application stays in its own Kanban lane and
  * still moves wherever any other application can. Like urgency, it is derived view
  * state and never persisted — it depends on browser-local "today".
@@ -34,7 +34,7 @@ export function idleStatusFor(
   // Rejected and closed applications are finished, not idle. Counting them would mark
   // every old rejection and swamp the signal this exists to give.
   if (classifyLifecycle(application) !== "live") return null;
-  if (application.state_history.length === 0) return null;
+  if (application.stage_history.length === 0) return null;
 
   const days = daysSinceLastMove(application, today);
   return days >= thresholdDays ? { days } : null;

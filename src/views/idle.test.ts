@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
 import { emptyCompensation } from '../domain'
-import type { Application, OutcomeId, StateId } from '../domain'
+import type { Application, OutcomeId, StageId } from '../domain'
 import { IDLE_THRESHOLD_DAYS, describeIdle, idleFilterMatches, idleStatusFor } from './idle'
 
 const today = new Date(2026, 7, 14, 12)
@@ -15,8 +15,8 @@ function at(daysFromToday: number, hour = 9): string {
 
 function application(
   company: string,
-  { state = 'applied' as StateId, outcome = 'active' as OutcomeId, movedDaysAgo = 1, ...overrides }: Partial<Application> & {
-    state?: StateId
+  { stage = 'applied' as StageId, outcome = 'active' as OutcomeId, movedDaysAgo = 1, ...overrides }: Partial<Application> & {
+    stage?: StageId
     outcome?: OutcomeId
     movedDaysAgo?: number
   } = {},
@@ -27,9 +27,9 @@ function application(
     role: null,
     url: null,
     source: null,
-    state,
+    stage,
     outcome,
-    state_history: [{ state, outcome, at: at(-movedDaysAgo) }],
+    stage_history: [{ stage, outcome, at: at(-movedDaysAgo) }],
     archived_at: null,
     next_action: null,
     next_action_at: null,
@@ -37,7 +37,7 @@ function application(
     notes: null,
     completed_actions: [],
     stage_notes: [],
-    state_events: [],
+    stage_events: [],
     correspondence: [],
     attachments: [],
     posting: null,
@@ -86,7 +86,7 @@ describe('idleStatusFor', () => {
   })
 
   it('survives an application with no history rather than throwing', () => {
-    const app = application('Historyless', { state_history: [] })
+    const app = application('Historyless', { stage_history: [] })
     expect(() => idleStatusFor(app, today)).not.toThrow()
     expect(idleStatusFor(app, today)).toBeNull()
   })

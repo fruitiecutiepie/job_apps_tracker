@@ -18,7 +18,7 @@ const REFERENCE = new Date('2026-08-14T12:00:00+10:00')
 function row(overrides: Partial<CorrespondenceRow> = {}): CorrespondenceRow {
   return {
     id: '018f24c0-0000-7000-8000-0000000000aa',
-    state: 'recruiter_messaged',
+    stage: 'recruiter_messaged',
     direction: 'received',
     subject: '',
     channel: '',
@@ -34,8 +34,8 @@ describe('correspondence rows', () => {
     const application = applyCorrespondence(
       createApplication({ company: 'Northwind' }, REFERENCE),
       [
-        { state: 'applied', direction: 'received', body: 'First', at: '2026-08-09T23:30:00.000Z' },
-        { state: 'applied', direction: 'sent', body: 'Second', at: '2026-08-10T23:30:00.000Z' },
+        { stage: 'applied', direction: 'received', body: 'First', at: '2026-08-09T23:30:00.000Z' },
+        { stage: 'applied', direction: 'sent', body: 'Second', at: '2026-08-10T23:30:00.000Z' },
       ],
       REFERENCE,
     )
@@ -77,12 +77,12 @@ describe('correspondence rows', () => {
   it('starts the next message from who the last one was with, and how', () => {
     const next = newCorrespondenceRow(
       [row({ who: 'Dana Okafor', channel: 'Email' })],
-      'interview_1',
+      'round_1',
       'new-id',
     )
 
     // A hiring conversation is one recruiter on one channel far more often than not.
-    expect(next).toMatchObject({ who: 'Dana Okafor', channel: 'Email', state: 'interview_1' })
+    expect(next).toMatchObject({ who: 'Dana Okafor', channel: 'Email', stage: 'round_1' })
     // Not the text, the time, or the direction: a reply follows a message, not another reply.
     expect(next).toMatchObject({ body: '', at: '', direction: 'received', id: 'new-id' })
   })
@@ -147,7 +147,7 @@ describe('correspondence rows', () => {
   it('carries the thread forward into the next message, not just the correspondent', () => {
     const next = newCorrespondenceRow(
       [row({ subject: 'Next steps', who: 'Dana Okafor' })],
-      'interview_1',
+      'round_1',
       'new-id',
     )
 
@@ -167,8 +167,8 @@ describe('correspondence rows', () => {
 
   it('breaks a run when the stage changes, even on the same subject', () => {
     const rows = [
-      row({ id: 'a', subject: 'Next steps', state: 'recruiter_messaged' }),
-      row({ id: 'b', subject: 'Next steps', state: 'interview_1' }),
+      row({ id: 'a', subject: 'Next steps', stage: 'recruiter_messaged' }),
+      row({ id: 'b', subject: 'Next steps', stage: 'round_1' }),
     ]
 
     // Two conversations that happen to share a subject in different stages are not one
@@ -183,7 +183,7 @@ describe('correspondence rows', () => {
 
   it('takes everything that makes a message part of a thread, and nothing else', () => {
     const source = row({
-      state: 'interview_1',
+      stage: 'round_1',
       subject: 'Offer — Head of Growth',
       who: 'Marta Oyelaran',
       channel: 'Email',
@@ -196,7 +196,7 @@ describe('correspondence rows', () => {
     // different thread by the rule the grouping keeps.
     expect(next).toMatchObject({
       id: 'new-id',
-      state: 'interview_1',
+      stage: 'round_1',
       subject: 'Offer — Head of Growth',
       who: 'Marta Oyelaran',
       channel: 'Email',

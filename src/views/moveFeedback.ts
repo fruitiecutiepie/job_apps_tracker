@@ -1,4 +1,4 @@
-import { FINAL_STATE, stateRank } from "../domain";
+import { FINAL_STAGE, stageRank } from "../domain";
 import type { OutcomeId, Status } from "../domain";
 
 /**
@@ -45,7 +45,7 @@ export function moveFeedback(
   { othersRunning }: MoveContext,
   turn = 0,
 ): MoveFeedback | null {
-  const to: Status = { state: change.state ?? from.state, outcome: change.outcome ?? from.outcome };
+  const to: Status = { stage: change.stage ?? from.stage, outcome: change.outcome ?? from.outcome };
 
   if (to.outcome !== "active") {
     if (to.outcome === from.outcome) return null;
@@ -56,8 +56,8 @@ export function moveFeedback(
     };
   }
 
-  if (stateRank(to.state) <= stateRank(from.state)) return null;
-  if (to.state === FINAL_STATE) {
+  if (stageRank(to.stage) <= stageRank(from.stage)) return null;
+  if (to.stage === FINAL_STAGE) {
     return {
       kind: "accepted",
       message: "Congratulations, you earned this one!",

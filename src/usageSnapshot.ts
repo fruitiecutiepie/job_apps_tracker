@@ -1,7 +1,7 @@
 import type { StorageState } from './backend'
-import { STATE_CONFIG } from './domain/states'
-import type { StateId, Status, TrackerDocument } from './domain/types'
-import { USAGE_FEATURES, type UsageFeature, type UsageProps } from './usageEvent'
+import { isStageId, stageRank } from './domain/stages'
+import type { OutcomeId, StageId, TrackerDocument } from './domain/types'
+import { USAGE_FEATURES, usageStage, type UsageFeature, type UsageProps, type UsageStage } from './usageEvent'
 
 type UsageReferrer = UsageProps<'open'>['referrer']
 type UsageDuration = UsageProps<'view_time'>['duration']
@@ -40,19 +40,26 @@ function backlogBucket(since: string | null, now: Date): UsageProps<'open'>['bac
   return '8d+'
 }
 
-const STAGE_INDEX = new Map<StateId, number>(STATE_CONFIG.map((state, index) => [state.id, index]))
-const position = (state: StateId) => STAGE_INDEX.get(state) ?? 0
+/*
+ * Positions in the tracker's own order, rounds it added included, so a Round 3 counts as past
+ * the screening call. A stage the tracker doesn't have counts as nowhere: `stageRank` would
+ * put it after Accepted, and an unknown stage is not a job taken.
+ */
+const position = (stage: StageId) => (isStageId(stage) ? stageRank(stage) : -1)
 
-/** Furthest by stage alone: reaching Offer and then being turned down still reached Offer. */
+/**
+ * Furthest by stage alone: reaching Offer and then being turned down still reached Offer.
+ * `interview` is the screening call or anything after it short of an offer.
+ */
 function reachedBucket(document: TrackerDocument): UsageProps<'open'>['reached'] {
   let furthest = -1
   for (const application of document.applications) {
-    for (const entry of application.state_history) furthest = Math.max(furthest, position(entry.state))
-    furthest = Math.max(furthest, position(application.state))
+    for (const entry of application.stage_history) furthest = Math.max(furthest, position(entry.stage))
+    furthest = Math.max(furthest, position(application.stage))
   }
   if (furthest >= position('accepted')) return 'accepted'
   if (furthest >= position('offer')) return 'offer'
-  if (furthest >= position('recruiter_interview')) return 'interview'
+  if (furthest >= position('screening')) return 'interview'
   return 'none'
 }
 
@@ -66,7 +73,7 @@ function featureInUse(document: TrackerDocument, feature: UsageFeature): boolean
       case 'messages':
         return application.correspondence.length > 0
       case 'invites':
-        return application.state_events.length > 0
+        return application.stage_events.length > 0
       case 'ratings':
         return application.ratings.length > 0
       case 'compensation': {
@@ -185,17 +192,17 @@ export function usageSnapshot(
  */
 export function usageChanges(before: TrackerDocument, after: TrackerDocument): {
   added: number
-  moved: Status[]
+  moved: { stage: UsageStage; outcome: OutcomeId }[]
 } {
   if (before === after) return { added: 0, moved: [] }
   const previous = new Map(before.applications.map((application) => [application.id, application]))
   let added = 0
-  const moved: Status[] = []
+  const moved: { stage: UsageStage; outcome: OutcomeId }[] = []
   for (const application of after.applications) {
     const was = previous.get(application.id)
     if (!was) added += 1
-    else if (was.state !== application.state || was.outcome !== application.outcome) {
-      moved.push({ state: application.state, outcome: application.outcome })
+    else if (was.stage !== application.stage || was.outcome !== application.outcome) {
+      moved.push({ stage: usageStage(application.stage), outcome: application.outcome })
     }
   }
   return { added, moved }

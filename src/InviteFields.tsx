@@ -1,17 +1,17 @@
 import { useRef, useState } from 'react'
 import { Plus, Upload } from 'lucide-react'
-import { STATE_CONFIG, createUuidV7, readFileAsUint8Array } from './domain'
-import type { StateId } from './domain'
+import { STAGE_CONFIG, createUuidV7, readFileAsUint8Array } from './domain'
+import type { StageId } from './domain'
 import { parseIcsEvents } from './calendar'
 import { importSummary, mergeIcsEvents, type InviteRow } from './invites'
 
 interface InviteFieldsProps {
   rows: InviteRow[]
-  defaultState: StateId
+  defaultStage: StageId
   onChange: (rows: InviteRow[]) => void
 }
 
-export function InviteFields({ rows, defaultState, onChange }: InviteFieldsProps) {
+export function InviteFields({ rows, defaultStage, onChange }: InviteFieldsProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   // What the last import did, reported beside the buttons that did it.
   const [message, setMessage] = useState<string | null>(null)
@@ -31,7 +31,7 @@ export function InviteFields({ rows, defaultState, onChange }: InviteFieldsProps
         setMessage('That file held no invite with a readable start time.')
         return
       }
-      const result = mergeIcsEvents(rows, usable, defaultState)
+      const result = mergeIcsEvents(rows, usable, defaultStage)
       onChange(result.rows)
       setMessage(importSummary(result))
     } catch {
@@ -52,11 +52,11 @@ export function InviteFields({ rows, defaultState, onChange }: InviteFieldsProps
                 <label className="field">
                   <span>Stage</span>
                   <select
-                    onChange={(event) => update(index, { state: event.target.value as StateId })}
-                    value={row.state}
+                    onChange={(event) => update(index, { stage: event.target.value as StageId })}
+                    value={row.stage}
                   >
-                    {STATE_CONFIG.map((state) => (
-                      <option key={state.id} value={state.id}>{state.label}</option>
+                    {STAGE_CONFIG.map((stage) => (
+                      <option key={stage.id} value={stage.id}>{stage.label}</option>
                     ))}
                   </select>
                 </label>
@@ -143,7 +143,7 @@ export function InviteFields({ rows, defaultState, onChange }: InviteFieldsProps
               ...rows,
               {
                 id: createUuidV7(),
-                state: defaultState,
+                stage: defaultStage,
                 summary: '',
                 startsAt: '',
                 endsAt: '',

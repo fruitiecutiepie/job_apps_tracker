@@ -309,8 +309,8 @@ describe('engagement', () => {
     const rows = [
       open('a', 1),
       row('a', 'application_added', 1, {}, { weight: 3 }),
-      row('a', 'moved', 2, { stage: 'interview_1', outcome: 'active' }),
-      row('b', 'moved', 2, { stage: 'interview_1', outcome: 'rejected' }),
+      row('a', 'moved', 2, { stage: 'round_1', outcome: 'active' }),
+      row('b', 'moved', 2, { stage: 'round_1', outcome: 'rejected' }),
       row('b', 'moved', 3, { stage: 'offer', outcome: 'withdrawn' }, { weight: 2 }),
       row('b', 'application_added', 9),
     ]

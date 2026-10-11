@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Heart, PartyPopper, Smile } from "lucide-react";
-import { STATE_CONFIG, classifyLifecycle, statusLabel } from "../domain";
+import { STAGE_CONFIG, classifyLifecycle, statusLabel } from "../domain";
 import type { Status } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
 import { CompleteActionButton } from "./CompleteActionButton";
@@ -14,7 +14,7 @@ import { StageNotesButton } from "./StageNotesButton";
 import { moveFeedback } from "./moveFeedback";
 import type { MoveFeedback } from "./moveFeedback";
 import type { MovableApplicationsViewProps, MoveHandler } from "./types";
-import { formatShortDate, kanbanColumnGroups, upcomingStateEvent } from "./viewUtils";
+import { formatShortDate, kanbanColumnGroups, upcomingStageEvent } from "./viewUtils";
 
 export function KanbanView({
   applications,
@@ -25,14 +25,14 @@ export function KanbanView({
   onCompleteAction,
   onMove,
   onArchive,
-  visibleStates,
+  visibleStages,
   visibleOutcomes,
   quietDays,
 }: MovableApplicationsViewProps) {
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const columnGroups = useMemo(
-    () => kanbanColumnGroups(applications, visibleStates, visibleOutcomes),
-    [applications, visibleStates, visibleOutcomes],
+    () => kanbanColumnGroups(applications, visibleStages, visibleOutcomes),
+    [applications, visibleStages, visibleOutcomes],
   );
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const applicationsByLane = useMemo(() => {
@@ -97,11 +97,11 @@ export function KanbanView({
       <div className="kanban__scroller" aria-describedby="kanban-instructions">
         <div className="kanban__columns">
           {columnGroups.map((group) => (
-            <div className="kanban-column" key={group.state}>
+            <div className="kanban-column" key={group.stage}>
               {group.lanes.map((lane) => {
                 const key = laneKey(lane);
-                const headingId = `kanban-state-${lane.state}-${lane.outcome}`;
-                const stateApplications = applicationsByLane.get(key) ?? [];
+                const headingId = `kanban-stage-${lane.stage}-${lane.outcome}`;
+                const stageApplications = applicationsByLane.get(key) ?? [];
                 const isEndedLane = lane.outcome !== "active";
                 return (
                   <section
@@ -110,7 +110,7 @@ export function KanbanView({
                       isEndedLane ? `kanban-lane--ended kanban-lane--${lane.outcome}` : "",
                       dropTarget === key ? "kanban-lane--drop-target" : "",
                       feedback?.kind === "accepted" &&
-                      stateApplications.some((item) => item.id === feedback.id)
+                      stageApplications.some((item) => item.id === feedback.id)
                         ? "kanban-lane--celebrate"
                         : "",
                     ]
@@ -138,20 +138,20 @@ export function KanbanView({
                   >
                     <header className="kanban-lane__header">
                       <h3 id={headingId}>{statusLabel(lane)}</h3>
-                      <span className="count-badge" aria-label={`${stateApplications.length} applications`}>
-                        {stateApplications.length}
+                      <span className="count-badge" aria-label={`${stageApplications.length} applications`}>
+                        {stageApplications.length}
                       </span>
                     </header>
 
                     <div className="kanban-lane__cards">
-                      {stateApplications.length === 0 ? (
+                      {stageApplications.length === 0 ? (
                         <p className="kanban-lane__empty">Drop an application here</p>
                       ) : null}
-                      {stateApplications.map((application) => {
+                      {stageApplications.map((application) => {
                         // Silence since the last stage change, not since the last edit: a
                         // card you annotated yesterday can still have gone quiet for weeks.
                         const idle = idleStatusFor(application, new Date(), quietDays);
-                        const invite = upcomingStateEvent(application);
+                        const invite = upcomingStageEvent(application);
                         // The board's one non-derivable fact about the role itself: how you
                         // judged it. Shown with the weakest judgement and what is missing,
                         // because a bare number would read as more certain than it is.
@@ -269,13 +269,13 @@ export function KanbanView({
                                 <span aria-hidden="true">Stage</span>
                                 <select
                                   aria-label={`Move ${application.company} to stage`}
-                                  value={application.state}
+                                  value={application.stage}
                                   onChange={(event) =>
                                     moveWithFeedback(application.id, {
-                                      state: event.target.value as Status["state"],
+                                      stage: event.target.value as Status["stage"],
                                     })}
                                 >
-                                  {STATE_CONFIG.map((option) => (
+                                  {STAGE_CONFIG.map((option) => (
                                     <option key={option.id} value={option.id}>
                                       {option.label}
                                     </option>
@@ -369,6 +369,6 @@ function Confetti() {
   );
 }
 
-function laneKey({ state, outcome }: Status): string {
-  return `${state}:${outcome}`;
+function laneKey({ stage, outcome }: Status): string {
+  return `${stage}:${outcome}`;
 }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 
-import { OUTCOME_IDS, STATE_IDS, emptyCompensation, outcomeFilterMatches } from '../domain'
-import type { Application, OutcomeId, StateEvent, StateId } from '../domain'
+import { OUTCOME_IDS, STAGE_IDS, emptyCompensation, outcomeFilterMatches } from '../domain'
+import type { Application, OutcomeId, StageEvent, StageId } from '../domain'
 import {
   ACTION_HORIZON_DAYS,
   DEADLINE_HORIZON_DAYS,
@@ -23,17 +23,17 @@ function at(daysFromToday: number, hour = 9): string {
 }
 
 function application(company: string, overrides: Partial<Application> = {}): Application {
-  const state: StateId = 'applied'
+  const stage: StageId = 'applied'
   return {
     id: `00000000-0000-7000-8000-${company.toLowerCase().replace(/[^a-z0-9]/g, '').padEnd(12, '0').slice(0, 12)}`,
     company,
     role: null,
     url: null,
     source: null,
-    state,
+    stage,
     outcome: 'active',
     // Moved recently, so fixtures start with no silence pressure.
-    state_history: [{ state, outcome: 'active', at: at(-1) }],
+    stage_history: [{ stage, outcome: 'active', at: at(-1) }],
     archived_at: null,
     next_action: null,
     next_action_at: null,
@@ -41,7 +41,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
     notes: null,
     completed_actions: [],
     stage_notes: [],
-    state_events: [],
+    stage_events: [],
     correspondence: [],
     attachments: [],
     posting: null,
@@ -54,10 +54,10 @@ function application(company: string, overrides: Partial<Application> = {}): App
   }
 }
 
-function invite(daysFromToday: number, overrides: Partial<StateEvent> = {}): StateEvent {
+function invite(daysFromToday: number, overrides: Partial<StageEvent> = {}): StageEvent {
   return {
     id: `00000000-0000-7000-8000-${String(daysFromToday + 100).padStart(12, '0')}`,
-    state: 'interview_1',
+    stage: 'round_1',
     summary: 'Research panel',
     starts_at: at(daysFromToday, 14),
     ends_at: null,
@@ -72,9 +72,9 @@ function invite(daysFromToday: number, overrides: Partial<StateEvent> = {}): Sta
   }
 }
 
-function movedDaysAgo(days: number): Pick<Application, 'state_history' | 'updated_at'> {
+function movedDaysAgo(days: number): Pick<Application, 'stage_history' | 'updated_at'> {
   // updated_at stays fresh on purpose: an edit must not count as movement.
-  return { state_history: [{ state: 'applied', outcome: 'active', at: at(-days) }], updated_at: at(0) }
+  return { stage_history: [{ stage: 'applied', outcome: 'active', at: at(-days) }], updated_at: at(0) }
 }
 
 function score(overrides: Partial<Application>): number {
@@ -87,22 +87,22 @@ function reason(overrides: Partial<Application>): string {
 
 describe('lifecycle classification', () => {
   it('separates the running outcome from rejected and closed ones', () => {
-    expect(classifyLifecycle({ state: 'applied', outcome: 'active' })).toBe('live')
-    expect(classifyLifecycle({ state: 'applied', outcome: 'rejected' })).toBe('rejected')
-    expect(classifyLifecycle({ state: 'accepted', outcome: 'active' })).toBe('closed')
-    expect(classifyLifecycle({ state: 'applied', outcome: 'withdrawn' })).toBe('closed')
-    expect(classifyLifecycle({ state: 'applied', outcome: 'closed' })).toBe('closed')
+    expect(classifyLifecycle({ stage: 'applied', outcome: 'active' })).toBe('live')
+    expect(classifyLifecycle({ stage: 'applied', outcome: 'rejected' })).toBe('rejected')
+    expect(classifyLifecycle({ stage: 'accepted', outcome: 'active' })).toBe('closed')
+    expect(classifyLifecycle({ stage: 'applied', outcome: 'withdrawn' })).toBe('closed')
+    expect(classifyLifecycle({ stage: 'applied', outcome: 'closed' })).toBe('closed')
   })
 
   it('leaves rejected and closed applications out of the ranking', () => {
-    const ended = (company: string, state: StateId, outcome: OutcomeId) =>
-      application(company, { state, outcome, state_history: [{ state, outcome, at: at(-3) }] })
+    const ended = (company: string, stage: StageId, outcome: OutcomeId) =>
+      application(company, { stage, outcome, stage_history: [{ stage, outcome, at: at(-3) }] })
     const applications = [
       application('Live Co'),
-      ended('Rejected Co', 'interview_1', 'rejected'),
+      ended('Rejected Co', 'round_1', 'rejected'),
       ended('Accepted Co', 'accepted', 'active'),
       ended('Closed Co', 'headhunted', 'closed'),
-      ended('Withdrawn Co', 'interview_2', 'withdrawn'),
+      ended('Withdrawn Co', 'round_2', 'withdrawn'),
     ]
 
     for (const finished of applications.slice(1)) expect(urgencyFor(finished, today)).toBeNull()
@@ -114,12 +114,12 @@ describe('lifecycle classification', () => {
 
 describe('the outcome filter and the ranking share one definition', () => {
   it('ranks exactly the running applications, at every stage short of Accepted', () => {
-    const applications: Application[] = STATE_IDS.flatMap((state) =>
+    const applications: Application[] = STAGE_IDS.flatMap((stage) =>
       OUTCOME_IDS.map((outcome) =>
-        application(`${state} ${outcome} Co`, {
-          state,
+        application(`${stage} ${outcome} Co`, {
+          stage,
           outcome,
-          state_history: [{ state, outcome, at: at(-3) }],
+          stage_history: [{ stage, outcome, at: at(-3) }],
         }),
       ),
     )
@@ -131,10 +131,10 @@ describe('the outcome filter and the ranking share one definition', () => {
     )
     // Every stage but the last: an accepted job is active as an application and finished
     // for the search, so it has nothing left to rank for.
-    expect(ranked.map(({ state }) => state)).toEqual(
-      expect.arrayContaining(STATE_IDS.filter((state) => state !== 'accepted')),
+    expect(ranked.map(({ stage }) => stage)).toEqual(
+      expect.arrayContaining(STAGE_IDS.filter((stage) => stage !== 'accepted')),
     )
-    expect(ranked).toHaveLength(STATE_IDS.length - 1)
+    expect(ranked).toHaveLength(STAGE_IDS.length - 1)
   })
 })
 
@@ -198,38 +198,38 @@ describe('next-action pressure', () => {
 
 describe('invite pressure', () => {
   it('peaks on the day and decays more slowly than a deadline', () => {
-    expect(reason({ state_events: [invite(0)] })).toBe('Invite today')
-    expect(score({ state_events: [invite(0)] })).toBe(score({ deadline_at: at(0) }))
+    expect(reason({ stage_events: [invite(0)] })).toBe('Invite today')
+    expect(score({ stage_events: [invite(0)] })).toBe(score({ deadline_at: at(0) }))
 
     // Same distance, firmer commitment: the horizon is longer, so the value is higher.
-    expect(score({ state_events: [invite(5)] })).toBeGreaterThan(score({ deadline_at: at(5) }))
-    expect(score({ state_events: [invite(5)] })).toBeGreaterThan(score({ state_events: [invite(9)] }))
+    expect(score({ stage_events: [invite(5)] })).toBeGreaterThan(score({ deadline_at: at(5) }))
+    expect(score({ stage_events: [invite(5)] })).toBeGreaterThan(score({ stage_events: [invite(9)] }))
   })
 
   it('stops contributing at and beyond its horizon', () => {
     const none = score({})
-    expect(score({ state_events: [invite(INVITE_HORIZON_DAYS)] })).toBe(none)
-    expect(score({ state_events: [invite(INVITE_HORIZON_DAYS + 5)] })).toBe(none)
+    expect(score({ stage_events: [invite(INVITE_HORIZON_DAYS)] })).toBe(none)
+    expect(score({ stage_events: [invite(INVITE_HORIZON_DAYS + 5)] })).toBe(none)
   })
 
   it('ignores a meeting that already happened, unlike a deadline that slipped', () => {
     // The meeting is history; a passed deadline still needs dealing with.
-    expect(score({ state_events: [invite(-2)] })).toBe(score({}))
+    expect(score({ stage_events: [invite(-2)] })).toBe(score({}))
     expect(score({ deadline_at: at(-2) })).toBeGreaterThan(score({}))
   })
 
   it('ignores a cancelled invite and takes the soonest one still ahead', () => {
-    expect(score({ state_events: [invite(1, { cancelled: true })] })).toBe(score({}))
+    expect(score({ stage_events: [invite(1, { cancelled: true })] })).toBe(score({}))
 
     const mixed = {
-      state_events: [invite(9), invite(2, { cancelled: true }), invite(4)],
+      stage_events: [invite(9), invite(2, { cancelled: true }), invite(4)],
     }
     expect(reason(mixed)).toBe('Invite in 4 days')
   })
 
   it('outranks every other term at the same distance', () => {
     const day = 3
-    const inviteScore = score({ state_events: [invite(day)] })
+    const inviteScore = score({ stage_events: [invite(day)] })
 
     expect(inviteScore).toBeGreaterThan(score({ deadline_at: at(day) }))
     expect(inviteScore).toBeGreaterThan(
@@ -239,12 +239,12 @@ describe('invite pressure', () => {
   })
 
   it('wins the reason on an exact tie with a deadline', () => {
-    expect(reason({ state_events: [invite(0)], deadline_at: at(0) })).toBe('Invite today')
+    expect(reason({ stage_events: [invite(0)], deadline_at: at(0) })).toBe('Invite today')
   })
 
   it('still loses to an overdue action, which is already late', () => {
     expect(score({ next_action: 'Chase', next_action_at: at(-1) })).toBeGreaterThan(
-      score({ state_events: [invite(2)] }),
+      score({ stage_events: [invite(2)] }),
     )
   })
 })
@@ -293,14 +293,14 @@ describe('staleness pressure', () => {
 describe('score composition', () => {
   it('ranks later stages above earlier ones under equal pressure', () => {
     const offer = score({
-      state: 'offer',
-      state_history: [{ state: 'offer', outcome: 'active', at: at(-3) }],
+      stage: 'offer',
+      stage_history: [{ stage: 'offer', outcome: 'active', at: at(-3) }],
       deadline_at: at(2),
     })
     const applied = score({ deadline_at: at(2) })
     const headhunted = score({
-      state: 'headhunted',
-      state_history: [{ state: 'headhunted', outcome: 'active', at: at(-3) }],
+      stage: 'headhunted',
+      stage_history: [{ stage: 'headhunted', outcome: 'active', at: at(-3) }],
       deadline_at: at(2),
     })
 
@@ -392,15 +392,15 @@ describe('ranking order', () => {
   it('applies the tiebreak to scores that only differ by floating-point noise', () => {
     // 6/7 x 7/9 and 1 x 2/3 are the same number reached two ways, so these tie in practice.
     const soon = application('Soon Co', {
-      state: 'recruiter_interview',
-      state_history: [{ state: 'recruiter_interview', outcome: 'active', at: at(-2) }],
+      stage: 'screening',
+      stage_history: [{ stage: 'screening', outcome: 'active', at: at(-2) }],
       next_action: 'Prepare',
       next_action_at: at(1),
       updated_at: at(-2),
     })
     const late = application('Late Co', {
-      state: 'recruiter_messaged',
-      state_history: [{ state: 'recruiter_messaged', outcome: 'active', at: at(-3) }],
+      stage: 'recruiter_messaged',
+      stage_history: [{ stage: 'recruiter_messaged', outcome: 'active', at: at(-3) }],
       next_action: 'Send availability',
       next_action_at: at(-1),
       updated_at: at(-3),

@@ -2,25 +2,25 @@ import { describe, expect, it } from 'vitest'
 
 import { createDemoDocument } from './domain/demo'
 import { setPosting } from './domain/mutations'
-import type { StateId, TrackerDocument } from './domain/types'
+import type { StageId, TrackerDocument } from './domain/types'
 import { applyStageDraftBatches, saveStageNoteDraft } from './stageDraftBatches'
 
 const AT = new Date('2026-10-04T09:00:00.000Z')
 
 /** The demo document with one application's current-stage note and posting set. */
-function withNote(note: string, posting?: string): { document: TrackerDocument; id: string; state: StateId } {
+function withNote(note: string, posting?: string): { document: TrackerDocument; id: string; stage: StageId } {
   const document = createDemoDocument()
   const application = document.applications[0]
   const stamped = application.updated_at
   const updated = {
     ...application,
-    stage_notes: [{ state: application.state, body: note, heard: [], created_at: stamped, updated_at: stamped }],
+    stage_notes: [{ stage: application.stage, body: note, heard: [], created_at: stamped, updated_at: stamped }],
   }
   const withPosting = posting === undefined ? updated : setPosting(updated, { body: posting }, stamped)
   return {
     document: { ...document, applications: [withPosting, ...document.applications.slice(1)] },
     id: application.id,
-    state: application.state,
+    stage: application.stage,
   }
 }
 
@@ -35,17 +35,17 @@ function noteIn(document: TrackerDocument, id: string): string | undefined {
  */
 describe('storing the prep notes panel\'s drafts', () => {
   it('stores the draft as it is when the note has not moved since it began', () => {
-    const { document, id, state } = withNote('Ask about the team.')
+    const { document, id, stage } = withNote('Ask about the team.')
     const stored = applyStageDraftBatches(document, [
-      { applicationId: id, drafts: [{ state, base: 'Ask about the team.', body: 'Ask about the team. And on-call.' }] },
+      { applicationId: id, drafts: [{ stage, base: 'Ask about the team.', body: 'Ask about the team. And on-call.' }] },
     ], AT)
     expect(noteIn(stored, id)).toBe('Ask about the team. And on-call.')
   })
 
   it('keeps another tab\'s edit made since the draft began, and the draft\'s too', () => {
-    const { document, id, state } = withNote('Before anything: the team page. Ask about the team.')
+    const { document, id, stage } = withNote('Before anything: the team page. Ask about the team.')
     const stored = applyStageDraftBatches(document, [
-      { applicationId: id, drafts: [{ state, base: 'Ask about the team.', body: 'Ask about the team. And on-call.' }] },
+      { applicationId: id, drafts: [{ stage, base: 'Ask about the team.', body: 'Ask about the team. And on-call.' }] },
     ], AT)
     expect(noteIn(stored, id)).toBe('Before anything: the team page. Ask about the team. And on-call.')
   })
@@ -62,8 +62,8 @@ describe('storing the prep notes panel\'s drafts', () => {
   })
 
   it('merges a note saved from its base when the stored note has moved on', () => {
-    const { document, id, state } = withNote('Ask about the team. And the stack.')
-    const stored = saveStageNoteDraft(document, id, state, 'Ask about the team.', 'Ask about the team. And on-call.', AT)
+    const { document, id, stage } = withNote('Ask about the team. And the stack.')
+    const stored = saveStageNoteDraft(document, id, stage, 'Ask about the team.', 'Ask about the team. And on-call.', AT)
     expect(noteIn(stored, id)).toBe('Ask about the team. And the stack. And on-call.')
   })
 })

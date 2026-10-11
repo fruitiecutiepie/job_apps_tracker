@@ -1,10 +1,10 @@
 import { Archive, ArchiveRestore, ArrowLeft, ArrowRight, ChevronDown, RotateCcw } from "lucide-react";
 import {
   ENDING_OUTCOMES,
-  nextState,
+  nextStage,
   outcomeLabel,
-  previousState,
-  stateLabel,
+  previousStage,
+  stageLabel,
   statusLabel,
 } from "../domain";
 import type { Application, OutcomeId } from "../domain";
@@ -48,7 +48,7 @@ interface MoveControlsProps {
  * goes, so a screen reader hears the outcome rather than a column of identical "Next"s.
  */
 export function MoveControls({ application, onMove, onArchive, variant }: MoveControlsProps) {
-  const { company, id, state, outcome } = application;
+  const { company, id, stage, outcome } = application;
   const className = `move-controls move-controls--${variant}`;
 
   if (application.archived_at !== null) {
@@ -71,10 +71,10 @@ export function MoveControls({ application, onMove, onArchive, variant }: MoveCo
     return (
       <div className={className}>
         <button
-          aria-label={`Reopen ${company} at ${stateLabel(state)}`}
+          aria-label={`Reopen ${company} at ${stageLabel(stage)}`}
           className="button button--quiet move-controls__button"
           onClick={() => onMove(id, { outcome: "active" })}
-          title={`Reopen at ${stateLabel(state)}`}
+          title={`Reopen at ${stageLabel(stage)}`}
           type="button"
         >
           <RotateCcw aria-hidden="true" size={14} />
@@ -94,17 +94,17 @@ export function MoveControls({ application, onMove, onArchive, variant }: MoveCo
     );
   }
 
-  const previous = previousState(state);
-  const next = nextState(state);
+  const previous = previousStage(stage);
+  const next = nextStage(stage);
 
   return (
     <div className={className}>
       {previous ? (
         <button
-          aria-label={`Move ${company} back to ${stateLabel(previous)}`}
+          aria-label={`Move ${company} back to ${stageLabel(previous)}`}
           className="button button--quiet move-controls__button move-controls__back"
-          onClick={() => onMove(id, { state: previous })}
-          title={`Back to ${stateLabel(previous)}`}
+          onClick={() => onMove(id, { stage: previous })}
+          title={`Back to ${stageLabel(previous)}`}
           type="button"
         >
           <ArrowLeft aria-hidden="true" size={14} />
@@ -112,10 +112,10 @@ export function MoveControls({ application, onMove, onArchive, variant }: MoveCo
       ) : null}
       {next ? (
         <button
-          aria-label={`Move ${company} to ${stateLabel(next)}`}
+          aria-label={`Move ${company} to ${stageLabel(next)}`}
           className="button button--quiet move-controls__button move-controls__next"
-          onClick={() => onMove(id, { state: next })}
-          title={`Next: ${stateLabel(next)}`}
+          onClick={() => onMove(id, { stage: next })}
+          title={`Next: ${stageLabel(next)}`}
           type="button"
         >
           <ArrowRight aria-hidden="true" size={14} />
@@ -135,7 +135,7 @@ export function MoveControls({ application, onMove, onArchive, variant }: MoveCo
       >
         {ENDING_OUTCOMES.map((ending) => (
           <button
-            aria-label={`Move ${company} to ${statusLabel({ state, outcome: ending })}`}
+            aria-label={`Move ${company} to ${statusLabel({ stage, outcome: ending })}`}
             className="actions-menu__item move-controls__item"
             key={ending}
             onClick={() => onMove(id, { outcome: ending })}

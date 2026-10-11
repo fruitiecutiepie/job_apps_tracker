@@ -1,5 +1,5 @@
-import { isStateId } from './states'
-import type { StateId } from './types'
+import { isStageId } from './stages'
+import type { StageId } from './types'
 
 /** Local-server route for handing a stage note to an external editor and reading it back. */
 export const NOTE_EDIT_ROUTE = '/__note-edit'
@@ -7,16 +7,16 @@ export const NOTE_EDIT_ROUTE = '/__note-edit'
 export const MAX_STAGE_NOTE_BYTES = 256 * 1024
 
 /**
- * Scratch filename for one stage of one application. Derived from the state alone so the
+ * Scratch filename for one stage of one application. Derived from the stage alone so the
  * server can find the file again on a later read or delete without the client tracking it.
  */
-export function stageNoteEditFilename(state: StateId): string {
-  if (!isStateId(state)) throw new TypeError('State is invalid')
-  return `${state}.md`
+export function stageNoteEditFilename(stage: StageId): string {
+  if (!isStageId(stage)) throw new TypeError('Stage is invalid')
+  return `${stage}.md`
 }
 
-export function stageNoteEditUrl(applicationId: string, state: StateId): string {
-  return `${NOTE_EDIT_ROUTE}/${applicationId}/${state}`
+export function stageNoteEditUrl(applicationId: string, stage: StageId): string {
+  return `${NOTE_EDIT_ROUTE}/${applicationId}/${stage}`
 }
 
 export interface EditorCommand {

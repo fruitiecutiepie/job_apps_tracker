@@ -1,5 +1,5 @@
 import { backend } from '../backend'
-import type { StateId } from './types'
+import type { StageId } from './types'
 
 export interface StageNoteEditSession {
   /** Repository-relative path of the scratch file, shown so the note stays reachable by hand. */
@@ -32,23 +32,23 @@ function unsupported(): never {
 /** Writes the stage note to a scratch file and hands it to the configured editor. */
 export function openStageNoteInEditor(
   applicationId: string,
-  state: StateId,
+  stage: StageId,
   body: string,
 ): Promise<StageNoteEditSession> {
   if (!backend.openNoteInEditor) unsupported()
-  return backend.openNoteInEditor(applicationId, state, body)
+  return backend.openNoteInEditor(applicationId, stage, body)
 }
 
 /** Reads the scratch file back, or null when the session is gone. */
 export function readStageNoteFromEditor(
   applicationId: string,
-  state: StateId,
+  stage: StageId,
 ): Promise<StageNoteEditContents | null> {
   if (!backend.readNoteFromEditor) unsupported()
-  return backend.readNoteFromEditor(applicationId, state)
+  return backend.readNoteFromEditor(applicationId, stage)
 }
 
-export function closeStageNoteEditor(applicationId: string, state: StateId): Promise<void> {
+export function closeStageNoteEditor(applicationId: string, stage: StageId): Promise<void> {
   if (!backend.closeNoteEditor) unsupported()
-  return backend.closeNoteEditor(applicationId, state)
+  return backend.closeNoteEditor(applicationId, stage)
 }

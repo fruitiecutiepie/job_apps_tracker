@@ -39,7 +39,7 @@ interface StageNotePaneProps {
   company: string
   role: string
   /** Whether this is the application's own stage, which the panel tints. */
-  isCurrentState: boolean
+  isCurrentStage: boolean
   body: string
   saved: StageNote | undefined
   session: StageNoteEditSession | undefined
@@ -150,7 +150,7 @@ export function StageNotePane({
   label,
   company,
   role,
-  isCurrentState,
+  isCurrentStage,
   body,
   saved,
   session,
@@ -323,7 +323,7 @@ export function StageNotePane({
         aria-label={label}
         className={[
           'stage-note',
-          isCurrentState ? 'stage-note--current' : '',
+          isCurrentStage ? 'stage-note--current' : '',
           isCorrespondenceReading ? 'stage-note--reading' : '',
         ]
           .filter(Boolean)
@@ -587,7 +587,7 @@ export function StageNotePane({
               Swaps what the pane is showing rather than resizing the strip. A handle would
               let you trade the note against the log by degrees; the thing a long email
               actually wants is the whole column, and the thing you want back afterwards is
-              the note, whole. Two states say that; a drag says it vaguely.
+              the note, whole. Two stages say that; a drag says it vaguely.
             */}
             {isCorrespondenceOpen && messageFolds ? (
               <button

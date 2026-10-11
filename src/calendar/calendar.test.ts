@@ -15,7 +15,7 @@ describe('ics events', () => {
     const [invite] = parseIcsEvents(
       event(
         'UID:abc-123@example.com',
-        'SUMMARY:Interview 1 — panel',
+        'SUMMARY:Round 1 — panel',
         'DTSTART:20260820T040000Z',
         'DTEND:20260820T050000Z',
         'LOCATION:Level 4, 100 Example St',
@@ -25,7 +25,7 @@ describe('ics events', () => {
 
     expect(invite).toEqual({
       uid: 'abc-123@example.com',
-      summary: 'Interview 1 — panel',
+      summary: 'Round 1 — panel',
       starts_at: '2026-08-20T04:00:00.000Z',
       ends_at: '2026-08-20T05:00:00.000Z',
       location: 'Level 4, 100 Example St',
@@ -39,12 +39,12 @@ describe('ics events', () => {
     const [invite] = parseIcsEvents(
       event(
         'DTSTART:20260820T040000Z',
-        'SUMMARY:Recruiter interview with the ',
+        'SUMMARY:Screening call with the ',
         ' design systems team',
       ),
     )
 
-    expect(invite.summary).toBe('Recruiter interview with the design systems team')
+    expect(invite.summary).toBe('Screening call with the design systems team')
   })
 
   it('resolves a named zone to the right instant', () => {

@@ -11,7 +11,7 @@
  * and the URL is the one place it could otherwise be matched against.
  *
  * This module imports nothing, so the report script can load it under plain Node as well.
- * That is why the stage and outcome ids are listed here rather than read off `STATE_CONFIG`;
+ * That is why the stage and outcome ids are listed here rather than read off `DEFAULT_STAGES`;
  * a test holds the two lists equal.
  */
 
@@ -22,18 +22,30 @@ const BUCKET_AGE = ['none', '0d', '1-7d', '8-30d', '31-90d', '91d+'] as const
 const BUCKET_BACKLOG = ['none', '<1d', '1-7d', '8d+'] as const
 const YES_NO = ['y', 'n'] as const
 
-export const USAGE_STAGES = [
+/** The stages every tracker has, by id: a rename changes a label, never these. */
+export const USAGE_BUILTIN_STAGES = [
   'headhunted',
   'applied',
   'recruiter_messaged',
   'online_assessment',
-  'recruiter_interview',
+  'screening',
   'take_home_assessment',
-  'interview_1',
-  'interview_2',
+  'round_1',
+  'round_2',
   'offer',
   'accepted',
 ] as const
+/**
+ * A tracker may add rounds after Round 2 (`round_3`, `round_4`, …). The list has to stay
+ * closed, so every one of them is reported as `later_round`.
+ */
+export const USAGE_STAGES = [...USAGE_BUILTIN_STAGES, 'later_round'] as const
+export type UsageStage = (typeof USAGE_STAGES)[number]
+
+/** A stage id as a report may carry it: itself when built in, `later_round` otherwise. */
+export function usageStage(stage: string): UsageStage {
+  return (USAGE_BUILTIN_STAGES as readonly string[]).includes(stage) ? (stage as UsageStage) : 'later_round'
+}
 export const USAGE_OUTCOMES = ['active', 'rejected', 'withdrawn', 'closed'] as const
 
 /** Where a visit came from, by kind of site; never the site itself. */

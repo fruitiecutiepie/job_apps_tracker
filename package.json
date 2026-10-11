@@ -10,11 +10,8 @@
     "start": "vite preview",
     "start:demo": "VITE_TRACKER_PROFILE=demo vite preview --port 4273",
     "build": "tsc -b && vite build",
-    "build:pages": "VITE_TRACKER_BACKEND=browser VITE_BASE_PATH=/job_apps_tracker/ vite build",
-    "build:pages-demo": "VITE_TRACKER_BACKEND=browser VITE_TRACKER_PROFILE=demo VITE_BASE_PATH=/job_apps_tracker/demo/ VITE_OUT_DIR=dist/demo vite build",
-    "preview:pages": "VITE_TRACKER_BACKEND=browser VITE_BASE_PATH=/job_apps_tracker/ vite preview",
-    "preview:site": "pnpm build:pages && pnpm build:pages-demo && pnpm preview:pages",
-    "build:workers": "rm -rf dist && VITE_USAGE_URL=/projects/job_apps_tracker/app/__usage VITE_TRACKER_BACKEND=browser VITE_BASE_PATH=/projects/job_apps_tracker/app/ VITE_OUT_DIR=dist/projects/job_apps_tracker/app vite build && VITE_USAGE_URL=/projects/job_apps_tracker/app/__usage VITE_TRACKER_BACKEND=browser VITE_TRACKER_PROFILE=demo VITE_BASE_PATH=/projects/job_apps_tracker/app/demo/ VITE_OUT_DIR=dist/projects/job_apps_tracker/app/demo vite build",
+    "build:workers": "rm -rf dist && VITE_USAGE_URL=/projects/job_apps_tracker/app/api/usage VITE_TRACKER_BACKEND=browser VITE_BASE_PATH=/projects/job_apps_tracker/app/ VITE_OUT_DIR=dist/projects/job_apps_tracker/app vite build && VITE_USAGE_URL=/projects/job_apps_tracker/app/api/usage VITE_TRACKER_BACKEND=browser VITE_TRACKER_PROFILE=demo VITE_BASE_PATH=/projects/job_apps_tracker/app/demo/ VITE_OUT_DIR=dist/projects/job_apps_tracker/app/demo vite build",
+    "preview:workers": "pnpm build:workers && wrangler dev",
     "deploy": "pnpm build:workers && wrangler deploy",
     "usage:report": "node scripts/usage-report.ts",
     "typecheck": "tsc -b --pretty false",
@@ -22,9 +19,10 @@
     "test": "vitest run",
     "test:smoke": "vitest run src/test/smoke.test.tsx",
     "test:browser": "vitest run -c vitest.browser.config.ts",
+    "test:capture": "vitest run -c vitest.capture.config.ts",
     "test:watch": "vitest",
     "verify": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build",
-    "verify:all": "pnpm run verify && pnpm run test:browser"
+    "verify:all": "pnpm run verify && pnpm run test:browser && pnpm run test:capture"
   },
   "dependencies": {
     "fflate": "^0.8.3",
