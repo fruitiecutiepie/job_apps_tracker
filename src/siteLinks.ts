@@ -20,3 +20,10 @@ export function trackerSiteUrl(): string {
   const base = baseUrl()
   return base.endsWith(`/${DEMO_SEGMENT}`) ? base.slice(0, -DEMO_SEGMENT.length) : base
 }
+
+/**
+ * Where the hosted builds ask for support. A plain link rather than Ko-fi's widget: the
+ * widget loads Ko-fi's script and frame on every visit, which a private tracker should not
+ * do to someone who never clicks it, and nothing leaves the page until they do.
+ */
+export const KOFI_URL = 'https://ko-fi.com/fruitiecutiepie'
