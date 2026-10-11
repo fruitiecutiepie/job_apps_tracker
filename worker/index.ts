@@ -1,17 +1,18 @@
+import { usageDocument } from '../src/usageDocument'
 import { parseUsageReport, usageDataPoint } from '../src/usageEvent'
 import { buildUsageReport, fetchUsageRows } from '../src/usageReport'
 
 /**
  * The hosted tracker's one piece of server code. Everything else is static files, served by
  * the asset handler before this ever runs: `run_worker_first` in `wrangler.jsonc` sends only
- * the two paths below here.
+ * the usage path here.
  *
- * `__usage` takes reports in. It stores a report only if it is exactly one the app is
+ * `fetch` takes usage reports in. It stores a report only if it is exactly one the app is
  * allowed to send, and stores nothing about the request itself — no address, no headers.
  *
- * `__progress` gives the summary out, to the portfolio's progress page, which fetches it
- * hourly and shows it to the owner and contributors only. It answers only with the report
- * key, so the figures are no more public than that page.
+ * `scheduled` sends the summary out, hourly, to the progress page at fruitiecutiepie.com,
+ * which only the owner and contributors can open. The tracker decides what goes on that page;
+ * the site decides how it looks (src/usageDocument.ts).
  */
 
 interface AnalyticsEngineDataset {
@@ -21,19 +22,21 @@ interface AnalyticsEngineDataset {
 export interface Env {
   ASSETS: { fetch(request: Request): Promise<Response> }
   USAGE?: AnalyticsEngineDataset
-  /** Secrets, for `__progress`: the account and a token with Account Analytics: Read. */
+  /** Where the summary goes: the site's usage API for this project (wrangler.jsonc vars). */
+  USAGE_PUSH_URL?: string
+  /** Secrets: the account the dataset is in, a token with Account Analytics: Read, and this
+      project's usage token from the site (its scripts/usage-token). */
   ANALYTICS_ACCOUNT_ID?: string
   ANALYTICS_TOKEN?: string
-  /** Secret shared with the portfolio, which sends it as a bearer token. */
-  USAGE_REPORT_KEY?: string
+  USAGE_PUSH_TOKEN?: string
 }
 
 /** A report is a few hundred bytes; anything much larger is not one. */
 const MAX_BODY = 2048
 
-/** Twelve weeks: the progress page's charts run that far back, and the data keeps three months. */
-export const PROGRESS_WEEKS = 12
-const PROGRESS_ROW_LIMIT = 50_000
+/** Twelve weeks: what the progress page charts, inside the three months the data keeps. */
+export const PUSH_WEEKS = 12
+const PUSH_ROW_LIMIT = 50_000
 
 export async function handleUsage(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } })
@@ -54,54 +57,46 @@ export async function handleUsage(request: Request, env: Env): Promise<Response>
   return new Response(null, { status: 204 })
 }
 
-/** Equal strings, compared in a time that does not say how much of a guess was right. */
-function sameSecret(given: string, expected: string): boolean {
-  const a = new TextEncoder().encode(given)
-  const b = new TextEncoder().encode(expected)
-  let difference = a.length ^ b.length
-  for (let index = 0; index < b.length; index += 1) difference |= (a[index] ?? 0) ^ b[index]
-  return difference === 0
-}
+export type PushResult =
+  | { outcome: 'pushed' }
+  | { outcome: 'skipped'; reason: string }
+  | { outcome: 'refused'; status: number; detail: string }
 
-const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), {
-    status,
-    headers: { 'Content-Type': 'application/json', 'Cache-Control': 'private, no-store' },
+/**
+ * Works the report out from Analytics Engine and sends it to the site, replacing what the
+ * page showed. Unconfigured, it sends nothing and says so; refused, it says what the site
+ * answered, which for a document the site can't read is every error at once.
+ */
+export async function pushUsage(env: Env, now: Date = new Date(), fetchImpl: typeof fetch = fetch): Promise<PushResult> {
+  const { ANALYTICS_ACCOUNT_ID: account, ANALYTICS_TOKEN: token, USAGE_PUSH_URL: url, USAGE_PUSH_TOKEN: pushToken } = env
+  if (!account || !token || !url || !pushToken) return { outcome: 'skipped', reason: 'not configured' }
+  const { rows, truncated } = await fetchUsageRows({ account, token, weeks: PUSH_WEEKS, limit: PUSH_ROW_LIMIT, fetch: fetchImpl })
+  if (truncated) console.warn(`usage push: hit the ${PUSH_ROW_LIMIT}-row limit, so the oldest weeks are short`)
+  const response = await fetchImpl(url, {
+    method: 'PUT',
+    headers: { Authorization: `Bearer ${pushToken}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(usageDocument(buildUsageReport(rows, now, PUSH_WEEKS))),
   })
-
-export async function handleProgress(
-  request: Request,
-  env: Env,
-  now: Date = new Date(),
-  fetchImpl: typeof fetch = fetch,
-): Promise<Response> {
-  if (request.method !== 'GET') return new Response(null, { status: 405, headers: { Allow: 'GET' } })
-  const { ANALYTICS_ACCOUNT_ID: account, ANALYTICS_TOKEN: token, USAGE_REPORT_KEY: key } = env
-  // Unconfigured is refused outright, never answered: an empty key would match an empty guess.
-  if (!account || !token || !key) return json({ error: 'not configured' }, 503)
-  const given = request.headers.get('Authorization')?.replace(/^Bearer /, '') ?? ''
-  if (!sameSecret(given, key)) return json({ error: 'unauthorized' }, 401)
-  try {
-    const { rows, truncated } = await fetchUsageRows({
-      account,
-      token,
-      weeks: PROGRESS_WEEKS,
-      limit: PROGRESS_ROW_LIMIT,
-      fetch: fetchImpl,
-    })
-    return json({ ...buildUsageReport(rows, now, PROGRESS_WEEKS), truncated })
-  } catch (error) {
-    // Says that it failed, not why: the reason can carry the API's own message.
-    console.error(error)
-    return json({ error: 'analytics unavailable' }, 502)
-  }
+  if (response.ok) return { outcome: 'pushed' }
+  return { outcome: 'refused', status: response.status, detail: (await response.text()).slice(0, 2000) }
 }
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const { pathname } = new URL(request.url)
-    if (pathname.endsWith('/__usage')) return handleUsage(request, env)
-    if (pathname.endsWith('/__progress')) return handleProgress(request, env)
+    if (new URL(request.url).pathname.endsWith('/__usage')) return handleUsage(request, env)
     return env.ASSETS.fetch(request)
+  },
+
+  async scheduled(_controller: unknown, env: Env, context: { waitUntil(promise: Promise<unknown>): void }): Promise<void> {
+    context.waitUntil(
+      pushUsage(env).then(
+        (result) => {
+          if (result.outcome === 'pushed') return
+          console.error(JSON.stringify({ usagePush: result }))
+          // A refusal is a failed run, so it shows as one in the Worker's logs.
+          if (result.outcome === 'refused') throw new Error(`usage push refused: ${result.status}`)
+        },
+      ),
+    )
   },
 }

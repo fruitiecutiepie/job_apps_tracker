@@ -22,13 +22,6 @@ import {
 
 export const USAGE_DATASET = 'job_apps_tracker_usage'
 
-/**
- * The shape of `buildUsageReport`'s output, for whoever reads it from elsewhere — the
- * portfolio's progress page stores it as JSON. Bumped when a field changes meaning or goes,
- * so a reader built for one shape refuses another rather than misreading it.
- */
-export const USAGE_REPORT_VERSION = 1
-
 export interface UsageRow {
   at: Date
   tracker: string
@@ -358,7 +351,6 @@ export function buildUsageReport(rows: readonly UsageRow[], now: Date, weeks: nu
   const windows = reportWeeks(now, weeks)
   const whole: Window = { from: windows[0].from, to: windows[windows.length - 1].to }
   return {
-    version: USAGE_REPORT_VERSION,
     generatedAt: now.toISOString(),
     period: { from: whole.from.toISOString(), to: whole.to.toISOString() },
     weekly: windows.map((window) => ({
