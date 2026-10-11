@@ -376,6 +376,10 @@ describe('the static build', () => {
     expect(menu.getByRole('button', { name: /^Archive all ended/ })).toBeInTheDocument()
     expect(menu.queryByRole('button', { name: 'Import' })).not.toBeInTheDocument()
     expect(menu.queryByRole('button', { name: 'Export' })).not.toBeInTheDocument()
+    // A link out, opened beside the tracker rather than over it.
+    const kofi = menu.getByRole('link', { name: 'Support on Ko-fi' })
+    expect(kofi).toHaveAttribute('href', 'https://ko-fi.com/fruitiecutiepie')
+    expect(kofi).toHaveAttribute('target', '_blank')
     await user.keyboard('{Escape}')
 
     await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))

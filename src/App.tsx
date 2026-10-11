@@ -5,6 +5,7 @@ import {
   CircleCheck,
   ChartNoAxesColumnIncreasing,
   ClipboardCopy,
+  Coffee,
   Columns3,
   Download,
   KanbanSquare,
@@ -84,6 +85,7 @@ import {
 } from './domain'
 import { isDemoTrackerProfile, trackerDatabasePath } from './domain/trackerProfile'
 import { backend, isBrowserBackend, type StorageConnection, type TrackerSummary } from './backend'
+import { KOFI_URL } from './siteLinks'
 import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
 import { ReplaceTrackerDialog, type ExistingTracker, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
 import type { FileHandleLike } from './backend/fileSystem'
@@ -1852,6 +1854,20 @@ export default function App() {
                 {/* The switch's state is `aria-checked`'s to announce; this is for the eye. */}
                 <span aria-hidden="true" className="actions-menu__state">{usageOn ? 'On' : 'Off'}</span>
               </button>
+            )}
+            {/*
+              * The hosted builds, and `pnpm dev` so it can be seen while working on it. Not
+              * `pnpm start`, which is someone using their own copy rather than developing it.
+              */}
+            {(isBrowserBackend() || import.meta.env.DEV) && (
+              <a
+                className="actions-menu__item"
+                href={KOFI_URL}
+                rel="noopener noreferrer"
+                target="_blank"
+              >
+                <Coffee aria-hidden="true" size={16} /> Support on Ko-fi
+              </a>
             )}
           </MoreActionsMenu>
         </div>
