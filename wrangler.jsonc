@@ -3,10 +3,18 @@
   "name": "job-apps-tracker",
   "compatibility_date": "2026-10-07",
   "workers_dev": false,
+  // Runs only for usage reports: every other path is a static file the asset handler serves.
+  "main": "./worker/index.ts",
   "observability": {
     "enabled": true,
+    // A tracker's id is in its URL, and a request log holds the address it came from. Neither
+    // is kept: the query string is dropped and the per-request log is off.
+    "redact_query_string": true,
+    "logs": {
+      "invocation_logs": false
+    },
     "traces": {
-      "enabled": true
+      "enabled": false
     }
   },
   "routes": [
@@ -17,7 +25,17 @@
   ],
   "assets": {
     "directory": "./dist",
+    "binding": "ASSETS",
     // /app and /app/ both open the app. /app is the address that stays.
-    "html_handling": "drop-trailing-slash"
-  }
+    "html_handling": "drop-trailing-slash",
+    "run_worker_first": ["/projects/job_apps_tracker/app/__usage"]
+  },
+  // Usage counts; see src/usageEvent.ts for every value a row can hold. Analytics Engine keeps
+  // rows for three months and then drops them.
+  "analytics_engine_datasets": [
+    {
+      "binding": "USAGE",
+      "dataset": "job_apps_tracker_usage"
+    }
+  ]
 }

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   Archive,
+  ChartNoAxesCombined,
   CircleCheck,
   ChartNoAxesColumnIncreasing,
   ClipboardCopy,
@@ -87,6 +88,8 @@ import { DemoBanner, StorageIntro, StorageStatus } from './StorageStatus'
 import { ReplaceTrackerDialog, type ExistingTracker, type ReplaceChoice, type TrackerReplacement } from './ReplaceTrackerDialog'
 import type { FileHandleLike } from './backend/fileSystem'
 import { useStorageState } from './useStorageState'
+import { recordUsage, setUsageTracker, usageAvailable, useUsagePreference } from './usage'
+import { usageChanges, usageSnapshot } from './usageSnapshot'
 import { TrackerSwitcher } from './TrackerSwitcher'
 import { navigation, NEW_TRACKER, trackerHref } from './backend/trackerAddress'
 import { useFileImport } from './useFileImport'
@@ -728,6 +731,7 @@ export default function App() {
   /* Kept apart from the import input: that one replaces this tracker, this one starts another. */
   const otherTrackerInputRef = useRef<HTMLInputElement>(null)
   const storageState = useStorageState()
+  const [usageOn, setUsageOn] = useUsagePreference()
 
   /*
    * Another tab holding this tracker wrote it, or removed it. A newer document replaces
@@ -821,6 +825,33 @@ export default function App() {
     }
   }, [])
 
+  /*
+   * Usage counts, in the hosted build only (`usage.ts` says what is and is not sent). The
+   * tracker is named as soon as it is known; the snapshot goes once per page load, after
+   * both the document and where it is saved have arrived.
+   */
+  const trackerId = storageState?.tracker?.id ?? null
+  useEffect(() => {
+    if (trackerId !== null) setUsageTracker(trackerId)
+  }, [trackerId])
+  const reportedOpen = useRef(false)
+  useEffect(() => {
+    if (reportedOpen.current || !tracker || !storageState?.tracker) return
+    reportedOpen.current = true
+    recordUsage('open', usageSnapshot(tracker, storageState, new Date()))
+  }, [tracker, storageState])
+  useEffect(() => {
+    if (loadError) recordUsage('error', { kind: 'load' })
+  }, [loadError])
+  // Where the reader went, not where the page opened: the first render is not a choice.
+  const place = notesOpen ? 'prep' : activeView
+  const reportedPlace = useRef(place)
+  useEffect(() => {
+    if (reportedPlace.current === place) return
+    reportedPlace.current = place
+    recordUsage('view', { place })
+  }, [place])
+
   useEffect(() => {
     if (dialogIsOpen) {
       dialogWasOpenRef.current = true
@@ -862,6 +893,9 @@ export default function App() {
       const current = trackerRef.current
       if (!current) return false
 
+      // The mutation can run more than once where another tab wrote first; the last run is
+      // the one stored, so it is the one counted.
+      let changes: ReturnType<typeof usageChanges> = { added: 0, moved: [] }
       try {
         /*
          * The mutation, not the document, goes to storage: where another tab holds this
@@ -869,15 +903,24 @@ export default function App() {
          * returns the document it was given when there is nothing to do, which is also
          * what keeps a no-op move or an unchanged draft off the disk.
          */
-        const { document: saved, wrote } = await updateTrackerDatabase(current, mutate)
+        const { document: saved, wrote } = await updateTrackerDatabase(current, (document) => {
+          const next = mutate(document)
+          changes = usageChanges(document, next)
+          return next
+        })
         if (saved !== trackerRef.current) {
           trackerRef.current = saved
           setTracker(saved)
         }
         if (wrote && message) setNotice(message)
+        if (wrote) {
+          for (let added = 0; added < changes.added; added += 1) recordUsage('application_added', {})
+          for (const status of changes.moved) recordUsage('moved', { stage: status.state, outcome: status.outcome })
+        }
         return true
       } catch (error) {
         setNotice(`Save failed: ${errorMessage(error)}`)
+        recordUsage('error', { kind: 'save' })
         return false
       }
     })
@@ -897,6 +940,7 @@ export default function App() {
   const importFile = async (file: File, handle: Promise<FileHandleLike | null> | null = null) => {
     try {
       const result = readTrackerImport(await readFileAsUint8Array(file))
+      recordUsage('imported', { ok: result.ok ? 'y' : 'n' })
       if (!result.ok) {
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
@@ -1452,7 +1496,9 @@ export default function App() {
         navigation.open(trackerHref(result.tracker.id))
         return null
       }
-      return result.outcome === 'connected' ? result.connection : null
+      if (result.outcome !== 'connected') return null
+      recordUsage('folder_connected', {})
+      return result.connection
     }, 'Changes are now saved to that folder too.')
   }
 
@@ -1467,7 +1513,10 @@ export default function App() {
    */
   const exportTracker = () => {
     downloadTrackerArchive(tracker, new Date(), storageState?.tracker?.name)
-      .then(() => backend.storage?.markBackedUp())
+      .then(() => {
+        recordUsage('exported', {})
+        return backend.storage?.markBackedUp()
+      })
       .catch((error) => {
         setNotice(`Export failed: ${errorMessage(error)}`)
       })
@@ -1763,6 +1812,26 @@ export default function App() {
                 <RotateCcw aria-hidden="true" size={16} /> Reset demo data
               </button>
             )}
+            {/*
+              * The switch for usage counts, for everyone past the first screen. A switch
+              * rather than a toggle phrased as a command, so it says what is true now; the
+              * tooltip says what is counted, in the intro's words.
+              */}
+            {usageAvailable() && (
+              <button
+                aria-checked={usageOn}
+                className="actions-menu__item"
+                onClick={() => setUsageOn(!usageOn)}
+                role="switch"
+                title="Counts things like how many applications you have and which views you use, never what you write."
+                type="button"
+              >
+                <ChartNoAxesCombined aria-hidden="true" size={16} />
+                Share usage counts
+                {/* The switch's state is `aria-checked`'s to announce; this is for the eye. */}
+                <span aria-hidden="true" className="actions-menu__state">{usageOn ? 'On' : 'Off'}</span>
+              </button>
+            )}
           </MoreActionsMenu>
         </div>
       </header>
@@ -1980,6 +2049,7 @@ export default function App() {
             onAdd={(opener) => openNewApplication(opener)}
             onImport={() => importInputRef.current?.click()}
             showDemoLink={!isDemoTrackerProfile()}
+            usage={usageAvailable() ? { on: usageOn, onChange: setUsageOn } : undefined}
           />
         )}
 

@@ -122,6 +122,8 @@ export interface StorageIntroProps {
   onImport: () => void
   /** Absent on the demo site, which is already the thing the link would lead to. */
   showDemoLink: boolean
+  /** Whether usage counts are being sent, and how to change it; absent where none ever are. */
+  usage?: { on: boolean; onChange: (on: boolean) => void }
 }
 
 /**
@@ -145,14 +147,15 @@ export function StorageIntro({
   onConnect,
   onImport,
   showDemoLink,
+  usage,
 }: StorageIntroProps) {
   const canConnect = connection.kind !== 'unsupported'
   return (
     <section aria-labelledby="storage-intro-heading" className="storage-intro">
       <h2 id="storage-intro-heading">Track your job applications</h2>
       <p>
-        Nothing is uploaded and there is no account: your applications are saved in this
-        browser. Clearing your browsing data or closing a private window deletes them,{' '}
+        What you write is never uploaded, and there is no account: your applications are
+        saved in this browser. Clearing your browsing data or closing a private window deletes them,{' '}
         {canConnect
           ? 'so keep them in a folder on your computer as well.'
           : 'so export a backup now and then — the top bar will remind you.'}
@@ -185,6 +188,27 @@ export function StorageIntro({
           Just looking? <a href={demoSiteUrl()}>Try the demo</a>.
         </p>
       )}
+      {usage && <UsageLine {...usage} />}
     </section>
+  )
+}
+
+/**
+ * Said once, where a newcomer is already reading about where their data goes, in the same
+ * plain voice: what is counted, what never is, and the way to stop it, in one line. Not a
+ * banner and not a question — a reader who has not been asked anything has nothing to be
+ * alarmed by, and the switch is one press either way. More actions carries the same switch
+ * for everyone past this screen.
+ */
+function UsageLine({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <p className="storage-intro__usage">
+      {on
+        ? 'To learn what is worth improving, the app counts things like how many applications you have and which views you use — never what you write. '
+        : 'Usage counts are off: nothing about how you use the app is sent. '}
+      <button className="text-button" onClick={() => onChange(!on)} type="button">
+        {on ? 'Turn off' : 'Turn back on'}
+      </button>
+    </p>
   )
 }
