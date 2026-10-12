@@ -13,7 +13,9 @@ import {
   setUsageTracker,
   USAGE_STORAGE_KEY,
   usageAvailable,
+  usageOffByBrowser,
   usageTag,
+  useUsagePreference,
   useViewTime,
   writeUsagePreference,
 } from './usage'
@@ -179,7 +181,8 @@ describe('usageSnapshot, field by field', () => {
 
   it.each([
     [{ kind: 'connected', name: 'Job search' }, 'folder'],
-    [{ kind: 'needs-permission', name: 'Job search' }, 'browser'],
+    // Still where it saves; the lapsed permission is a restart away from renewed.
+    [{ kind: 'needs-permission', name: 'Job search' }, 'folder'],
     [{ kind: 'disconnected' }, 'browser'],
     [{ kind: 'unsupported' }, 'unsupported'],
   ] as const)('reports a %o connection as %s', (connection, storage) => {
@@ -209,8 +212,18 @@ describe('referrerKind', () => {
   const origin = 'https://fruitiecutiepie.com'
   it.each([
     ['', 'direct'],
+    // As the live site serves them: it drops the trailing slash (wrangler.jsonc html_handling),
+    // so switching trackers comes from `…/app?tracker=` and the demo is `…/app/demo`.
+    ['https://fruitiecutiepie.com/projects/job_apps_tracker/app?tracker=old', 'internal'],
+    ['https://fruitiecutiepie.com/projects/job_apps_tracker/app', 'internal'],
+    ['https://fruitiecutiepie.com/projects/job_apps_tracker/app/demo', 'demo'],
+    ['https://fruitiecutiepie.com/projects/job_apps_tracker/app/demo?tracker=x', 'demo'],
+    // And with it, as Vite's base paths spell them.
     ['https://fruitiecutiepie.com/projects/job_apps_tracker/app/?tracker=x', 'internal'],
     ['https://fruitiecutiepie.com/projects/job_apps_tracker/app/demo/', 'demo'],
+    // A sibling that merely starts with the same letters is not the tracker.
+    ['https://fruitiecutiepie.com/projects/job_apps_tracker/application', 'site'],
+    ['https://fruitiecutiepie.com/projects/job_apps_tracker/app/demolition', 'internal'],
     ['https://www.google.com.au/', 'search'],
     ['https://duckduckgo.com/', 'search'],
     ['https://www.bing.com/search?q=job+tracker', 'search'],
@@ -313,12 +326,19 @@ describe('usageChanges', () => {
 })
 
 describe('sending', () => {
-  let beacon: ReturnType<typeof vi.fn>
+  let beacon: ReturnType<typeof vi.fn<(url: string, body: unknown, init?: RequestInit) => void>>
 
   beforeEach(() => {
     resetUsageForTests()
-    beacon = vi.fn(() => true)
-    Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: beacon })
+    // Reports go out by fetch; every other request goes on to the test's own stub.
+    beacon = vi.fn<(url: string, body: unknown, init?: RequestInit) => void>()
+    const passOn = globalThis.fetch
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input)
+      if (!url.includes('usage')) return passOn(input, init)
+      beacon(url, init?.body, init)
+      return new Response(null, { status: 204 })
+    }))
   })
 
   afterEach(() => {
@@ -428,6 +448,36 @@ describe('sending', () => {
     ])
   })
 
+  it('sends with no cookies or credentials, and survives the tab closing', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/app/__usage')
+    setUsageTracker(TRACKER_ID)
+    recordUsage('exported', {})
+    await sentBodies()
+    const init = beacon.mock.calls[0][2] as RequestInit
+    expect(init).toMatchObject({ method: 'POST', credentials: 'omit', keepalive: true })
+  })
+
+  it('keeps the switch in step with a change made in another tab', () => {
+    const { result } = renderHook(() => useUsagePreference())
+    expect(result.current[0]).toBe(true)
+    // Another tab turned it off: the browser updates storage and fires `storage` here.
+    localStorage.setItem(USAGE_STORAGE_KEY, 'off')
+    act(() => window.dispatchEvent(new StorageEvent('storage', { key: USAGE_STORAGE_KEY })))
+    expect(result.current[0]).toBe(false)
+  })
+
+  it('tells off-because-the-browser-asked apart from off-because-the-reader-chose', () => {
+    expect(usageOffByBrowser()).toBe(false)
+    Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, value: true })
+    try {
+      expect(usageOffByBrowser()).toBe(true)
+      writeUsagePreference(false)
+      expect(usageOffByBrowser()).toBe(false)
+    } finally {
+      Reflect.deleteProperty(navigator, 'globalPrivacyControl')
+    }
+  })
+
   it('starts off where the browser sends Global Privacy Control, until turned on', () => {
     Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, value: true })
     try {
@@ -461,6 +511,8 @@ describe('the Worker', () => {
     expect((await handleUsage(post({ ...validOpen(), event: 'note_text' }), bindings)).status).toBe(400)
     expect((await handleUsage(post('not json'), bindings)).status).toBe(400)
     expect((await handleUsage(post(validOpen(), { 'Sec-Fetch-Site': 'cross-site' }), bindings)).status).toBe(403)
+    // No header at all is not a browser on this site either.
+    expect((await handleUsage(post(validOpen(), {}), bindings)).status).toBe(403)
     expect((await handleUsage(new Request('https://example.test/__usage'), bindings)).status).toBe(405)
     expect(bindings.USAGE.writeDataPoint).not.toHaveBeenCalled()
   })
@@ -474,7 +526,10 @@ describe('the Worker’s routes', () => {
     const base = 'https://fruitiecutiepie.com/projects/job_apps_tracker/app/api'
     const report = { v: 1, tracker: '0123456789abcdef', profile: 'live', event: 'exported', props: {} }
 
-    const counted = await worker.fetch(new Request(`${base}/usage`, { method: 'POST', body: JSON.stringify(report) }), env)
+    const counted = await worker.fetch(
+      new Request(`${base}/usage`, { method: 'POST', headers: { 'Sec-Fetch-Site': 'same-origin' }, body: JSON.stringify(report) }),
+      env,
+    )
     expect(counted.status).toBe(204)
     expect(writeDataPoint).toHaveBeenCalledTimes(1)
 

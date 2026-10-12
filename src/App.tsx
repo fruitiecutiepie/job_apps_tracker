@@ -96,7 +96,7 @@ import { ReplaceTrackerDialog, type ExistingTracker, type ReplaceChoice, type Tr
 import type { FileHandleLike } from './backend/fileSystem'
 import { useStorageState } from './useStorageState'
 import { demoSiteUrl, trackerSiteUrl } from './siteLinks'
-import { recordUsage, setUsageTracker, usageAvailable, useUsagePreference, useViewTime } from './usage'
+import { recordUsage, setUsageTracker, usageAvailable, usageOffByBrowser, useUsagePreference, useViewTime } from './usage'
 import type { UsageProps } from './usageEvent'
 import { referrerKind, usageChanges, usageSnapshot } from './usageSnapshot'
 import { TrackerSwitcher } from './TrackerSwitcher'
@@ -986,16 +986,19 @@ export default function App() {
   const importFile = async (file: File, handle: Promise<FileHandleLike | null> | null = null) => {
     try {
       const result = readTrackerImport(await readFileAsUint8Array(file))
-      recordUsage('imported', { ok: result.ok ? 'y' : 'n' })
-      // Counted above as a file that could not be read, rather than again as a failure.
+      // Counted as a file that could not be read, rather than again as a failure.
       if (!result.ok) {
+        recordUsage('imported', { ok: 'n' })
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
       }
       const source = handle ? await handle : null
 
       // A file that already is a tracker here: this one is left alone, another is offered.
-      if (await answeredAsExisting(file, source, result)) return
+      const existing = await answeredAsExisting(file, source, result)
+      // This tracker's own file brings nothing in, so it is not an import.
+      if (existing !== 'same') recordUsage('imported', { ok: 'y' })
+      if (existing) return
 
       // An empty tracker has nothing to replace, so there is nothing to ask.
       const current = trackerRef.current?.applications.length ?? 0
@@ -1043,23 +1046,24 @@ export default function App() {
    * Matched by the browser comparing the two files on disk, never by what they hold: two
    * files that read alike are still two files, and opening the second as a tracker of its
    * own is a fair thing to want. Where the browser offers no handle on the file (a paste,
-   * Firefox, Safari), nothing matches and the ordinary question is asked.
+   * Firefox, Safari), nothing matches and the ordinary question is asked. Says which it
+   * answered for: this tracker's own file (`same`), another tracker's (`other`), or neither.
    */
   const answeredAsExisting = async (
     file: File,
     source: FileHandleLike | null,
     result: TrackerImportSuccess,
-  ): Promise<boolean> => {
-    if (!source || !backend.storage) return false
+  ): Promise<'same' | 'other' | null> => {
+    if (!source || !backend.storage) return null
     const match = await backend.storage.findTrackerForFile(source)
-    if (!match) return false
+    if (!match) return null
     if (match.id === storageState?.tracker?.id) {
       setNotice(
         match.folder
           ? `${file.name} is the file ${match.name} already saves to, so there is nothing to import.`
           : `${match.name} was opened from ${file.name} already, so there is nothing to import.`,
       )
-      return true
+      return 'same'
     }
     setPendingReplace({
       replacement: { kind: 'existing', name: match.name, folder: match.folder ?? null },
@@ -1068,7 +1072,7 @@ export default function App() {
       openAsNew: () => openAsTracker(result, file.name, source),
       switchTo: () => navigation.open(trackerHref(match.id)),
     })
-    return true
+    return 'other'
   }
 
   /*
@@ -1119,7 +1123,9 @@ export default function App() {
    */
   const saveCurrentCopy = async () => {
     const current = trackerRef.current
-    if (current) await downloadTrackerArchive(current, new Date(), storageState?.tracker?.name)
+    if (!current) return
+    await downloadTrackerArchive(current, new Date(), storageState?.tracker?.name)
+    recordUsage('exported', {})
   }
 
   /*
@@ -1161,7 +1167,10 @@ export default function App() {
   const newTrackerFromFolder = async () => {
     try {
       const result = await backend.storage!.openFolder()
-      if (result.outcome === 'opened') navigation.open(trackerHref(result.tracker.id))
+      if (result.outcome === 'opened') {
+        recordUsage('folder_connected', {})
+        navigation.open(trackerHref(result.tracker.id))
+      }
     } catch (error) {
       reportFailure('folder', `Could not open the folder: ${errorMessage(error)}`)
     }
@@ -1174,12 +1183,14 @@ export default function App() {
   const newTrackerFromFile = async (file: File, source: FileHandleLike | null = null) => {
     try {
       const result = readTrackerImport(await readFileAsUint8Array(file))
-      recordUsage('imported', { ok: result.ok ? 'y' : 'n' })
       if (!result.ok) {
+        recordUsage('imported', { ok: 'n' })
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
       }
-      if (await answeredAsExisting(file, source, result)) return
+      const existing = await answeredAsExisting(file, source, result)
+      if (existing !== 'same') recordUsage('imported', { ok: 'y' })
+      if (existing) return
       await openAsTracker(result, file.name, source)
     } catch (error) {
       reportFailure('import', `Import failed: ${errorMessage(error)}`)
@@ -1217,6 +1228,7 @@ export default function App() {
   const saveOtherCopy = async (target: TrackerSummary) => {
     const { document, files } = await backend.storage!.readTracker(target.id)
     downloadArchive(document, files, new Date(), target.name)
+    recordUsage('exported', {})
     await backend.storage!.markOtherBackedUp(target.id)
   }
 
@@ -1523,6 +1535,8 @@ export default function App() {
        */
       const result = await connect()
       if (result?.kind !== 'connected') return
+      // Connected or reconnected: either way a folder is saving this tracker again.
+      recordUsage('folder_connected', {})
       const loaded = await loadTrackerDatabase()
       trackerRef.current = loaded
       setTracker(loaded)
@@ -1541,12 +1555,12 @@ export default function App() {
     void reloadAfter(async () => {
       const result = await backend.storage!.connect()
       if (result.outcome === 'already-open' || result.outcome === 'opened') {
+        // A folder picked that became, or already was, a tracker of its own.
+        if (result.outcome === 'opened') recordUsage('folder_connected', {})
         navigation.open(trackerHref(result.tracker.id))
         return null
       }
-      if (result.outcome !== 'connected') return null
-      recordUsage('folder_connected', {})
-      return result.connection
+      return result.outcome === 'connected' ? result.connection : null
     }, 'Changes are now saved to that folder too.')
   }
 
@@ -2126,7 +2140,7 @@ export default function App() {
             onAdd={(opener) => openNewApplication(opener)}
             onImport={() => importInputRef.current?.click()}
             showDemoLink={!isDemoTrackerProfile()}
-            usage={usageAvailable() ? { on: usageOn, onChange: setUsageOn } : undefined}
+            usage={usageAvailable() ? { on: usageOn, onChange: setUsageOn, offByBrowser: usageOffByBrowser() } : undefined}
           />
         )}
 

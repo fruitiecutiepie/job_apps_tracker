@@ -101,7 +101,7 @@ export const USAGE_EVENTS = {
   },
   application_added: {},
   moved: { stage: USAGE_STAGES, outcome: USAGE_OUTCOMES },
-  /** A place chosen from the strip or the Prep toggle; the place a page opens on is not. */
+  /** A move to another place, by any route (the strip, the Prep toggle, a card's prep notes); the place a page opens on is not. */
   view: { place: USAGE_PLACES },
   /** How long a place was on screen, the one a page opens on included. */
   view_time: { place: USAGE_PLACES, duration: USAGE_DURATIONS },

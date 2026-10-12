@@ -80,7 +80,8 @@ describe('usageQuery', () => {
     expect(sql).toContain('blob1, ')
     expect(sql).toContain('blob20, _sample_interval')
     expect(sql).toContain("INTERVAL '56' DAY")
-    expect(sql).toContain('ORDER BY timestamp')
+    // Newest first, so a limit cuts the oldest rows and this week stays whole.
+    expect(sql).toContain('ORDER BY timestamp DESC')
     expect(sql).toContain('LIMIT 5000')
     expect(sql).toContain('FORMAT JSON')
   })
@@ -239,7 +240,16 @@ describe('activation', () => {
       row('slow', 'application_added', 3),
       open('never', 1),
     ]
-    expect(activation(rows, WEEK).addedFirstDay).toEqual({ count: 1, of: 3 })
+    expect(activation(rows, WEEK, day(30)).addedFirstDay).toEqual({ count: 1, of: 3 })
+  })
+
+  it('leaves out a tracker that has not had its whole day, or week, yet', () => {
+    // Started at day 1, judged at day 1.5: half a day in, nothing added yet, which is not a "no".
+    const rows = [open('young', 1)]
+    expect(activation(rows, WEEK, day(1.5))).toEqual({ addedFirstDay: { count: 0, of: 0 }, threeInFirstWeek: { count: 0, of: 0 } })
+    // A day in, it counts for the day and still not for the week.
+    expect(activation(rows, WEEK, day(2))).toEqual({ addedFirstDay: { count: 0, of: 1 }, threeInFirstWeek: { count: 0, of: 0 } })
+    expect(activation(rows, WEEK, day(8)).threeInFirstWeek).toEqual({ count: 0, of: 1 })
   })
 
   it('counts a new tracker with three applications within a week, added or found in a snapshot', () => {
@@ -256,7 +266,7 @@ describe('activation', () => {
       open('two', 0),
       row('two', 'application_added', 1, {}, { weight: 2 }),
     ]
-    expect(activation(rows, WEEK).threeInFirstWeek).toEqual({ count: 2, of: 4 })
+    expect(activation(rows, WEEK, day(30)).threeInFirstWeek).toEqual({ count: 2, of: 4 })
   })
 })
 
@@ -283,6 +293,12 @@ describe('retention', () => {
 
   it('leaves out a tracker whose search had already ended in a job', () => {
     const rows = [open('hired', 0), open('hired', 5, { reached: 'accepted' }), open('stayed', 0), open('stayed', 9)]
+    expect(retention(rows, WEEK, now).week1).toEqual({ count: 1, of: 1 })
+  })
+
+  it('leaves out a tracker that moved an application to Accepted, with no snapshot saying so', () => {
+    // The move is the only record: nobody loads the page again after taking the job.
+    const rows = [open('hired', 0), row('hired', 'moved', 5, { stage: 'accepted', outcome: 'active' }), open('stayed', 0), open('stayed', 9)]
     expect(retention(rows, WEEK, now).week1).toEqual({ count: 1, of: 1 })
   })
 
@@ -390,6 +406,27 @@ describe('outcomes', () => {
   })
 })
 
+describe('outcomes, with moves made after the last snapshot', () => {
+  it('counts an offer or a job reached during the visit after the page was opened', () => {
+    const rows = [
+      open('offered', 1),
+      row('offered', 'moved', 1.1, { stage: 'offer', outcome: 'active' }),
+      open('hired', 1, { reached: 'offer' }),
+      row('hired', 'moved', 2, { stage: 'accepted', outcome: 'active' }),
+      open('screened', 1),
+      row('screened', 'moved', 2, { stage: 'later_round', outcome: 'rejected' }),
+      // A move after the window closes is not counted in it.
+      open('late', 1),
+      row('late', 'moved', 9, { stage: 'offer', outcome: 'active' }),
+    ]
+    expect(outcomes(rows, WEEK)).toEqual({
+      interview: { count: 3, of: 4 },
+      offer: { count: 2, of: 4 },
+      accepted: { count: 1, of: 4 },
+    })
+  })
+})
+
 describe('reliability', () => {
   it('counts failures by kind, the unknown tracker’s included', () => {
     const rows = [
@@ -414,9 +451,15 @@ describe('reliability', () => {
     expect(reliability(rows, WEEK).unreadableImports).toEqual({ count: 1, of: 3 })
   })
 
-  it('counts older files brought up to date', () => {
-    const rows = [row('a', 'migrated', 1, { from: '1' }), row('b', 'migrated', 1, { from: '2' }, { weight: 2 })]
-    expect(reliability(rows, WEEK).migrations).toEqual({ '1': 1, '2': 2 })
+  it('counts trackers that opened an older file, not how often they did', () => {
+    // A folder's older file is read on every load until something is saved to it.
+    const rows = [
+      row('a', 'migrated', 1, { from: '1' }),
+      row('a', 'migrated', 2, { from: '1' }),
+      row('a', 'migrated', 3, { from: '1' }),
+      row('b', 'migrated', 1, { from: '2' }, { weight: 2 }),
+    ]
+    expect(reliability(rows, WEEK).migrations).toEqual({ '1': 1, '2': 1 })
   })
 })
 

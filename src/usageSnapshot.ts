@@ -110,6 +110,18 @@ function hostMatches(host: string, names: readonly string[]): boolean {
 }
 
 /**
+ * Whether a path is a base path or inside it, with or without its trailing slash. The
+ * hosted site drops trailing slashes (`html_handling` in wrangler.jsonc), so the tracker is
+ * `…/app` and the demo `…/app/demo` in the address bar, while Vite's base paths end in `/`.
+ * A plain `startsWith` on the base would miss both, and would read `…/application` as inside
+ * `…/app`.
+ */
+function under(pathname: string, base: string): boolean {
+  const root = base.endsWith('/') ? base.slice(0, -1) : base
+  return pathname === root || pathname.startsWith(`${root}/`)
+}
+
+/**
  * Where a visit came from, as one of a few kinds: the demo and the tracker share an origin,
  * so a visit from the demo is told from a reload by its path. The referrer itself never leaves the page:
  * a URL can carry anything, a search query included.
@@ -133,8 +145,8 @@ export function referrerKind(
     return 'other'
   }
   if (url.origin === ownOrigin) {
-    if (demoPath !== null && url.pathname.startsWith(demoPath)) return 'demo'
-    if (appPath !== null && !url.pathname.startsWith(appPath)) return 'site'
+    if (demoPath !== null && under(url.pathname, demoPath)) return 'demo'
+    if (appPath !== null && !under(url.pathname, appPath)) return 'site'
     return 'internal'
   }
   const host = url.hostname.toLowerCase()
@@ -176,7 +188,15 @@ export function usageSnapshot(
     applications: applicationsBucket(document.applications.length),
     age: ageBucket(oldest, now),
     reached: reachedBucket(document),
-    storage: connection === 'connected' ? 'folder' : connection === 'unsupported' ? 'unsupported' : 'browser',
+    // A folder whose permission lapsed is still where this tracker saves; the backlog says
+    // whether changes are waiting for it. Counting it as the browser would read every
+    // restart of Chrome as someone giving up their folder.
+    storage:
+      connection === 'connected' || connection === 'needs-permission'
+        ? 'folder'
+        : connection === 'unsupported'
+          ? 'unsupported'
+          : 'browser',
     backlog: backlogBucket(storage?.unbackedSince ?? null, now),
     ...features,
     referrer,

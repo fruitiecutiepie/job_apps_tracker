@@ -799,7 +799,7 @@ p {
   background: none;
   font: inherit;
   text-decoration: underline;
-  text-underline-offset: 2px;
+  text-underline-offset: var(--s1);
   cursor: pointer;
 }
 

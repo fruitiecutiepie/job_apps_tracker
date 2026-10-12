@@ -7,6 +7,7 @@ import {
   USAGE_FEATURES,
   USAGE_PLACES,
   USAGE_REFERRERS,
+  USAGE_STAGES,
   type UsageEventName,
   type UsageFeature,
   type UsagePlace,
@@ -35,14 +36,17 @@ export interface UsageRow {
 const DAY = 86_400_000
 const BLOBS = 20
 
-/** Every column a report can occupy, for the last `days` days, oldest first. */
+/**
+ * Every column a report can occupy, for the last `days` days, newest first: so where the
+ * limit cuts, it cuts the oldest rows, and this week — the page's headline — is always whole.
+ */
 export function usageQuery(days: number, limit: number): string {
   const blobs = Array.from({ length: BLOBS }, (_, index) => `blob${index + 1}`).join(', ')
   return [
     `SELECT timestamp, index1, ${blobs}, _sample_interval`,
     `FROM ${USAGE_DATASET}`,
     `WHERE timestamp > NOW() - INTERVAL '${Math.max(1, Math.floor(days))}' DAY`,
-    'ORDER BY timestamp',
+    'ORDER BY timestamp DESC',
     `LIMIT ${Math.max(1, Math.floor(limit))}`,
     'FORMAT JSON',
   ].join('\n')
@@ -79,7 +83,7 @@ export function rowsFromSql(data: ReadonlyArray<Record<string, unknown>>): Usage
 
 /**
  * The rows for the last `weeks` weeks, from Analytics Engine's SQL API. `truncated` says the
- * row limit was reached, so the oldest weeks are short. Takes `fetch` so a test can answer.
+ * row limit was reached, so the oldest weeks are short: the query reads newest first. Takes `fetch` so a test can answer.
  */
 export async function fetchUsageRows(options: {
   account: string
@@ -112,6 +116,48 @@ const within = (row: UsageRow, window: Window) => row.at >= window.from && row.a
 const live = (rows: readonly UsageRow[]) => rows.filter((row) => row.profile === 'live' && row.tracker !== UNKNOWN_TRACKER)
 const weighted = (rows: readonly UsageRow[]) => rows.reduce((sum, row) => sum + row.weight, 0)
 const distinct = (rows: readonly UsageRow[]) => new Set(rows.map((row) => row.tracker)).size
+
+/**
+ * Live rows grouped by tracker, built once per figure: asking `rows.filter` for each tracker
+ * in a cohort is trackers × rows, which is what a scheduled run on a CPU budget cannot afford.
+ */
+function byTracker(rows: readonly UsageRow[]): Map<string, UsageRow[]> {
+  const grouped = new Map<string, UsageRow[]>()
+  for (const row of live(rows)) {
+    const own = grouped.get(row.tracker)
+    if (own) own.push(row)
+    else grouped.set(row.tracker, [row])
+  }
+  return grouped
+}
+
+type Level = 'none' | 'interview' | 'offer' | 'accepted'
+const LEVELS: Level[] = ['none', 'interview', 'offer', 'accepted']
+const SCREENING = USAGE_STAGES.indexOf('screening')
+
+/** How far a stage a move landed on is, on the snapshot's `reached` scale. */
+function levelOfStage(stage: string): Level {
+  if (stage === 'accepted') return 'accepted'
+  if (stage === 'offer') return 'offer'
+  // `later_round` sits after the listed stages, which is past the screening call too.
+  return USAGE_STAGES.indexOf(stage as (typeof USAGE_STAGES)[number]) >= SCREENING ? 'interview' : 'none'
+}
+
+/**
+ * How far a tracker had got by `before`: the furthest of what its snapshots said at load and
+ * what its moves said since. A snapshot is taken only when a page opens, so a move to Offer
+ * or Accepted made during the last visit would otherwise be missed until the next one — and
+ * someone who takes a job often has no next one.
+ */
+function reachedBy(own: readonly UsageRow[], before: Date): Level {
+  let level = 0
+  for (const row of own) {
+    if (row.at >= before) continue
+    if (row.event === 'open') level = Math.max(level, LEVELS.indexOf(row.props.reached as Level))
+    else if (row.event === 'moved') level = Math.max(level, LEVELS.indexOf(levelOfStage(row.props.stage)))
+  }
+  return LEVELS[level]
+}
 
 function tally<K extends string>(keys: readonly K[], rows: readonly UsageRow[], key: (row: UsageRow) => string): Record<K, number> {
   const counts = Object.fromEntries(keys.map((name) => [name, 0])) as Record<K, number>
@@ -194,28 +240,37 @@ export function activity(rows: readonly UsageRow[], window: Window) {
   }
 }
 
-/** Of the trackers begun in the window, how many got going. */
-export function activation(rows: readonly UsageRow[], window: Window) {
+/**
+ * Of the trackers begun in the window, how many got going. A tracker is counted for a
+ * question only once it has had the whole day, or week, to answer it: one started an hour
+ * ago with nothing in it yet is not a tracker that failed to start.
+ */
+export function activation(rows: readonly UsageRow[], window: Window, now: Date) {
   const cohort = newTrackers(rows, window)
-  let firstDay = 0
-  let threeInAWeek = 0
+  const grouped = byTracker(rows)
+  const firstDay = share(0, 0)
+  const threeInAWeek = share(0, 0)
   for (const [tracker, start] of cohort) {
-    const own = live(rows).filter((row) => row.tracker === tracker)
+    const own = grouped.get(tracker) ?? []
+    const age = now.getTime() - start.getTime()
     const added = (days: number) =>
       own.filter((row) => row.event === 'application_added' && row.at.getTime() - start.getTime() < days * DAY)
-    if (weighted(added(1)) > 0) firstDay += 1
-    const sizedUp = own.some(
-      (row) =>
-        row.event === 'open'
-        && row.at.getTime() - start.getTime() < 7 * DAY
-        && !['0', '1-2'].includes(row.props.applications),
-    )
-    if (weighted(added(7)) >= 3 || sizedUp) threeInAWeek += 1
+    if (age >= DAY) {
+      firstDay.of += 1
+      if (weighted(added(1)) > 0) firstDay.count += 1
+    }
+    if (age >= 7 * DAY) {
+      threeInAWeek.of += 1
+      const sizedUp = own.some(
+        (row) =>
+          row.event === 'open'
+          && row.at.getTime() - start.getTime() < 7 * DAY
+          && !['0', '1-2'].includes(row.props.applications),
+      )
+      if (weighted(added(7)) >= 3 || sizedUp) threeInAWeek.count += 1
+    }
   }
-  return {
-    addedFirstDay: share(firstDay, cohort.size),
-    threeInFirstWeek: share(threeInAWeek, cohort.size),
-  }
+  return { addedFirstDay: firstDay, threeInFirstWeek: threeInAWeek }
 }
 
 /**
@@ -226,15 +281,16 @@ export function activation(rows: readonly UsageRow[], window: Window) {
  */
 export function retention(rows: readonly UsageRow[], window: Window, now: Date) {
   const cohort = newTrackers(rows, window)
+  const grouped = byTracker(rows)
   const returnedIn = (fromDay: number, toDay: number): Share => {
     let eligible = 0
     let returned = 0
     for (const [tracker, start] of cohort) {
       const opens = start.getTime() + fromDay * DAY
       if (now.getTime() < start.getTime() + toDay * DAY) continue
-      const own = live(rows).filter((row) => row.tracker === tracker)
-      const hired = own.some((row) => row.event === 'open' && row.props.reached === 'accepted' && row.at.getTime() < opens)
-      if (hired) continue
+      const own = grouped.get(tracker) ?? []
+      // Taken a job before the week began: by a snapshot saying so, or by the move itself.
+      if (reachedBy(own, new Date(opens)) === 'accepted') continue
       eligible += 1
       const back = own.some((row) => {
         const day = (row.at.getTime() - start.getTime()) / DAY
@@ -309,10 +365,11 @@ export function adoption(rows: readonly UsageRow[], window: Window) {
   }
 }
 
-/** How far searches get. */
+/** How far searches get: of the trackers seen in the window, the furthest each had got by its end. */
 export function outcomes(rows: readonly UsageRow[], window: Window) {
-  const snapshots = [...latestSnapshots(rows, window).values()]
-  const reached = (levels: string[]) => share(snapshots.filter((row) => levels.includes(row.props.reached)).length, snapshots.length)
+  const grouped = byTracker(rows)
+  const seen = [...latestSnapshots(rows, window).keys()].map((tracker) => reachedBy(grouped.get(tracker) ?? [], window.to))
+  const reached = (levels: Level[]) => share(seen.filter((level) => levels.includes(level)).length, seen.length)
   return {
     interview: reached(['interview', 'offer', 'accepted']),
     offer: reached(['offer', 'accepted']),
@@ -333,7 +390,12 @@ export function reliability(rows: readonly UsageRow[], window: Window) {
     errors,
     failedLoads: share(errors.load, loads + errors.load),
     unreadableImports: share(weighted(imports.filter((row) => row.props.ok === 'n')), weighted(imports)),
-    migrations: tally(['1', '2'] as const, seen.filter((row) => row.event === 'migrated'), (row) => row.props.from),
+    // Trackers, not reports: a folder holding an older file is read again on every load until
+    // something is saved to it, so counting reports would count the same file many times.
+    migrations: {
+      '1': distinct(seen.filter((row) => row.event === 'migrated' && row.props.from === '1')),
+      '2': distinct(seen.filter((row) => row.event === 'migrated' && row.props.from === '2')),
+    },
   }
 }
 
@@ -357,7 +419,7 @@ export function buildUsageReport(rows: readonly UsageRow[], now: Date, weeks: nu
       week: window.from.toISOString().slice(0, 10),
       ...activity(rows, window),
       newTrackers: newTrackers(rows, window).size,
-      activation: activation(rows, window),
+      activation: activation(rows, window, now),
       retention: retention(rows, window, now),
       engagement: engagement(rows, window),
     })),
@@ -437,6 +499,6 @@ export function formatUsageReport(report: UsageReportSummary): string {
     'Reliability',
     `  Failed loads: ${percent(r.failedLoads)} · unreadable imports: ${percent(r.unreadableImports)}`,
     `  Errors: ${pairs(r.errors)}`,
-    `  Older files brought up to date: from v1 ${round(r.migrations['1'])}, from v2 ${round(r.migrations['2'])}`,
+    `  Trackers that opened an older file: from v1 ${round(r.migrations['1'])}, from v2 ${round(r.migrations['2'])}`,
   ].join('\n')
 }

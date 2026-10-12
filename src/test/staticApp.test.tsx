@@ -1054,16 +1054,22 @@ describe('the hosted demo', () => {
  * switch that stops the counts, and never a word anyone typed in what is sent.
  */
 describe('the static build, with usage counts', () => {
-  let beacon: ReturnType<typeof vi.fn>
+  let beacon: ReturnType<typeof vi.fn<(url: string, body: unknown, init?: RequestInit) => void>>
 
   beforeEach(() => {
-    beacon = vi.fn(() => true)
-    Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: beacon })
+    // Reports go out by fetch; every other request goes on to the test's own stub.
+    beacon = vi.fn<(url: string, body: unknown, init?: RequestInit) => void>()
+    const passOn = globalThis.fetch
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input)
+      if (!url.includes('usage')) return passOn(input, init)
+      beacon(url, init?.body, init)
+      return new Response(null, { status: 204 })
+    }))
   })
 
   afterEach(() => {
     cleanup()
-    Reflect.deleteProperty(navigator, 'sendBeacon')
     vi.unstubAllEnvs()
     vi.resetModules()
   })
@@ -1168,6 +1174,46 @@ describe('the static build, with usage counts', () => {
     await waitFor(() => expect(reportsOf('imported')).toEqual([{ ok: 'n' }, { ok: 'y' }]))
     // An unreadable file is counted as such, not a second time as a failure.
     expect(reportsOf('error')).toEqual([])
+  })
+
+  it('says the browser turned counts off, and offers them rather than offering them back', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, value: true })
+    try {
+      await renderStaticApp()
+      expect(screen.getByText(/Your browser asks sites not to track you, so usage counts are off/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Turn on' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Turn back on' })).not.toBeInTheDocument()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(beacon).not.toHaveBeenCalled()
+    } finally {
+      Reflect.deleteProperty(navigator, 'globalPrivacyControl')
+    }
+  })
+
+  it('counts an older file it brought up to date, by the layout it was in', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    // No schema_version: a version-1 export, which the import migrates before reading.
+    const legacy = new File([JSON.stringify({ applications: [] })], 'old-export.json', { type: 'application/json' })
+    const dataTransfer = { types: ['Files'], files: [legacy], items: [] }
+    fireEvent.dragEnter(window, { dataTransfer })
+    fireEvent.drop(window, { dataTransfer })
+    await waitFor(() => expect(reportsOf('migrated')).toEqual([{ from: '1' }]))
+  })
+
+  it('counts a load that failed, even though the page never got as far as its tracker', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    vi.resetModules()
+    window.history.replaceState(null, '', '/')
+    vi.stubEnv('VITE_TRACKER_BACKEND', 'browser')
+    vi.stubEnv('VITE_TRACKER_PROFILE', 'live')
+    const { backend } = await import('../backend')
+    vi.spyOn(backend, 'loadDocument').mockRejectedValue(new Error('The disk is not answering'))
+    const { default: App } = (await import('../App')) as { default: ComponentType }
+    render(<App />)
+    await screen.findByText('Could not load tracker data')
+    await waitFor(() => expect(reportsOf('error')).toEqual([{ kind: 'load' }]))
   })
 
   it('counts a folder connected', async () => {

@@ -123,7 +123,7 @@ export interface StorageIntroProps {
   /** Absent on the demo site, which is already the thing the link would lead to. */
   showDemoLink: boolean
   /** Whether usage counts are being sent, and how to change it; absent where none ever are. */
-  usage?: { on: boolean; onChange: (on: boolean) => void }
+  usage?: { on: boolean; onChange: (on: boolean) => void; offByBrowser: boolean }
 }
 
 /**
@@ -200,14 +200,19 @@ export function StorageIntro({
  * alarmed by, and the switch is one press either way. More actions carries the same switch
  * for everyone past this screen.
  */
-function UsageLine({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+function UsageLine({ on, onChange, offByBrowser }: { on: boolean; onChange: (on: boolean) => void; offByBrowser: boolean }) {
+  // Off by the browser's own request is not something the reader did, so it is not
+  // "back" on: they are being offered it for the first time.
+  const offText = offByBrowser
+    ? 'Your browser asks sites not to track you, so usage counts are off: nothing about how you use the app is sent. '
+    : 'Usage counts are off: nothing about how you use the app is sent. '
   return (
     <p className="storage-intro__usage">
       {on
         ? 'To learn what is worth improving, the app counts things like how many applications you have and which views you use — never what you write. '
-        : 'Usage counts are off: nothing about how you use the app is sent. '}
+        : offText}
       <button className="text-button" onClick={() => onChange(!on)} type="button">
-        {on ? 'Turn off' : 'Turn back on'}
+        {on ? 'Turn off' : offByBrowser ? 'Turn on' : 'Turn back on'}
       </button>
     </p>
   )

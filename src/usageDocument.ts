@@ -210,7 +210,7 @@ export function usageDocument(report: UsageReportSummary): UsageDocument {
     { id: 'unreadable-imports', label: 'Imports that could not be read', ...share(reliability.unreadableImports) },
     {
       id: 'migrations',
-      label: 'Older files brought up to date',
+      label: 'Trackers that opened an older file',
       ...count(reliability.migrations['1'] + reliability.migrations['2']),
     },
   ]

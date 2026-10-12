@@ -44,7 +44,7 @@ function browserAsksNotTo(): boolean {
   return nav.globalPrivacyControl === true || nav.doNotTrack === '1'
 }
 
-export function readUsagePreference(): boolean {
+function storedChoice(): boolean | null {
   try {
     const stored = localStorage.getItem(USAGE_STORAGE_KEY)
     if (stored === 'on') return true
@@ -52,7 +52,19 @@ export function readUsagePreference(): boolean {
   } catch {
     // Unreadable storage falls through to the browser's own signal.
   }
-  return !browserAsksNotTo()
+  return null
+}
+
+export function readUsagePreference(): boolean {
+  return storedChoice() ?? !browserAsksNotTo()
+}
+
+/**
+ * Off because the browser asked, not because the reader did: nobody here has chosen
+ * anything yet, so the copy must not say "turn back on" to someone who never turned it off.
+ */
+export function usageOffByBrowser(): boolean {
+  return sessionChoice === null && storedChoice() === null && browserAsksNotTo()
 }
 
 const listeners = new Set<() => void>()
@@ -75,12 +87,24 @@ function usageOn(): boolean {
   return sessionChoice ?? readUsagePreference()
 }
 
-/** The preference and its setter, kept in step across every component reading it. */
+/**
+ * The preference and its setter, kept in step across every component reading it — and
+ * across tabs: a switch flipped in one tab shows as flipped in every other, through the
+ * `storage` event the browser fires there. Sending already followed it, reading the
+ * preference afresh for each report; this is what keeps the switch on screen honest.
+ */
 export function useUsagePreference(): [boolean, (on: boolean) => void] {
   const on = useSyncExternalStore(
     (listener) => {
       listeners.add(listener)
-      return () => listeners.delete(listener)
+      const onStorage = (event: StorageEvent) => {
+        if (event.key === USAGE_STORAGE_KEY || event.key === null) listener()
+      }
+      window.addEventListener('storage', onStorage)
+      return () => {
+        listeners.delete(listener)
+        window.removeEventListener('storage', onStorage)
+      }
     },
     usageOn,
   )
@@ -88,9 +112,10 @@ export function useUsagePreference(): [boolean, (on: boolean) => void] {
 }
 
 /**
- * A hash of the tracker id, so the stored tag cannot be matched against the id in a
- * page's URL. Salted with a fixed string only to keep it from equalling a hash of the bare
- * id anything else might compute.
+ * A hash of the tracker id, so the dataset holds a pseudonym rather than the id itself. It
+ * is a pseudonym and no more: the salt is fixed and public, so anyone who holds a tracker's
+ * id — which is in that tracker's URL — can compute its tag. What it prevents is the id
+ * sitting in the dataset in the clear, readable by anyone who reads the rows.
  */
 export async function usageTag(trackerId: string): Promise<string> {
   const digest = await crypto.subtle.digest(
@@ -168,9 +193,16 @@ async function send(event: UsageEventName, props: Record<string, string>): Promi
     const report = { v: USAGE_VERSION, tracker: await tag, profile: trackerProfile(), event, props }
     // Checked here as well as by the Worker, so a report it would refuse is never sent.
     if (!parseUsageReport(report) || !usageOn()) return
-    const body = JSON.stringify(report)
-    if (typeof navigator.sendBeacon === 'function' && navigator.sendBeacon(url, body)) return
-    await fetch(url, { method: 'POST', body, keepalive: true, credentials: 'omit' })
+    // fetch with credentials left out, never sendBeacon, which always sends the origin's
+    // cookies: this origin carries the site's own sign-in, and a report needs none of it.
+    // `keepalive` lets a report made as the tab closes still go, which is what Beacon is for.
+    await fetch(url, {
+      method: 'POST',
+      body: JSON.stringify(report),
+      headers: { 'Content-Type': 'text/plain' },
+      keepalive: true,
+      credentials: 'omit',
+    })
   } catch {
     // Counting is never worth an error a person sees.
   }
