@@ -141,7 +141,10 @@ export function usageDocument(report: UsageReportSummary): UsageDocument {
       label: 'Saving to a folder',
       ...share(dataSafety.folder),
       headline: true,
-      context: [{ label: 'exports', ...count(dataSafety.exports) }],
+      context: [
+        { label: 'exports', ...count(dataSafety.exports) },
+        { label: 'folders waiting for permission', ...share(dataSafety.folderLapsed) },
+      ],
       description: 'Trackers saving to a folder, as of their latest visit',
     },
     {

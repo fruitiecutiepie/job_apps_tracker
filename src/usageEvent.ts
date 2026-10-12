@@ -91,7 +91,8 @@ export const USAGE_EVENTS = {
     age: BUCKET_AGE,
     /** The furthest any application has got. */
     reached: ['none', 'interview', 'offer', 'accepted'],
-    storage: ['folder', 'browser', 'unsupported'],
+    /** `folder-lapsed`: a folder is connected but its permission lapsed, so changes wait in the browser. */
+    storage: ['folder', 'folder-lapsed', 'browser', 'unsupported'],
     backlog: BUCKET_BACKLOG,
     ...Object.fromEntries(USAGE_FEATURES.map((feature) => [feature, YES_NO])) as Record<
       UsageFeature,
@@ -107,7 +108,10 @@ export const USAGE_EVENTS = {
   view_time: { place: USAGE_PLACES, duration: USAGE_DURATIONS },
   folder_connected: {},
   exported: {},
-  /** A file arrived to be imported; `ok` is whether it could be read. */
+  /**
+   * A file arrived to be imported — by button, drop, paste or From a file… — counted as it
+   * arrives, whatever the reader then chooses; `ok` is whether it could be read.
+   */
   imported: { ok: YES_NO },
   error: { kind: USAGE_FAILURES },
   /** A document in an older layout was read and brought up to date. */

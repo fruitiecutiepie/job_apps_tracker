@@ -74,8 +74,16 @@ describe('usageDocument, metric by metric', () => {
     expect(young.metrics.find((m) => m.id === 'came-back')).not.toHaveProperty('context')
   })
 
-  it('says how many save to a folder, with the exports beside it', () => {
-    expect(find('folder')).toMatchObject({ kind: 'share', count: 1, of: 3, context: [{ label: 'exports', kind: 'count', value: 1 }] })
+  it('says how many save to a folder, with the exports and the folders waiting for permission beside it', () => {
+    expect(find('folder')).toMatchObject({
+      kind: 'share',
+      count: 1,
+      of: 3,
+      context: [
+        { label: 'exports', kind: 'count', value: 1 },
+        { label: 'folders waiting for permission', kind: 'share', count: 0, of: 3 },
+      ],
+    })
   })
 
   it('says how many got an offer, and how many took a job', () => {

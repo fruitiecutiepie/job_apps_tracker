@@ -346,13 +346,17 @@ describe('dataSafety', () => {
       open('folder', 2, { storage: 'folder' }),
       open('browser', 2, { backlog: '8d+' }),
       open('firefox', 2, { storage: 'unsupported', backlog: '<1d' }),
+      // Chose a folder; its permission lapsed, so changes wait in the browser.
+      open('lapsed', 2, { storage: 'folder-lapsed', backlog: '1-7d' }),
       row('browser', 'exported', 3),
       row('firefox', 'exported', 3, {}, { weight: 2 }),
       row('folder', 'folder_connected', 2),
     ]
     expect(dataSafety(rows, WEEK)).toEqual({
-      folder: { count: 1, of: 3 },
-      backlog: { none: 1, '<1d': 1, '1-7d': 0, '8d+': 1 },
+      // The lapsed folder is not saving to a folder, and is counted apart.
+      folder: { count: 1, of: 4 },
+      folderLapsed: { count: 1, of: 4 },
+      backlog: { none: 1, '<1d': 1, '1-7d': 1, '8d+': 1 },
       exports: 3,
       foldersConnected: 1,
     })

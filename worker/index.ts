@@ -85,10 +85,12 @@ const PUSH_ROW_LIMIT = 50_000
  */
 export async function handleUsage(request: Request, env: Env): Promise<Response> {
   if (request.method !== 'POST') return new Response(null, { status: 405, headers: { Allow: 'POST' } })
-  // Reports come from the app's own pages, and every browser that can send one says so. A
-  // script can forge the header, so this keeps out the casual flood rather than a determined
-  // one; the report query reads newest first, so even that cannot push this week out of it.
-  if (request.headers.get('Sec-Fetch-Site') !== 'same-origin') return new Response(null, { status: 403 })
+  // Reports come from the app's own pages. A browser too old to send the header (Safari
+  // before 16.4, Firefox before 90) is let in: refusing it would silently drop its users'
+  // counts and skew every figure against them, for a check any script can forge anyway.
+  // A flood cannot push this week out of the report either way: the query reads newest first.
+  const site = request.headers.get('Sec-Fetch-Site')
+  if (site !== null && site !== 'same-origin') return new Response(null, { status: 403 })
   const text = await request.text()
   if (text.length > MAX_USAGE_BODY) return new Response(null, { status: 413 })
   let body: unknown

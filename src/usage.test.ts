@@ -181,8 +181,8 @@ describe('usageSnapshot, field by field', () => {
 
   it.each([
     [{ kind: 'connected', name: 'Job search' }, 'folder'],
-    // Still where it saves; the lapsed permission is a restart away from renewed.
-    [{ kind: 'needs-permission', name: 'Job search' }, 'folder'],
+    // Chose a folder, but changes wait in the browser until permission is granted again.
+    [{ kind: 'needs-permission', name: 'Job search' }, 'folder-lapsed'],
     [{ kind: 'disconnected' }, 'browser'],
     [{ kind: 'unsupported' }, 'unsupported'],
   ] as const)('reports a %o connection as %s', (connection, storage) => {
@@ -448,13 +448,22 @@ describe('sending', () => {
     ])
   })
 
-  it('sends with no cookies or credentials, and survives the tab closing', async () => {
+  it('sends with no cookies or credentials, and never by sendBeacon, which always sends them', async () => {
     vi.stubEnv('VITE_USAGE_URL', '/app/__usage')
-    setUsageTracker(TRACKER_ID)
-    recordUsage('exported', {})
-    await sentBodies()
-    const init = beacon.mock.calls[0][2] as RequestInit
-    expect(init).toMatchObject({ method: 'POST', credentials: 'omit', keepalive: true })
+    // jsdom has no sendBeacon, so without one here a regression to it would fall back to
+    // fetch and pass. With one, a client that reached for it is caught.
+    const sendBeacon = vi.fn(() => true)
+    Object.defineProperty(navigator, 'sendBeacon', { configurable: true, value: sendBeacon })
+    try {
+      setUsageTracker(TRACKER_ID)
+      recordUsage('exported', {})
+      await sentBodies()
+      expect(sendBeacon).not.toHaveBeenCalled()
+      const init = beacon.mock.calls[0][2] as RequestInit
+      expect(init).toMatchObject({ method: 'POST', credentials: 'omit', keepalive: true })
+    } finally {
+      Reflect.deleteProperty(navigator, 'sendBeacon')
+    }
   })
 
   it('keeps the switch in step with a change made in another tab', () => {
@@ -511,8 +520,11 @@ describe('the Worker', () => {
     expect((await handleUsage(post({ ...validOpen(), event: 'note_text' }), bindings)).status).toBe(400)
     expect((await handleUsage(post('not json'), bindings)).status).toBe(400)
     expect((await handleUsage(post(validOpen(), { 'Sec-Fetch-Site': 'cross-site' }), bindings)).status).toBe(403)
-    // No header at all is not a browser on this site either.
-    expect((await handleUsage(post(validOpen(), {}), bindings)).status).toBe(403)
+    // Any other value the header can carry is another site, or not a page at all.
+    expect((await handleUsage(post(validOpen(), { 'Sec-Fetch-Site': 'same-site' }), bindings)).status).toBe(403)
+    expect((await handleUsage(post(validOpen(), { 'Sec-Fetch-Site': 'none' }), bindings)).status).toBe(403)
+    // A browser too old to send the header at all is let in; see handleUsage.
+    expect((await handleUsage(post(validOpen(), {}), env())).status).toBe(204)
     expect((await handleUsage(new Request('https://example.test/__usage'), bindings)).status).toBe(405)
     expect(bindings.USAGE.writeDataPoint).not.toHaveBeenCalled()
   })

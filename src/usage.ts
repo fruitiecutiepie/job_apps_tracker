@@ -94,21 +94,21 @@ function usageOn(): boolean {
  * preference afresh for each report; this is what keeps the switch on screen honest.
  */
 export function useUsagePreference(): [boolean, (on: boolean) => void] {
-  const on = useSyncExternalStore(
-    (listener) => {
-      listeners.add(listener)
-      const onStorage = (event: StorageEvent) => {
-        if (event.key === USAGE_STORAGE_KEY || event.key === null) listener()
-      }
-      window.addEventListener('storage', onStorage)
-      return () => {
-        listeners.delete(listener)
-        window.removeEventListener('storage', onStorage)
-      }
-    },
-    usageOn,
-  )
+  const on = useSyncExternalStore(subscribePreference, usageOn)
   return [on, writeUsagePreference]
+}
+
+/** Module-level, so React keeps one subscription rather than renewing it on every render. */
+function subscribePreference(listener: () => void): () => void {
+  listeners.add(listener)
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === USAGE_STORAGE_KEY || event.key === null) listener()
+  }
+  window.addEventListener('storage', onStorage)
+  return () => {
+    listeners.delete(listener)
+    window.removeEventListener('storage', onStorage)
+  }
 }
 
 /**
@@ -196,6 +196,8 @@ async function send(event: UsageEventName, props: Record<string, string>): Promi
     // fetch with credentials left out, never sendBeacon, which always sends the origin's
     // cookies: this origin carries the site's own sign-in, and a report needs none of it.
     // `keepalive` lets a report made as the tab closes still go, which is what Beacon is for.
+    // Firefox honours it from 133; before that a report sent as the tab closes can be lost,
+    // which costs a little view time there and never a cookie anywhere.
     await fetch(url, {
       method: 'POST',
       body: JSON.stringify(report),

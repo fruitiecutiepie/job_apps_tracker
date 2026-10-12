@@ -327,6 +327,8 @@ export function dataSafety(rows: readonly UsageRow[], window: Window) {
   const seen = live(rows).filter((row) => within(row, window))
   return {
     folder: share(snapshots.filter((row) => row.props.storage === 'folder').length, snapshots.length),
+    // Chose a folder, but its permission lapsed and changes are waiting in the browser.
+    folderLapsed: share(snapshots.filter((row) => row.props.storage === 'folder-lapsed').length, snapshots.length),
     backlog: tally(USAGE_EVENTS.open.backlog, snapshots.map((row) => ({ ...row, weight: 1 })), (row) => row.props.backlog),
     exports: weighted(seen.filter((row) => row.event === 'exported')),
     foldersConnected: weighted(seen.filter((row) => row.event === 'folder_connected')),
@@ -485,7 +487,7 @@ export function formatUsageReport(report: UsageReportSummary): string {
     `  Tracker age: ${pairs(report.ages)}`,
     '',
     'Data safety',
-    `  Saving to a folder: ${percent(d.folder)} · exports ${round(d.exports)} · folders connected ${round(d.foldersConnected)}`,
+    `  Saving to a folder: ${percent(d.folder)} · waiting for folder permission: ${percent(d.folderLapsed)} · exports ${round(d.exports)} · folders connected ${round(d.foldersConnected)}`,
     `  Changes only in the browser for: ${pairs(d.backlog)}`,
     '',
     'Adoption',

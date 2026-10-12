@@ -994,11 +994,11 @@ export default function App() {
       }
       const source = handle ? await handle : null
 
+      // Counted as it arrives, readable or not, whatever the reader does next: the count is of
+      // files brought to the app, so the share that could not be read means what it says.
+      recordUsage('imported', { ok: 'y' })
       // A file that already is a tracker here: this one is left alone, another is offered.
-      const existing = await answeredAsExisting(file, source, result)
-      // This tracker's own file brings nothing in, so it is not an import.
-      if (existing !== 'same') recordUsage('imported', { ok: 'y' })
-      if (existing) return
+      if (await answeredAsExisting(file, source, result)) return
 
       // An empty tracker has nothing to replace, so there is nothing to ask.
       const current = trackerRef.current?.applications.length ?? 0
@@ -1046,24 +1046,23 @@ export default function App() {
    * Matched by the browser comparing the two files on disk, never by what they hold: two
    * files that read alike are still two files, and opening the second as a tracker of its
    * own is a fair thing to want. Where the browser offers no handle on the file (a paste,
-   * Firefox, Safari), nothing matches and the ordinary question is asked. Says which it
-   * answered for: this tracker's own file (`same`), another tracker's (`other`), or neither.
+   * Firefox, Safari), nothing matches and the ordinary question is asked.
    */
   const answeredAsExisting = async (
     file: File,
     source: FileHandleLike | null,
     result: TrackerImportSuccess,
-  ): Promise<'same' | 'other' | null> => {
-    if (!source || !backend.storage) return null
+  ): Promise<boolean> => {
+    if (!source || !backend.storage) return false
     const match = await backend.storage.findTrackerForFile(source)
-    if (!match) return null
+    if (!match) return false
     if (match.id === storageState?.tracker?.id) {
       setNotice(
         match.folder
           ? `${file.name} is the file ${match.name} already saves to, so there is nothing to import.`
           : `${match.name} was opened from ${file.name} already, so there is nothing to import.`,
       )
-      return 'same'
+      return true
     }
     setPendingReplace({
       replacement: { kind: 'existing', name: match.name, folder: match.folder ?? null },
@@ -1072,7 +1071,7 @@ export default function App() {
       openAsNew: () => openAsTracker(result, file.name, source),
       switchTo: () => navigation.open(trackerHref(match.id)),
     })
-    return 'other'
+    return true
   }
 
   /*
@@ -1188,9 +1187,8 @@ export default function App() {
         setNotice(`Import failed: ${describeImportErrors(result.errors)}`)
         return
       }
-      const existing = await answeredAsExisting(file, source, result)
-      if (existing !== 'same') recordUsage('imported', { ok: 'y' })
-      if (existing) return
+      recordUsage('imported', { ok: 'y' })
+      if (await answeredAsExisting(file, source, result)) return
       await openAsTracker(result, file.name, source)
     } catch (error) {
       reportFailure('import', `Import failed: ${errorMessage(error)}`)
@@ -1535,8 +1533,6 @@ export default function App() {
        */
       const result = await connect()
       if (result?.kind !== 'connected') return
-      // Connected or reconnected: either way a folder is saving this tracker again.
-      recordUsage('folder_connected', {})
       const loaded = await loadTrackerDatabase()
       trackerRef.current = loaded
       setTracker(loaded)
@@ -1560,7 +1556,11 @@ export default function App() {
         navigation.open(trackerHref(result.tracker.id))
         return null
       }
-      return result.outcome === 'connected' ? result.connection : null
+      if (result.outcome !== 'connected') return null
+      // Connecting, not reconnecting: a permission renewed after a browser restart is the
+      // same folder as before, and counting it would measure restarts rather than folders.
+      recordUsage('folder_connected', {})
+      return result.connection
     }, 'Changes are now saved to that folder too.')
   }
 

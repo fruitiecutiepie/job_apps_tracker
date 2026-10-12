@@ -188,15 +188,18 @@ export function usageSnapshot(
     applications: applicationsBucket(document.applications.length),
     age: ageBucket(oldest, now),
     reached: reachedBucket(document),
-    // A folder whose permission lapsed is still where this tracker saves; the backlog says
-    // whether changes are waiting for it. Counting it as the browser would read every
-    // restart of Chrome as someone giving up their folder.
+    // A folder whose permission lapsed is neither: the reader chose a folder, but changes
+    // are waiting in the browser until they grant it again. Counting it as the browser
+    // would read every Chrome restart as someone giving up their folder; counting it as a
+    // folder would say their changes are safe when they are not.
     storage:
-      connection === 'connected' || connection === 'needs-permission'
+      connection === 'connected'
         ? 'folder'
-        : connection === 'unsupported'
-          ? 'unsupported'
-          : 'browser',
+        : connection === 'needs-permission'
+          ? 'folder-lapsed'
+          : connection === 'unsupported'
+            ? 'unsupported'
+            : 'browser',
     backlog: backlogBucket(storage?.unbackedSince ?? null, now),
     ...features,
     referrer,

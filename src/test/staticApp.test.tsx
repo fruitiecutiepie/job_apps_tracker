@@ -1216,6 +1216,93 @@ describe('the static build, with usage counts', () => {
     await waitFor(() => expect(reportsOf('error')).toEqual([{ kind: 'load' }]))
   })
 
+  /** The static app with its backend reachable before the app mounts, to stand in for it. */
+  async function renderWithBackend(prepare: (backend: typeof import('../backend').backend) => void) {
+    vi.resetModules()
+    window.history.replaceState(null, '', '/')
+    vi.stubEnv('VITE_TRACKER_BACKEND', 'browser')
+    vi.stubEnv('VITE_TRACKER_PROFILE', 'live')
+    const { backend } = await import('../backend')
+    prepare(backend)
+    const { default: App } = (await import('../App')) as { default: ComponentType }
+    render(<App />)
+    await waitFor(() => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument())
+  }
+
+  it('counts a folder opened as a tracker from the switcher', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    // Before rendering: whether folders can be written is decided as the app loads.
+    Object.assign(window, { showDirectoryPicker: vi.fn() })
+    try {
+      await renderStaticApp()
+      const { backend } = await import('../backend')
+      const { navigation } = await import('../backend/trackerAddress')
+      vi.spyOn(navigation, 'open').mockImplementation(() => {})
+      vi.spyOn(backend.storage!, 'openFolder').mockResolvedValue({
+        outcome: 'opened',
+        tracker: { id: 'from-the-folder', name: 'last-year', applications: 4, openedAt: '' },
+      })
+      await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+      await user.click(screen.getByRole('button', { name: /From a folder/ }))
+      await waitFor(() => expect(reportsOf('folder_connected')).toHaveLength(1))
+    } finally {
+      Reflect.deleteProperty(window, 'showDirectoryPicker')
+    }
+  })
+
+  it('does not count reconnecting a lapsed folder as connecting one, and says it lapsed', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderWithBackend((backend) => {
+      const storage = backend.storage!
+      const lapsed = {
+        ...storage.state(),
+        connection: { kind: 'needs-permission' as const, name: 'job-apps' },
+        tracker: { id: 'lapsed-tracker', name: 'Untitled tracker', sourceFile: null },
+      }
+      vi.spyOn(storage, 'state').mockReturnValue(lapsed)
+      vi.spyOn(storage, 'subscribe').mockImplementation((listener) => {
+        listener(lapsed)
+        return () => {}
+      })
+      vi.spyOn(storage, 'reconnect').mockResolvedValue({ kind: 'connected', name: 'job-apps' })
+    })
+    await waitFor(() => expect(reportsOf('open')).toHaveLength(1))
+    expect(reportsOf('open')[0]).toMatchObject({ storage: 'folder-lapsed' })
+
+    await user.click(within(topbar()).getByRole('button', { name: 'Reconnect job-apps' }))
+    await screen.findByText('Reconnected to your folder.')
+    expect(reportsOf('folder_connected')).toEqual([])
+  })
+
+  it('counts a file as it arrives, whatever the reader then chooses', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    await addApplication(user, 'Stays here')
+    const { backend } = await import('../backend')
+    const { navigation } = await import('../backend/trackerAddress')
+    vi.spyOn(navigation, 'open').mockImplementation(() => {})
+    const exported = await trackerFile('last-year').text()
+    const original = looseFile('last-year.json', exported)
+    const result = readTrackerImport(new TextEncoder().encode(exported))
+    if (!result.ok) throw new Error('fixture')
+    await backend.storage!.createTracker(result.document, [], 'last-year.json', original)
+
+    // Counted before anything is asked, and once, whether the reader switches to the
+    // tracker the file already is or opens it as a new one: one rule for every file.
+    dropWithHandle(original, exported, 'last-year.json')
+    let question = await screen.findByRole('alertdialog', { name: 'last-year is already in this browser' })
+    await waitFor(() => expect(reportsOf('imported')).toEqual([{ ok: 'y' }]))
+    await user.click(within(question).getByRole('button', { name: 'Switch to last-year' }))
+
+    dropWithHandle(original, exported, 'last-year.json')
+    question = await screen.findByRole('alertdialog', { name: 'last-year is already in this browser' })
+    await user.click(within(question).getByRole('button', { name: 'Open as a new tracker' }))
+    await waitFor(() => expect(reportsOf('imported')).toEqual([{ ok: 'y' }, { ok: 'y' }]))
+  })
+
   it('counts a folder connected', async () => {
     const user = userEvent.setup()
     vi.stubEnv('VITE_USAGE_URL', '/__usage')
