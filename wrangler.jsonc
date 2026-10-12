@@ -3,14 +3,24 @@
 	"name": "job-apps-tracker",
 	// Named so the deploy token needs no permission to list accounts.
 	"account_id": "7828891633435b5779e79eb47ae80873",
-	// Only the feedback route runs code; everything else is the static build below.
+	// Only the /api routes and the hourly usage push run code; everything else is the static build below.
 	"main": "worker/index.ts",
 	"compatibility_date": "2026-10-07",
+	// The hourly usage push goes to api.fruitiecutiepie.com, another Worker on this zone: sent the
+	// way any outside client would send it, so it reaches that Worker rather than the zone's origin.
+	"compatibility_flags": ["global_fetch_strictly_public"],
 	"workers_dev": false,
 	"observability": {
 		"enabled": true,
+		// A tracker's id is in its URL, and a request log or trace holds the address a request came
+		// from. Usage counts promise neither is kept: the query string is dropped, and per-request
+		// logs and traces are off. console output from the Worker is still logged.
+		"redact_query_string": true,
+		"logs": {
+			"invocation_logs": false
+		},
 		"traces": {
-			"enabled": true
+			"enabled": false
 		}
 	},
 	"routes": [
@@ -24,7 +34,7 @@
 		"binding": "ASSETS",
 		// /app and /app/ both open the app. /app is the address that stays.
 		"html_handling": "drop-trailing-slash",
-		// The app and its demo both send to the tracker's own /api/feedback.
+		// The app and its demo both send to the tracker's own /api/feedback and /api/usage.
 		"run_worker_first": [
 			"/projects/job_apps_tracker/app/api/*"
 		]
@@ -35,7 +45,25 @@
 			"binding": "FEEDBACK",
 			"bucket_name": "job-apps-tracker-feedback"
 		}
-	]
+	],
+	// Usage counts; see src/usageEvent.ts for every value a row can hold. Analytics Engine keeps
+	// rows for three months and then drops them, and creates the dataset on its first write.
+	"analytics_engine_datasets": [
+		{
+			"binding": "USAGE",
+			"dataset": "job_apps_tracker_usage"
+		}
+	],
+	// Hourly, the usage summary goes to the project's progress page (worker/index.ts, `scheduled`).
+	"triggers": {
+		"crons": ["7 * * * *"]
+	},
+	"vars": {
+		"ANALYTICS_ACCOUNT_ID": "7828891633435b5779e79eb47ae80873",
+		"USAGE_PUSH_URL": "https://api.fruitiecutiepie.com/projects/job-apps-tracker/usage"
+	}
 	// Secrets (in Bitwarden, uploaded with scripts/push-worker-secrets):
 	//   FEEDBACK_ADMIN_TOKEN  the feedback inbox's token; unset, the inbox stays shut
+	//   ANALYTICS_TOKEN       an API token with Account → Account Analytics → Read, for the usage push
+	//   USAGE_PUSH_TOKEN      this project's token from fruitiecutiepie.com (its scripts/usage-token)
 }

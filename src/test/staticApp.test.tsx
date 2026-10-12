@@ -641,6 +641,14 @@ describe('the static build', () => {
     expect(link).toHaveAttribute('href', '/demo/')
   })
 
+  it('says nothing about usage counts, which this build never sends', async () => {
+    const user = userEvent.setup()
+    await renderStaticApp()
+    expect(screen.queryByText(/never what you write/)).not.toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.queryByRole('switch', { name: 'Share usage counts' })).not.toBeInTheDocument()
+  })
+
   it('shows no demo banner, because this is not the demo', async () => {
     await renderStaticApp()
     expect(screen.queryByText(/This is the demo/)).not.toBeInTheDocument()
@@ -1037,5 +1045,276 @@ describe('the hosted demo', () => {
       () => expect(screen.getByText('0 of 0 applications shown')).toBeInTheDocument(),
       { timeout: 5000 },
     )
+  })
+})
+
+/*
+ * The Cloudflare build is the static build plus an endpoint for usage counts. What matters
+ * here is what a reader sees and what leaves the page: one line on the empty tracker, a
+ * switch that stops the counts, and never a word anyone typed in what is sent.
+ */
+describe('the static build, with usage counts', () => {
+  let beacon: ReturnType<typeof vi.fn<(url: string, body: unknown, init?: RequestInit) => void>>
+
+  beforeEach(() => {
+    // Reports go out by fetch; every other request goes on to the test's own stub.
+    beacon = vi.fn<(url: string, body: unknown, init?: RequestInit) => void>()
+    const passOn = globalThis.fetch
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = input instanceof Request ? input.url : String(input)
+      if (!url.includes('usage')) return passOn(input, init)
+      beacon(url, init?.body, init)
+      return new Response(null, { status: 204 })
+    }))
+  })
+
+  afterEach(() => {
+    cleanup()
+    vi.unstubAllEnvs()
+    vi.resetModules()
+  })
+
+  const sent = () => beacon.mock.calls.map(([, body]) => JSON.parse(String(body)) as { event: string })
+
+  it('says what is counted in a line, and stops counting when turned off', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+
+    expect(screen.getByText(/never what you write/)).toBeInTheDocument()
+    await waitFor(() => expect(sent().map((report) => report.event)).toContain('open'))
+
+    await addApplication(user, 'Northwind')
+    await waitFor(() => expect(sent().map((report) => report.event)).toContain('application_added'))
+    for (const [, body] of beacon.mock.calls) expect(String(body)).not.toContain('Northwind')
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    const toggle = screen.getByRole('switch', { name: 'Share usage counts' })
+    expect(toggle).toHaveAttribute('aria-checked', 'true')
+    await user.click(toggle)
+
+    const before = beacon.mock.calls.length
+    await addApplication(user, 'Contoso')
+    await waitFor(() => expect(screen.getByRole('button', { name: /Open Contoso/ })).toBeInTheDocument())
+    expect(beacon.mock.calls.length).toBe(before)
+
+    await user.click(screen.getByRole('button', { name: 'More actions' }))
+    expect(screen.getByRole('switch', { name: 'Share usage counts' })).toHaveAttribute('aria-checked', 'false')
+  })
+  const reports = () =>
+    beacon.mock.calls.map(([, body]) => JSON.parse(String(body)) as { event: string; props: Record<string, string> })
+  const reportsOf = (event: string) => reports().filter((report) => report.event === event).map((report) => report.props)
+
+  it('describes the tracker once per load, with where the visit came from', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    await waitFor(() => expect(reportsOf('open')).toHaveLength(1))
+    expect(reportsOf('open')[0]).toMatchObject({ applications: '0', age: 'none', storage: 'unsupported', referrer: 'direct' })
+  })
+
+  it('counts a view chosen, and the time spent on the one left', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    await user.click(within(screen.getByRole('navigation', { name: 'Tracker views' })).getByRole('button', { name: 'Table' }))
+    await waitFor(() => expect(reportsOf('view')).toEqual([{ place: 'table' }]))
+    expect(reportsOf('view_time')).toEqual([{ place: 'kanban', duration: '<10s' }])
+
+    await user.click(within(topbar()).getByRole('button', { name: 'Prep' }))
+    await waitFor(() => expect(reportsOf('view')).toEqual([{ place: 'table' }, { place: 'prep' }]))
+  })
+
+  it('counts a move by its stage and outcome', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    await addApplication(user, 'Northwind')
+    await user.selectOptions(await screen.findByRole('combobox', { name: 'Move Northwind to stage' }), 'round_1')
+    await waitFor(() => expect(reportsOf('moved')).toEqual([{ stage: 'round_1', outcome: 'active' }]))
+  })
+
+  it('counts an export, and an export that failed as a failure', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    await addApplication(user, 'Northwind')
+
+    const objectUrls = { createObjectURL: URL.createObjectURL, revokeObjectURL: URL.revokeObjectURL }
+    URL.createObjectURL = vi.fn(() => 'blob:tracker')
+    URL.revokeObjectURL = vi.fn()
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
+    try {
+      await user.click(await within(topbar()).findByRole('button', { name: 'Export a backup' }))
+      await waitFor(() => expect(reportsOf('exported')).toHaveLength(1))
+
+      URL.createObjectURL = vi.fn(() => {
+        throw new Error('No space')
+      })
+      await addApplication(user, 'Contoso')
+      await user.click(await within(topbar()).findByRole('button', { name: 'Export a backup' }))
+      await waitFor(() => expect(reportsOf('error')).toEqual([{ kind: 'export' }]))
+      expect(reportsOf('exported')).toHaveLength(1)
+    } finally {
+      click.mockRestore()
+      Object.assign(URL, objectUrls)
+    }
+  })
+
+  it('counts a dropped file by whether it could be read', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    const drop = (file: File) => {
+      const dataTransfer = { types: ['Files'], files: [file], items: [] }
+      fireEvent.dragEnter(window, { dataTransfer })
+      fireEvent.drop(window, { dataTransfer })
+    }
+    drop(new File(['{ not json'], 'broken.json', { type: 'application/json' }))
+    await waitFor(() => expect(reportsOf('imported')).toEqual([{ ok: 'n' }]))
+    drop(trackerFile('Northwind'))
+    await waitFor(() => expect(reportsOf('imported')).toEqual([{ ok: 'n' }, { ok: 'y' }]))
+    // An unreadable file is counted as such, not a second time as a failure.
+    expect(reportsOf('error')).toEqual([])
+  })
+
+  it('says the browser turned counts off, and offers them rather than offering them back', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, value: true })
+    try {
+      await renderStaticApp()
+      expect(screen.getByText(/Your browser asks sites not to track you, so usage counts are off/)).toBeInTheDocument()
+      expect(screen.getByRole('button', { name: 'Turn on' })).toBeInTheDocument()
+      expect(screen.queryByRole('button', { name: 'Turn back on' })).not.toBeInTheDocument()
+      await new Promise((resolve) => setTimeout(resolve, 20))
+      expect(beacon).not.toHaveBeenCalled()
+    } finally {
+      Reflect.deleteProperty(navigator, 'globalPrivacyControl')
+    }
+  })
+
+  it('counts an older file it brought up to date, by the layout it was in', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    // No schema_version: a version-1 export, which the import migrates before reading.
+    const legacy = new File([JSON.stringify({ applications: [] })], 'old-export.json', { type: 'application/json' })
+    const dataTransfer = { types: ['Files'], files: [legacy], items: [] }
+    fireEvent.dragEnter(window, { dataTransfer })
+    fireEvent.drop(window, { dataTransfer })
+    await waitFor(() => expect(reportsOf('migrated')).toEqual([{ from: '1' }]))
+  })
+
+  it('counts a load that failed, even though the page never got as far as its tracker', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    vi.resetModules()
+    window.history.replaceState(null, '', '/')
+    vi.stubEnv('VITE_TRACKER_BACKEND', 'browser')
+    vi.stubEnv('VITE_TRACKER_PROFILE', 'live')
+    const { backend } = await import('../backend')
+    vi.spyOn(backend, 'loadDocument').mockRejectedValue(new Error('The disk is not answering'))
+    const { default: App } = (await import('../App')) as { default: ComponentType }
+    render(<App />)
+    await screen.findByText('Could not load tracker data')
+    await waitFor(() => expect(reportsOf('error')).toEqual([{ kind: 'load' }]))
+  })
+
+  /** The static app with its backend reachable before the app mounts, to stand in for it. */
+  async function renderWithBackend(prepare: (backend: typeof import('../backend').backend) => void) {
+    vi.resetModules()
+    window.history.replaceState(null, '', '/')
+    vi.stubEnv('VITE_TRACKER_BACKEND', 'browser')
+    vi.stubEnv('VITE_TRACKER_PROFILE', 'live')
+    const { backend } = await import('../backend')
+    prepare(backend)
+    const { default: App } = (await import('../App')) as { default: ComponentType }
+    render(<App />)
+    await waitFor(() => expect(screen.queryByText('Loading tracker data…')).not.toBeInTheDocument())
+  }
+
+  it('counts a folder opened as a tracker from the switcher', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    // Before rendering: whether folders can be written is decided as the app loads.
+    Object.assign(window, { showDirectoryPicker: vi.fn() })
+    try {
+      await renderStaticApp()
+      const { backend } = await import('../backend')
+      const { navigation } = await import('../backend/trackerAddress')
+      vi.spyOn(navigation, 'open').mockImplementation(() => {})
+      vi.spyOn(backend.storage!, 'openFolder').mockResolvedValue({
+        outcome: 'opened',
+        tracker: { id: 'from-the-folder', name: 'last-year', applications: 4, openedAt: '' },
+      })
+      await user.click(within(topbar()).getByRole('button', { name: /^Tracker:/ }))
+      await user.click(screen.getByRole('button', { name: /From a folder/ }))
+      await waitFor(() => expect(reportsOf('folder_connected')).toHaveLength(1))
+    } finally {
+      Reflect.deleteProperty(window, 'showDirectoryPicker')
+    }
+  })
+
+  it('does not count reconnecting a lapsed folder as connecting one, and says it lapsed', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderWithBackend((backend) => {
+      const storage = backend.storage!
+      const lapsed = {
+        ...storage.state(),
+        connection: { kind: 'needs-permission' as const, name: 'job-apps' },
+        tracker: { id: 'lapsed-tracker', name: 'Untitled tracker', sourceFile: null },
+      }
+      vi.spyOn(storage, 'state').mockReturnValue(lapsed)
+      vi.spyOn(storage, 'subscribe').mockImplementation((listener) => {
+        listener(lapsed)
+        return () => {}
+      })
+      vi.spyOn(storage, 'reconnect').mockResolvedValue({ kind: 'connected', name: 'job-apps' })
+    })
+    await waitFor(() => expect(reportsOf('open')).toHaveLength(1))
+    expect(reportsOf('open')[0]).toMatchObject({ storage: 'folder-lapsed' })
+
+    await user.click(within(topbar()).getByRole('button', { name: 'Reconnect job-apps' }))
+    await screen.findByText('Reconnected to your folder.')
+    expect(reportsOf('folder_connected')).toEqual([])
+  })
+
+  it('counts a file as it arrives, whatever the reader then chooses', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    await renderStaticApp()
+    await addApplication(user, 'Stays here')
+    const { backend } = await import('../backend')
+    const { navigation } = await import('../backend/trackerAddress')
+    vi.spyOn(navigation, 'open').mockImplementation(() => {})
+    const exported = await trackerFile('last-year').text()
+    const original = looseFile('last-year.json', exported)
+    const result = readTrackerImport(new TextEncoder().encode(exported))
+    if (!result.ok) throw new Error('fixture')
+    await backend.storage!.createTracker(result.document, [], 'last-year.json', original)
+
+    // Counted before anything is asked, and once, whether the reader switches to the
+    // tracker the file already is or opens it as a new one: one rule for every file.
+    dropWithHandle(original, exported, 'last-year.json')
+    let question = await screen.findByRole('alertdialog', { name: 'last-year is already in this browser' })
+    await waitFor(() => expect(reportsOf('imported')).toEqual([{ ok: 'y' }]))
+    await user.click(within(question).getByRole('button', { name: 'Switch to last-year' }))
+
+    dropWithHandle(original, exported, 'last-year.json')
+    question = await screen.findByRole('alertdialog', { name: 'last-year is already in this browser' })
+    await user.click(within(question).getByRole('button', { name: 'Open as a new tracker' }))
+    await waitFor(() => expect(reportsOf('imported')).toEqual([{ ok: 'y' }, { ok: 'y' }]))
+  })
+
+  it('counts a folder connected', async () => {
+    const user = userEvent.setup()
+    vi.stubEnv('VITE_USAGE_URL', '/__usage')
+    const folder = new FakeDirectory('job-apps')
+    Object.assign(window, { showDirectoryPicker: vi.fn(async () => folder) })
+    try {
+      await renderStaticApp()
+      await user.click(screen.getByRole('button', { name: /Choose a folder/ }))
+      await within(topbar()).findByRole('button', { name: 'Saved to job-apps' })
+      await waitFor(() => expect(reportsOf('folder_connected')).toHaveLength(1))
+    } finally {
+      Reflect.deleteProperty(window, 'showDirectoryPicker')
+    }
   })
 })
