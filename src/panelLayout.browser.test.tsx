@@ -187,6 +187,31 @@ describe('the panel in a real browser', () => {
     }
   })
 
+  it('lays itself out inside a phone, with every title bar control on screen', async () => {
+    renderPanel()
+    await page.viewport(375, 812)
+
+    // The panel's one column was implied, so it took its min-content — some five hundred
+    // pixels — and the panel clipped the rest: Find, the shortcuts, the right of the
+    // sidebar's search box and the note's own Read control, with nothing to scroll to them.
+    const panel = document.querySelector('.panel')!.getBoundingClientRect()
+    expect(panel.right).toBeLessThanOrEqual(376)
+    for (const selector of ['.panel__titlebar', '.panel__sidebar', '.panel__notes', '.panel__statusbar']) {
+      expect(document.querySelector(selector)!.getBoundingClientRect().right)
+        .toBeLessThanOrEqual(panel.right + 1)
+    }
+    for (const control of document.querySelectorAll('.panel__titlebar button, .panel__titlebar select')) {
+      const box = control.getBoundingClientRect()
+      expect(box.left).toBeGreaterThanOrEqual(panel.left - 1)
+      expect(box.right).toBeLessThanOrEqual(panel.right + 1)
+    }
+
+    // And the name and its stage are still said: squeezed onto the controls' row they were
+    // left no width at all.
+    expect(document.querySelector('.panel__subject')!.getBoundingClientRect().width).toBeGreaterThan(60)
+    expect(document.querySelector('.panel__stage-select')!.getBoundingClientRect().width).toBeGreaterThan(60)
+  })
+
   it('scrolls a strip to the tab just opened, once there are more than fit', async () => {
     const { halcyon } = renderPanel()
     await page.viewport(640, 800)
@@ -757,8 +782,10 @@ describe('the stage pill in the title bar', () => {
     const name = document.querySelector<HTMLElement>('.panel__subject')!
 
     // Narrow enough that the two cannot both be written out. The name is the half that
-    // gives: it is on the tab below in full, and a stage cut in half says nothing.
-    await page.viewport(520, 800)
+    // gives: it is on the tab below in full, and a stage cut in half says nothing. A phone,
+    // because under 520px the pair takes a row of its own, and at 520 that row held the
+    // whole name in Firefox — the test passed in the other two engines on their wider text.
+    await page.viewport(360, 800)
     expect(name.scrollWidth).toBeGreaterThan(name.clientWidth)
     expect(pill.getBoundingClientRect().width).toBeGreaterThanOrEqual(needed(pill) - 1)
   })
