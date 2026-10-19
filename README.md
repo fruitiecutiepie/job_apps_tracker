@@ -472,6 +472,10 @@ npx playwright install chromium firefox webkit
 pnpm test:browser
 ```
 
+On macOS, Firefox runs in Playwright's Linux image through Docker (Colima: `colima start`),
+because Playwright's Firefox does not launch on macOS 27. `pnpm test:browser` does this on its
+own; `TEST_FIREFOX=native pnpm test:browser` tries Firefox natively instead.
+
 Use `pnpm test:watch` while developing. The automated smoke test and optional browser checklist are documented in [SMOKE_TEST.md](./SMOKE_TEST.md).
 
 Contributor architecture, invariants, and common traps are documented in [AGENTS.md](./AGENTS.md).

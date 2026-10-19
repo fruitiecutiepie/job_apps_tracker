@@ -18,7 +18,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:smoke": "vitest run src/test/smoke.test.tsx",
-    "test:browser": "vitest run -c vitest.browser.config.ts",
+    "test:browser": "scripts/test-browser",
     "test:capture": "vitest run -c vitest.capture.config.ts",
     "test:watch": "vitest",
     "verify": "pnpm run typecheck && pnpm run lint && pnpm run test && pnpm run build",
