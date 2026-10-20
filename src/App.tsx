@@ -37,6 +37,7 @@ import {
   addApplication,
   clearLegacyLocalStorage,
   completeApplicationNextAction,
+  discardApplicationNextAction,
   updateApplicationCompletedActions,
   createAttachmentMetadata,
   createUuidV7,
@@ -110,6 +111,7 @@ import { ThemeMenu } from './ThemeMenu'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
 import { RatingFields } from './RatingFields'
 import { StageHistory } from './StageHistory'
+import { stageHistoryRowsFor, type StageHistoryRow } from './stageHistoryRows'
 import { CompensationFields } from './CompensationFields'
 import {
   compensationFromValues,
@@ -270,6 +272,7 @@ interface ApplicationEditorProps {
     completedActions: CompletedActionDraft[],
     posting: PostingDraft | null,
     correspondence: CorrespondenceDraft[],
+    history: StageHistoryRow[],
     opened: Application | null,
   ) => Promise<void>
 }
@@ -305,6 +308,7 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
       at: entry.at,
     })),
   )
+  const [historyRows, setHistoryRows] = useState<StageHistoryRow[]>(() => stageHistoryRowsFor(application))
   const [posting, setPosting] = useState<PostingRow>(() => postingRowFor(application))
   const [keptAttachments] = useState<Attachment[]>(() => application?.attachments ?? [])
   const openedRef = useRef(application)
@@ -419,6 +423,7 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
                 completedActions.map(({ id, action, at }) => ({ id, action, at })),
                 postingDraftFrom(posting),
                 correspondenceDrafts(correspondence),
+                historyRows,
                 openedRef.current,
               )
             } catch (error) {
@@ -512,8 +517,8 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
                 <span>Archived — kept, but hidden from the current search</span>
               </label>
             )}
-            {/* The saved record, so a stage picked but not yet saved is deliberately absent. */}
-            {application && <StageHistory history={application.stage_history} />}
+            {/* Moves as saved, corrected as drafts: a stage picked but not yet saved is deliberately absent. */}
+            {application && <StageHistory onChange={setHistoryRows} rows={historyRows} />}
             <label className="field field--wide">
               <span>Deadline</span>
               <input
@@ -1427,7 +1432,7 @@ export default function App() {
   const captureStageLine = async (applicationId: string, stage: StageId, line: string) => {
     await commit(
       (current) => updateApplicationStageCapture(current, applicationId, stage, line, new Date()),
-      'Note captured.',
+      'Real-time note added.',
     )
   }
 
@@ -1629,6 +1634,18 @@ export default function App() {
     )
   }
 
+  const deleteAction = (id: string) => {
+    const deleting = tracker.applications.find((application) => application.id === id)
+    const action = deleting?.next_action?.trim()
+    if (!action) return
+    // Destructive and written at once, so it asks first; Done is the way to keep a record.
+    if (!window.confirm(`Delete “${action}” for ${deleting!.company}? It is not recorded as done.`)) return
+    commit(
+      (current) => discardApplicationNextAction(current, id),
+      `Next action deleted for ${deleting?.company ?? 'the application'}.`,
+    )
+  }
+
   const notesLayer = (
     <PrepNotesView
       // Every application, not the filtered set: see `PrepNotesView`.
@@ -1655,6 +1672,7 @@ export default function App() {
       onOpenPosting: openPosting,
       onOpenMessages: openApplication,
       onCompleteAction: completeAction,
+      onDeleteAction: deleteAction,
       quietDays: statsSettings.quietDays,
     }
     switch (activeView) {
@@ -2200,6 +2218,7 @@ export default function App() {
             completedActions,
             posting,
             correspondence,
+            history,
             opened,
           ) => {
             const input: ApplicationInput = {
@@ -2243,6 +2262,7 @@ export default function App() {
                 invites,
                 completedActions,
                 posting,
+                history,
                 stage: values.stage,
                 outcome: values.outcome,
                 archived: values.archived,

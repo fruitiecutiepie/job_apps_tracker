@@ -9,8 +9,10 @@ import { compensationFromValues, compensationValuesFor } from './compensation'
 import type { CompensationValues } from './compensation'
 import { toDateTimeInput } from './dateInput'
 import type { Application, ApplicationEdits, ApplicationInput, Attachment, CompletedActionDraft, CorrespondenceDraft, PostingDraft, RatingDimensionId, StageEventDraft, StageId, TrackerDocument } from './domain'
-import { archiveApplication, clearApplicationRating, moveApplication, updateApplication, updateApplicationCompletedActions, updateApplicationCorrespondence, updateApplicationPosting, updateApplicationRatings, updateApplicationStageEvents } from './domain/mutations'
+import { archiveApplication, clearApplicationRating, moveApplication, reviseApplicationStageHistory, updateApplication, updateApplicationCompletedActions, updateApplicationCorrespondence, updateApplicationPosting, updateApplicationRatings, updateApplicationStageEvents } from './domain/mutations'
 import { inviteDrafts, inviteRowsFor } from './invites'
+import { stageHistoryChanges } from './stageHistoryRows'
+import type { StageHistoryRow } from './stageHistoryRows'
 import { postingDraftFrom, postingRowFor } from './posting'
 import { clearedRatingDimensions, ratingDrafts, ratingValuesFor } from './ratings'
 import type { RatingValues } from './ratings'
@@ -23,6 +25,7 @@ export interface EditorForm {
   invites: StageEventDraft[]
   completedActions: CompletedActionDraft[]
   posting: PostingDraft | null
+  history: StageHistoryRow[]
   stage: StageId
   outcome: Application['outcome']
   archived: boolean
@@ -122,6 +125,12 @@ export function applyEditorSave(
   }
   for (const dimension of clearedRatingDimensions(opened, form.ratingValues)) {
     document = clearApplicationRating(document, opened.id, dimension, at)
+  }
+
+  // Before the move below: a move made in the same save is new, and is not what was corrected.
+  const historyChanges = stageHistoryChanges(opened, form.history)
+  if (historyChanges.length > 0) {
+    document = reviseApplicationStageHistory(document, opened.id, historyChanges, at)
   }
 
   const stage = form.stage === opened.stage ? stored.stage : form.stage

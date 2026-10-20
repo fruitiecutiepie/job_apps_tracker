@@ -99,7 +99,7 @@ function NoteRows({
               {note.captured > 0 ? (
                 <span className="notes-tree__said">
                   {note.written ? '' : 'only '}
-                  {note.captured} said
+                  {note.captured} real-time {note.captured === 1 ? 'note' : 'notes'}
                 </span>
               ) : null}
             </button>
@@ -137,7 +137,7 @@ function NoteRows({
                         ))}
                       </span>
                       {match.where === 'captured' ? (
-                        <span className="notes-tree__hit-where">said</span>
+                        <span className="notes-tree__hit-where">real-time note</span>
                       ) : null}
                     </button>
                   </li>

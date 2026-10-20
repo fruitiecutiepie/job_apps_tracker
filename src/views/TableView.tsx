@@ -264,6 +264,7 @@ export function TableView({
   onOpenStageNotes,
   onOpenPosting,
   onCompleteAction,
+  onDeleteAction,
   onMove,
   onArchive,
   quietDays,
@@ -635,6 +636,7 @@ export function TableView({
             <CompleteActionButton
               application={application}
               onCompleteAction={onCompleteAction}
+              onDeleteAction={onDeleteAction}
               variant="table"
             />
           </>

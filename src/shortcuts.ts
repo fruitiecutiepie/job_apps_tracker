@@ -40,7 +40,7 @@ export const PANEL_SHORTCUTS: readonly Shortcut[] = [
   { key: 'F', description: 'Open the find bar' },
   { key: 'P', description: 'Open the note picker' },
   { key: 'B', description: 'Show and hide the sidebar' },
-  { key: 'K', description: 'Put the caret in the capture box' },
+  { key: 'K', description: 'Put the caret in the real-time notes box' },
   {
     key: 'X',
     shift: true,

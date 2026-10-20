@@ -14,6 +14,8 @@ import {
   clearRating,
   completeApplicationNextAction,
   completeNextAction,
+  discardNextAction,
+  reviseStageHistory,
   updateApplicationCompletedActions,
   createApplication,
   createAttachmentMetadata,
@@ -2896,5 +2898,91 @@ describe('migrating version-1 documents', () => {
     })
 
     expect(result.ok).toBe(false)
+  })
+})
+
+describe('deleting a next action', () => {
+  const LATER = new Date('2026-08-20T09:00:00+10:00')
+  const planned = () =>
+    createApplication(
+      {
+        company: 'Northwind',
+        stage: 'applied',
+        next_action: 'Email the recruiter',
+        next_action_at: '2026-08-18T09:00:00+10:00',
+        deadline_at: '2026-08-30T17:00:00+10:00',
+      },
+      REFERENCE,
+    )
+
+  it('clears the plan without recording it as done or touching history or the deadline', () => {
+    const application = planned()
+    const deleted = discardNextAction(application, LATER)
+
+    expect(deleted.next_action).toBeNull()
+    expect(deleted.next_action_at).toBeNull()
+    expect(deleted.completed_actions).toEqual([])
+    expect(deleted.stage_history).toEqual(application.stage_history)
+    expect(deleted.deadline_at).toBe(application.deadline_at)
+    expect(deleted.updated_at).toBe(LATER.toISOString())
+  })
+
+  it('returns the same object when there is no action', () => {
+    const bare = discardNextAction(planned(), LATER)
+    expect(discardNextAction(bare, LATER)).toBe(bare)
+  })
+})
+
+describe('revising the stage history', () => {
+  const AT = new Date('2026-08-20T09:00:00+10:00')
+  const moved = () => {
+    const created = createApplication({ company: 'Northwind', stage: 'applied' }, new Date('2026-08-01T09:00:00+10:00'))
+    return moveApplicationStatus(
+      moveApplicationStatus(created, { stage: 'recruiter_messaged' }, '2026-08-05T09:00:00+10:00'),
+      { stage: 'round_1' },
+      '2026-08-10T09:00:00+10:00',
+    )
+  }
+
+  it('re-dates a move and removes another, keeping the record ending where it stands', () => {
+    const application = moved()
+    const [first, second] = application.stage_history
+    const revised = reviseStageHistory(
+      application,
+      [
+        { entry: first, at: '2026-08-03T09:00:00+10:00' },
+        { entry: second, at: null },
+      ],
+      AT,
+    )
+
+    expect(revised.stage_history).toHaveLength(2)
+    expect(revised.stage_history[0]!.at).toBe(new Date('2026-08-03T09:00:00+10:00').toISOString())
+    expect(revised.stage_history.at(-1)).toEqual(application.stage_history.at(-1))
+    expect(revised.stage).toBe(application.stage)
+    expect(revised.updated_at).toBe(AT.toISOString())
+  })
+
+  it('refuses to remove the move the application stands on', () => {
+    const application = moved()
+    expect(() => reviseStageHistory(application, [{ entry: application.stage_history.at(-1)!, at: null }], AT))
+      .toThrow(/current stage and outcome/)
+  })
+
+  it('refuses to date the current move before the one ahead of it', () => {
+    const application = moved()
+    expect(() =>
+      reviseStageHistory(
+        application,
+        [{ entry: application.stage_history.at(-1)!, at: '2026-07-30T09:00:00+10:00' }],
+        AT,
+      ),
+    ).toThrow(/current stage and outcome/)
+  })
+
+  it('skips an entry that is no longer stored and returns the same object when nothing changes', () => {
+    const application = moved()
+    const gone = { stage: 'offer' as const, outcome: 'active' as const, at: '2026-01-01T00:00:00.000Z' }
+    expect(reviseStageHistory(application, [{ entry: gone, at: null }], AT)).toBe(application)
   })
 })

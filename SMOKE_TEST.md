@@ -151,6 +151,9 @@ neither a finger nor any browser automation.
    that the row moves from the table's **Finished, action outstanding** band to **Finished**,
    and that the stage, the
    stage history, the deadline, and the Notes text are all unchanged.
+   Select the trash icon beside an outstanding next action on another card, cancel the
+   confirmation and confirm nothing changed, then select it again, accept, and confirm the task
+   and its date clear with nothing added to **Completed actions**.
    Open Saffron Systems and confirm **Completed actions** lists the task you just closed above
    the Notes box, newest first, with today's date and nothing written into Notes itself. Open
    Atlas Thread and confirm the Next action, its date, and **Done** sit on one row in that
@@ -262,7 +265,7 @@ neither a finger nor any browser automation.
    the note opening twice. Close one pane, then **Unsplit**, and confirm the other note is untouched.
    Press `Ctrl`/`Cmd+B` and confirm the outline collapses away, the notes take the width, and it
    comes back. On a narrow window, confirm a split panel stacks its panes instead of squeezing them.
-   Scroll a long note and confirm the **What they said** dock stays pinned to the bottom of its own pane
+   Scroll a long note and confirm the **Real-time notes** dock stays pinned to the bottom of its own pane
    with the note scrolling under it, opaque against both a plain stage and the tinted current one.
    Type a line, press Enter, and confirm it appears at the end of the log under today's date and
    stamped with the time it was captured, that the notice reports it, and that closing the panel with Escape and reopening it shows the line
@@ -376,6 +379,10 @@ neither a finger nor any browser automation.
     **Applied** to **Accepted**, each move showing its date and how long that stage held, with the
     last one still running. Move it to another stage, save, reopen, and confirm one entry was
     appended. Reopen and change nothing but the notes, save, and confirm the list is unchanged.
+    Change the date of an earlier move and delete another, accepting the confirmation, confirm nothing is written until
+    **Save changes**, then save and confirm the list keeps the change and still ends at
+    **Accepted**. Confirm the last move has no Delete and its date cannot be set before the
+    move above it.
     Open **Add application** and confirm no History list appears.
 16. Press **Feedback** in the top bar, then **Show me**. Open an application, change its stage,
     press Escape, take a **Screenshot** from the pill (Chrome: the browser asks, and the pill is
