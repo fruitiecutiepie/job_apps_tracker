@@ -12,18 +12,19 @@
 import { dayGroups } from './dayLog'
 
 /**
- * The heading a stage's captured lines are read under. It names the contrast the dock
- * exists for — the note above it is what you wrote before, this is what you were told
- * during — rather than the act of writing it down, which the Capture button already has.
+ * The heading a stage's captured lines are read under. It names when they are written,
+ * which is the contrast the dock exists for: the prep note above it is written before the
+ * stage, these lines while it is happening. It was "What they said" until that read as
+ * quotation only, when a line typed mid-interview is as often your own observation.
  */
-export const CAPTURE_SECTION = 'What they said'
+export const CAPTURE_SECTION = 'Real-time notes'
 
 /**
- * The same words inside a sentence, for the labels that put them in one: "Show what they
- * said in …" rather than a capital landing mid-phrase. Written out rather than lowercased
+ * The same words inside a sentence, for the labels that put them in one: "Show real-time
+ * notes in …" rather than a capital landing mid-phrase. Written out rather than lowercased
  * on the fly so a label that needs different words can have them.
  */
-export const CAPTURE_SECTION_IN_SENTENCE = 'what they said'
+export const CAPTURE_SECTION_IN_SENTENCE = 'real-time notes'
 
 /** What `capturedMarkdown` needs of a captured line, which is less than the stored record. */
 interface Captured {

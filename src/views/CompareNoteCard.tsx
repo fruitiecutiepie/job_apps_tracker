@@ -255,7 +255,7 @@ export function CompareNoteCard({ application, stage, isHere, onSave, onOpenFull
           <section aria-label={`${CAPTURE_SECTION} in ${label}`} className="compare-notes__captured">
             <h5 className="compare-notes__captured-heading">{CAPTURE_SECTION}</h5>
             <div role="log">
-              <MarkdownNotes foldAll={false} label={`${label} captures`} source={captured} />
+              <MarkdownNotes foldAll={false} label={`${label} real-time notes`} source={captured} />
             </div>
           </section>
         ) : null}

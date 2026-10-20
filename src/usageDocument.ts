@@ -45,7 +45,7 @@ const pooled = (shares: Share[]): Share =>
 
 const FEATURES: Record<string, string> = {
   notes: 'Prep notes',
-  captures: 'What they said',
+  captures: 'Real-time notes',
   messages: 'Messages',
   invites: 'Calendar invites',
   ratings: 'Ratings',

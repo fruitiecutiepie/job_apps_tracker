@@ -37,6 +37,7 @@ import type {
   RatingDimensionId,
   RatingDraft,
   StageNote,
+  StageHistoryEntry,
   StageNoteDraft,
   StageSetting,
   StageEvent,
@@ -288,6 +289,27 @@ export function completeNextAction(
     next_action_at: null,
     completed_actions: sortedCompletedActions([...application.completed_actions, entry]),
     updated_at: updatedAt,
+  }
+}
+
+/**
+ * Drops a next action without recording it as done. Done means carried out, and a task that
+ * is no longer going to happen was not — the same reasoning that drops the task on a
+ * rejection or a withdrawal rather than routing it through `completed_actions`.
+ * `deadline_at` is untouched, and no stage history is appended.
+ *
+ * A blank action returns the same object: there is nothing to delete.
+ */
+export function discardNextAction(
+  application: Application,
+  at: Date | string = new Date(),
+): Application {
+  if (!optionalText(application.next_action)) return application
+  return {
+    ...application,
+    next_action: null,
+    next_action_at: null,
+    updated_at: timestamp(at),
   }
 }
 
@@ -859,6 +881,77 @@ export function moveApplicationStatus(
   }
 }
 
+/** One correction to a recorded move: its new time, or `null` to remove it. */
+export interface StageHistoryChange {
+  /** The entry as it was read, which is how it is found again if another tab has stored since. */
+  entry: StageHistoryEntry
+  at: string | null
+}
+
+/**
+ * Corrects the record of moves: when one happened, or that it was never a move at all. A
+ * change names its entry by value rather than by position, so an edit opened before another
+ * tab appended a move still lands on the entry it meant, and one whose entry is already gone
+ * is skipped. Entries stay in time order afterwards.
+ *
+ * The history must still end in the current stage and outcome — the pair is what the
+ * application is, and the record only says how it got there — so the last entry cannot be
+ * removed and cannot be dated before the one now ahead of it. It never changes `stage` or
+ * `outcome`, and an unchanged result returns the same object.
+ */
+export function reviseStageHistory(
+  application: Application,
+  changes: StageHistoryChange[],
+  at: Date | string = new Date(),
+): Application {
+  let history = application.stage_history.map((entry) => ({ ...entry }))
+  for (const change of changes) {
+    const index = history.findIndex(
+      (entry) =>
+        entry.stage === change.entry.stage
+        && entry.outcome === change.entry.outcome
+        && entry.at === change.entry.at,
+    )
+    if (index === -1) continue
+    if (change.at === null) {
+      history.splice(index, 1)
+    } else {
+      history[index] = { ...history[index]!, at: timestamp(change.at) }
+    }
+  }
+  // Array sort is stable, so two moves at one instant keep the order they were recorded in.
+  history = history.sort((left, right) => Date.parse(left.at) - Date.parse(right.at))
+  const last = history.at(-1)
+  if (!last || last.stage !== application.stage || last.outcome !== application.outcome) {
+    throw new TypeError("History must end in the application's current stage and outcome")
+  }
+  const unchanged =
+    history.length === application.stage_history.length
+    && history.every((entry, index) => {
+      const before = application.stage_history[index]!
+      return before.stage === entry.stage && before.outcome === entry.outcome && before.at === entry.at
+    })
+  if (unchanged) return application
+  return { ...application, stage_history: history, updated_at: timestamp(at) }
+}
+
+export function reviseApplicationStageHistory(
+  document: TrackerDocument,
+  id: string,
+  changes: StageHistoryChange[],
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = reviseStageHistory(application, changes, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
 /**
  * Puts an application away, or brings it back. Archiving is a visibility flag rather than a
  * move: the outcome and the history stay exactly as they were, so an archived rejection is
@@ -933,6 +1026,23 @@ export function completeApplicationNextAction(
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
   const updated = completeNextAction(application, at)
+  if (updated === application) return document
+
+  return {
+    ...document,
+    applications: document.applications.map((item) => (item.id === id ? updated : item)),
+  }
+}
+
+/** Deletes one application's next action, leaving the rest of the document alone. */
+export function discardApplicationNextAction(
+  document: TrackerDocument,
+  id: string,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  const application = document.applications.find((item) => item.id === id)
+  if (!application) return document
+  const updated = discardNextAction(application, at)
   if (updated === application) return document
 
   return {

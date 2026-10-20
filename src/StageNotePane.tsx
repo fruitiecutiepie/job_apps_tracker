@@ -674,7 +674,7 @@ export function StageNotePane({
                   <MarkdownNotes
                     currentMatch={currentMatch}
                     foldAll={false}
-                    label={`${label} captures`}
+                    label={`${label} real-time notes`}
                     matchBase={heardMatchBase}
                     query={query}
                     source={captured}
@@ -689,7 +689,7 @@ export function StageNotePane({
               ) : null}
               <div className="stage-note__capture">
                 <label className="field">
-                  <span className="sr-only">Capture a line in {label}</span>
+                  <span className="sr-only">Add a real-time note in {label}</span>
                   <textarea
                     // The one shortcut with no button in the title bar to hang a hint on, so
                     // the box it lands in is what names it. The shortcuts list carries the
@@ -710,13 +710,13 @@ export function StageNotePane({
                       event.preventDefault()
                       void capture()
                     }}
-                    placeholder="What did they say? Enter files it, Shift+Enter starts a line"
+                    placeholder="Add a real-time note. Enter files it, Shift+Enter starts a line"
                     value={line}
                   />
                 </label>
                 {lines.length > 0 ? (
                   <button
-                    aria-label={`${isEditingLines ? 'Read' : 'Correct'} the captured lines in ${label}`}
+                    aria-label={`${isEditingLines ? 'Read' : 'Correct'} the real-time notes in ${label}`}
                     aria-pressed={isEditingLines}
                     className="button button--quiet stage-note__mode"
                     onClick={onToggleEditLines}

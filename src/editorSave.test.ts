@@ -9,6 +9,7 @@ import { postingDraftFrom, postingRowFor } from './posting'
 import { ratingValuesFor } from './ratings'
 import { applyEditorSave, type EditorForm } from './editorSave'
 import { toDateTimeInput } from './dateInput'
+import { stageHistoryRowsFor } from './stageHistoryRows'
 
 const AT = new Date('2026-10-04T09:00:00.000Z')
 
@@ -32,6 +33,7 @@ function formFor(application: Application): EditorForm {
     invites: inviteDrafts(inviteRowsFor(application)),
     completedActions: application.completed_actions.map(({ id, action, at }) => ({ id, action, at })),
     posting: postingDraftFrom(postingRowFor(application)),
+    history: stageHistoryRowsFor(application),
     stage: application.stage,
     outcome: application.outcome,
     archived: application.archived_at !== null,
@@ -93,5 +95,27 @@ describe('saving the application editor', () => {
     const application = saved.applications.find((item) => item.id === opened.id)
 
     expect(application?.correspondence.map((item) => item.body)).toContain('Logged in the other tab.')
+  })
+
+  it('applies a corrected history date and a removed move onto what is stored now', () => {
+    const document = createDemoDocument()
+    const opened = document.applications.find((item) => item.stage_history.length > 2)!
+    const form = formFor(opened)
+    const [first, second] = opened.stage_history
+    const newAt = new Date(Date.parse(first.at) + 60_000).toISOString()
+    form.history = form.history
+      .filter((row) => row.entry !== second)
+      .map((row) => (row.entry === first ? { ...row, at: newAt } : row))
+
+    const saved = applyEditorSave(document, opened, form, AT)
+    const application = saved.applications.find((item) => item.id === opened.id)!
+
+    expect(application.stage_history).toHaveLength(opened.stage_history.length - 1)
+    expect(application.stage_history[0]).toMatchObject({ stage: first.stage, at: newAt })
+    expect(application.stage_history.at(-1)).toMatchObject({
+      stage: opened.stage,
+      outcome: opened.outcome,
+    })
+    expect(application.updated_at).toBe(AT.toISOString())
   })
 })

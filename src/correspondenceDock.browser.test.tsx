@@ -224,7 +224,7 @@ describe('a message in the dock, in a real browser', () => {
     renderPanel(withMessages([message()]))
     await openCorrespondence()
     await userEvent.click(
-      screen.getByRole('button', { name: `Show what they said in ${DOCK_LABEL}` }),
+      screen.getByRole('button', { name: `Show real-time notes in ${DOCK_LABEL}` }),
     )
 
     const pane = box(document.querySelector('.panel__group')!)

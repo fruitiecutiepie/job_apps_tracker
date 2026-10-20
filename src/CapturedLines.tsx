@@ -46,7 +46,7 @@ function CapturedLineRow({ label, line, onRevise }: CapturedLineRowProps) {
     <li className="stage-note__line">
       <code className="stage-note__stamp">{line.stamp}</code>
       <label className="field">
-        <span className="sr-only">Captured at {line.stamp} in {label}</span>
+        <span className="sr-only">Real-time note from {line.stamp} in {label}</span>
         <textarea
           onBlur={() => {
             // A row left by tabbing or clicking away keeps what was typed into it: this
@@ -71,7 +71,7 @@ function CapturedLineRow({ label, line, onRevise }: CapturedLineRowProps) {
         />
       </label>
       <button
-        aria-label={`Remove the line captured at ${line.stamp} in ${label}`}
+        aria-label={`Remove the real-time note from ${line.stamp} in ${label}`}
         className="icon-button stage-note__line-remove"
         disabled={saving}
         onClick={() => void revise('')}
@@ -94,7 +94,7 @@ function CapturedLineRow({ label, line, onRevise }: CapturedLineRowProps) {
  */
 export function CapturedLines({ label, lines, onRevise }: CapturedLinesProps) {
   return (
-    <ul aria-label={`Captured lines in ${label}`} className="stage-note__lines">
+    <ul aria-label={`Real-time notes in ${label}, open for correcting`} className="stage-note__lines">
       {lines.map((line) => (
         <CapturedLineRow
           key={`${line.id}:${line.body}`}

@@ -23,6 +23,7 @@ export function KanbanView({
   onOpenPosting,
   onOpenMessages,
   onCompleteAction,
+  onDeleteAction,
   onMove,
   onArchive,
   visibleStages,
@@ -220,6 +221,7 @@ export function KanbanView({
                                   <CompleteActionButton
                                     application={application}
                                     onCompleteAction={onCompleteAction}
+                                    onDeleteAction={onDeleteAction}
                                     variant="card"
                                   />
                                 </span>

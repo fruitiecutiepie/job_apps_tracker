@@ -128,7 +128,7 @@ async function openMessage(user: ReturnType<typeof userEvent.setup>, container: 
 
 /** Opens a stage's capture dock, collapsed by default, before a test reaches into it. */
 async function openCapture(user: ReturnType<typeof userEvent.setup>, container: HTMLElement, label: string) {
-  await user.click(within(container).getByRole('button', { name: `Show what they said in ${label}` }))
+  await user.click(within(container).getByRole('button', { name: `Show real-time notes in ${label}` }))
 }
 
 function jsonFile(contents: string, name = 'applications.json') {
@@ -661,6 +661,76 @@ describe('job applications tracker', () => {
       screen.queryByRole('button', { name: /^Mark done for Saffron Systems/ }),
     ).not.toBeInTheDocument()
     expect(readSavedDocument().applications).toHaveLength(19)
+  })
+
+  it('deletes a stage move from the editor history only once confirmed and saved', async () => {
+    seedFullDemo()
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Saffron Systems',
+    )!
+    expect(before.stage_history.length).toBeGreaterThan(1)
+
+    await user.click(
+      screen.getByRole('button', { name: /^Open Saffron Systems, Product Operations Manager/ }),
+    )
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const history = within(dialog).getByRole('list', { name: 'History' })
+    // The move the application stands on has no Delete.
+    expect(within(history).getAllByRole('listitem')).toHaveLength(before.stage_history.length)
+    expect(within(history).getAllByRole('button')).toHaveLength(before.stage_history.length - 1)
+
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    const deleteFirst = () => within(history).getAllByRole('button', { name: /from history$/ })[0]!
+    // Declining keeps the row; only a yes takes it out of the form.
+    await user.click(deleteFirst())
+    expect(within(history).getAllByRole('listitem')).toHaveLength(before.stage_history.length)
+    await user.click(deleteFirst())
+    expect(confirm).toHaveBeenCalledTimes(2)
+    expect(within(history).getAllByRole('listitem')).toHaveLength(before.stage_history.length - 1)
+    confirm.mockRestore()
+    expect(readSavedDocument().applications.find((item) => item.id === before.id)!.stage_history)
+      .toHaveLength(before.stage_history.length)
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.stage_history).toHaveLength(before.stage_history.length - 1)
+    expect(after.stage_history.at(-1)).toEqual(before.stage_history.at(-1))
+    expect(after.stage).toBe(before.stage)
+  })
+
+  it('deletes a next action from the board only once confirmed, without recording it as done', async () => {
+    seedFullDemo()
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Saffron Systems',
+    )!
+
+    const deleteButton = () =>
+      screen.getByRole('button', {
+        name: 'Delete next action for Saffron Systems: Prepare questions for onboarding',
+      })
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    // Declining writes nothing.
+    await user.click(deleteButton())
+    expect(confirm).toHaveBeenLastCalledWith(
+      'Delete “Prepare questions for onboarding” for Saffron Systems? It is not recorded as done.',
+    )
+    expect(readSavedDocument().applications.find((item) => item.id === before.id)!.next_action)
+      .toBe(before.next_action)
+
+    await user.click(deleteButton())
+    confirm.mockRestore()
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.next_action).toBeNull()
+    expect(after.completed_actions).toEqual(before.completed_actions)
+    expect(after.stage_history).toEqual(before.stage_history)
+    expect(
+      screen.queryByRole('button', { name: /^Delete next action for Saffron Systems/ }),
+    ).not.toBeInTheDocument()
   })
 
   it('clears an outstanding next action when the application is rejected', async () => {
@@ -1524,19 +1594,19 @@ describe('job applications tracker', () => {
     // Collapsed by default: what you were told is not on screen until it is opened.
     await openCapture(user, notes, 'Halcyon Maps · Round 2')
     await user.type(
-      within(notes).getByLabelText('Capture a line in Halcyon Maps · Round 2'),
+      within(notes).getByLabelText('Add a real-time note in Halcyon Maps · Round 2'),
       'Two more rounds after this{Enter}',
     )
 
     // Enter files the line rather than submitting the panel around it, so the note is
     // still open to be read from and captured into again.
     expect(within(dialog).getByRole('tabpanel')).toBeInTheDocument()
-    expect(within(notes).getByLabelText('Capture a line in Halcyon Maps · Round 2')).toHaveValue('')
-    expect(screen.getByRole('status')).toHaveTextContent('Note captured.')
+    expect(within(notes).getByLabelText('Add a real-time note in Halcyon Maps · Round 2')).toHaveValue('')
+    expect(screen.getByRole('status')).toHaveTextContent('Real-time note added.')
 
     // It reads in the docked log, under today, and only there: the prep note above is
     // a different field and does not gain a copy of it.
-    const log = within(notes).getByRole('log', { name: 'What they said in Halcyon Maps · Round 2' })
+    const log = within(notes).getByRole('log', { name: 'Real-time notes in Halcyon Maps · Round 2' })
     expect(within(log).getByText('Two more rounds after this')).toBeInTheDocument()
     expect(within(notes).getAllByText('Two more rounds after this')).toHaveLength(1)
 
@@ -1583,11 +1653,11 @@ describe('job applications tracker', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Round 2' }))
     expect(within(dialog).getByLabelText('Halcyon Maps · Round 2 prep notes')).toBeInTheDocument()
 
-    const log = within(dialog).getByRole('log', { name: 'What they said in Halcyon Maps · Round 2' })
+    const log = within(dialog).getByRole('log', { name: 'Real-time notes in Halcyon Maps · Round 2' })
     expect(within(log).getByText('Team is 40 engineers across four squads')).toBeInTheDocument()
 
     await user.type(
-      within(dialog).getByLabelText('Capture a line in Halcyon Maps · Round 2'),
+      within(dialog).getByLabelText('Add a real-time note in Halcyon Maps · Round 2'),
       'Offer decision sits with the VP{Enter}',
     )
 
@@ -1630,11 +1700,11 @@ describe('job applications tracker', () => {
     const [first] = before.stage_notes.find((note) => note.stage === 'round_2')!.heard
 
     await openCapture(user, dialog, 'Halcyon Maps · Round 2')
-    await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Halcyon Maps · Round 2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Correct the real-time notes in Halcyon Maps · Round 2' }))
 
-    const rows = within(dialog).getByRole('list', { name: 'Captured lines in Halcyon Maps · Round 2' })
+    const rows = within(dialog).getByRole('list', { name: 'Real-time notes in Halcyon Maps · Round 2, open for correcting' })
     const box = within(rows).getByLabelText(
-      `Captured at ${formatTimeOfDay(first.at)} in Halcyon Maps · Round 2`,
+      `Real-time note from ${formatTimeOfDay(first.at)} in Halcyon Maps · Round 2`,
     )
     expect(box).toHaveValue('Team is 40 engineers across four squads')
 
@@ -1652,8 +1722,8 @@ describe('job applications tracker', () => {
     expect(line.at).toBe(first.at)
 
     // Read it back: the log shows the corrected line, under the day it was captured on.
-    await user.click(within(dialog).getByRole('button', { name: 'Read the captured lines in Halcyon Maps · Round 2' }))
-    const log = within(dialog).getByRole('log', { name: 'What they said in Halcyon Maps · Round 2' })
+    await user.click(within(dialog).getByRole('button', { name: 'Read the real-time notes in Halcyon Maps · Round 2' }))
+    const log = within(dialog).getByRole('log', { name: 'Real-time notes in Halcyon Maps · Round 2' })
     expect(within(log).getByText('Team is 42 engineers across four squads')).toBeInTheDocument()
   })
 
@@ -1671,9 +1741,9 @@ describe('job applications tracker', () => {
     expect(heard).toHaveLength(3)
 
     await openCapture(user, dialog, 'Halcyon Maps · Round 2')
-    await user.click(within(dialog).getByRole('button', { name: 'Correct the captured lines in Halcyon Maps · Round 2' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Correct the real-time notes in Halcyon Maps · Round 2' }))
     await user.click(within(dialog).getByRole('button', {
-      name: `Remove the line captured at ${formatTimeOfDay(heard[1].at)} in Halcyon Maps · Round 2`,
+      name: `Remove the real-time note from ${formatTimeOfDay(heard[1].at)} in Halcyon Maps · Round 2`,
     }))
 
     expect(screen.getByRole('status')).toHaveTextContent('Note removed.')
@@ -1719,7 +1789,7 @@ describe('job applications tracker', () => {
     await waitFor(() => expect(inFlight).toBe(true), { timeout: 3000 })
 
     await user.type(
-      within(dialog).getByLabelText('Capture a line in Halcyon Maps · Round 2'),
+      within(dialog).getByLabelText('Add a real-time note in Halcyon Maps · Round 2'),
       'Decision comes back Friday{Enter}',
     )
     release()
@@ -1744,7 +1814,7 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('region', { name: 'Prep' })
 
     await user.keyboard('{Control>}k{/Control}')
-    expect(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Round 2')).toHaveFocus()
+    expect(within(dialog).getByLabelText('Add a real-time note in Halcyon Maps · Round 2')).toHaveFocus()
 
     // Split, then read the second pane: capture follows the pane being read rather than
     // the one that was open first. Both panes now show the same "Company · Role" heading
@@ -1755,7 +1825,7 @@ describe('job applications tracker', () => {
       .find((pane) => pane.id.endsWith('--round_1'))!
     await user.click(within(interview1Pane).getByRole('heading', { name: 'Halcyon Maps · Engineering Manager' }))
     await user.keyboard('{Control>}k{/Control}')
-    expect(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Round 1')).toHaveFocus()
+    expect(within(dialog).getByLabelText('Add a real-time note in Halcyon Maps · Round 1')).toHaveFocus()
   })
 
   it('names its shortcuts on the controls that share them and in a list of their own', async () => {
@@ -1787,7 +1857,7 @@ describe('job applications tracker', () => {
     )
     // Ctrl+K has no button in the title bar, so the box it lands in carries it instead.
     await openCapture(user, dialog, 'Halcyon Maps · Round 2')
-    expect(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Round 2')).toHaveAttribute(
+    expect(within(dialog).getByLabelText('Add a real-time note in Halcyon Maps · Round 2')).toHaveAttribute(
       'aria-keyshortcuts',
       'Meta+K Control+K',
     )
@@ -1814,7 +1884,7 @@ describe('job applications tracker', () => {
       'Ctrl+Shift+←/→',
       'Ctrl+Shift+,/.',
     ])
-    expect(within(list).getByText('Put the caret in the capture box')).toBeInTheDocument()
+    expect(within(list).getByText('Put the caret in the real-time notes box')).toBeInTheDocument()
     expect(
       within(list).getByText('Move the tab you are reading to the pane beside it'),
     ).toBeInTheDocument()
@@ -2170,7 +2240,7 @@ describe('job applications tracker', () => {
     // A capture holding the word the note and the seeded message already share.
     await openCapture(user, dialog, 'Halcyon Maps · Round 2')
     await user.type(
-      within(dialog).getByLabelText('Capture a line in Halcyon Maps · Round 2'),
+      within(dialog).getByLabelText('Add a real-time note in Halcyon Maps · Round 2'),
       'Leadership rounds run long',
     )
     await user.keyboard('{Enter}')
@@ -2217,7 +2287,7 @@ describe('job applications tracker', () => {
 
     // A capture holding the same word as the note being written.
     await openCapture(user, dialog, 'Halcyon Maps · Round 2')
-    await user.type(within(dialog).getByLabelText('Capture a line in Halcyon Maps · Round 2'), 'More on leads')
+    await user.type(within(dialog).getByLabelText('Add a real-time note in Halcyon Maps · Round 2'), 'More on leads')
     await user.keyboard('{Enter}')
     await user.click(within(dialog).getByRole('button', { name: 'Edit Halcyon Maps · Round 2' }))
 
@@ -2725,9 +2795,9 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Prep' })
-    await user.click(within(panel).getByRole('button', { name: 'Show what they said in Halcyon Maps · Round 2' }))
+    await user.click(within(panel).getByRole('button', { name: 'Show real-time notes in Halcyon Maps · Round 2' }))
 
-    const edge = () => within(panel).getByRole('separator', { name: 'Resize what they said in Halcyon Maps · Round 2' })
+    const edge = () => within(panel).getByRole('separator', { name: 'Resize real-time notes in Halcyon Maps · Round 2' })
     const height = () => Number(edge().getAttribute('aria-valuenow'))
     const started = height()
 
@@ -2744,11 +2814,11 @@ describe('job applications tracker', () => {
     // One height for the panel, not one per note: the dock is the reader's own workspace,
     // and a height that reset with every tab switch would have to be dragged again.
     await user.click(within(panel).getByRole('tab', { name: /Round 1/ }))
-    await user.click(within(panel).getByRole('button', { name: 'Show what they said in Halcyon Maps · Round 1' }))
+    await user.click(within(panel).getByRole('button', { name: 'Show real-time notes in Halcyon Maps · Round 1' }))
     expect(
       Number(
         within(panel)
-          .getByRole('separator', { name: 'Resize what they said in Halcyon Maps · Round 1' })
+          .getByRole('separator', { name: 'Resize real-time notes in Halcyon Maps · Round 1' })
           .getAttribute('aria-valuenow'),
       ),
     ).toBe(shared)
@@ -2757,8 +2827,8 @@ describe('job applications tracker', () => {
     await renderLoadedApp()
     await user.click(screen.getByRole('button', { name: 'Prep' }))
     const restored = screen.getByRole('region', { name: 'Prep' })
-    await user.click(within(restored).getByRole('button', { name: /^Show what they said in/ }))
-    expect(Number(within(restored).getByRole('separator', { name: /^Resize what they said in/ }).getAttribute('aria-valuenow')))
+    await user.click(within(restored).getByRole('button', { name: /^Show real-time notes in/ }))
+    expect(Number(within(restored).getByRole('separator', { name: /^Resize real-time notes in/ }).getAttribute('aria-valuenow')))
       .toBe(shared)
   })
 
@@ -2768,16 +2838,16 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: 'Prep notes for Halcyon Maps, 3 stages' }))
     const panel = screen.getByRole('region', { name: 'Prep' })
-    await user.click(within(panel).getByRole('button', { name: 'Show what they said in Halcyon Maps · Round 2' }))
+    await user.click(within(panel).getByRole('button', { name: 'Show real-time notes in Halcyon Maps · Round 2' }))
 
-    const edge = () => within(panel).getByRole('separator', { name: /^Resize what they said/ })
+    const edge = () => within(panel).getByRole('separator', { name: /^Resize real-time notes/ })
     edge().focus()
     // Well past the floor: the toggle is what puts the log away, so a drag that overshoots
     // must not do it instead.
     await user.keyboard('{ArrowDown>20/}')
 
     expect(Number(edge().getAttribute('aria-valuenow'))).toBe(Number(edge().getAttribute('aria-valuemin')))
-    expect(within(panel).getByRole('button', { name: 'Hide what they said in Halcyon Maps · Round 2' })).toBeInTheDocument()
+    expect(within(panel).getByRole('button', { name: 'Hide real-time notes in Halcyon Maps · Round 2' })).toBeInTheDocument()
   })
 
   it('opens a picked note into the pane being read, there being one picker now', async () => {
