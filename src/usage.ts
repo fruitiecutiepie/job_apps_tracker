@@ -22,7 +22,10 @@ import { durationBucket } from './usageSnapshot'
  * controls, there being nothing to turn off.
  *
  * On by default, off with one press, and off from the start in a browser that sends
- * Global Privacy Control or Do Not Track — a person who set that has already answered.
+ * Global Privacy Control — a person who set that has already answered, and several US
+ * states make it a binding opt-out. Do Not Track is not read: no law gives it force, few
+ * browsers still send it, and it was costing the counts the people the app most wants to
+ * hear from without protecting anyone the tag below does not already.
  * The choice is per-machine interface state like the theme, in `localStorage`, never in
  * the document.
  */
@@ -41,7 +44,7 @@ export function usageAvailable(): boolean {
 function browserAsksNotTo(): boolean {
   if (typeof navigator === 'undefined') return false
   const nav = navigator as Navigator & { globalPrivacyControl?: boolean }
-  return nav.globalPrivacyControl === true || nav.doNotTrack === '1'
+  return nav.globalPrivacyControl === true
 }
 
 function storedChoice(): boolean | null {
@@ -111,16 +114,45 @@ function subscribePreference(listener: () => void): () => void {
   }
 }
 
+export const USAGE_KEY_STORAGE_KEY = 'usage-key'
+
 /**
- * A hash of the tracker id, so the dataset holds a pseudonym rather than the id itself. It
- * is a pseudonym and no more: the salt is fixed and public, so anyone who holds a tracker's
- * id — which is in that tracker's URL — can compute its tag. What it prevents is the id
- * sitting in the dataset in the clear, readable by anyone who reads the rows.
+ * A secret this browser makes once and never sends. It is what keeps a tag from being
+ * worked out from anything outside this browser: not from the tracker's URL, which holds
+ * its id, and not from the rows. Without storage it lasts the visit, which costs that
+ * visit's tracker its link to the next one and nothing more.
+ */
+let memoryKey: string | null = null
+function usageKey(): string {
+  try {
+    const stored = localStorage.getItem(USAGE_KEY_STORAGE_KEY)
+    if (stored) return stored
+    const made = randomHex(16)
+    localStorage.setItem(USAGE_KEY_STORAGE_KEY, made)
+    return made
+  } catch {
+    memoryKey ??= randomHex(16)
+    return memoryKey
+  }
+}
+
+function randomHex(bytes: number): string {
+  return Array.from(crypto.getRandomValues(new Uint8Array(bytes)), (byte) => byte.toString(16).padStart(2, '0')).join('')
+}
+
+/**
+ * The tag a tracker's reports carry: a hash of the tracker id under this browser's own
+ * secret, so it is the same on every visit from here — which is what lets the report tell
+ * a tracker coming back from a new one — and is otherwise a random number. Nobody holding
+ * the tracker's URL, or reading the rows, can tie it to a tracker or to anyone. It is still
+ * one tracker's visits linked to each other, which a strict reading calls pseudonymous
+ * rather than anonymous, so the copy says "not linked to you" and not "anonymous".
+ * The same tracker opened in another browser is a different tag there.
  */
 export async function usageTag(trackerId: string): Promise<string> {
   const digest = await crypto.subtle.digest(
     'SHA-256',
-    new TextEncoder().encode(`job-apps-tracker usage:${trackerId}`),
+    new TextEncoder().encode(`job-apps-tracker usage:${usageKey()}:${trackerId}`),
   )
   return Array.from(new Uint8Array(digest).slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
 }
@@ -213,6 +245,7 @@ async function send(event: UsageEventName, props: Record<string, string>): Promi
 /** Forgets the tracker and anything queued, between tests. */
 export function resetUsageForTests(): void {
   tag = null
+  memoryKey = null
   queue.length = 0
   sessionChoice = null
   migrationsSeen.clear()

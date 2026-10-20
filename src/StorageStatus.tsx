@@ -1,7 +1,9 @@
 import { Download, FlaskConical, FolderOpen, HardDrive, Plus, TriangleAlert, Upload } from 'lucide-react'
+import { useId, useState } from 'react'
 
 import type { StorageConnection, StorageState } from './backend'
 import { demoSiteUrl, trackerSiteUrl } from './siteLinks'
+import { USAGE_COUNTED, USAGE_NEVER, USAGE_PROMISE, USAGE_WHY } from './usageCopy'
 import { formatShortDate } from './views/viewUtils'
 
 function describe({ connection, unbackedSince, saving }: StorageState): string {
@@ -195,25 +197,57 @@ export function StorageIntro({
 
 /**
  * Said once, where a newcomer is already reading about where their data goes, in the same
- * plain voice: what is counted, what never is, and the way to stop it, in one line. Not a
+ * plain voice: what the counts are for, what never leaves, and the way to stop them. Not a
  * banner and not a question — a reader who has not been asked anything has nothing to be
- * alarmed by, and the switch is one press either way. More actions carries the same switch
- * for everyone past this screen.
+ * alarmed by, and the switch is one press either way. The full list is one press away
+ * rather than on the page: it is there for whoever wants to check, and a list of what is
+ * collected, unasked for, reads as more alarming than the sentence it backs up. More
+ * actions carries the same switch for everyone past this screen.
  */
 function UsageLine({ on, onChange, offByBrowser }: { on: boolean; onChange: (on: boolean) => void; offByBrowser: boolean }) {
+  const [listOpen, setListOpen] = useState(false)
+  const listId = useId()
   // Off by the browser's own request is not something the reader did, so it is not
   // "back" on: they are being offered it for the first time.
-  const offText = offByBrowser
-    ? 'Your browser asks sites not to track you, so usage counts are off: nothing about how you use the app is sent. '
-    : 'Usage counts are off: nothing about how you use the app is sent. '
+  const text = on
+    ? `${USAGE_WHY} ${USAGE_PROMISE} `
+    : offByBrowser
+      ? 'Your browser asks sites not to share your data, so usage counts are off and nothing is sent. '
+      : 'Usage counts are off, so nothing about how you use the app is sent. '
   return (
-    <p className="storage-intro__usage">
-      {on
-        ? 'To learn what is worth improving, the app counts things like how many applications you have and which views you use — never what you write. '
-        : offText}
-      <button className="text-button" onClick={() => onChange(!on)} type="button">
-        {on ? 'Turn off' : offByBrowser ? 'Turn on' : 'Turn back on'}
-      </button>
-    </p>
+    <div className="storage-intro__usage">
+      <p>
+        {text}
+        <button
+          aria-controls={listId}
+          aria-expanded={listOpen}
+          className="text-button"
+          onClick={() => setListOpen(!listOpen)}
+          type="button"
+        >
+          What’s counted
+        </button>
+        {' · '}
+        <button className="text-button" onClick={() => onChange(!on)} type="button">
+          {on ? 'Turn off' : offByBrowser ? 'Turn on' : 'Turn back on'}
+        </button>
+      </p>
+      {listOpen && (
+        <div className="storage-intro__usage-list" id={listId}>
+          <h3>Counted</h3>
+          <ul>
+            {USAGE_COUNTED.map(({ text }) => (
+              <li key={text}>{text}</li>
+            ))}
+          </ul>
+          <h3>Never collected</h3>
+          <ul>
+            {USAGE_NEVER.map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   )
 }

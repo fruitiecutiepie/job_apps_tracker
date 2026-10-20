@@ -14,6 +14,7 @@ import {
   USAGE_STORAGE_KEY,
   usageAvailable,
   usageOffByBrowser,
+  USAGE_KEY_STORAGE_KEY,
   usageTag,
   useUsagePreference,
   useViewTime,
@@ -29,8 +30,10 @@ import {
   USAGE_STAGES,
   usageStage,
   usageDataPoint,
+  type UsageEventName,
   type UsageFeature,
 } from './usageEvent'
+import { USAGE_COUNTED } from './usageCopy'
 import { durationBucket, referrerKind, usageChanges, usageSnapshot } from './usageSnapshot'
 
 const reference = new Date(DEFAULT_DEMO_REFERENCE)
@@ -377,6 +380,32 @@ describe('sending', () => {
     expect(parseUsageReport(report)).not.toBeNull()
   })
 
+  it('tags a tracker with something its id alone cannot produce', async () => {
+    // The old tag: a fixed, public salt over the id, which anyone holding the URL could compute.
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(`job-apps-tracker usage:${TRACKER_ID}`))
+    const fromIdAlone = Array.from(new Uint8Array(digest).slice(0, 8), (byte) => byte.toString(16).padStart(2, '0')).join('')
+    const here = await usageTag(TRACKER_ID)
+    expect(here).toMatch(/^[0-9a-f]{16}$/)
+    expect(here).not.toBe(fromIdAlone)
+    // The same browser gives the same tracker the same tag on every visit…
+    resetUsageForTests()
+    expect(await usageTag(TRACKER_ID)).toBe(here)
+    // …and another browser, holding the same URL, gives it a different one.
+    localStorage.clear()
+    resetUsageForTests()
+    expect(await usageTag(TRACKER_ID)).not.toBe(here)
+  })
+
+  it('never sends the secret a tag is made with', async () => {
+    vi.stubEnv('VITE_USAGE_URL', '/app/__usage')
+    setUsageTracker(TRACKER_ID)
+    recordUsage('exported', {})
+    const [body] = await sentBodies()
+    const key = localStorage.getItem(USAGE_KEY_STORAGE_KEY)
+    expect(key).toMatch(/^[0-9a-f]{32}$/)
+    expect(body).not.toContain(key)
+  })
+
   it('holds reports made before the tracker is known, and sends them once it is', async () => {
     vi.stubEnv('VITE_USAGE_URL', '/app/__usage')
     recordUsage('exported', {})
@@ -487,6 +516,16 @@ describe('sending', () => {
     }
   })
 
+  it('stays on where the browser sends only Do Not Track', () => {
+    Object.defineProperty(navigator, 'doNotTrack', { configurable: true, value: '1' })
+    try {
+      expect(readUsagePreference()).toBe(true)
+      expect(usageOffByBrowser()).toBe(false)
+    } finally {
+      Reflect.deleteProperty(navigator, 'doNotTrack')
+    }
+  })
+
   it('starts off where the browser sends Global Privacy Control, until turned on', () => {
     Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, value: true })
     try {
@@ -496,6 +535,13 @@ describe('sending', () => {
     } finally {
       Reflect.deleteProperty(navigator, 'globalPrivacyControl')
     }
+  })
+})
+
+describe('what the reader is told', () => {
+  it('describes every event a report can carry', () => {
+    const described = new Set(USAGE_COUNTED.flatMap((item) => item.events))
+    expect(Object.keys(USAGE_EVENTS).filter((event) => !described.has(event as UsageEventName))).toEqual([])
   })
 })
 

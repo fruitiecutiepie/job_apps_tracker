@@ -1081,8 +1081,17 @@ describe('the static build, with usage counts', () => {
     vi.stubEnv('VITE_USAGE_URL', '/__usage')
     await renderStaticApp()
 
-    expect(screen.getByText(/never what you write/)).toBeInTheDocument()
+    expect(screen.getByText(/so fixes and new features go where they help most/)).toBeInTheDocument()
+    expect(screen.getByText(/Nothing you write is ever sent/)).toBeInTheDocument()
     await waitFor(() => expect(sent().map((report) => report.event)).toContain('open'))
+
+    // The full list is one press away, and says what never leaves as well as what does.
+    const whatsCounted = screen.getByRole('button', { name: 'What’s counted' })
+    expect(whatsCounted).toHaveAttribute('aria-expanded', 'false')
+    await user.click(whatsCounted)
+    expect(whatsCounted).toHaveAttribute('aria-expanded', 'true')
+    expect(screen.getByRole('heading', { name: 'Never collected' })).toBeInTheDocument()
+    expect(screen.getByText(/anything else you type/)).toBeInTheDocument()
 
     await addApplication(user, 'Northwind')
     await waitFor(() => expect(sent().map((report) => report.event)).toContain('application_added'))
@@ -1181,7 +1190,7 @@ describe('the static build, with usage counts', () => {
     Object.defineProperty(navigator, 'globalPrivacyControl', { configurable: true, value: true })
     try {
       await renderStaticApp()
-      expect(screen.getByText(/Your browser asks sites not to track you, so usage counts are off/)).toBeInTheDocument()
+      expect(screen.getByText(/Your browser asks sites not to share your data, so usage counts are off/)).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Turn on' })).toBeInTheDocument()
       expect(screen.queryByRole('button', { name: 'Turn back on' })).not.toBeInTheDocument()
       await new Promise((resolve) => setTimeout(resolve, 20))
