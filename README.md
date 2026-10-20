@@ -109,7 +109,7 @@ something to parse back out of a sentence, and a Done pressed by mistake can be 
 
 Open an application to see the whole list, newest first, above Notes. **Done** sits on the same
 row as the next action and its date there, so you can finish a task while editing, and
-**Remove** deletes an entry you did not mean to record. Both are drafts until you save, like everything else in that dialog. Removing an entry
+**Remove** deletes an entry you did not mean to record, after asking. Both are drafts until you save, like everything else in that dialog. Removing an entry
 does not put the task back on your plan — undoing the record is not the same as undoing the
 work, and the app does not guess which you meant.
 
@@ -144,7 +144,8 @@ the zip export carries them.
 Open an application and use **Import .ics file** under Interview invites to read the calendar attachment a
 recruiter emailed you. The time, place, and joining link come from the file; the stage it is filed under
 defaults to the application's current stage, and you can change it to any other. **Add invite manually**
-records one by hand instead, for an interview arranged over the phone.
+records one by hand instead, for an interview arranged over the phone. **Remove** asks before it takes an
+invite off, and nothing is written until you save.
 
 Re-importing a rescheduled invite updates the one it replaces rather than adding a second, because invites are
 matched on the calendar UID inside the file. The stage you filed it under survives the update, and an invite
@@ -181,7 +182,7 @@ The dock stays on screen however far the prep note above it scrolls, so your rea
 Real-time notes are stored separately from what you prepared, which has these consequences worth knowing:
 
 - Clearing a stage's prep notes does not clear its real-time notes. The note stays, with a blank body and its real-time notes intact.
-- **Correct** opens the lines for editing, one box each, with the time each was captured beside it. Enter or leaving a box stores it, Escape puts the line back, and the bin removes it. A line's time does not move when you correct it: an edit fixes what was written down, it does not claim the line was said later.
+- **Correct** opens the lines for editing, one box each, with the time each was captured beside it. Enter or leaving a box stores it, Escape puts the line back, and the bin removes it once you confirm — straight away, since a correction is stored as you make it. A line's time does not move when you correct it: an edit fixes what was written down, it does not claim the line was said later.
 - Real-time notes stay on screen and writable while you are editing the prep note, or while that note is open in an external editor. There is no shared text for the two to race over.
 - Saving the panel never rewrites a capture, and Cancel never rolls one back. Corrections are stored as they are made, the same way captures are, so there is nothing here for a Save to be waiting on.
 

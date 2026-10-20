@@ -116,7 +116,11 @@ export function InviteFields({ rows, defaultStage, onChange }: InviteFieldsProps
                 </label>
                 <button
                   className="button button--quiet"
-                  onClick={() => onChange(rows.filter((_, position) => position !== index))}
+                  onClick={() => {
+                    const name = row.summary.trim() ? `the invite “${row.summary.trim()}”` : 'this invite'
+                    if (!window.confirm(`Remove ${name}?`)) return
+                    onChange(rows.filter((_, position) => position !== index))
+                  }}
                   type="button"
                 >
                   Remove

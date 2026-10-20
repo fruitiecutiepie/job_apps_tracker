@@ -43,7 +43,10 @@ export function CompletedActionFields({ rows, onChange }: CompletedActionFieldsP
               <button
                 aria-label={`Remove completed action ${row.action}`}
                 className="button button--quiet"
-                onClick={() => onChange(rows.filter((candidate) => candidate.key !== row.key))}
+                onClick={() => {
+                  if (!window.confirm(`Remove “${row.action}” from completed actions?`)) return
+                  onChange(rows.filter((candidate) => candidate.key !== row.key))
+                }}
                 type="button"
               >
                 Remove
