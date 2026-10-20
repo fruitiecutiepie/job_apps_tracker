@@ -1,0 +1,64 @@
+#!/usr/bin/env bash
+# Compares the screenshot baselines whenever a commit touches the UI, and writes the new
+# ones for review when they differ.
+#
+# Usage: scripts/check-screenshots   (run by .githooks/pre-commit; SKIP_SCREENSHOTS=1 skips)
+#
+# Updating a baseline is automated; accepting one is not. A baseline exists to catch the
+# change nobody meant to make, so one that rewrote itself whenever a component changed
+# would accept exactly that change. Instead, on a mismatch the new images are written into
+# the working tree and the commit stops: look at them in the diff, `git add` them if they
+# are right, and commit again — which then passes, the baselines matching.
+#
+# Runs only when the commit stages a stylesheet, a component, or the browser test config,
+# and only the test files that take screenshots. Exits 0 when nothing applies, so a commit
+# that touches no UI pays nothing.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+
+[[ ${SKIP_SCREENSHOTS:-} == 1 ]] && exit 0
+
+staged=$(git diff --cached --name-only --diff-filter=ACMRD)
+grep -qE '^(src/.*\.(tsx|css)|vitest\.browser\.config\.ts)$' <<<"$staged" || exit 0
+
+if [[ ! -x node_modules/.bin/vitest ]]; then
+  echo "check-screenshots: no node_modules in this checkout, so screenshots were not compared." >&2
+  exit 0
+fi
+
+files=$(grep -rl --include='*.browser.test.tsx' toMatchScreenshot src)
+[[ -n $files ]] || exit 0
+
+projects=()
+if [[ $(uname) == Darwin ]] && ! docker info >/dev/null 2>&1; then
+  echo "check-screenshots: Docker is not running (colima start), so Firefox's screenshots were not compared." >&2
+  projects=(--project chromium --project webkit)
+fi
+
+echo "check-screenshots: the commit touches the UI, comparing screenshots…" >&2
+# By content rather than by git status: a baseline already modified and rewritten again
+# shows the same status line, and would slip through unreviewed.
+fingerprint() { find src/test/screenshots -type f -name '*.png' -print0 | sort -z | xargs -0 shasum 2>/dev/null; }
+before=$(fingerprint)
+log=$(mktemp)
+# shellcheck disable=SC2086 # one path per word
+NODE_OPTIONS=--no-experimental-webstorage scripts/test-browser ${projects[@]+"${projects[@]}"} $files -u >"$log" 2>&1
+status=$?
+# Failure captures, not baselines.
+rm -rf src/__screenshots__
+after=$(fingerprint)
+
+if ((status != 0)); then
+  grep -E '×|FAIL|Error' "$log" | sed 's/\x1b\[[0-9;]*m//g' | head -20 >&2
+  echo "check-screenshots: the screenshot tests fail for a reason an update cannot fix (full log: $log)." >&2
+  exit 1
+fi
+rm -f "$log"
+
+if [[ $before != "$after" ]]; then
+  echo "check-screenshots: these screenshots changed, and the new ones are written in place:" >&2
+  diff <(echo "$before") <(echo "$after") | sed -n 's/^> [0-9a-f]*  /  /p' >&2
+  echo "Look at them before accepting them. If they are right, git add them and commit again;" >&2
+  echo "if not, the change is one nobody meant to make — git checkout -- src/test/screenshots to undo." >&2
+  exit 1
+fi

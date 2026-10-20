@@ -854,12 +854,6 @@ p {
   box-shadow: var(--shadow);
 }
 
-/* Opened upward by `DisclosureMenu` where there is no room below: the foot of a table or a board. */
-.actions-menu__panel[data-placement='up'] {
-  top: auto;
-  bottom: calc(100% + var(--s2));
-}
-
 .actions-menu__item {
   display: flex;
   align-items: center;
@@ -1308,6 +1302,70 @@ a.actions-menu__item {
 }
 
 /*
+ * The company and role, and the grip a card is picked up by. Only the grip starts a drag,
+ * so the card's text stays selectable — the company name especially, which is what gets
+ * copied into an email or a search.
+ */
+.application-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.application-card__head .application-card__open {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Text in a button is not selectable by default in every engine; this one is a name. */
+.application-card__open {
+  user-select: text;
+}
+
+/*
+ * `touch-action: none` is what lets a finger move the card the moment it moves: the
+ * browser is told up front there is nothing to scroll from here, so it never takes the
+ * gesture as a pan. The callout and selection go with it, a long press on a grip being a
+ * drag and nothing else.
+ */
+.application-card__grip {
+  display: grid;
+  flex: none;
+  width: var(--control);
+  height: var(--control);
+  margin: calc(-1 * var(--s2)) calc(-1 * var(--s2)) 0 0;
+  place-items: center;
+  border-radius: var(--r1);
+  color: var(--ink-3);
+  cursor: grab;
+  touch-action: none;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+.application-card__grip:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.application-card--dragging .application-card__grip,
+.application-card--ghost .application-card__grip {
+  cursor: grabbing;
+}
+
+/* The copy that follows the pointer while the card itself waits, dimmed, in its lane. */
+.application-card--ghost {
+  position: fixed;
+  z-index: 40;
+  top: 0;
+  left: 0;
+  margin: 0;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  rotate: 2deg;
+}
+
+/*
  * A card moved on to a later stage gives a quick pop as it lands — quick, because it is
  * the move made most often and nobody should wait on it. Display only.
  */
@@ -1723,16 +1781,6 @@ tbody th {
 
 tbody tr:hover {
   background: var(--surface-2);
-}
-
-/*
- * The Stage cell lets its End menu out. Every cell clips, so a long word cannot spill into the
- * next column, and that clip cut the menu to the height of the row it opened from — with
- * three options and their hints, most of it was gone. What the cell holds cannot widen it:
- * the select takes `max-width: 100%` and the quick moves `contain: inline-size`.
- */
-td[data-column='stage'] {
-  overflow: visible;
 }
 
 /* A band heading spans the table, so it gets no hover and no row treatment. */
@@ -4179,6 +4227,11 @@ td[data-column='stage'] {
 
 .panel {
   display: grid;
+  /* Stated, because an implied column is `auto` and takes its min-content: the title bar's
+     controls and a pane's tab strip came to some five hundred pixels on a phone, the panel
+     laid itself out that wide, and everything past the window's edge was clipped with
+     nothing to scroll to it. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto minmax(0, 1fr);
   min-width: 0;
   min-height: 0;
@@ -5840,6 +5893,13 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
      inside it hung out over the notes. */
   width: 100%;
   min-width: 0;
+  /* The field itself, which the context bar's rule draws for its own box only: without
+     these the browser's white input sat in a dark sidebar. */
+  padding-right: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--surface);
   font-size: var(--t2);
 }
 
@@ -6582,39 +6642,113 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 
   .dialog {
     width: 100%;
-    max-height: calc(100vh - 1rem);
+    max-height: calc(100dvh - 1rem);
     border-radius: var(--r3) var(--r3) 0 0;
   }
 
   /* The panel takes what the page leaves at every width, so the sheet treatment above
      has nothing left to undo on it. */
 
+  /*
+   * The table is some two thousand pixels wide and a phone shows two columns of it, so
+   * the company stays put while the rest scrolls under it: a row of dates and stages with
+   * nothing saying whose they are is not a row anyone can read. Opaque, because the cells
+   * passing behind it are otherwise read through it. A collapsed border does not travel
+   * with a sticky cell, so the edge is drawn as a shadow.
+   */
+  .table-scroll thead th:first-child,
+  .table-scroll tbody th[scope="row"] {
+    position: sticky;
+    z-index: 1;
+    left: 0;
+    background: var(--surface);
+    box-shadow: inset -1px 0 0 var(--line);
+  }
+
+  .table-scroll thead th:first-child,
+  .table-scroll tbody tr:hover > th[scope="row"],
+  .table-scroll .table-row--archived > th[scope="row"] {
+    background: var(--surface-2);
+  }
+
+  .table-scroll .table-row--archived > th[scope="row"] {
+    box-shadow: inset 2px 0 0 var(--ink-3), inset -1px 0 0 var(--line);
+  }
+
+  /* A band's heading spans every column, so scrolled sideways it left a blank row where
+     the rule for the rows below it had been. */
+  .table-view__band th {
+    /* A cell clips by default here, and a clipping box is what its contents would stick
+       to instead of the scroller. */
+    overflow: visible;
+  }
+
+  .table-view__band-label {
+    position: sticky;
+    left: var(--s3);
+    display: inline-block;
+  }
 }
 
 @media (max-width: 520px) {
-  .context-bar {
-    align-items: stretch;
-    flex-direction: column;
+  /* The mark alone: the name beside it costs a third of a phone's width, and the row also
+     has to hold the primary button. The link keeps its accessible name. */
+  .brand > span:not(.brand__mark) {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+  }
+
+  /* Every view on screen at once rather than the last of them behind a scroll: the words
+     are what name a view, so the icons are what give way. */
+  .topbar__places {
+    gap: var(--s2);
+  }
+
+  .view-nav__item svg {
+    display: none;
+  }
+
+  .view-nav {
+    gap: 0;
+  }
+
+  .view-nav__item,
+  .topbar__notes {
+    padding: 0 var(--s2);
+  }
+
+  /* The title and the count share a line, the search takes the next, and the filters sit
+     two to a row. One to a row they were seven rows deep — more than half a phone's
+     screen before the first application. */
+  .context-bar__count {
+    margin-left: auto;
+  }
+
+  .search-field {
+    flex: 1 1 100%;
   }
 
   .context-bar__filters {
-    flex-direction: column;
-    align-items: stretch;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .search-field,
   .context-bar select {
-    flex: none;
-    min-width: 0;
-    max-width: none;
     width: 100%;
+    min-width: 0;
   }
 
-  /* The source select is stretched by the rule above, so inside its pair it has to give
-     the copy button back the width it needs rather than pushing it out of the row. */
-  .context-bar__source select {
-    flex: 1 1 auto;
-    width: auto;
+  /* The pair dissolves into the grid, so the source select lines up with the other five
+     and Copy roles shares the last row with Clear filters. */
+  .context-bar__source {
+    display: contents;
+  }
+
+  .view-surface:not(.view-surface--panel) {
+    padding: var(--s3);
   }
 
   .view-toolbar,
@@ -6736,6 +6870,47 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .find-widget__input {
     flex: 1;
     width: auto;
+    /* An input's own floor is about twenty characters, which with the count and the three
+       buttons beside it ran the close button off a phone. */
+    min-width: 0;
+  }
+
+  .find-widget__count {
+    min-width: 0;
+  }
+}
+
+/*
+ * A phone. The title bar's controls alone fill the row, which left the name and the stage
+ * beside it nothing at all — the name gone and the stage pill a bare chevron under the
+ * next button. They take a row of their own, above the controls.
+ */
+@container panel (max-width: 520px) {
+  .panel__titlebar {
+    gap: var(--s2);
+    padding: var(--s2) var(--s4);
+  }
+
+  .panel__subject-group {
+    order: -1;
+    flex: 1 0 100%;
+  }
+
+  /*
+   * The picker and the find bar sit at the top of the notes, which on a phone is halfway
+   * down the screen — where the keyboard rises the moment either is typed into. Placed
+   * against the panel instead of the notes column, so they open over the title bar.
+   */
+  .panel {
+    position: relative;
+  }
+
+  .panel__main {
+    position: static;
+  }
+
+  .quick-open__list {
+    max-height: min(20rem, 45dvh);
   }
 }
 

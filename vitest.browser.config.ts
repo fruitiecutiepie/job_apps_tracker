@@ -75,6 +75,22 @@ export default defineConfig({
        * that was merely slow to start as a browser that could not be reached.
        */
       connectTimeout: 180_000,
+      /*
+       * Screenshot baselines are committed, so a layout change shows up as a failing test
+       * with a diff rather than going unnoticed — the way the website locks in its designs.
+       * Kept per browser and platform, since each draws text its own way: Chromium and WebKit
+       * on macOS, Firefox on Linux (see scripts/test-browser). A real change moves far more
+       * than 0.1% of a picture; antialiasing between runs does not. Update them on purpose
+       * with `pnpm test:browser -u`, then look at the new images before committing them.
+       */
+      expect: {
+        toMatchScreenshot: {
+          comparatorName: 'pixelmatch',
+          comparatorOptions: { allowedMismatchedPixelRatio: 0.001 },
+          resolveScreenshotPath: ({ root, testFileName, arg, browserName, platform, ext }) =>
+            `${root}/src/test/screenshots/${testFileName}/${arg}-${browserName}-${platform}${ext}`,
+        },
+      },
     },
     // One file at a time. A browser costs more than a jsdom environment to stand up, and
     // wall clock on this machine is a property of the machine rather than of the code.

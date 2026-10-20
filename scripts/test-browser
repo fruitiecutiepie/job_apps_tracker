@@ -1,0 +1,93 @@
+#!/usr/bin/env bash
+# Runs the browser suite: Chromium and WebKit here, and Firefox wherever it can launch.
+#
+# Usage: pnpm test:browser [vitest args…]   e.g. pnpm test:browser src/panelLayout.browser.test.tsx
+#
+# On macOS, Firefox runs in Playwright's Linux image instead of natively. No Playwright Firefox
+# build launches on macOS 27 — 1538, which the lockfile's Playwright pins, crashes in its
+# compositor, and the newer builds will not open a profile — while the same build runs in Linux.
+# Docker comes from Colima (`colima start`). TEST_FIREFOX=native runs it here anyway, which is
+# how to find out whether a Playwright upgrade has fixed it. Anywhere else, all three run here.
+#
+# The container's dependencies are installed into a Docker volume named for the lockfile, so
+# every worktree with the same lockfile shares one install; the pnpm store is a volume of its
+# own, so a lockfile change reinstalls from it rather than downloading.
+set -uo pipefail
+cd "$(dirname "$0")/.."
+# Writable from the container, so Firefox's screenshot baselines land in the checkout.
+mkdir -p src/test/screenshots
+
+config=vitest.browser.config.ts
+args=()
+projects=()
+while (($#)); do
+  case "$1" in
+    --project) projects+=("$2"); shift 2 ;;
+    --project=*) projects+=("${1#--project=}"); shift ;;
+    *) args+=("$1"); shift ;;
+  esac
+done
+((${#projects[@]})) || projects=(chromium firefox webkit)
+
+native=()
+docker_firefox=false
+for project in "${projects[@]}"; do
+  if [[ $project == firefox && $(uname) == Darwin && ${TEST_FIREFOX:-} != native ]]; then
+    if docker info >/dev/null 2>&1; then
+      docker_firefox=true
+      continue
+    fi
+    echo "test-browser: Docker is not running (colima start), so Firefox runs natively, where it may not launch." >&2
+  fi
+  native+=(--project "$project")
+done
+
+status=0
+
+if ((${#native[@]})); then
+  # The binary itself rather than `pnpm exec`, which could not find vitest in a worktree
+  # whose node_modules is a symlink to the main checkout's.
+  node_modules/.bin/vitest run -c "$config" "${native[@]}" ${args[@]+"${args[@]}"} || status=1
+fi
+
+if $docker_firefox; then
+  version=$(node -p "require('playwright/package.json').version")
+  image="mcr.microsoft.com/playwright:v${version}-noble"
+  key=$(cat pnpm-lock.yaml <(echo "$image") | shasum -a 256 | cut -c1-12)
+  modules="job-apps-tracker-browser-modules-$key"
+  label=job-apps-tracker.browser-modules
+
+  # Volumes for an older lockfile are dead weight. One still mounted by another worktree's run
+  # refuses to go, which is the right answer.
+  for stale in $(docker volume ls -q --filter "label=$label"); do
+    [[ $stale == "$modules" ]] || docker volume rm "$stale" >/dev/null 2>&1
+  done
+  docker volume inspect "$modules" >/dev/null 2>&1 || docker volume create --label "$label" "$modules" >/dev/null
+
+  echo "test-browser: Firefox in $image"
+  tty=()
+  [[ -t 1 ]] && tty=(-e FORCE_COLOR=1)
+  docker run --rm --ipc=host ${tty[@]+"${tty[@]}"} \
+    -v "$PWD":/src:ro \
+    -v "$PWD/src/test/screenshots":/work/src/test/screenshots \
+    -v "$modules":/work/node_modules \
+    -v job-apps-tracker-browser-store:/pnpm-store \
+    -e VITEST_NO_LOCK=1 -e VITEST_NO_PREFLIGHT=1 \
+    "$image" bash -c '
+      set -e
+      cd /src
+      tar --exclude=./node_modules --exclude=./data --exclude=./dist --exclude=./src/test/screenshots -cf - . | tar -xf - -C /work
+      cd /work
+      corepack enable
+      # CI, so pnpm rebuilds the shared install when another worktree left it in a state it
+      # wants to replace, instead of asking a terminal there is none of and stopping. Quiet
+      # unless it fails, when the log is the only way to see why.
+      if ! CI=true corepack pnpm install --frozen-lockfile --store-dir /pnpm-store >/tmp/install.log 2>&1; then
+        cat /tmp/install.log >&2
+        exit 1
+      fi
+      corepack pnpm exec vitest run -c "$0" --project firefox "$@"
+    ' "$config" ${args[@]+"${args[@]}"} || status=1
+fi
+
+exit $status
