@@ -1702,9 +1702,9 @@ describe('job applications tracker', () => {
     await openCapture(user, dialog, 'Halcyon Maps · Round 2')
     await user.click(within(dialog).getByRole('button', { name: 'Correct the real-time notes in Halcyon Maps · Round 2' }))
 
-    const rows = within(dialog).getByRole('list', { name: 'Captured lines in Halcyon Maps · Round 2' })
+    const rows = within(dialog).getByRole('list', { name: 'Real-time notes in Halcyon Maps · Round 2, open for correcting' })
     const box = within(rows).getByLabelText(
-      `Captured at ${formatTimeOfDay(first.at)} in Halcyon Maps · Round 2`,
+      `Real-time note from ${formatTimeOfDay(first.at)} in Halcyon Maps · Round 2`,
     )
     expect(box).toHaveValue('Team is 40 engineers across four squads')
 
@@ -1743,7 +1743,7 @@ describe('job applications tracker', () => {
     await openCapture(user, dialog, 'Halcyon Maps · Round 2')
     await user.click(within(dialog).getByRole('button', { name: 'Correct the real-time notes in Halcyon Maps · Round 2' }))
     await user.click(within(dialog).getByRole('button', {
-      name: `Remove the line captured at ${formatTimeOfDay(heard[1].at)} in Halcyon Maps · Round 2`,
+      name: `Remove the real-time note from ${formatTimeOfDay(heard[1].at)} in Halcyon Maps · Round 2`,
     }))
 
     expect(screen.getByRole('status')).toHaveTextContent('Note removed.')
