@@ -196,6 +196,15 @@ describe.runIf(server.browser === 'chromium')('dragging a card with a finger, on
     expect(window.scrollY).toBeLessThan(150)
   })
 
+  it('opens a card from a tap that drifts a few pixels', async () => {
+    renderBoard()
+    const open = centre(card('Northstar Labs').querySelector('.application-card__open')!)
+
+    await touch([open, { x: open.x + 8, y: open.y }], { steps: 2 })
+
+    expect(onOpen).toHaveBeenCalledWith(northstar.id)
+  })
+
   it('still opens a card that is tapped', async () => {
     renderBoard()
     const open = centre(card('Northstar Labs').querySelector('.application-card__open')!)

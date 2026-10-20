@@ -411,6 +411,10 @@ export function usePointerDrag<Target>({
 
       window.clearTimeout(draggedReset.current)
       dragged.current = false
+      // A new press means the escaped one is over, whether or not its release ever reached
+      // the window — let go outside it, it did not. Left set, it took the next mouse
+      // release for its own (a mouse is always pointer 1) and that drag never dropped.
+      escaped.current = null
       const element = event.currentTarget
       const hold = event.pointerType === 'mouse' || handle
         ? 0

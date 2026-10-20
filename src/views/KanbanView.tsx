@@ -106,7 +106,7 @@ export function KanbanView({
   });
   const dropTarget = drag.target ? laneKey(drag.target) : null;
   /** Where the last press on a card's name went down, to tell a click from a selection. */
-  const pressedAt = useRef<{ x: number; y: number } | null>(null);
+  const pressedAt = useRef<{ x: number; y: number; pointerType: string } | null>(null);
 
   return (
     <section className="kanban" aria-labelledby="kanban-heading">
@@ -199,7 +199,11 @@ export function KanbanView({
                                 type="button"
                                 className="application-card__open"
                                 onPointerDown={(event) => {
-                                  pressedAt.current = { x: event.clientX, y: event.clientY };
+                                  pressedAt.current = {
+                                    x: event.clientX,
+                                    y: event.clientY,
+                                    pointerType: event.pointerType,
+                                  };
                                 }}
                                 onClick={(event) => {
                                   // A drag across the name to select it ends in a click on
@@ -208,11 +212,15 @@ export function KanbanView({
                                   // by whether text is selected, which would also swallow
                                   // the ordinary click straight after a selection. A click
                                   // from the keyboard has no pointer behind it, and opens.
+                                  // Nor does a finger's: touch selects by a long press, never
+                                  // by a drag, and a tap drifts several pixels and is still
+                                  // a tap — guarded, a slightly loose tap did nothing.
                                   const from = pressedAt.current;
                                   pressedAt.current = null;
                                   if (
                                     event.detail > 0 &&
                                     from &&
+                                    from.pointerType !== "touch" &&
                                     Math.hypot(event.clientX - from.x, event.clientY - from.y) > SELECT_PX
                                   )
                                     return;

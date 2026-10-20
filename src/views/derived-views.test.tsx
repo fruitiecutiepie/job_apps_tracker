@@ -1602,6 +1602,49 @@ describe('KanbanView', () => {
     expect(onOpen).toHaveBeenCalledWith(record.id)
   })
 
+  it('opens a card from a tap that drifts, but not from a mouse drag across its name', () => {
+    const onOpen = vi.fn()
+    const record = application('Drift Co')
+    render(<KanbanView applications={[record]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
+    const open = screen.getByRole('button', { name: /^Open Drift Co/ })
+
+    // A finger lands 8px from where it went down, and that is still a tap.
+    fireEvent.pointerDown(open, { pointerId: 2, pointerType: 'touch', clientX: 0, clientY: 0 })
+    fireEvent.click(open, { detail: 1, clientX: 8, clientY: 0 })
+    expect(onOpen).toHaveBeenCalledTimes(1)
+
+    // A mouse that travels 8px across the name is selecting it.
+    fireEvent.pointerDown(open, { pointerId: 1, pointerType: 'mouse', button: 0, clientX: 0, clientY: 0 })
+    fireEvent.click(open, { detail: 1, clientX: 8, clientY: 0 })
+    expect(onOpen).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the next drag after an Escape whose release never arrived', () => {
+    const onMove = vi.fn()
+    const record = application('Escaped Co')
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
+    const grip = screen.getByText('Escaped Co').closest('article')!.querySelector('.application-card__grip')!
+    const destination = screen.getByRole('heading', { level: 3, name: 'Offer' }).closest('section')!
+    const found = document.elementsFromPoint
+    document.elementsFromPoint = () => [destination]
+    const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+    try {
+      // Escaped, and the mouse let go outside the window: no release arrives.
+      fireEvent.pointerDown(grip, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.keyDown(window, { key: 'Escape' })
+
+      // The next drag is its own, and lands.
+      fireEvent.pointerDown(grip, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
+      expect(onMove).toHaveBeenCalledWith(record.id, { stage: 'offer', outcome: 'active' })
+      expect(document.querySelector('.application-card--ghost')).toBeNull()
+    } finally {
+      document.elementsFromPoint = found
+    }
+  })
+
   it('picks a card up by its grip only, and puts it back on Escape', () => {
     const onMove = vi.fn()
     const record = application('Grip Co')
