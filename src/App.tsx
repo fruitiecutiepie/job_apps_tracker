@@ -274,7 +274,7 @@ interface ApplicationEditorProps {
   ) => Promise<void>
 }
 
-function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpenStageNotes, onSave }: ApplicationEditorProps) {
+export function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpenStageNotes, onSave }: ApplicationEditorProps) {
   const isEditing = application !== null
   const dialogRef = useRef<HTMLElement>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)

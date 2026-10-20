@@ -9,6 +9,7 @@ import { describe, expect, it } from 'vitest'
 import { render } from '@testing-library/react'
 import { page } from '@vitest/browser/context'
 
+import { ApplicationEditor } from './App'
 import { CorrespondenceFields } from './CorrespondenceFields'
 import { createDemoDocument } from './domain/demo'
 import { correspondenceRowsFor, type CorrespondenceRow } from './correspondence'
@@ -78,5 +79,31 @@ describe('the dialog that opens at the messages', () => {
     expect(backdrop.scrollTop).toBe(0)
     expect(Math.round(dialog.getBoundingClientRect().left)).toBeGreaterThanOrEqual(0)
     expect(Math.round(dialog.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0)
+  })
+
+  // The editor's two file inputs — the invite file and the attachments — are `.sr-only`
+  // inside a `.field`, and `position: absolute`, so any width that reaches them resolves
+  // against the fixed backdrop rather than the dialog. Asserted on the backdrop's own
+  // scroll and on every element, the hidden ones included, so it holds whatever widens one.
+  it('gives the backdrop nothing to scroll sideways in the full editor', async () => {
+    await page.viewport(1024, 700)
+    render(
+      <ApplicationEditor
+        application={atlas}
+        onClose={() => {}}
+        onSave={async () => {}}
+      />,
+    )
+
+    const backdrop = document.querySelector<HTMLElement>('.dialog-backdrop')!
+    const dialog = document.querySelector<HTMLElement>('.dialog')!
+    expect(document.querySelectorAll('.dialog input[type="file"]')).toHaveLength(2)
+
+    expect(backdrop.scrollWidth).toBeLessThanOrEqual(backdrop.clientWidth)
+    const inner = dialog.clientWidth
+    const overflowing = [...dialog.querySelectorAll<HTMLElement>('*')]
+      .filter((node) => node.getBoundingClientRect().width > inner)
+      .map((node) => `${node.tagName}.${node.className}`)
+    expect(overflowing).toEqual([])
   })
 })
