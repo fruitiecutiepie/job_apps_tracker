@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { Application } from '../domain'
 import { DEFAULT_DEMO_REFERENCE } from '../domain/demo'
 import { DATA_VERSION } from '../domain/migrate'
 import { loadTrackerDocument } from '../domain/storage'
@@ -16,6 +17,10 @@ import {
   testEditorSessionCount,
   writeTestEditorNote,
 } from './noteEditStore'
+
+function actionsOf(application: Application): string[] {
+  return application.next_actions.map((entry) => entry.action)
+}
 
 /**
  * The lanes the demo board draws: a running lane for every stage, and an ending lane for
@@ -284,7 +289,7 @@ describe('job applications tracker', () => {
     await user.type(within(dialog).getByLabelText('Role'), 'Design systems engineer')
     await user.type(within(dialog).getByLabelText('Source'), 'LinkedIn')
     await user.selectOptions(within(dialog).getByLabelText('Stage'), 'applied')
-    await user.type(within(dialog).getByLabelText('Next action'), 'Send portfolio follow-up')
+    await user.type(within(dialog).getByLabelText('Next action 1'), 'Send portfolio follow-up')
     await user.click(within(dialog).getByRole('button', { name: /save|add application/i }))
 
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -305,7 +310,7 @@ describe('job applications tracker', () => {
           role: 'Design systems engineer',
           source: 'LinkedIn',
           stage: 'applied',
-          next_action: 'Send portfolio follow-up',
+          next_actions: [expect.objectContaining({ action: 'Send portfolio follow-up', at: null })],
         }),
       ]),
     )
@@ -628,7 +633,7 @@ describe('job applications tracker', () => {
     const before = readSavedDocument().applications.find(
       (application) => application.company === 'Saffron Systems',
     )!
-    expect(before.next_action).toBe('Prepare questions for onboarding')
+    expect(actionsOf(before)).toEqual(['Prepare questions for onboarding'])
 
     await user.click(
       screen.getByRole('button', {
@@ -637,8 +642,7 @@ describe('job applications tracker', () => {
     )
 
     const after = readSavedDocument().applications.find((item) => item.id === before.id)!
-    expect(after.next_action).toBeNull()
-    expect(after.next_action_at).toBeNull()
+    expect(after.next_actions).toEqual([])
     // A record of its own, not a line appended to the prose.
     expect(after.notes).toBe(before.notes)
     expect(after.completed_actions.map((entry) => entry.action)).toEqual([
@@ -663,6 +667,68 @@ describe('job applications tracker', () => {
     expect(readSavedDocument().applications).toHaveLength(19)
   })
 
+  it('deletes a next action from the board without recording it as done', async () => {
+    seedFullDemo()
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Saffron Systems',
+    )!
+
+    await user.click(
+      screen.getByRole('button', {
+        name: 'Delete next action for Saffron Systems: Prepare questions for onboarding',
+      }),
+    )
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.next_actions).toEqual([])
+    // Dropped, not carried out: nothing joins the record of what was done.
+    expect(after.completed_actions).toEqual(before.completed_actions)
+    expect(after.stage_history).toEqual(before.stage_history)
+    expect(after.deadline_at).toBe(before.deadline_at)
+    // The notice repeats the task, so a slip can be retyped rather than lost.
+    expect(
+      await screen.findByText(
+        'Next action deleted for Saffron Systems: Prepare questions for onboarding',
+      ),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: /^Delete next action for Saffron Systems/ }),
+    ).not.toBeInTheDocument()
+  })
+
+  it('gives each of several tasks its own Done and Delete on the board', async () => {
+    seedFullDemo()
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Atlas Thread',
+    )!
+    // Soonest dated first, then the undated one.
+    expect(actionsOf(before)).toEqual([
+      'Prepare examples of system governance',
+      'Send the case study deck',
+    ])
+
+    await user.click(
+      screen.getByRole('button', { name: 'Mark done for Atlas Thread: Send the case study deck' }),
+    )
+
+    // Only the one pressed goes; the other keeps its date and its own controls.
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.next_actions).toEqual([before.next_actions[0]])
+    expect(after.completed_actions.at(-1)!.action).toBe('Send the case study deck')
+    expect(
+      screen.getByRole('button', {
+        name: 'Delete next action for Atlas Thread: Prepare examples of system governance',
+      }),
+    ).toBeInTheDocument()
+    expect(
+      screen.queryByRole('button', { name: 'Mark done for Atlas Thread: Send the case study deck' }),
+    ).not.toBeInTheDocument()
+  })
+
   it('clears an outstanding next action when the application is rejected', async () => {
     // Reads the whole corpus rather than a member of it, so it takes the demo entire.
     seedFullDemo()
@@ -671,7 +737,7 @@ describe('job applications tracker', () => {
     const before = readSavedDocument().applications.find(
       (application) => application.company === 'Marble & Finch',
     )!
-    expect(before.next_action).toBe('Follow up on the application')
+    expect(actionsOf(before)).toEqual(['Follow up on the application'])
 
     await user.click(screen.getByRole('button', { name: 'End Marble & Finch' }))
     await user.click(screen.getByRole('button', { name: 'Move Marble & Finch to Auto-rejected' }))
@@ -679,8 +745,7 @@ describe('job applications tracker', () => {
     const after = readSavedDocument().applications.find((item) => item.id === before.id)!
     expect(after.stage).toBe('applied')
     expect(after.outcome).toBe('rejected')
-    expect(after.next_action).toBeNull()
-    expect(after.next_action_at).toBeNull()
+    expect(after.next_actions).toEqual([])
     // Abandoned, not carried out, so it leaves no record of having been done.
     expect(after.completed_actions).toEqual(before.completed_actions)
     // A closing date is not the task, and the move is still one stage change.
@@ -693,8 +758,8 @@ describe('job applications tracker', () => {
     unmount()
     await renderLoadedApp()
     expect(
-      readSavedDocument().applications.find((item) => item.id === before.id)!.next_action,
-    ).toBeNull()
+      readSavedDocument().applications.find((item) => item.id === before.id)!.next_actions,
+    ).toEqual([])
   })
 
   it('keeps a next action when the move is to a live stage, not a rejection', async () => {
@@ -712,8 +777,7 @@ describe('job applications tracker', () => {
 
     const after = readSavedDocument().applications.find((item) => item.id === before.id)!
     expect(after.stage).toBe('recruiter_messaged')
-    expect(after.next_action).toBe('Follow up on the application')
-    expect(after.next_action_at).toBe(before.next_action_at)
+    expect(after.next_actions).toEqual(before.next_actions)
   })
 
   it('marks an action done from the editor and lists it apart from the notes', async () => {
@@ -734,21 +798,25 @@ describe('job applications tracker', () => {
     }
     expect(within(dialog).getByLabelText('Notes')).toHaveValue(before.notes)
 
-    const done = within(dialog).getByRole('button', { name: 'Mark next action done' })
-    // One row: the action, its date, then Done — the control follows the fields it acts on.
-    const row = done.closest('.next-action-field') as HTMLElement | null
+    const done = within(dialog).getByRole('button', { name: 'Mark next action 1 done' })
+    // One row per task: the task, its date, then Done, then Delete — the controls follow
+    // the fields they act on.
+    const row = done.closest('li') as HTMLElement | null
     expect(row).not.toBeNull()
-    const action = within(row!).getByLabelText('Next action')
-    const date = within(row!).getByLabelText('Next action date')
+    const action = within(row!).getByLabelText('Next action 1')
+    const date = within(row!).getByLabelText('Date for next action 1')
+    const remove = within(row!).getByRole('button', { name: 'Delete next action 1' })
+    expect(action).toHaveValue('Prepare examples of system governance')
     expect(action.compareDocumentPosition(date) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
     expect(date.compareDocumentPosition(done) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(done.compareDocumentPosition(remove) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
 
     await user.click(done)
 
-    // Draft only until the dialog is saved: the field clears, the record does not exist yet.
-    expect(within(dialog).getByLabelText('Next action')).toHaveValue('')
-    // Nothing left to resolve, so the control cannot record an empty entry.
-    expect(done).toBeDisabled()
+    // Draft only until the dialog is saved: the row goes, the record does not exist yet, and
+    // the other task moves up into its place.
+    expect(within(dialog).getByLabelText('Next action 1')).toHaveValue('Send the case study deck')
+    expect(within(dialog).queryByLabelText('Next action 2')).not.toBeInTheDocument()
     expect(
       readSavedDocument().applications.find((item) => item.id === before.id)!.completed_actions,
     ).toHaveLength(before.completed_actions.length)
@@ -756,12 +824,43 @@ describe('job applications tracker', () => {
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
 
     const after = readSavedDocument().applications.find((item) => item.id === before.id)!
-    expect(after.next_action).toBeNull()
+    expect(after.next_actions).toEqual([before.next_actions[1]])
     expect(after.notes).toBe(before.notes)
     expect(after.completed_actions.map((entry) => entry.action)).toEqual([
       ...before.completed_actions.map((entry) => entry.action),
       'Prepare examples of system governance',
     ])
+  })
+
+  it('deletes an action from the editor without recording it as done', async () => {
+    seedFullDemo()
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.company === 'Atlas Thread',
+    )!
+
+    await user.click(screen.getByRole('button', { name: /^Open Atlas Thread/ }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    await user.click(within(dialog).getByRole('button', { name: 'Delete next action 1' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Delete next action 1' }))
+
+    // Removing the last task leaves one blank row to type into rather than no field at all,
+    // and its controls are disabled with nothing to act on.
+    expect(within(dialog).getByLabelText('Next action 1')).toHaveValue('')
+    expect(within(dialog).getByLabelText('Date for next action 1')).toHaveValue('')
+    expect(within(dialog).getByRole('button', { name: 'Delete next action 1' })).toBeDisabled()
+    // Draft only, like Done: nothing is written until the dialog is saved.
+    expect(
+      readSavedDocument().applications.find((item) => item.id === before.id)!.next_actions,
+    ).toEqual(before.next_actions)
+
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.next_actions).toEqual([])
+    expect(after.completed_actions).toEqual(before.completed_actions)
+    expect(after.deadline_at).toBe(before.deadline_at)
   })
 
   it('removes a completed action recorded by mistake', async () => {
@@ -786,7 +885,7 @@ describe('job applications tracker', () => {
       before.completed_actions.slice(1).map((entry) => entry.id),
     )
     // Undoing the record does not put the task back on the plan.
-    expect(after.next_action).toBe(before.next_action)
+    expect(after.next_actions).toEqual(before.next_actions)
   })
 
   it('reaches prep notes from the header rather than from the view strip', async () => {
@@ -3598,11 +3697,35 @@ describe('job applications tracker', () => {
     const before = JSON.stringify(readSavedDocument())
 
     const input = document.querySelector<HTMLInputElement>('input[type="file"]')!
-    await user.upload(input, jsonFile('{"schema_version":5,"applications":[]}'))
+    await user.upload(input, jsonFile('{"schema_version":6,"applications":[]}'))
 
     expect(await screen.findByRole('status')).toHaveTextContent(/Import failed:.*schema/i)
     expect(JSON.stringify(readSavedDocument())).toBe(before)
     expect(confirm).not.toHaveBeenCalled()
+  })
+
+  it('adds several next actions from the editor, stored soonest dated first', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+
+    await user.click(screen.getByRole('button', { name: 'Add application' }))
+    const dialog = screen.getByRole('dialog', { name: 'Add application' })
+    await user.type(within(dialog).getByLabelText('Company'), 'Quarry Rail')
+    await user.type(within(dialog).getByLabelText('Next action 1'), 'Read the annual report')
+    await user.click(within(dialog).getByRole('button', { name: 'Add next action' }))
+    await user.type(within(dialog).getByLabelText('Next action 2'), 'Email the recruiter')
+    fireEvent.change(within(dialog).getByLabelText('Date for next action 2'), {
+      target: { value: '2026-08-20T09:00' },
+    })
+    // A row added and left blank is not a task, and is not stored as one.
+    await user.click(within(dialog).getByRole('button', { name: 'Add next action' }))
+    await user.click(within(dialog).getByRole('button', { name: 'Add application' }))
+
+    const saved = readSavedDocument().applications.find(({ company }) => company === 'Quarry Rail')!
+    expect(saved.next_actions.map(({ action, at }) => ({ action, at }))).toEqual([
+      { action: 'Email the recruiter', at: new Date('2026-08-20T09:00').toISOString() },
+      { action: 'Read the annual report', at: null },
+    ])
   })
 
   it('exposes form labels and prevents an orphaned next-action date', async () => {
@@ -3615,12 +3738,12 @@ describe('job applications tracker', () => {
     const dialog = screen.getByRole('dialog', { name: 'Add application' })
     expect(within(dialog).getByLabelText('Company')).toHaveFocus()
     expect(within(dialog).getByLabelText('Company')).toBeRequired()
-    expect(within(dialog).getByLabelText('Next action date')).toBeDisabled()
+    expect(within(dialog).getByLabelText('Date for next action 1')).toBeDisabled()
 
-    await user.type(within(dialog).getByLabelText('Next action'), 'Follow up with recruiter')
-    expect(within(dialog).getByLabelText('Next action date')).toBeEnabled()
-    await user.clear(within(dialog).getByLabelText('Next action'))
-    expect(within(dialog).getByLabelText('Next action date')).toBeDisabled()
+    await user.type(within(dialog).getByLabelText('Next action 1'), 'Follow up with recruiter')
+    expect(within(dialog).getByLabelText('Date for next action 1')).toBeEnabled()
+    await user.clear(within(dialog).getByLabelText('Next action 1'))
+    expect(within(dialog).getByLabelText('Date for next action 1')).toBeDisabled()
 
     await user.click(within(dialog).getByRole('button', { name: 'Cancel' }))
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument()
@@ -4193,8 +4316,7 @@ describe('job applications tracker', () => {
 
     const saved = readSavedDocument().applications.find(({ company }) => company === 'Quarry Rail')
     expect(saved).toMatchObject({
-      next_action: null,
-      next_action_at: null,
+      next_actions: [],
       deadline_at: new Date('2026-08-22T17:00').toISOString(),
     })
     expect(readSavedDocument().indexes.by_deadline_at).toContain(saved!.id)

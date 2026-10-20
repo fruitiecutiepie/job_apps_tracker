@@ -14,8 +14,6 @@ function adding(company: string) {
       url: '',
       source: '',
       stage: 'applied',
-      next_action: '',
-      next_action_at: null,
       deadline_at: null,
       notes: '',
     })

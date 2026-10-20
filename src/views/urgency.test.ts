@@ -12,6 +12,7 @@ import {
   rankByUrgency,
   urgencyFor,
 } from './urgency'
+import { task } from '../test/nextActions'
 
 const today = new Date(2026, 7, 14, 12)
 
@@ -35,8 +36,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
     // Moved recently, so fixtures start with no silence pressure.
     stage_history: [{ stage, outcome: 'active', at: at(-1) }],
     archived_at: null,
-    next_action: null,
-    next_action_at: null,
+    next_actions: [],
     deadline_at: null,
     notes: null,
     completed_actions: [],
@@ -164,35 +164,54 @@ describe('deadline pressure', () => {
 
 describe('next-action pressure', () => {
   it('treats overdue and same-day actions as equally due', () => {
-    const overdue = score({ next_action: 'Follow up', next_action_at: at(-2) })
-    const dueToday = score({ next_action: 'Follow up', next_action_at: at(0, 1) })
+    const overdue = score({ ...task('Follow up', at(-2)) })
+    const dueToday = score(task('Follow up', at(0, 1)))
 
     expect(overdue).toBe(dueToday)
-    expect(reason({ next_action: 'Follow up', next_action_at: at(-2) })).toBe('Action overdue 2 days')
-    expect(reason({ next_action: 'Follow up', next_action_at: at(0, 1) })).toBe('Action due today')
+    expect(reason({ ...task('Follow up', at(-2)) })).toBe('Action overdue 2 days')
+    expect(reason(task('Follow up', at(0, 1)))).toBe('Action due today')
   })
 
   it('decays over a shorter horizon than a deadline', () => {
     const none = score({})
-    expect(score({ next_action: 'Follow up', next_action_at: at(ACTION_HORIZON_DAYS) })).toBe(none)
-    expect(score({ next_action: 'Follow up', next_action_at: at(3) })).toBeGreaterThan(none)
+    expect(score({ ...task('Follow up', at(ACTION_HORIZON_DAYS)) })).toBe(none)
+    expect(score({ ...task('Follow up', at(3)) })).toBeGreaterThan(none)
 
     // Same number of days out, the external deadline outranks a self-set action date.
     expect(score({ deadline_at: at(5) })).toBeGreaterThan(
-      score({ next_action: 'Follow up', next_action_at: at(5) }),
+      score({ ...task('Follow up', at(5)) }),
     )
   })
 
   it('gives an undated action a small nudge', () => {
-    expect(reason({ next_action: 'Follow up' })).toBe('Action not scheduled')
-    expect(score({ next_action: 'Follow up' })).toBeGreaterThan(score({}))
-    expect(score({ next_action: 'Follow up' })).toBeLessThan(
-      score({ next_action: 'Follow up', next_action_at: at(1) }),
+    expect(reason({ ...task('Follow up') })).toBe('Action not scheduled')
+    expect(score({ ...task('Follow up') })).toBeGreaterThan(score({}))
+    expect(score({ ...task('Follow up') })).toBeLessThan(
+      score({ ...task('Follow up', at(1)) }),
     )
   })
 
-  it('ignores a blank action', () => {
-    expect(score({ next_action: '   ' })).toBe(score({}))
+  it('reads the soonest dated of several tasks', () => {
+    const several = {
+      next_actions: [
+        { id: 'soon', action: 'Chase the recruiter', at: at(-1) },
+        { id: 'later', action: 'Send the deck', at: at(5) },
+      ],
+    }
+
+    expect(reason(several)).toBe('Action overdue 1 day')
+    expect(score(several)).toBe(score(task('Chase the recruiter', at(-1))))
+  })
+
+  it('lets an undated task push where the dated one is too far out to', () => {
+    const far = {
+      next_actions: [
+        { id: 'far', action: 'Renew the visa', at: at(ACTION_HORIZON_DAYS + 5) },
+        { id: 'undated', action: 'Read the annual report', at: null },
+      ],
+    }
+
+    expect(reason(far)).toBe('Action not scheduled')
   })
 })
 
@@ -233,7 +252,7 @@ describe('invite pressure', () => {
 
     expect(inviteScore).toBeGreaterThan(score({ deadline_at: at(day) }))
     expect(inviteScore).toBeGreaterThan(
-      score({ next_action: 'Prepare', next_action_at: at(day) }),
+      score({ ...task('Prepare', at(day)) }),
     )
     expect(inviteScore).toBeGreaterThan(score(movedDaysAgo(60)))
   })
@@ -243,7 +262,7 @@ describe('invite pressure', () => {
   })
 
   it('still loses to an overdue action, which is already late', () => {
-    expect(score({ next_action: 'Chase', next_action_at: at(-1) })).toBeGreaterThan(
+    expect(score({ ...task('Chase', at(-1)) })).toBeGreaterThan(
       score({ stage_events: [invite(2)] }),
     )
   })
@@ -269,11 +288,11 @@ describe('staleness pressure', () => {
     expect(maxStale).toBeLessThan(score({ deadline_at: at(0) }))
     expect(maxStale).toBeLessThan(score({ deadline_at: at(-2) }))
     expect(maxStale).toBeLessThan(score({ deadline_at: at(5) }))
-    expect(maxStale).toBeLessThan(score({ next_action: 'Follow up', next_action_at: at(-1) }))
+    expect(maxStale).toBeLessThan(score({ ...task('Follow up', at(-1)) }))
 
     // A deadline nearly two weeks out is genuinely not pressing, so silence outranks it.
     expect(maxStale).toBeGreaterThan(score({ deadline_at: at(DEADLINE_HORIZON_DAYS - 1) }))
-    expect(maxStale).toBeGreaterThan(score({ next_action: 'Follow up' }))
+    expect(maxStale).toBeGreaterThan(score({ ...task('Follow up') }))
   })
 
   it('measures movement, so an edit does not reset the silence', () => {
@@ -310,10 +329,10 @@ describe('score composition', () => {
 
   it('reports the dominant pressure and prefers the external deadline on a tie', () => {
     // Both terms sit at full pressure; the deadline is the one worth naming.
-    expect(reason({ deadline_at: at(0), next_action: 'Follow up', next_action_at: at(-1) })).toBe(
+    expect(reason({ deadline_at: at(0), ...task('Follow up', at(-1)) })).toBe(
       'Deadline today',
     )
-    expect(reason({ deadline_at: at(10), next_action: 'Follow up', next_action_at: at(0) })).toBe(
+    expect(reason({ deadline_at: at(10), ...task('Follow up', at(0)) })).toBe(
       'Action due today',
     )
   })
@@ -322,8 +341,7 @@ describe('score composition', () => {
     const deadlineOnly = score({ deadline_at: at(2) })
     const stacked = score({
       deadline_at: at(2),
-      next_action: 'Follow up',
-      next_action_at: at(4),
+      ...task('Follow up', at(4)),
       ...movedDaysAgo(20),
     })
     const soonerDeadline = score({ deadline_at: at(0) })
@@ -345,7 +363,7 @@ describe('ranking order', () => {
       application('Quiet Co'),
       application('Stale Co', movedDaysAgo(25)),
       application('Deadline Co', { deadline_at: at(1) }),
-      application('Overdue Co', { next_action: 'Follow up', next_action_at: at(-2) }),
+      application('Overdue Co', { ...task('Follow up', at(-2)) }),
     ]
     const order = [...applications]
 
@@ -372,8 +390,8 @@ describe('ranking order', () => {
     const base = { deadline_at: at(3) }
     const applications = [
       application('Ddd Co', { ...base, deadline_at: at(4) }),
-      application('Ccc Co', { ...base, next_action: 'Follow up', next_action_at: at(6) }),
-      application('Bbb Co', { ...base, next_action: 'Follow up', next_action_at: at(5) }),
+      application('Ccc Co', { ...base, ...task('Follow up', at(6)) }),
+      application('Bbb Co', { ...base, ...task('Follow up', at(5)) }),
       application('Aaa Co', { ...base }),
     ]
 
@@ -394,15 +412,13 @@ describe('ranking order', () => {
     const soon = application('Soon Co', {
       stage: 'screening',
       stage_history: [{ stage: 'screening', outcome: 'active', at: at(-2) }],
-      next_action: 'Prepare',
-      next_action_at: at(1),
+      ...task('Prepare', at(1)),
       updated_at: at(-2),
     })
     const late = application('Late Co', {
       stage: 'recruiter_messaged',
       stage_history: [{ stage: 'recruiter_messaged', outcome: 'active', at: at(-3) }],
-      next_action: 'Send availability',
-      next_action_at: at(-1),
+      ...task('Send availability', at(-1)),
       updated_at: at(-3),
     })
 

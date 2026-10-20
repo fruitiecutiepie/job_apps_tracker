@@ -143,24 +143,32 @@ neither a finger nor any browser automation.
    Confirm a running row has ←, → and **End** beside its stage select and that ended rows
    offer Reopen and Archive instead. Choose **End → Rejected** on one and confirm the row
    moves to its stage's Rejected outcome and gains a history entry.
-4. Confirm **Done** appears beside a next action in both places and nowhere else: on the
-   Atlas Thread Kanban card — on the **Next** line itself, not down beside Move and Prep notes —
-   and in its Table **Next action** cell, but on no card or row without an
-   action. Select **Done** on the Saffron Systems card, an accepted application whose only
+4. Confirm **Done** (a check icon, titled *Mark next action done* on hover) and **Delete** (a
+   bin, titled *Delete next action*) follow every next action in both places and nowhere else: on
+   the Atlas Thread Kanban card — on each task's own line, not down beside Move and Prep notes —
+   and in its Table **Next action** cell, but on no card or row without an action. Atlas Thread
+   carries two tasks, the dated one listed first; confirm each has its own pair, and that Done
+   on one leaves the other in place. Select **Done** on the Saffron Systems card, an accepted application whose only
    remaining reason to appear is its task. Confirm the Next line and the Done control both go,
    that the row moves from the table's **Finished, action outstanding** band to **Finished**,
    and that the stage, the
    stage history, the deadline, and the Notes text are all unchanged.
    Open Saffron Systems and confirm **Completed actions** lists the task you just closed above
    the Notes box, newest first, with today's date and nothing written into Notes itself. Open
-   Atlas Thread and confirm the Next action, its date, and **Done** sit on one row in that
-   order, all lined up on the inputs. Select Done, and confirm the action and date fields clear,
-   the control greys out with nothing left to resolve, and a row appears below — then close
-   without saving and confirm nothing was recorded. Narrow the window and confirm the three
-   stack rather than squeezing. Repeat and save,
+   Atlas Thread and confirm each row under **Next actions** holds the task, its date, **Done**
+   and **Delete** in that order, lined up with the **Task** and **Date** headings above. Select
+   Done on the first, and confirm that row goes, the second moves up, and a row appears under
+   Completed actions — then close without saving and confirm nothing was recorded. Select
+   **Add next action** and confirm a blank row appears with its Done and Delete greyed out.
+   Narrow the window and confirm each row puts the task over its date with the two buttons
+   beneath rather than squeezing. Repeat and save,
    then reopen and confirm it persisted. **Remove** an entry, save, and confirm it is gone and
    that the next action was not restored. Search for the text of a completed action and confirm
    it finds the application.
+   Back in the editor, select **Delete** on another action, save, and confirm it is gone and
+   **Completed actions** gained nothing; delete the last one and confirm a blank row is left.
+   Select **Delete** on another tasked card and confirm that task's line goes, the notice
+   repeats the task, and **Completed actions** gains nothing.
 5. Add an application with a next action and date. Drag it to another Kanban column,
    confirming a later stage gives the card a quick pop and a "Keep it up!" message at the
    foot of the window, and that the → arrow and the Stage select do the same. Move it back

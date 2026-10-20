@@ -14,8 +14,10 @@ export interface ApplicationsViewProps {
   onOpenPosting: (id: string) => void;
   /** Opens the application's form on one stage's messages. */
   onOpenMessages: (id: string, messagesFor: StageId) => void;
-  /** Clears the next action and logs it in the notes. Views without a task row ignore it. */
-  onCompleteAction: (id: string) => void;
+  /** Marks one next action done. Views without a task row ignore it. */
+  onCompleteAction: (id: string, actionId: string) => void;
+  /** Drops one next action without recording it as done. Ignored like `onCompleteAction`. */
+  onDeleteAction: (id: string, actionId: string) => void;
   /**
    * The reader's Idle threshold, set on Statistics where it is also the ghosting one. Left
    * out it is the default, which is what a view rendered on its own in a test wants; the

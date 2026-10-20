@@ -7,6 +7,7 @@ import {
 } from './compensation'
 import { isCorrespondenceDirection } from './correspondence'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
+import { sortedNextActions } from './nextActions'
 import { DATA_VERSION, documentVersion, isOlderVersion, migrateDocument } from './migrate'
 import {
   DEFAULT_STAGE_CONFIG,
@@ -21,6 +22,7 @@ import type {
   Compensation,
   CompensationBand,
   CompletedAction,
+  NextAction,
   CorrespondenceEntry,
   HeardEntry,
   Posting,
@@ -284,6 +286,58 @@ function ratingsValue(value: unknown, path: string, errors: ValidationError[]): 
   })
 
   return ratings.sort((left, right) => ratingRank(left.dimension) - ratingRank(right.dimension))
+}
+
+function nextActionValue(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+): NextAction | null {
+  if (!isRecord(value)) {
+    addError(errors, path, 'must be an object')
+    return null
+  }
+  if (!nonBlank(value.id)) addError(errors, `${path}.id`, 'is required')
+  if (!nonBlank(value.action)) addError(errors, `${path}.action`, 'is required')
+  let at: string | null = null
+  if (value.at !== undefined && value.at !== null && value.at !== '') {
+    if (validTimestamp(value.at)) {
+      at = value.at
+    } else {
+      addError(errors, `${path}.at`, 'must be a timezone-qualified ISO-8601 timestamp or null')
+    }
+  }
+  if (!nonBlank(value.id) || !nonBlank(value.action)) return null
+
+  return { id: value.id.trim(), action: value.action.trim(), at }
+}
+
+/**
+ * Tasks still to do, in the order `compareNextActions` keeps. Absent is empty: a document
+ * holding no task is a valid document with none.
+ */
+function nextActionsValue(
+  value: unknown,
+  path: string,
+  errors: ValidationError[],
+): NextAction[] {
+  if (value === undefined || value === null) return []
+  if (!Array.isArray(value)) {
+    addError(errors, path, 'must be an array')
+    return []
+  }
+
+  const entries = value
+    .map((entry, index) => nextActionValue(entry, `${path}[${index}]`, errors))
+    .filter((entry): entry is NextAction => entry !== null)
+
+  const seen = new Set<string>()
+  entries.forEach((entry, index) => {
+    if (seen.has(entry.id)) addError(errors, `${path}[${index}].id`, 'duplicates another next action')
+    seen.add(entry.id)
+  })
+
+  return sortedNextActions(entries)
 }
 
 function completedActionValue(
@@ -750,16 +804,6 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
     }
   }
 
-  const nextAction = nullableText(value.next_action, `${path}.next_action`, errors)
-  let nextActionAt: string | null = null
-  if (value.next_action_at !== undefined && value.next_action_at !== null && value.next_action_at !== '') {
-    if (validTimestamp(value.next_action_at)) {
-      nextActionAt = value.next_action_at
-    } else {
-      addError(errors, `${path}.next_action_at`, 'must be a timezone-qualified ISO-8601 timestamp or null')
-    }
-  }
-
   let deadlineAt: string | null = null
   if (value.deadline_at !== undefined && value.deadline_at !== null && value.deadline_at !== '') {
     if (validTimestamp(value.deadline_at)) {
@@ -786,8 +830,7 @@ function applicationValue(value: unknown, index: number, errors: ValidationError
       errors,
     ),
     archived_at: archivedAt,
-    next_action: nextAction,
-    next_action_at: nextAction ? nextActionAt : null,
+    next_actions: nextActionsValue(value.next_actions, `${path}.next_actions`, errors),
     deadline_at: deadlineAt,
     notes: nullableText(value.notes, `${path}.notes`, errors),
     completed_actions: completedActionsValue(

@@ -10,6 +10,7 @@ import {
 } from './preference'
 import { rankByUrgency, urgencyFor, type UrgencyRanking } from './urgency'
 import { compareBanded, urgencyBandFor, type BandPlacement } from './urgencyBands'
+import { task } from '../test/nextActions'
 
 const at = '2026-08-14T02:00:00.000Z'
 
@@ -36,8 +37,7 @@ function application(scores: Scores): Application {
     outcome: 'active',
     stage_history: [{ stage, outcome: 'active', at }],
     archived_at: null,
-    next_action: null,
-    next_action_at: null,
+    next_actions: [],
     deadline_at: null,
     notes: null,
     completed_actions: [],
@@ -371,7 +371,7 @@ describe('band ordering', () => {
     const undated = (company: string, id: string, scores: Scores): Application => ({
       ...row(company, id, scores, at(3, 17)),
       deadline_at: null,
-      next_action: 'Review the posting',
+      ...task('Review the posting'),
     })
 
     expect(bandedCompanies([undated('Zebra', '2', loved), undated('Aardvark', '1', loathed)]))

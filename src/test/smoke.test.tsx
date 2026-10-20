@@ -74,7 +74,7 @@ it('completes the primary tracker journey and persists it across reloads', async
   await user.type(within(addDialog).getByLabelText('Role'), 'Product Designer')
   await user.type(within(addDialog).getByLabelText('Source'), 'Referral')
   await user.selectOptions(within(addDialog).getByLabelText('Stage'), 'applied')
-  await user.type(within(addDialog).getByLabelText('Next action'), 'Send portfolio')
+  await user.type(within(addDialog).getByLabelText('Next action 1'), 'Send portfolio')
   await user.click(within(addDialog).getByRole('button', { name: 'Add application' }))
   expect(screen.getByRole('status')).toHaveTextContent('Application added.')
   await user.type(contextBar().getByRole('searchbox'), 'Smoke Test Co')

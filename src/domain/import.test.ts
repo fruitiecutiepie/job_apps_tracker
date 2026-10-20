@@ -14,8 +14,6 @@ function oneApplication(company = 'Northwind') {
       url: '',
       source: '',
       stage: 'applied',
-      next_action: '',
-      next_action_at: null,
       deadline_at: null,
       notes: '',
     }),
@@ -66,7 +64,7 @@ describe('reading an imported file', () => {
     expect(readTrackerImport(bytesOf('this is not JSON'))).toMatchObject({ ok: false })
     expect(readTrackerImport(new Uint8Array())).toMatchObject({ ok: false })
     expect(readTrackerImport(bytesOf('{"applications":"nope"}'))).toMatchObject({ ok: false })
-    expect(readTrackerImport(bytesOf(JSON.stringify({ schema_version: 5, applications: [] })))).toMatchObject({
+    expect(readTrackerImport(bytesOf(JSON.stringify({ schema_version: 6, applications: [] })))).toMatchObject({
       ok: false,
     })
   })

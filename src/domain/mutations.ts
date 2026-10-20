@@ -7,6 +7,7 @@ import {
 import { isCorrespondenceDirection } from './correspondence'
 import { createUuidV7 } from './id'
 import { documentStages, prepareTrackerDatabase } from './database'
+import { sortedNextActions } from './nextActions'
 import { isRatingDimension, isRatingScore, ratingRank } from './ratings'
 import {
   isOutcomeId,
@@ -28,6 +29,8 @@ import type {
   CompensationBand,
   CompletedAction,
   CompletedActionDraft,
+  NextAction,
+  NextActionDraft,
   CorrespondenceDraft,
   CorrespondenceEntry,
   HeardEntry,
@@ -144,8 +147,6 @@ export function createApplication(
   if (!isStageId(stage)) throw new TypeError('Stage is invalid')
   const outcome = input.outcome ?? 'active'
   if (!isOutcomeId(outcome)) throw new TypeError('Outcome is invalid')
-  const nextAction = optionalText(input.next_action)
-
   return {
     id,
     company: companyName(input.company),
@@ -156,8 +157,7 @@ export function createApplication(
     outcome,
     stage_history: [{ stage, outcome, at: createdAt }],
     archived_at: null,
-    next_action: nextAction,
-    next_action_at: nextAction ? optionalTimestamp(input.next_action_at) : null,
+    next_actions: nextActionsFrom(input.next_actions ?? [], createdAt),
     deadline_at: optionalTimestamp(input.deadline_at),
     notes: optionalText(input.notes),
     completed_actions: [],
@@ -178,22 +178,12 @@ export function editApplication(
   edits: ApplicationEdits,
   at: Date | string = new Date(),
 ): Application {
-  const nextAction =
-    'next_action' in edits ? optionalText(edits.next_action) : application.next_action
-  const nextActionAt = nextAction
-    ? 'next_action_at' in edits
-      ? optionalTimestamp(edits.next_action_at)
-      : application.next_action_at
-    : null
-
   return {
     ...application,
     company: 'company' in edits ? companyName(edits.company ?? '') : application.company,
     role: 'role' in edits ? optionalText(edits.role) : application.role,
     url: 'url' in edits ? checkedUrl(edits.url) : application.url,
     source: 'source' in edits ? optionalText(edits.source) : application.source,
-    next_action: nextAction,
-    next_action_at: nextActionAt,
     deadline_at:
       'deadline_at' in edits ? optionalTimestamp(edits.deadline_at) : application.deadline_at,
     notes: 'notes' in edits ? optionalText(edits.notes) : application.notes,
@@ -259,35 +249,103 @@ export function applyCompletedActions(
 }
 
 /**
- * Records a next action as done: the plan is cleared and the task joins `completed_actions`,
- * so finishing a task leaves a record rather than deleting the only evidence it was planned.
+ * Canonical next actions from drafts. A draft carrying an id keeps it and a new one is minted
+ * one; a blank action drops the draft, which is how the editor removes a task, and so
+ * a date cannot survive without a task behind it.
+ */
+function nextActionsFrom(drafts: NextActionDraft[], at: string): NextAction[] {
+  const seen = new Set<string>()
+  const entries: NextAction[] = []
+
+  for (const draft of drafts) {
+    const action = optionalText(draft.action)
+    if (!action) continue
+
+    const id = draft.id ?? createUuidV7(new Date(at))
+    if (seen.has(id)) throw new TypeError('A next action may not appear twice')
+    seen.add(id)
+    entries.push({ id, action, at: optionalTimestamp(draft.at) })
+  }
+
+  return sortedNextActions(entries)
+}
+
+/**
+ * Replaces the next actions with a canonicalized list, the way the editor saves them. Unlike
+ * a completed action a task has no timestamp of its own to preserve — its date is yours to
+ * move — so the id is the only thing carried across. An unchanged list returns the same
+ * object so a pointless save cannot refresh `updated_at`.
+ */
+export function applyNextActions(
+  application: Application,
+  drafts: NextActionDraft[],
+  at: Date | string = new Date(),
+): Application {
+  const updatedAt = timestamp(at)
+  const actions = nextActionsFrom(drafts, updatedAt)
+  const unchanged =
+    actions.length === application.next_actions.length
+    && actions.every((entry, index) => {
+      const before = application.next_actions[index]!
+      return before.id === entry.id && before.action === entry.action && before.at === entry.at
+    })
+  if (unchanged) return application
+
+  return { ...application, next_actions: actions, updated_at: updatedAt }
+}
+
+/**
+ * Records one next action as done: it leaves the plan and joins `completed_actions`, so
+ * finishing a task leaves a record rather than deleting the only evidence it was planned.
  * It is deliberately not appended to `notes`: prose you revise and a line the app writes are
  * different things, and mixing them means neither can be edited without disturbing the other.
  *
- * A blank action returns the same object — there is nothing to resolve. `deadline_at` is
- * untouched because an external closing date is not a task, and completing an action never
- * appends stage history because finishing a task is not a stage change.
+ * An id the application does not hold returns the same object — there is nothing to resolve.
+ * The other tasks are untouched, `deadline_at` is untouched because an external closing
+ * date is not a task, and completing an action never appends stage history because
+ * finishing a task is not a stage change.
  */
 export function completeNextAction(
   application: Application,
+  actionId: string,
   at: Date | string = new Date(),
 ): Application {
-  const action = optionalText(application.next_action)
-  if (!action) return application
+  const task = application.next_actions.find((entry) => entry.id === actionId)
+  if (!task) return application
 
   const updatedAt = timestamp(at)
   const entry: CompletedAction = {
     id: createUuidV7(new Date(updatedAt)),
-    action,
+    action: task.action,
     at: updatedAt,
   }
 
   return {
     ...application,
-    next_action: null,
-    next_action_at: null,
+    next_actions: application.next_actions.filter((candidate) => candidate.id !== actionId),
     completed_actions: sortedCompletedActions([...application.completed_actions, entry]),
     updated_at: updatedAt,
+  }
+}
+
+/**
+ * Drops one next action that will not be carried out: the task and its date go, and nothing
+ * is added to `completed_actions`, because that list means done and this was not. It is the
+ * drop a rejection makes, reached by hand and for one task. The other tasks and
+ * `deadline_at` are untouched, and no stage history is appended. An id the application does
+ * not hold returns the same object.
+ */
+export function dropNextAction(
+  application: Application,
+  actionId: string,
+  at: Date | string = new Date(),
+): Application {
+  if (!application.next_actions.some((entry) => entry.id === actionId)) return application
+
+  return {
+    ...application,
+    next_actions: application.next_actions.filter((entry) => entry.id !== actionId),
+    updated_at: timestamp(at),
   }
 }
 
@@ -848,12 +906,12 @@ export function moveApplicationStatus(
   const abandonsNextAction =
     outcome !== application.outcome
     && outcomeAbandonsTask(outcome)
-    && Boolean(optionalText(application.next_action))
+    && application.next_actions.length > 0
   return {
     ...application,
     stage,
     outcome,
-    ...(abandonsNextAction ? { next_action: null, next_action_at: null } : null),
+    ...(abandonsNextAction ? { next_actions: [] } : null),
     stage_history: [...application.stage_history, { stage, outcome, at: updatedAt }],
     updated_at: updatedAt,
   }
@@ -924,21 +982,50 @@ export function updateApplicationStageNotes(
   }
 }
 
-/** Marks one application's next action done, leaving the rest of the document alone. */
-export function completeApplicationNextAction(
+function withApplication(
   document: TrackerDocument,
   id: string,
-  at: Date | string = new Date(),
+  change: (application: Application) => Application,
 ): TrackerDocument {
   const application = document.applications.find((item) => item.id === id)
   if (!application) return document
-  const updated = completeNextAction(application, at)
+  const updated = change(application)
   if (updated === application) return document
 
   return {
     ...document,
     applications: document.applications.map((item) => (item.id === id ? updated : item)),
   }
+}
+
+/** Marks one of an application's next actions done, leaving the rest of the document alone. */
+export function completeApplicationNextAction(
+  document: TrackerDocument,
+  id: string,
+  actionId: string,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  return withApplication(document, id, (application) => completeNextAction(application, actionId, at))
+}
+
+/** Drops one of an application's next actions without recording it, leaving the rest alone. */
+export function dropApplicationNextAction(
+  document: TrackerDocument,
+  id: string,
+  actionId: string,
+  at: Date | string = new Date(),
+): TrackerDocument {
+  return withApplication(document, id, (application) => dropNextAction(application, actionId, at))
+}
+
+/** Replaces one application's next actions, leaving the rest of the document alone. */
+export function updateApplicationNextActions(
+  document: TrackerDocument,
+  id: string,
+  drafts: NextActionDraft[],
+  at: Date | string = new Date(),
+): TrackerDocument {
+  return withApplication(document, id, (application) => applyNextActions(application, drafts, at))
 }
 
 /** Replaces one application's completed actions, leaving the rest of the document alone. */

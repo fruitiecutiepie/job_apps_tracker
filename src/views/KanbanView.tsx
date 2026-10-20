@@ -4,7 +4,7 @@ import { Heart, PartyPopper, Smile } from "lucide-react";
 import { STAGE_CONFIG, classifyLifecycle, statusLabel } from "../domain";
 import type { Status } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
-import { CompleteActionButton } from "./CompleteActionButton";
+import { NextActionList } from "./NextActionList";
 import { describeIdle, idleStatusFor } from "./idle";
 import { describePreference, preferenceFor } from "./preference";
 import { PostingButton } from "./PostingButton";
@@ -23,6 +23,7 @@ export function KanbanView({
   onOpenPosting,
   onOpenMessages,
   onCompleteAction,
+  onDeleteAction,
   onMove,
   onArchive,
   visibleStages,
@@ -209,28 +210,21 @@ export function KanbanView({
                             {idle ? (
                               <p className="application-card__idle">{describeIdle(idle)}</p>
                             ) : null}
-                            {application.next_action?.trim() ? (
-                              <p className="application-card__action">
+                            {application.next_actions.length > 0 ? (
+                              <div className="application-card__action">
                                 {/*
-                                  * Done sits on the label line, beside the task it resolves,
-                                  * rather than in the card's footer row of card-wide controls.
+                                  * Each task carries its own Done and Delete, beside the task
+                                  * they resolve, rather than in the card's footer row of
+                                  * card-wide controls.
                                   */}
-                                <span className="application-card__action-head">
-                                  <span className="application-card__label">Next</span>
-                                  <CompleteActionButton
-                                    application={application}
-                                    onCompleteAction={onCompleteAction}
-                                    variant="card"
-                                  />
-                                </span>
-                                {application.next_action}
-                                {application.next_action_at ? (
-                                  <time dateTime={application.next_action_at}>
-                                    {" "}
-                                    · {formatShortDate(application.next_action_at)}
-                                  </time>
-                                ) : null}
-                              </p>
+                                <span className="application-card__label">Next</span>
+                                <NextActionList
+                                  application={application}
+                                  onCompleteAction={onCompleteAction}
+                                  onDeleteAction={onDeleteAction}
+                                  variant="card"
+                                />
+                              </div>
                             ) : null}
                             {invite ? (
                               <p className="application-card__invite">
