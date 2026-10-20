@@ -36,6 +36,8 @@ import {
   type OutlineNode,
 } from './markdown'
 import { FindWidget } from './FindWidget'
+import { useKeepInView } from './keepInView'
+import { isPhone } from './phone'
 import { jumpToLine, lineAtOffset } from './noteEditorJump'
 import { readHiddenRanges, toProjectedLine, toProjectedOffset, toSourceLine } from './noteFolds'
 import { headingAtScrollTop, readingTopLine } from './noteScrollSpy'
@@ -312,6 +314,8 @@ function ShortcutsHelp() {
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  useKeepInView(open, panelRef, triggerRef)
 
   useEffect(() => {
     if (!open) return
@@ -350,6 +354,7 @@ function ShortcutsHelp() {
         <div
           aria-labelledby="stage-notes-shortcuts-title"
           className="panel__shortcuts-panel"
+          ref={panelRef}
           role="group"
         >
           <p className="panel__shortcuts-title" id="stage-notes-shortcuts-title">
@@ -404,6 +409,8 @@ function SplitMenu({
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
   const firstChoiceRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+  useKeepInView(open, panelRef, triggerRef)
 
   /*
    * Focus goes into the menu when it opens, which is what makes the arrows reachable from
@@ -470,7 +477,7 @@ function SplitMenu({
         <Columns2 aria-hidden="true" size={16} />
       </button>
       {open ? (
-        <div aria-labelledby="stage-notes-split-title" className="panel__shortcuts-panel" role="group">
+        <div aria-labelledby="stage-notes-split-title" className="panel__shortcuts-panel" ref={panelRef} role="group">
           <p className="panel__shortcuts-title" id="stage-notes-split-title">
             Open another pane
           </p>
@@ -697,8 +704,12 @@ export function StageNotesPanel({
    * column rather than switched between: having to choose which of the two you want is a
    * question the panel can answer for you by showing both. Closed leaves the rail, because
    * a control inside the thing it hides has nowhere to be once hidden.
+   *
+   * Closed to begin with on a phone, where it can only be a strip above the notes and took
+   * a third of the screen from the note being written. Asked once, as the panel opens: what
+   * the reader does with the toggle afterwards is theirs.
    */
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => !isPhone())
   /**
    * Whether each half of the sidebar is showing. Held here rather than persisted, the way
    * the capture dock's own fold is: what a reader wants beside them changes with what they

@@ -840,9 +840,13 @@ export function TableView({
                       * under it in this tbody, not to a set of columns.
                       */}
                     <th scope="rowgroup" colSpan={COLUMN_ORDER.length}>
-                      <span className="table-view__band-heading">{heading}</span>
-                      <span className="count-badge" aria-label={`${rows.length} applications`}>
-                        {rows.length}
+                      {/* One box, so the heading and its count can stay in view together
+                          while a narrow screen scrolls the columns under them. */}
+                      <span className="table-view__band-label">
+                        <span className="table-view__band-heading">{heading}</span>
+                        <span className="count-badge" aria-label={`${rows.length} applications`}>
+                          {rows.length}
+                        </span>
                       </span>
                     </th>
                   </tr>

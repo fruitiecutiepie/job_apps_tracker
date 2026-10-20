@@ -1564,6 +1564,116 @@ describe('TableView job posting', () => {
 })
 
 describe('KanbanView', () => {
+  /**
+   * Drags a card with a pointer, the way the board's own drag works. What the pointer is
+   * over is supplied, jsdom having no layout to hit-test against; the gesture is the real
+   * one. `kanbanDrag.browser.test.tsx` drives it for real, finger included.
+   */
+  function pointerDrag(source: Element, over: Element) {
+    const found = document.elementsFromPoint
+    document.elementsFromPoint = () => [over]
+    try {
+      const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+      // A card is picked up by its grip and nothing else.
+      const grip = source.querySelector('.application-card__grip') ?? source
+      fireEvent.pointerDown(grip, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
+    } finally {
+      document.elementsFromPoint = found
+    }
+  }
+
+  it('still opens a card from the keyboard after a drag the browser cancelled', () => {
+    const onOpen = vi.fn()
+    const record = application('Cancelled Co')
+
+    render(<KanbanView applications={[record]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
+
+    const open = screen.getByRole('button', { name: /^Open Cancelled Co/ })
+    const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+    // Picked up by its grip, the only place a card is.
+    fireEvent.pointerDown(open.closest('article')!.querySelector('.application-card__grip')!, { ...pointer, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+    fireEvent.pointerCancel(window, pointer)
+
+    // Enter on a button is a click with no press before it.
+    fireEvent.click(open)
+    expect(onOpen).toHaveBeenCalledWith(record.id)
+  })
+
+  it('opens a card from a tap that drifts, but not from a mouse drag across its name', () => {
+    const onOpen = vi.fn()
+    const record = application('Drift Co')
+    render(<KanbanView applications={[record]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
+    const open = screen.getByRole('button', { name: /^Open Drift Co/ })
+
+    // A finger lands 8px from where it went down, and that is still a tap.
+    fireEvent.pointerDown(open, { pointerId: 2, pointerType: 'touch', clientX: 0, clientY: 0 })
+    fireEvent.click(open, { detail: 1, clientX: 8, clientY: 0 })
+    expect(onOpen).toHaveBeenCalledTimes(1)
+
+    // A mouse that travels 8px across the name is selecting it.
+    fireEvent.pointerDown(open, { pointerId: 1, pointerType: 'mouse', button: 0, clientX: 0, clientY: 0 })
+    fireEvent.click(open, { detail: 1, clientX: 8, clientY: 0 })
+    expect(onOpen).toHaveBeenCalledTimes(1)
+  })
+
+  it('drops the next drag after an Escape whose release never arrived', () => {
+    const onMove = vi.fn()
+    const record = application('Escaped Co')
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
+    const grip = screen.getByText('Escaped Co').closest('article')!.querySelector('.application-card__grip')!
+    const destination = screen.getByRole('heading', { level: 3, name: 'Offer' }).closest('section')!
+    const found = document.elementsFromPoint
+    document.elementsFromPoint = () => [destination]
+    const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+    try {
+      // Escaped, and the mouse let go outside the window: no release arrives.
+      fireEvent.pointerDown(grip, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.keyDown(window, { key: 'Escape' })
+
+      // The next drag is its own, and lands.
+      fireEvent.pointerDown(grip, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
+      expect(onMove).toHaveBeenCalledWith(record.id, { stage: 'offer', outcome: 'active' })
+      expect(document.querySelector('.application-card--ghost')).toBeNull()
+    } finally {
+      document.elementsFromPoint = found
+    }
+  })
+
+  it('picks a card up by its grip only, and puts it back on Escape', () => {
+    const onMove = vi.fn()
+    const record = application('Grip Co')
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
+    const card = screen.getByText('Grip Co').closest('article')!
+    const destination = screen.getByRole('heading', { level: 3, name: 'Offer' }).closest('section')!
+    const found = document.elementsFromPoint
+    document.elementsFromPoint = () => [destination]
+    const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+    try {
+      // Pressed on the name, the card stays put: that is text being selected.
+      fireEvent.pointerDown(card.querySelector('strong')!, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
+      expect(onMove).not.toHaveBeenCalled()
+
+      // By the grip it is picked up, and Escape puts it back before the release.
+      fireEvent.pointerDown(card.querySelector('.application-card__grip')!, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      expect(document.querySelector('.application-card--ghost')).not.toBeNull()
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(document.querySelector('.application-card--ghost')).toBeNull()
+      fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
+      expect(onMove).not.toHaveBeenCalled()
+    } finally {
+      document.elementsFromPoint = found
+    }
+  })
+
   it('offers the job posting from the card that has one, and not from one that has not', () => {
     const onOpenPosting = vi.fn()
     const posted = application('Marble & Finch', {
@@ -1697,13 +1807,6 @@ describe('KanbanView', () => {
   it('moves a dragged card to another stage, still running', () => {
     const onMove = vi.fn()
     const record = application('Drag & Drop Co')
-    const values = new Map<string, string>()
-    const dataTransfer = {
-      effectAllowed: 'none',
-      dropEffect: 'none',
-      setData: (type: string, value: string) => values.set(type, value),
-      getData: (type: string) => values.get(type) ?? '',
-    }
 
     render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
 
@@ -1712,9 +1815,7 @@ describe('KanbanView', () => {
     expect(card).not.toBeNull()
     expect(destination).not.toBeNull()
 
-    fireEvent.dragStart(card!, { dataTransfer })
-    fireEvent.dragOver(destination!, { dataTransfer })
-    fireEvent.drop(destination!, { dataTransfer })
+    pointerDrag(card!, destination!)
 
     expect(onMove).toHaveBeenCalledWith(record.id, { stage: 'offer', outcome: 'active' })
   })
@@ -1723,13 +1824,6 @@ describe('KanbanView', () => {
     const onMove = vi.fn()
     const record = application('Nested Drop Co')
     const bounced = application('Already Bounced Co', { outcome: 'rejected' })
-    const values = new Map<string, string>()
-    const dataTransfer = {
-      effectAllowed: 'none',
-      dropEffect: 'none',
-      setData: (type: string, value: string) => values.set(type, value),
-      getData: (type: string) => values.get(type) ?? '',
-    }
 
     render(<KanbanView applications={[record, bounced]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
 
@@ -1740,22 +1834,13 @@ describe('KanbanView', () => {
     expect(card).not.toBeNull()
     expect(destination).not.toBeNull()
 
-    fireEvent.dragStart(card!, { dataTransfer })
-    fireEvent.dragOver(destination!, { dataTransfer })
-    fireEvent.drop(destination!, { dataTransfer })
+    pointerDrag(card!, destination!)
 
     expect(onMove).toHaveBeenCalledWith(record.id, { stage: 'applied', outcome: 'rejected' })
   })
 
   it('reacts to a move by how it went, however the card was moved', () => {
     vi.useFakeTimers()
-    const values = new Map<string, string>()
-    const dataTransfer = {
-      effectAllowed: 'none',
-      dropEffect: 'none',
-      setData: (type: string, value: string) => values.set(type, value),
-      getData: (type: string) => values.get(type) ?? '',
-    }
     const props = {
       onOpen: vi.fn(), onOpenStageNotes: vi.fn(), onOpenPosting: vi.fn(), onOpenMessages: vi.fn(),
       onCompleteAction: vi.fn(), onArchive: vi.fn(), onMove: vi.fn(),
@@ -1796,9 +1881,8 @@ describe('KanbanView', () => {
     settle()
 
     // Dropped on Accepted: confetti, the lane lit, and congratulations.
-    fireEvent.dragStart(card(), { dataTransfer })
     const accepted = screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section')!
-    fireEvent.drop(accepted, { dataTransfer })
+    pointerDrag(card(), accepted)
     show({ stage: 'accepted' })
     expect(card().querySelector('.confetti')).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section'))

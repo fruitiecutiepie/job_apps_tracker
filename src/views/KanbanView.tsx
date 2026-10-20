@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
-import { Heart, PartyPopper, Smile } from "lucide-react";
+import { GripVertical, Heart, PartyPopper, Smile } from "lucide-react";
 import { STAGE_CONFIG, classifyLifecycle, statusLabel } from "../domain";
 import type { Status } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
@@ -15,6 +15,7 @@ import { moveFeedback } from "./moveFeedback";
 import type { MoveFeedback } from "./moveFeedback";
 import type { MovableApplicationsViewProps, MoveHandler } from "./types";
 import { formatShortDate, kanbanColumnGroups, upcomingStageEvent } from "./viewUtils";
+import { usePointerDrag } from "../usePointerDrag";
 
 export function KanbanView({
   applications,
@@ -29,12 +30,10 @@ export function KanbanView({
   visibleOutcomes,
   quietDays,
 }: MovableApplicationsViewProps) {
-  const [draggingId, setDraggingId] = useState<string | null>(null);
   const columnGroups = useMemo(
     () => kanbanColumnGroups(applications, visibleStages, visibleOutcomes),
     [applications, visibleStages, visibleOutcomes],
   );
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const applicationsByLane = useMemo(() => {
     const lanes = new Map<string, typeof applications>();
     for (const application of applications) {
@@ -78,13 +77,36 @@ export function KanbanView({
     setFeedback({ ...reaction, id, run: turn.current });
   };
 
-  const moveDroppedApplication = (lane: Status, id: string) => {
+  /*
+   * A card is dragged by its grip, with the pointer — mouse, finger or pen — through the
+   * same hook as a prep note tab. Only the grip picks it up, so the rest of the card can be
+   * read and selected like text, and a finger on it moves the card at once. It was HTML5
+   * drag-and-drop, which a phone never starts, so the board could only be rearranged with
+   * a mouse. A lane is found under the pointer by its `data-kanban-lane`. The board scrolls
+   * when a card is carried to its left or right edge, and the page when it is carried to the
+   * top or bottom of the window, so a phone can reach a lane off screen either way.
+   */
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const moveRef = useRef(moveWithFeedback);
+  useEffect(() => {
+    moveRef.current = moveWithFeedback;
+  });
+  const onDrop = useCallback((id: string, lane: Status) => {
     // A same-lane drop is a no-op in the mutation, which is what keeps it off the disk,
     // and says nothing, since nothing moved.
-    moveWithFeedback(id, lane);
-    setDraggingId(null);
-    setDropTarget(null);
-  };
+    moveRef.current(id, lane);
+  }, []);
+  const scroller = useCallback(() => scrollerRef.current, []);
+  const drag = usePointerDrag<Status>({
+    targetAt: laneAt,
+    onDrop,
+    ghostClassName: "application-card--ghost",
+    scroller,
+    pageTopInset: stickyHeaderBottom,
+  });
+  const dropTarget = drag.target ? laneKey(drag.target) : null;
+  /** Where the last press on a card's name went down, to tell a click from a selection. */
+  const pressedAt = useRef<{ x: number; y: number; pointerType: string } | null>(null);
 
   return (
     <section className="kanban" aria-labelledby="kanban-heading">
@@ -92,9 +114,9 @@ export function KanbanView({
         Applications board
       </h2>
       <p className="sr-only" id="kanban-instructions">
-        Drag an application between lanes, or use the move buttons and the stage selector on each card.
+        Drag an application between lanes by its grip, or use the move buttons and the stage selector on each card.
       </p>
-      <div className="kanban__scroller" aria-describedby="kanban-instructions">
+      <div className="kanban__scroller" aria-describedby="kanban-instructions" ref={scrollerRef}>
         <div className="kanban__columns">
           {columnGroups.map((group) => (
             <div className="kanban-column" key={group.stage}>
@@ -117,24 +139,8 @@ export function KanbanView({
                       .filter(Boolean)
                       .join(" ")}
                     aria-labelledby={headingId}
+                    data-kanban-lane={key}
                     key={key}
-                    onDragEnter={(event) => {
-                      event.preventDefault();
-                      setDropTarget(key);
-                    }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                    }}
-                    onDragLeave={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                        setDropTarget(null);
-                      }
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      moveDroppedApplication(lane, event.dataTransfer.getData("text/plain"));
-                    }}
                   >
                     <header className="kanban-lane__header">
                       <h3 id={headingId}>{statusLabel(lane)}</h3>
@@ -169,37 +175,82 @@ export function KanbanView({
                               "application-card",
                               idle ? "application-card--idle" : "",
                               application.archived_at !== null ? "application-card--archived" : "",
-                              draggingId === application.id ? "application-card--dragging" : "",
+                              drag.key === application.id ? "application-card--dragging" : "",
                               feedback?.id === application.id && feedback.kind !== "ended"
                                 ? "application-card--landed"
                                 : "",
                             ]
                               .filter(Boolean)
                               .join(" ")}
-                            draggable
                             key={application.id}
-                            onDragStart={(event) => {
-                              setDraggingId(application.id);
-                              event.dataTransfer.effectAllowed = "move";
-                              event.dataTransfer.setData("text/plain", application.id);
-                            }}
-                            onDragEnd={() => {
-                              setDraggingId(null);
-                              setDropTarget(null);
+                            onClickCapture={(event) => {
+                              // The click a browser sends after the drop is not also a
+                              // press on whichever control the card was picked up by.
+                              if (!drag.wasDragged()) return;
+                              event.preventDefault();
+                              event.stopPropagation();
                             }}
                           >
                             {feedback?.id === application.id && feedback.kind === "accepted" ? (
                               <Confetti />
                             ) : null}
-                            <button
-                              type="button"
-                              className="application-card__open"
-                              onClick={() => onOpen(application.id)}
-                              aria-label={openLabel}
-                            >
-                              <strong>{application.company}</strong>
-                              {application.role ? <span>{application.role}</span> : null}
-                            </button>
+                            <div className="application-card__head">
+                              <button
+                                type="button"
+                                className="application-card__open"
+                                onPointerDown={(event) => {
+                                  pressedAt.current = {
+                                    x: event.clientX,
+                                    y: event.clientY,
+                                    pointerType: event.pointerType,
+                                  };
+                                }}
+                                onClick={(event) => {
+                                  // A drag across the name to select it ends in a click on
+                                  // it too; that is a copy, not a request to open the card.
+                                  // Told apart by how far the pointer travelled rather than
+                                  // by whether text is selected, which would also swallow
+                                  // the ordinary click straight after a selection. A click
+                                  // from the keyboard has no pointer behind it, and opens.
+                                  // Nor does a finger's: touch selects by a long press, never
+                                  // by a drag, and a tap drifts several pixels and is still
+                                  // a tap — guarded, a slightly loose tap did nothing.
+                                  const from = pressedAt.current;
+                                  pressedAt.current = null;
+                                  if (
+                                    event.detail > 0 &&
+                                    from &&
+                                    from.pointerType !== "touch" &&
+                                    Math.hypot(event.clientX - from.x, event.clientY - from.y) > SELECT_PX
+                                  )
+                                    return;
+                                  onOpen(application.id);
+                                }}
+                                aria-label={openLabel}
+                              >
+                                <strong>{application.company}</strong>
+                                {application.role ? <span>{application.role}</span> : null}
+                              </button>
+                              {/*
+                                * The one place a card is picked up from, so the rest of it
+                                * reads and selects like text. Pointer-only, and hidden from
+                                * a screen reader for that reason: the stage select and the
+                                * move buttons are the card's keyboard and assistive way to
+                                * move, and the drag adds nothing they lack.
+                                */}
+                              <span
+                                aria-hidden="true"
+                                className="application-card__grip"
+                                onPointerDown={(event) =>
+                                  drag.start(event, application.id, {
+                                    item: event.currentTarget.closest("article"),
+                                    handle: true,
+                                  })}
+                                title="Drag to move"
+                              >
+                                <GripVertical size={16} />
+                              </span>
+                            </div>
                             {application.archived_at !== null ? (
                               // The lane already says how it ended; this says it was put away.
                               <p className="application-card__archived">
@@ -367,6 +418,41 @@ function Confetti() {
       })}
     </span>
   );
+}
+
+/**
+ * Where the window's visible part begins, below the app's sticky topbar: the page scrolls up
+ * under a card carried there rather than under the topbar, where no finger can aim. A board
+ * rendered without the app around it has none.
+ */
+function stickyHeaderBottom(): number {
+  return Math.max(0, document.querySelector(".topbar")?.getBoundingClientRect().bottom ?? 0);
+}
+
+/** How far a press on a card's name may travel and still be a click rather than a selection. */
+const SELECT_PX = 4;
+
+/**
+ * The lane under a point of the window, read off the lanes' own attribute.
+ *
+ * A point level with the board but out in the page's gutter beside it counts as over the
+ * nearest lane. That gutter is where a finger rests to scroll the board along — the edge
+ * of a phone — and a card let go there went nowhere, the gutter being no lane at all.
+ */
+function laneAt(x: number, y: number): Status | null {
+  // jsdom has no layout to hit-test against; with nothing under the point, there is no lane.
+  if (typeof document.elementsFromPoint !== "function") return null;
+  const board = document.querySelector(".kanban__scroller")?.getBoundingClientRect();
+  if (board && y >= board.top && y <= board.bottom) {
+    x = Math.min(Math.max(x, board.left + 1), board.right - 1);
+  }
+  for (const element of document.elementsFromPoint(x, y)) {
+    const lane = element.closest("[data-kanban-lane]")?.getAttribute("data-kanban-lane");
+    if (!lane) continue;
+    const [stage, outcome] = lane.split(":");
+    return { stage, outcome } as Status;
+  }
+  return null;
 }
 
 function laneKey({ stage, outcome }: Status): string {

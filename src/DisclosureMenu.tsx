@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
+
+import { useKeepInView } from './keepInView'
 import type { ReactNode } from 'react'
 
 interface DisclosureMenuProps {
@@ -52,6 +54,14 @@ export function DisclosureMenu({
     }
   }, [open])
 
+  /*
+   * Held inside the window, and out of reach of any scroller around it. A menu on a Kanban
+   * card or in a table row opened past the edge of the board's own scroll box and was cut
+   * off there, on a phone more often than not.
+   */
+  const panelRef = useRef<HTMLDivElement>(null)
+  useKeepInView(open, panelRef, triggerRef)
+
   return (
     <div className={['disclosure-menu', className].filter(Boolean).join(' ')} ref={containerRef}>
       <button
@@ -68,6 +78,7 @@ export function DisclosureMenu({
       {open && (
         <div
           className={panelClassName}
+          ref={panelRef}
           onClick={() => {
             setOpen(false)
             triggerRef.current?.focus()
