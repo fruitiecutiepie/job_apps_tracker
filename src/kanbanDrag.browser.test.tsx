@@ -69,7 +69,11 @@ describe('dragging a card with a mouse', () => {
     expect(document.querySelector('.application-card--ghost')).toBeNull()
   })
 
-  it('selects the card\'s text when dragged across anywhere but the grip', async () => {
+  /*
+   * Not in Firefox, where Playwright's mouse drag selects no text at all — not even in a
+   * bare paragraph with none of the app around it, which is how that was established.
+   */
+  it.skipIf(server.browser === 'firefox')('selects the card\'s text when dragged across anywhere but the grip', async () => {
     renderBoard()
     const action = card('Marble & Finch').querySelector('.application-card__action')!
     await userEvent.dragAndDrop(action, lane('headhunted:active'))
@@ -79,10 +83,11 @@ describe('dragging a card with a mouse', () => {
   })
 
   /*
-   * Not in WebKit, which will not select text inside a <button> whatever the stylesheet
-   * says, and the name is the card's open button. Chromium and Firefox do.
+   * Chromium only. WebKit will not select text inside a <button> whatever the stylesheet
+   * says, and the name is the card's open button; Firefox selects nothing under
+   * Playwright's mouse drag, as above.
    */
-  it.skipIf(server.browser === 'webkit')('selects the company name without opening the card', async () => {
+  it.runIf(server.browser === 'chromium')('selects the company name without opening the card', async () => {
     renderBoard()
     const name = card('Marble & Finch').querySelector('.application-card__open strong')!
     await userEvent.dragAndDrop(name, lane('headhunted:active'))
