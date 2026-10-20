@@ -238,7 +238,10 @@ export function CorrespondenceFields({
               <div className="correspondence-item__foot">
                 <button
                   className="button button--quiet"
-                  onClick={() => onChange(rows.filter((current) => current.id !== row.id))}
+                  onClick={() => {
+                    if (!window.confirm(`Remove message ${index + 1}?`)) return
+                    onChange(rows.filter((current) => current.id !== row.id))
+                  }}
                   type="button"
                 >
                   Remove message {index + 1}

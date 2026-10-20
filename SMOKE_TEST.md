@@ -29,15 +29,15 @@ by `src/stageTimeline.test.ts`.
 Recording compensation through the editor, reading a stored record back into its boxes, and
 refusing an amount with no currency are covered by the app integration tests.
 
-Importing a calendar invite through the editor, replacing a rescheduled one, and refusing an invite
-with no start time are covered by the app integration tests.
+Importing a calendar invite through the editor, replacing a rescheduled one, removing one only once
+confirmed, and refusing an invite with no start time are covered by the app integration tests.
 
 Pasting a job posting into the editor and reading it back, refusing one that is only a link,
 clearing one, flipping a pane between a prep note and the posting and back, editing it there
 and having it write itself without recapturing, and counting a hit inside it in the panel-wide find
 are covered by the app integration tests.
 Logging hiring correspondence through the editor — keeping the time a message was sent rather than
-the moment it was filed, correcting that time, removing a message, refusing one with no text or no
+the moment it was filed, correcting that time, removing a message only once confirmed, refusing one with no text or no
 time, a drafted message surviving nothing when the dialog is cancelled, and finding an application
 by a word only a message holds — is covered by the app integration tests. The record's own rules —
 `at` supplied and correctable, send order against a timestamp written with an offset, and import
@@ -161,7 +161,7 @@ neither a finger nor any browser automation.
    the control greys out with nothing left to resolve, and a row appears below — then close
    without saving and confirm nothing was recorded. Narrow the window and confirm the three
    stack rather than squeezing. Repeat and save,
-   then reopen and confirm it persisted. **Remove** an entry, save, and confirm it is gone and
+   then reopen and confirm it persisted. **Remove** an entry, cancel the question and confirm it stays, then accept it, save, and confirm it is gone and
    that the next action was not restored. Search for the text of a completed action and confirm
    it finds the application.
 5. Add an application with a next action and date. Drag it to another Kanban column,
@@ -276,7 +276,7 @@ neither a finger nor any browser automation.
    still work while the prep note is in the editor.
    Select **Correct** and confirm each captured line opens in its own box with the time it was
    captured beside it, that Enter and clicking away both store a change, that Escape puts a line
-   back as it was, and that the bin removes one. Confirm a corrected line keeps its place and its
+   back as it was, and that the bin asks first and removes one only once accepted. Confirm a corrected line keeps its place and its
    time when you select **Done** and read the log back.
 8. In the prep notes panel, press `Ctrl`/`Cmd+F` and confirm the browser's own find does not open.
    Search for text that appears in more than one stage, and confirm the count reads `1 of N`, every

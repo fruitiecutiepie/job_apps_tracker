@@ -74,7 +74,10 @@ function CapturedLineRow({ label, line, onRevise }: CapturedLineRowProps) {
         aria-label={`Remove the real-time note from ${line.stamp} in ${label}`}
         className="icon-button stage-note__line-remove"
         disabled={saving}
-        onClick={() => void revise('')}
+        onClick={() => {
+          // Removing stores at once, the way every correction here does, so it asks first.
+          if (window.confirm(`Remove the real-time note from ${line.stamp}?`)) void revise('')
+        }}
         type="button"
       >
         <Trash2 aria-hidden="true" size={14} />

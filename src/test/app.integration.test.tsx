@@ -846,10 +846,24 @@ describe('job applications tracker', () => {
 
     await user.click(screen.getByRole('button', { name: /^Open Atlas Thread/ }))
     const dialog = screen.getByRole('dialog', { name: 'Edit application' })
-    await user.click(
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    const remove = () =>
+      user.click(
+        within(dialog).getByRole('button', { name: `Remove completed action ${mistake.action}` }),
+      )
+    // Declined, the row stays where it was.
+    await remove()
+    expect(confirm).toHaveBeenLastCalledWith(`Remove “${mistake.action}” from completed actions?`)
+    expect(
       within(dialog).getByRole('button', { name: `Remove completed action ${mistake.action}` }),
-    )
+    ).toBeInTheDocument()
+    await remove()
+    expect(
+      within(dialog).queryByRole('button', { name: `Remove completed action ${mistake.action}` }),
+    ).not.toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    expect(confirm).toHaveBeenCalledTimes(2)
+    confirm.mockRestore()
 
     const after = readSavedDocument().applications.find((item) => item.id === before.id)!
     expect(after.completed_actions.map((entry) => entry.id)).toEqual(
@@ -1742,9 +1756,23 @@ describe('job applications tracker', () => {
 
     await openCapture(user, dialog, 'Halcyon Maps · Round 2')
     await user.click(within(dialog).getByRole('button', { name: 'Correct the real-time notes in Halcyon Maps · Round 2' }))
-    await user.click(within(dialog).getByRole('button', {
-      name: `Remove the real-time note from ${formatTimeOfDay(heard[1].at)} in Halcyon Maps · Round 2`,
-    }))
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+    const remove = () =>
+      user.click(within(dialog).getByRole('button', {
+        name: `Remove the real-time note from ${formatTimeOfDay(heard[1].at)} in Halcyon Maps · Round 2`,
+      }))
+    // This one is stored the moment it is pressed, so declining must leave the store alone.
+    await remove()
+    expect(confirm).toHaveBeenLastCalledWith(
+      `Remove the real-time note from ${formatTimeOfDay(heard[1].at)}?`,
+    )
+    expect(
+      readSavedDocument().applications.find((application) => application.id === before.id)!
+        .stage_notes.find((note) => note.stage === 'round_2')!.heard,
+    ).toHaveLength(3)
+    await remove()
+    expect(confirm).toHaveBeenCalledTimes(2)
+    confirm.mockRestore()
 
     expect(screen.getByRole('status')).toHaveTextContent('Note removed.')
     const stored = readSavedDocument().applications.find(
@@ -3792,6 +3820,36 @@ describe('job applications tracker', () => {
     ).toEqual([])
   })
 
+  it('removes an invite only once the removal is confirmed', async () => {
+    const user = userEvent.setup()
+    await renderLoadedApp()
+    const before = readSavedDocument().applications.find(
+      (application) => application.stage_events.length > 0 && application.archived_at === null,
+    )!
+    const first = before.stage_events[0]!
+
+    await user.click(screen.getByRole('button', { name: new RegExp(`^Open ${before.company}`) }))
+    const dialog = screen.getByRole('dialog', { name: 'Edit application' })
+    const invites = () => within(dialog).queryAllByRole('group', { name: /^Invite \d/ })
+    const remove = () =>
+      user.click(within(invites()[0]!).getByRole('button', { name: 'Remove' }))
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
+
+    await remove()
+    expect(confirm).toHaveBeenLastCalledWith(`Remove the invite “${first.summary}”?`)
+    expect(invites()).toHaveLength(before.stage_events.length)
+    await remove()
+    expect(invites()).toHaveLength(before.stage_events.length - 1)
+    await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    expect(confirm).toHaveBeenCalledTimes(2)
+    confirm.mockRestore()
+
+    const after = readSavedDocument().applications.find((item) => item.id === before.id)!
+    expect(after.stage_events.map((event) => event.id)).toEqual(
+      before.stage_events.slice(1).map((event) => event.id),
+    )
+  })
+
   it('logs a message against a stage and keeps the time it was sent', async () => {
     const user = userEvent.setup()
     await renderLoadedApp()
@@ -4002,8 +4060,15 @@ describe('job applications tracker', () => {
     await user.click(screen.getByRole('button', { name: /^Open Paper Kite/ }))
     dialog = screen.getByRole('dialog', { name: 'Edit application' })
     await openMessage(user, dialog)
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValueOnce(false).mockReturnValueOnce(true)
     await user.click(within(dialog).getByRole('button', { name: 'Remove message 1' }))
+    expect(confirm).toHaveBeenLastCalledWith('Remove message 1?')
+    expect(within(dialog).getByRole('button', { name: 'Remove message 1' })).toBeInTheDocument()
+    await user.click(within(dialog).getByRole('button', { name: 'Remove message 1' }))
+    expect(within(dialog).queryByRole('button', { name: 'Remove message 1' })).not.toBeInTheDocument()
     await user.click(within(dialog).getByRole('button', { name: 'Save changes' }))
+    expect(confirm).toHaveBeenCalledTimes(2)
+    confirm.mockRestore()
 
     expect(logged()).toEqual([])
   })
