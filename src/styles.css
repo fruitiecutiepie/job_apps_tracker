@@ -1021,6 +1021,17 @@ a.actions-menu__item {
 }
 
 /*
+ * WebKit ignores `min-height` on a native select and sizes it to its text — 21px where 32 or
+ * 40 was asked for, on every iPhone and in Safari — but it honours `height`. So a select whose
+ * size matters says both; Chromium and Firefox read the same pair the same way. The rules that
+ * raise a select's floor at phone width (below) carry the `height` with them, or the base one
+ * would cap them.
+ */
+.context-bar select {
+  height: var(--control);
+}
+
+/*
  * One fixed width for every filter. A select sized by the row shrank and grew as the row
  * did — when Clear filters came and went, when the count changed length — and one sized by
  * its content changed width as its value did. Fixed, the row only reflows when the window
@@ -1086,6 +1097,10 @@ a.actions-menu__item {
   color: var(--ink-2);
   font-size: var(--t2);
   font-weight: 500;
+}
+
+.field select {
+  height: var(--control-form);
 }
 
 .field input,
@@ -1836,6 +1851,10 @@ tbody tr:hover {
   gap: var(--s2);
 }
 
+.table-col-header select {
+  height: 28px;
+}
+
 .table-col-header input,
 .table-col-header select {
   min-height: 28px;
@@ -1874,6 +1893,7 @@ tbody tr:hover {
 
 .table-stage-select {
   max-width: 100%;
+  height: 28px;
   min-height: 28px;
   padding: 0 var(--s2);
   border: 1px solid var(--line-strong);
@@ -6514,6 +6534,29 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
 }
 
 @media (max-width: 760px) {
+  /*
+   * The actions are wider than a phone — the storage pill, feedback, theme, Add application
+   * and the menu come to some 440px — and sharing a row with the identity pushed the page
+   * 94px sideways at 375px and clipped Add application at the edge. One column instead:
+   * identity, then the actions, wrapping where they must, then the views. The `minmax` is
+   * what lets the track shrink below its contents; a bare `1fr` is `minmax(auto, 1fr)`.
+   */
+  .topbar {
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--s3);
+  }
+
+  .topbar__actions {
+    grid-column: 1;
+    grid-row: 2;
+    flex-wrap: wrap;
+  }
+
+  .topbar__places {
+    grid-column: 1;
+    grid-row: 3;
+  }
+
   /* Comfortable targets for touch: dense controls grow to 40px. */
   :root {
     --control: 40px;
@@ -6556,6 +6599,13 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .context-bar select {
     max-width: none;
     flex: 1 1 9rem;
+  }
+
+  /* The floor above, as a height, so WebKit — which ignores `min-height` on a select — gets it too. */
+  .context-bar select,
+  .table-col-header select,
+  .table-stage-select {
+    height: 40px;
   }
 
   .form-grid {
