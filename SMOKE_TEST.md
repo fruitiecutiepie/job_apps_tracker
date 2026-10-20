@@ -99,6 +99,14 @@ finger, now that it is built on pointer events rather than HTML5 drag-and-drop. 
 Kanban **card** is still a manual check: that one is HTML5 drag-and-drop, which works with
 neither a finger nor any browser automation.
 
+The shell and the views are measured there too, on the real app and the demo's nineteen
+applications: the Kanban board and the Table (cards and cells holding their contents, the
+quick moves on one line, bands spanning the table, the End menu uncut by the board or table),
+the topbar and context bar from 320px to a laptop, every view inside the window, the first-visit
+intro and the storage pill, the application editor for every application, the More actions,
+theme and stages panels, AA contrast in both themes, and the target sizes under 760px. Where a
+manual step below only confirms one of those fits, it can be skipped.
+
 1. Run `pnpm dev` and open the address shown in the terminal. Confirm `data/tracker.json`
    is created empty on first launch and that **More actions** offers Import and Export
    but not **Reset demo data**.

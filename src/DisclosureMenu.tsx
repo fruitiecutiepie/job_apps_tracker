@@ -1,5 +1,26 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
+
+/** Matches the gap the panel's own rule leaves under the trigger. */
+const PANEL_GAP = 8
+
+/**
+ * The lowest and highest line a panel opened under its trigger can use: the window's, or the
+ * edge of the nearest box that clips it, whichever is tighter. A table's scroller is one — a
+ * panel opened from its last row would otherwise be cut off, or grow a scrollbar in the table
+ * to be reached.
+ */
+function visibleSpan(panel: HTMLElement): { top: number; bottom: number } {
+  let top = 0
+  let bottom = window.innerHeight
+  for (let ancestor = panel.parentElement; ancestor; ancestor = ancestor.parentElement) {
+    if (getComputedStyle(ancestor).overflowY === 'visible') continue
+    const edge = ancestor.getBoundingClientRect()
+    top = Math.max(top, edge.top)
+    bottom = Math.min(bottom, edge.bottom)
+  }
+  return { top, bottom }
+}
 
 interface DisclosureMenuProps {
   /** What the trigger shows. */
@@ -31,6 +52,26 @@ export function DisclosureMenu({
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const triggerRef = useRef<HTMLButtonElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
+
+  /*
+   * Opens upward when it would run past the bottom of what can show it and there is room
+   * above for it — a row at the foot of a table or a board. Set on the element rather than
+   * held in state: it is a reading of layout, taken once per opening, and a state update
+   * here would re-render the panel to say what the DOM already knows.
+   */
+  useLayoutEffect(() => {
+    const panel = panelRef.current
+    const trigger = triggerRef.current
+    if (!open || !panel || !trigger) return
+    delete panel.dataset.placement
+    const own = panel.getBoundingClientRect()
+    const span = visibleSpan(panel)
+    if (own.bottom <= span.bottom + 1) return
+    if (own.height + PANEL_GAP <= trigger.getBoundingClientRect().top - span.top) {
+      panel.dataset.placement = 'up'
+    }
+  }, [open])
 
   useEffect(() => {
     if (!open) return
@@ -68,6 +109,7 @@ export function DisclosureMenu({
       {open && (
         <div
           className={panelClassName}
+          ref={panelRef}
           onClick={() => {
             setOpen(false)
             triggerRef.current?.focus()
