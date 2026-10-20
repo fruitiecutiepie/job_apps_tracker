@@ -1582,6 +1582,23 @@ describe('KanbanView', () => {
     }
   }
 
+  it('still opens a card from the keyboard after a drag the browser cancelled', () => {
+    const onOpen = vi.fn()
+    const record = application('Cancelled Co')
+
+    render(<KanbanView applications={[record]} onOpen={onOpen} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={vi.fn()} />)
+
+    const open = screen.getByRole('button', { name: /^Open Cancelled Co/ })
+    const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+    fireEvent.pointerDown(open.closest('article')!, { ...pointer, clientX: 0, clientY: 0 })
+    fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+    fireEvent.pointerCancel(window, pointer)
+
+    // Enter on a button is a click with no press before it.
+    fireEvent.click(open)
+    expect(onOpen).toHaveBeenCalledWith(record.id)
+  })
+
   it('offers the job posting from the card that has one, and not from one that has not', () => {
     const onOpenPosting = vi.fn()
     const posted = application('Marble & Finch', {

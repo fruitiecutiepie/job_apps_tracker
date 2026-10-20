@@ -95,9 +95,10 @@ Chromium, Firefox and WebKit, that split panes sit side by side and stay wide en
 read a note in, that dragging the divider resizes both and holds a pane at its minimum,
 that a narrow window stacks a row, that a job posting lays out beside the prep note written
 against it, and that a long note scrolls inside its card rather than the page. Dragging a **tab** is covered there too, by mouse and by
-finger, now that it is built on pointer events rather than HTML5 drag-and-drop. Dragging a
-Kanban **card** is still a manual check: that one is HTML5 drag-and-drop, which works with
-neither a finger nor any browser automation.
+finger, and so is dragging a Kanban **card** in `src/kanbanDrag.browser.test.tsx`: both are
+built on pointer events rather than HTML5 drag-and-drop. The finger tests run in Chromium's
+touch emulation only, so a held-finger drag on a real phone — iOS Safari above all — is still
+a manual check.
 
 1. Run `pnpm dev` and open the address shown in the terminal. Confirm `data/tracker.json`
    is created empty on first launch and that **More actions** offers Import and Export

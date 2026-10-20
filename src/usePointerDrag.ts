@@ -115,6 +115,14 @@ function scrollTowards(box: HTMLElement, x: number): boolean {
   return box.scrollLeft !== before
 }
 
+/** Whether two targets name the same place: equal, or flat objects with equal fields. */
+function sameTarget<Target>(a: Target | null, b: Target | null): boolean {
+  if (a === b) return true
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false
+  const keys = Object.keys(a) as (keyof Target)[]
+  return keys.length === Object.keys(b).length && keys.every((key) => a[key] === b[key])
+}
+
 export function usePointerDrag<Target>({
   targetAt,
   onDrop,
@@ -136,7 +144,13 @@ export function usePointerDrag<Target>({
     options.current = { targetAt, onDrop, ghostClassName, scroller }
   }, [targetAt, onDrop, ghostClassName, scroller])
 
+  /*
+   * Only a target that names somewhere else is news. A hit test answers with a fresh object
+   * on every move, and handing each one to state redrew the whole board at pointer rate
+   * while the card sat over one lane.
+   */
   const aim = useCallback((next: Target | null) => {
+    if (sameTarget(lastTarget.current, next)) return
     lastTarget.current = next
     setTarget(next)
   }, [])
@@ -271,7 +285,11 @@ export function usePointerDrag<Target>({
     }
 
     const onCancel = (event: PointerEvent) => {
-      if (press.current?.pointerId === event.pointerId) clear()
+      if (press.current?.pointerId !== event.pointerId) return
+      clear()
+      // A cancelled drag sends no click to swallow. Left set, the flag ate the next click
+      // that arrived without a press before it — Enter on a card's button.
+      dragged.current = false
     }
 
     // The pan the browser would otherwise start the moment a held finger moves.
