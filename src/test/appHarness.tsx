@@ -17,16 +17,17 @@
  * Three things have to be true before the app is measured, and each is done here rather than
  * left to the test, because forgetting one produces a layout that is plausible and wrong:
  *
- * - The backend is chosen when its module first evaluates, so the browser config sets
- *   `VITE_TRACKER_BACKEND` for the whole suite rather than a test stubbing it: a test file
- *   importing anything that reaches the backend evaluates it before its body runs, and a
- *   stub there is too late. The profile is read when it is asked for, so it is stubbed here.
+ * - The backend is chosen when its module first evaluates, so `./appEnv` selects it as this
+ *   file's first import, and a test file imports this ahead of anything else that reaches the
+ *   backend. The profile is read when it is asked for, so it is stubbed in `mountApp`.
  * - The storage is empty. The demo seeds only on a tracker's first visit to the browser, so
  *   a database left by an earlier run would open on whatever it held, or on an empty tracker.
  * - `Date` is the demo's reference. The seeds are measured from that instant, and a view's
  *   "today" decides its bands, its idle marks and its overdue dates; on the real clock the
  *   board drifts away from its own seed data, one boundary at a time.
  */
+
+import './appEnv'
 
 import { screen, waitFor } from '@testing-library/react'
 import { createRoot, type Root } from 'react-dom/client'
@@ -186,6 +187,9 @@ export function pageScrollsSideways(): boolean {
  * against the window alone cannot see.
  */
 export function clippedBy(element: Element): string | null {
+  // A fixed panel answers to the window and to no scroll box between it and the page, which
+  // is what `keepInView` pins one to; the window check beside this one is the one that applies.
+  if (getComputedStyle(element).position === 'fixed') return null
   const own = element.getBoundingClientRect()
   for (let ancestor = element.parentElement; ancestor; ancestor = ancestor.parentElement) {
     const style = getComputedStyle(ancestor)

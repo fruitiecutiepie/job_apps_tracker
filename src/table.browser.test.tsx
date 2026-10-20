@@ -10,11 +10,7 @@
  * where a test naming one long company would be green the day a different column grew.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { screen, within } from '@testing-library/react'
-import { page, userEvent } from 'vitest/browser'
-
-import { URGENCY_BANDS } from './views/urgencyBands'
+// First, for the backend it selects; see `appEnv`.
 import {
   DESKTOP,
   PHONE,
@@ -27,6 +23,12 @@ import {
   settle,
   unmountDemoApp,
 } from './test/appHarness'
+
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { screen, within } from '@testing-library/react'
+import { page, userEvent } from 'vitest/browser'
+
+import { URGENCY_BANDS } from './views/urgencyBands'
 
 const box = (element: Element) => element.getBoundingClientRect()
 

@@ -21,23 +21,6 @@ export default defineConfig({
   plugins: [react()],
   test: {
     include: ['src/**/*.browser.test.tsx'],
-    /*
-     * The static build's backend for every file in the suite. It is chosen when
-     * `backend/index.ts` first evaluates, and any test file that imports a module reaching
-     * it — a view's helpers will do — evaluates it before the test body runs, so a
-     * `vi.stubEnv` in the body arrives too late and the app quietly talks to the dev
-     * server's `/__db`, which this suite has no handler for on purpose. Set here it is true
-     * before anything loads. The browser backend keeps its document in the page's own
-     * IndexedDB, so nothing it does reaches the user's `data/tracker.json`.
-     *
-     * The profile is deliberately not set here. It is read when it is asked for rather than
-     * when a module loads, so `mountDemoApp` stubs it for the one file that wants the
-     * demo's examples; set suite-wide it would seed nineteen applications into a test that
-     * is checking a first visit opens empty.
-     */
-    env: {
-      VITE_TRACKER_BACKEND: 'browser',
-    },
     setupFiles: './src/test/setup.browser.ts',
     /*
      * Preflight first, then the lock. The order is the point: the preflight says what the
