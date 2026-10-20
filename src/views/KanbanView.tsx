@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties } from "react";
 import { Heart, PartyPopper, Smile } from "lucide-react";
 import { STAGE_CONFIG, classifyLifecycle, statusLabel } from "../domain";
@@ -15,6 +15,7 @@ import { moveFeedback } from "./moveFeedback";
 import type { MoveFeedback } from "./moveFeedback";
 import type { MovableApplicationsViewProps, MoveHandler } from "./types";
 import { formatShortDate, kanbanColumnGroups, upcomingStageEvent } from "./viewUtils";
+import { usePointerDrag } from "../usePointerDrag";
 
 export function KanbanView({
   applications,
@@ -29,12 +30,10 @@ export function KanbanView({
   visibleOutcomes,
   quietDays,
 }: MovableApplicationsViewProps) {
-  const [draggingId, setDraggingId] = useState<string | null>(null);
   const columnGroups = useMemo(
     () => kanbanColumnGroups(applications, visibleStages, visibleOutcomes),
     [applications, visibleStages, visibleOutcomes],
   );
-  const [dropTarget, setDropTarget] = useState<string | null>(null);
   const applicationsByLane = useMemo(() => {
     const lanes = new Map<string, typeof applications>();
     for (const application of applications) {
@@ -78,13 +77,31 @@ export function KanbanView({
     setFeedback({ ...reaction, id, run: turn.current });
   };
 
-  const moveDroppedApplication = (lane: Status, id: string) => {
+  /*
+   * A card is dragged with the pointer — mouse, finger or pen — through the same gesture as
+   * a prep note tab: a mouse picks it up by moving, a finger by holding still. It was HTML5
+   * drag-and-drop, which a phone never starts, so the board could only be rearranged with
+   * a mouse. A lane is found under the pointer by its `data-kanban-lane`, and the board
+   * scrolls when a card is carried to its edge, so a phone can reach a stage off screen.
+   */
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const moveRef = useRef(moveWithFeedback);
+  useEffect(() => {
+    moveRef.current = moveWithFeedback;
+  });
+  const onDrop = useCallback((id: string, lane: Status) => {
     // A same-lane drop is a no-op in the mutation, which is what keeps it off the disk,
     // and says nothing, since nothing moved.
-    moveWithFeedback(id, lane);
-    setDraggingId(null);
-    setDropTarget(null);
-  };
+    moveRef.current(id, lane);
+  }, []);
+  const scroller = useCallback(() => scrollerRef.current, []);
+  const drag = usePointerDrag<Status>({
+    targetAt: laneAt,
+    onDrop,
+    ghostClassName: "application-card--ghost",
+    scroller,
+  });
+  const dropTarget = drag.target ? laneKey(drag.target) : null;
 
   return (
     <section className="kanban" aria-labelledby="kanban-heading">
@@ -92,9 +109,9 @@ export function KanbanView({
         Applications board
       </h2>
       <p className="sr-only" id="kanban-instructions">
-        Drag an application between lanes, or use the move buttons and the stage selector on each card.
+        Drag an application between lanes — on a touch screen, hold it first — or use the move buttons and the stage selector on each card.
       </p>
-      <div className="kanban__scroller" aria-describedby="kanban-instructions">
+      <div className="kanban__scroller" aria-describedby="kanban-instructions" ref={scrollerRef}>
         <div className="kanban__columns">
           {columnGroups.map((group) => (
             <div className="kanban-column" key={group.stage}>
@@ -117,24 +134,8 @@ export function KanbanView({
                       .filter(Boolean)
                       .join(" ")}
                     aria-labelledby={headingId}
+                    data-kanban-lane={key}
                     key={key}
-                    onDragEnter={(event) => {
-                      event.preventDefault();
-                      setDropTarget(key);
-                    }}
-                    onDragOver={(event) => {
-                      event.preventDefault();
-                      event.dataTransfer.dropEffect = "move";
-                    }}
-                    onDragLeave={(event) => {
-                      if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
-                        setDropTarget(null);
-                      }
-                    }}
-                    onDrop={(event) => {
-                      event.preventDefault();
-                      moveDroppedApplication(lane, event.dataTransfer.getData("text/plain"));
-                    }}
                   >
                     <header className="kanban-lane__header">
                       <h3 id={headingId}>{statusLabel(lane)}</h3>
@@ -169,23 +170,26 @@ export function KanbanView({
                               "application-card",
                               idle ? "application-card--idle" : "",
                               application.archived_at !== null ? "application-card--archived" : "",
-                              draggingId === application.id ? "application-card--dragging" : "",
+                              drag.key === application.id ? "application-card--dragging" : "",
                               feedback?.id === application.id && feedback.kind !== "ended"
                                 ? "application-card--landed"
                                 : "",
                             ]
                               .filter(Boolean)
                               .join(" ")}
-                            draggable
                             key={application.id}
-                            onDragStart={(event) => {
-                              setDraggingId(application.id);
-                              event.dataTransfer.effectAllowed = "move";
-                              event.dataTransfer.setData("text/plain", application.id);
+                            onPointerDown={(event) => {
+                              // A select opens its own list on a press, and a menu's item
+                              // is chosen by one; neither is the start of a drag.
+                              if ((event.target as Element).closest(NOT_A_HANDLE)) return;
+                              drag.start(event, application.id);
                             }}
-                            onDragEnd={() => {
-                              setDraggingId(null);
-                              setDropTarget(null);
+                            onClickCapture={(event) => {
+                              // The click a browser sends after the drop is not also a
+                              // press on whichever control the card was picked up by.
+                              if (!drag.wasDragged()) return;
+                              event.preventDefault();
+                              event.stopPropagation();
                             }}
                           >
                             {feedback?.id === application.id && feedback.kind === "accepted" ? (
@@ -367,6 +371,32 @@ function Confetti() {
       })}
     </span>
   );
+}
+
+/** What a press on a card that is not a drag lands on. */
+const NOT_A_HANDLE = "select, input, textarea, .actions-menu__panel";
+
+/**
+ * The lane under a point of the window, read off the lanes' own attribute.
+ *
+ * A point level with the board but out in the page's gutter beside it counts as over the
+ * nearest lane. That gutter is where a finger rests to scroll the board along — the edge
+ * of a phone — and a card let go there went nowhere, the gutter being no lane at all.
+ */
+function laneAt(x: number, y: number): Status | null {
+  // jsdom has no layout to hit-test against; with nothing under the point, there is no lane.
+  if (typeof document.elementsFromPoint !== "function") return null;
+  const board = document.querySelector(".kanban__scroller")?.getBoundingClientRect();
+  if (board && y >= board.top && y <= board.bottom) {
+    x = Math.min(Math.max(x, board.left + 1), board.right - 1);
+  }
+  for (const element of document.elementsFromPoint(x, y)) {
+    const lane = element.closest("[data-kanban-lane]")?.getAttribute("data-kanban-lane");
+    if (!lane) continue;
+    const [stage, outcome] = lane.split(":");
+    return { stage, outcome } as Status;
+  }
+  return null;
 }
 
 function laneKey({ stage, outcome }: Status): string {

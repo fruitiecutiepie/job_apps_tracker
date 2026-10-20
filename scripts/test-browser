@@ -14,6 +14,8 @@
 # own, so a lockfile change reinstalls from it rather than downloading.
 set -uo pipefail
 cd "$(dirname "$0")/.."
+# Writable from the container, so Firefox's screenshot baselines land in the checkout.
+mkdir -p src/test/screenshots
 
 config=vitest.browser.config.ts
 args=()
@@ -65,13 +67,14 @@ if $docker_firefox; then
   [[ -t 1 ]] && tty=(-e FORCE_COLOR=1)
   docker run --rm --ipc=host ${tty[@]+"${tty[@]}"} \
     -v "$PWD":/src:ro \
+    -v "$PWD/src/test/screenshots":/work/src/test/screenshots \
     -v "$modules":/work/node_modules \
     -v job-apps-tracker-browser-store:/pnpm-store \
     -e VITEST_NO_LOCK=1 -e VITEST_NO_PREFLIGHT=1 \
     "$image" bash -c '
       set -e
       cd /src
-      tar --exclude=./node_modules --exclude=./data --exclude=./dist -cf - . | tar -xf - -C /work
+      tar --exclude=./node_modules --exclude=./data --exclude=./dist --exclude=./src/test/screenshots -cf - . | tar -xf - -C /work
       cd /work
       corepack enable
       corepack pnpm install --frozen-lockfile --store-dir /pnpm-store --reporter=silent

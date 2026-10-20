@@ -16,7 +16,8 @@
 
 import { beforeEach, describe, expect, it } from 'vitest'
 import { screen, within } from '@testing-library/react'
-import { page, userEvent } from '@vitest/browser/context'
+import { page, server, userEvent } from 'vitest/browser'
+import { centre, touch } from './test/touch'
 
 import { stageLabel } from './domain'
 import type { Application } from './domain'
@@ -453,6 +454,25 @@ describe('the panel in a real browser', () => {
     expect(names()).toHaveLength(3)
   })
 
+  /*
+   * The same carry with a real finger. The synthetic one above reaches the panel's
+   * listeners and nothing else, so it passed while a phone could not do it: there the
+   * browser scrolled the strip as soon as the held finger moved, and cancelled the drag.
+   */
+  it.runIf(server.browser === 'chromium')('carries a tab with a real finger, the strip held still', async () => {
+    await page.viewport(420, 860)
+    renderPanel()
+
+    const names = () => screen.getAllByRole('tab').map((tab) => tab.textContent)
+    const before = names()
+    const offer = screen.getByRole('tab', { name: /^Halcyon Maps · .* · Offer$/ })
+    const first = screen.getAllByRole('tab')[0]
+
+    await touch([centre(offer), centre(first)], { holdMs: 500 })
+
+    expect(names()[0]).toBe(before[2])
+  })
+
   it('leaves a finger that moves straight away to the scroller', async () => {
       await page.viewport(420, 860)
       renderPanel()
@@ -534,6 +554,8 @@ describe('the panel in a real browser', () => {
   it('keeps the outline reachable by finger where the pointer is coarse', async () => {
     await page.viewport(480, 800)
     renderPanel()
+    // A phone-sized window starts with the sidebar closed, so open it as a reader would.
+    await userEvent.click(screen.getByRole('button', { name: 'Sidebar' }))
 
     // Dense is for a mouse. The narrow layout raises `--control` for touch, and the
     // outline's rows are aimed at as well as read.

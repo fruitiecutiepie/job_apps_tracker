@@ -1564,6 +1564,24 @@ describe('TableView job posting', () => {
 })
 
 describe('KanbanView', () => {
+  /**
+   * Drags a card with a pointer, the way the board's own drag works. What the pointer is
+   * over is supplied, jsdom having no layout to hit-test against; the gesture is the real
+   * one. `kanbanDrag.browser.test.tsx` drives it for real, finger included.
+   */
+  function pointerDrag(source: Element, over: Element) {
+    const found = document.elementsFromPoint
+    document.elementsFromPoint = () => [over]
+    try {
+      const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+      fireEvent.pointerDown(source, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
+    } finally {
+      document.elementsFromPoint = found
+    }
+  }
+
   it('offers the job posting from the card that has one, and not from one that has not', () => {
     const onOpenPosting = vi.fn()
     const posted = application('Marble & Finch', {
@@ -1697,13 +1715,6 @@ describe('KanbanView', () => {
   it('moves a dragged card to another stage, still running', () => {
     const onMove = vi.fn()
     const record = application('Drag & Drop Co')
-    const values = new Map<string, string>()
-    const dataTransfer = {
-      effectAllowed: 'none',
-      dropEffect: 'none',
-      setData: (type: string, value: string) => values.set(type, value),
-      getData: (type: string) => values.get(type) ?? '',
-    }
 
     render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
 
@@ -1712,9 +1723,7 @@ describe('KanbanView', () => {
     expect(card).not.toBeNull()
     expect(destination).not.toBeNull()
 
-    fireEvent.dragStart(card!, { dataTransfer })
-    fireEvent.dragOver(destination!, { dataTransfer })
-    fireEvent.drop(destination!, { dataTransfer })
+    pointerDrag(card!, destination!)
 
     expect(onMove).toHaveBeenCalledWith(record.id, { stage: 'offer', outcome: 'active' })
   })
@@ -1723,13 +1732,6 @@ describe('KanbanView', () => {
     const onMove = vi.fn()
     const record = application('Nested Drop Co')
     const bounced = application('Already Bounced Co', { outcome: 'rejected' })
-    const values = new Map<string, string>()
-    const dataTransfer = {
-      effectAllowed: 'none',
-      dropEffect: 'none',
-      setData: (type: string, value: string) => values.set(type, value),
-      getData: (type: string) => values.get(type) ?? '',
-    }
 
     render(<KanbanView applications={[record, bounced]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
 
@@ -1740,22 +1742,13 @@ describe('KanbanView', () => {
     expect(card).not.toBeNull()
     expect(destination).not.toBeNull()
 
-    fireEvent.dragStart(card!, { dataTransfer })
-    fireEvent.dragOver(destination!, { dataTransfer })
-    fireEvent.drop(destination!, { dataTransfer })
+    pointerDrag(card!, destination!)
 
     expect(onMove).toHaveBeenCalledWith(record.id, { stage: 'applied', outcome: 'rejected' })
   })
 
   it('reacts to a move by how it went, however the card was moved', () => {
     vi.useFakeTimers()
-    const values = new Map<string, string>()
-    const dataTransfer = {
-      effectAllowed: 'none',
-      dropEffect: 'none',
-      setData: (type: string, value: string) => values.set(type, value),
-      getData: (type: string) => values.get(type) ?? '',
-    }
     const props = {
       onOpen: vi.fn(), onOpenStageNotes: vi.fn(), onOpenPosting: vi.fn(), onOpenMessages: vi.fn(),
       onCompleteAction: vi.fn(), onArchive: vi.fn(), onMove: vi.fn(),
@@ -1796,9 +1789,8 @@ describe('KanbanView', () => {
     settle()
 
     // Dropped on Accepted: confetti, the lane lit, and congratulations.
-    fireEvent.dragStart(card(), { dataTransfer })
     const accepted = screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section')!
-    fireEvent.drop(accepted, { dataTransfer })
+    pointerDrag(card(), accepted)
     show({ stage: 'accepted' })
     expect(card().querySelector('.confetti')).toHaveAttribute('aria-hidden', 'true')
     expect(screen.getByRole('heading', { level: 3, name: 'Accepted' }).closest('section'))
