@@ -3,7 +3,7 @@
  * starts out of the way, and how each surface looks is locked in by a screenshot.
  *
  * The screenshots are the website's arrangement (fruitiecutiepie.com's specimens): one
- * baseline per surface at phone and desktop width, committed, so a change to how
+ * baseline per surface at phone and desktop width, in light and dark, committed, so a change to how
  * something looks fails here with a diff instead of being found on a phone. The clock is
  * pinned to the demo's reference instant, or "Idle 95 days" would be a different picture
  * tomorrow.
@@ -18,6 +18,15 @@ import { KanbanView } from './views/KanbanView'
 import { renderPanel } from './test/panelHarness'
 
 const PHONE = { width: 390, height: 844 }
+
+/*
+ * Each picture in both themes. Set on <html> the way the theme menu sets it, which the
+ * stylesheet answers exactly as it answers the system's own preference.
+ */
+const THEMES = ['light', 'dark'] as const
+function useTheme(theme: (typeof THEMES)[number]) {
+  document.documentElement.dataset.theme = theme
+}
 const DESKTOP = { width: 1280, height: 800 }
 
 function renderBoard() {
@@ -71,6 +80,7 @@ beforeEach(() => {
 afterEach(() => {
   cleanup()
   vi.useRealTimers()
+  delete document.documentElement.dataset.theme
 })
 
 describe('menus on a phone', () => {
@@ -92,12 +102,13 @@ describe('menus on a phone', () => {
     }
   })
 
-  it('locks in the board, and a card\'s End menu open on it', async () => {
+  it.each(THEMES)('locks in the board, and a card\'s End menu open on it, %s', async (theme) => {
+    useTheme(theme)
     renderBoard()
-    await expect.element(page.elementLocator(document.querySelector('.kanban')!)).toMatchScreenshot('kanban-phone')
+    await expect.element(page.elementLocator(document.querySelector('.kanban')!)).toMatchScreenshot(`kanban-phone-${theme}`)
 
     await userEvent.click(screen.getByRole('button', { name: 'End Northstar Labs' }))
-    await expect.element(page.elementLocator(document.body)).toMatchScreenshot('kanban-end-menu-phone')
+    await expect.element(page.elementLocator(document.body)).toMatchScreenshot(`kanban-end-menu-phone-${theme}`)
   })
 })
 
@@ -130,9 +141,10 @@ describe('Prep on a phone', () => {
     expect(picker.getBoundingClientRect().top).toBeLessThan(window.innerHeight / 3)
   })
 
-  it('locks in the panel', async () => {
+  it.each(THEMES)('locks in the panel, %s', async (theme) => {
+    useTheme(theme)
     renderPanel()
-    await expect.element(page.elementLocator(document.querySelector('.panel')!)).toMatchScreenshot('prep-phone')
+    await expect.element(page.elementLocator(document.querySelector('.panel')!)).toMatchScreenshot(`prep-phone-${theme}`)
   })
 })
 
@@ -144,11 +156,12 @@ describe('on a desktop', () => {
     expect(screen.getByRole('button', { name: 'Sidebar' })).toHaveAttribute('aria-pressed', 'true')
   })
 
-  it('locks in the board and the panel', async () => {
+  it.each(THEMES)('locks in the board and the panel, %s', async (theme) => {
+    useTheme(theme)
     renderBoard()
-    await expect.element(page.elementLocator(document.querySelector('.kanban')!)).toMatchScreenshot('kanban-desktop')
+    await expect.element(page.elementLocator(document.querySelector('.kanban')!)).toMatchScreenshot(`kanban-desktop-${theme}`)
     cleanup()
     renderPanel()
-    await expect.element(page.elementLocator(document.querySelector('.panel')!)).toMatchScreenshot('prep-desktop')
+    await expect.element(page.elementLocator(document.querySelector('.panel')!)).toMatchScreenshot(`prep-desktop-${theme}`)
   })
 })

@@ -5831,6 +5831,13 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
      inside it hung out over the notes. */
   width: 100%;
   min-width: 0;
+  /* The field itself, which the context bar's rule draws for its own box only: without
+     these the browser's white input sat in a dark sidebar. */
+  padding-right: var(--s2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r1);
+  color: var(--ink);
+  background: var(--surface);
   font-size: var(--t2);
 }
 

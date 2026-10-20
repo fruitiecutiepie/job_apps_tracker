@@ -476,8 +476,8 @@ On macOS, Firefox runs in Playwright's Linux image through Docker (Colima: `coli
 because Playwright's Firefox does not launch on macOS 27. `pnpm test:browser` does this on its
 own; `TEST_FIREFOX=native pnpm test:browser` tries Firefox natively instead.
 
-The suite also compares screenshots of the board and the Prep panel at phone and desktop width
-against baselines in `src/test/screenshots/`. After a deliberate visual change, update them with
+The suite also compares screenshots of the board and the Prep panel at phone and desktop width,
+in light and dark, against baselines in `src/test/screenshots/`. After a deliberate visual change, update them with
 `pnpm test:browser -u` and look at the new images before committing them.
 
 Use `pnpm test:watch` while developing. The automated smoke test and optional browser checklist are documented in [SMOKE_TEST.md](./SMOKE_TEST.md).
