@@ -96,9 +96,10 @@ read a note in, that dragging the divider resizes both and holds a pane at its m
 that a narrow window stacks a row, that a job posting lays out beside the prep note written
 against it, and that a long note scrolls inside its card rather than the page. Dragging a **tab** is covered there too, by mouse and by
 finger, and so is dragging a Kanban **card** in `src/kanbanDrag.browser.test.tsx`: both are
-built on pointer events rather than HTML5 drag-and-drop. The finger tests run in Chromium's
-touch emulation only, so a held-finger drag on a real phone — iOS Safari above all — is still
-a manual check.
+built on pointer events rather than HTML5 drag-and-drop. A card moves by its grip only, and
+Escape puts it back. The finger tests run in Chromium's touch emulation only, so a drag by the
+grip on a real phone — iOS Safari above all — is still a manual check, along with the page
+scrolling under a card held at the bottom of the screen.
 
 1. Run `pnpm dev` and open the address shown in the terminal. Confirm `data/tracker.json`
    is created empty on first launch and that **More actions** offers Import and Export
@@ -162,7 +163,7 @@ a manual check.
    then reopen and confirm it persisted. **Remove** an entry, save, and confirm it is gone and
    that the next action was not restored. Search for the text of a completed action and confirm
    it finds the application.
-5. Add an application with a next action and date. Drag it to another Kanban column,
+5. Add an application with a next action and date. Drag it by its grip to another Kanban column,
    confirming a later stage gives the card a quick pop and a "Keep it up!" message at the
    foot of the window, and that the → arrow and the Stage select do the same. Move it back
    a stage and confirm nothing plays. End it as Rejected, I withdrew and Employer closed,

@@ -1574,7 +1574,9 @@ describe('KanbanView', () => {
     document.elementsFromPoint = () => [over]
     try {
       const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
-      fireEvent.pointerDown(source, { ...pointer, clientX: 0, clientY: 0 })
+      // A card is picked up by its grip and nothing else.
+      const grip = source.querySelector('.application-card__grip') ?? source
+      fireEvent.pointerDown(grip, { ...pointer, clientX: 0, clientY: 0 })
       fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
       fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
     } finally {
@@ -1590,13 +1592,43 @@ describe('KanbanView', () => {
 
     const open = screen.getByRole('button', { name: /^Open Cancelled Co/ })
     const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
-    fireEvent.pointerDown(open.closest('article')!, { ...pointer, clientX: 0, clientY: 0 })
+    // Picked up by its grip, the only place a card is.
+    fireEvent.pointerDown(open.closest('article')!.querySelector('.application-card__grip')!, { ...pointer, clientX: 0, clientY: 0 })
     fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
     fireEvent.pointerCancel(window, pointer)
 
     // Enter on a button is a click with no press before it.
     fireEvent.click(open)
     expect(onOpen).toHaveBeenCalledWith(record.id)
+  })
+
+  it('picks a card up by its grip only, and puts it back on Escape', () => {
+    const onMove = vi.fn()
+    const record = application('Grip Co')
+    render(<KanbanView applications={[record]} onOpen={vi.fn()} onOpenStageNotes={vi.fn()} onOpenPosting={vi.fn()} onOpenMessages={vi.fn()} onCompleteAction={vi.fn()} onArchive={vi.fn()} onMove={onMove} />)
+    const card = screen.getByText('Grip Co').closest('article')!
+    const destination = screen.getByRole('heading', { level: 3, name: 'Offer' }).closest('section')!
+    const found = document.elementsFromPoint
+    document.elementsFromPoint = () => [destination]
+    const pointer = { pointerId: 1, pointerType: 'mouse', button: 0 }
+    try {
+      // Pressed on the name, the card stays put: that is text being selected.
+      fireEvent.pointerDown(card.querySelector('strong')!, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
+      expect(onMove).not.toHaveBeenCalled()
+
+      // By the grip it is picked up, and Escape puts it back before the release.
+      fireEvent.pointerDown(card.querySelector('.application-card__grip')!, { ...pointer, clientX: 0, clientY: 0 })
+      fireEvent.pointerMove(window, { ...pointer, clientX: 40, clientY: 0 })
+      expect(document.querySelector('.application-card--ghost')).not.toBeNull()
+      fireEvent.keyDown(window, { key: 'Escape' })
+      expect(document.querySelector('.application-card--ghost')).toBeNull()
+      fireEvent.pointerUp(window, { ...pointer, clientX: 40, clientY: 0 })
+      expect(onMove).not.toHaveBeenCalled()
+    } finally {
+      document.elementsFromPoint = found
+    }
   })
 
   it('offers the job posting from the card that has one, and not from one that has not', () => {

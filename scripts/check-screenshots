@@ -36,14 +36,17 @@ if [[ $(uname) == Darwin ]] && ! docker info >/dev/null 2>&1; then
 fi
 
 echo "check-screenshots: the commit touches the UI, comparing screenshots…" >&2
-before=$(git status --porcelain -- src/test/screenshots)
+# By content rather than by git status: a baseline already modified and rewritten again
+# shows the same status line, and would slip through unreviewed.
+fingerprint() { find src/test/screenshots -type f -name '*.png' -print0 | sort -z | xargs -0 shasum 2>/dev/null; }
+before=$(fingerprint)
 log=$(mktemp)
 # shellcheck disable=SC2086 # one path per word
 NODE_OPTIONS=--no-experimental-webstorage scripts/test-browser ${projects[@]+"${projects[@]}"} $files -u >"$log" 2>&1
 status=$?
 # Failure captures, not baselines.
 rm -rf src/__screenshots__
-after=$(git status --porcelain -- src/test/screenshots)
+after=$(fingerprint)
 
 if ((status != 0)); then
   grep -E '×|FAIL|Error' "$log" | sed 's/\x1b\[[0-9;]*m//g' | head -20 >&2
@@ -54,7 +57,7 @@ rm -f "$log"
 
 if [[ $before != "$after" ]]; then
   echo "check-screenshots: these screenshots changed, and the new ones are written in place:" >&2
-  git status --short -- src/test/screenshots >&2
+  diff <(echo "$before") <(echo "$after") | sed -n 's/^> [0-9a-f]*  /  /p' >&2
   echo "Look at them before accepting them. If they are right, git add them and commit again;" >&2
   echo "if not, the change is one nobody meant to make — git checkout -- src/test/screenshots to undo." >&2
   exit 1

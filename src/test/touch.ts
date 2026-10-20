@@ -47,11 +47,13 @@ let enabled = false
  */
 export async function touch(
   path: Point[],
-  { holdMs = 0, dwellMs = 0, steps = 12, stepMs = 16 }: {
+  { holdMs = 0, dwellMs = 0, steps = 12, stepMs = 16, beforeLift }: {
     holdMs?: number
     dwellMs?: number
     steps?: number
     stepMs?: number
+    /** Runs with the finger still down at the last point — to press Escape mid-drag. */
+    beforeLift?: () => Promise<void>
   } = {},
 ) {
   const session = cdp()
@@ -66,18 +68,23 @@ export async function touch(
     })
 
   await send('touchStart', path[0])
-  await wait(holdMs)
-  for (let leg = 1; leg < path.length; leg += 1) {
-    const from = path[leg - 1]
-    const to = path[leg]
-    for (let step = 1; step <= steps; step += 1) {
-      const t = step / steps
-      await send('touchMove', { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t })
-      await wait(stepMs)
+  try {
+    await wait(holdMs)
+    for (let leg = 1; leg < path.length; leg += 1) {
+      const from = path[leg - 1]
+      const to = path[leg]
+      for (let step = 1; step <= steps; step += 1) {
+        const t = step / steps
+        await send('touchMove', { x: from.x + (to.x - from.x) * t, y: from.y + (to.y - from.y) * t })
+        await wait(stepMs)
+      }
     }
+    await wait(dwellMs)
+    await beforeLift?.()
+  } finally {
+    // Always lifted, or a failure here leaves a finger down for the next test to trip on.
+    await send('touchEnd')
   }
-  await wait(dwellMs)
-  await send('touchEnd')
   // Let the click a tap produces, and the render a drop causes, arrive.
   await wait(100)
 }

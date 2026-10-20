@@ -63,8 +63,15 @@ export interface PointerDragOptions<Target> {
    * the finger and the gesture reads as having failed.
    */
   ghostClassName?: string
-  /** A scroller to follow the pointer when it nears one of its edges. */
+  /** A scroller to follow the pointer when it nears its left or right edge. */
   scroller?: () => HTMLElement | null
+  /**
+   * Scrolls the page itself when the pointer nears the top or bottom of the window, so a
+   * card can be carried to a lane below the fold. Returns how much of the window's top is
+   * covered — a sticky header — so the top edge is where the page's visible part begins
+   * rather than under the header, where a finger cannot aim.
+   */
+  pageTopInset?: () => number
 }
 
 export interface PointerDrag<Target> {
@@ -73,7 +80,7 @@ export interface PointerDrag<Target> {
   /** Where it would land right now. */
   target: Target | null
   /** Begins watching a press. */
-  start: (event: ReactPointerEvent<HTMLElement>, key: string) => void
+  start: (event: ReactPointerEvent<HTMLElement>, key: string, options?: StartOptions) => void
   /**
    * Whether the press that just ended was a drag. The click a browser sends after a
    * pointer sequence would otherwise also act, so anything clickable asks this before
@@ -82,11 +89,28 @@ export interface PointerDrag<Target> {
   wasDragged: () => boolean
 }
 
+export interface StartOptions {
+  /**
+   * What is being dragged, when the press is on a part of it — a grip on a card. It is the
+   * element carried under the pointer as the copy; the grip is still what holds the capture.
+   */
+  item?: HTMLElement | null
+  /**
+   * The press is on a handle that means nothing but "drag", so a finger moves it at once
+   * the way a mouse does, with no hold first. A hold is there to tell a drag from a scroll,
+   * and a handle answers that question itself — it is `touch-action: none`, so the browser
+   * never starts a scroll from it.
+   */
+  handle?: boolean
+}
+
 interface Press {
   key: string
   pointerId: number
   pointerType: string
   element: HTMLElement
+  item: HTMLElement
+  handle: boolean
   from: { x: number; y: number }
   at: { x: number; y: number }
   /** Set once the press has become a drag. */
@@ -104,6 +128,23 @@ interface Press {
  * columns away, the board being far wider than the screen. Reports whether it moved, since
  * what is under a still pointer changes as the board moves beneath it.
  */
+/** The step for a pointer `distance` inside an edge zone: full at the edge, none past the zone. */
+function edgeStep(distance: number): number {
+  return EDGE_SPEED_PX * (1 - Math.max(0, distance) / EDGE_PX)
+}
+
+/** Scrolls the page when the pointer is near the top or bottom of its visible part. */
+function scrollPageTowards(y: number, topInset: number): boolean {
+  const bottom = window.innerHeight
+  let step = 0
+  if (y < topInset + EDGE_PX) step = -edgeStep(y - topInset)
+  else if (y > bottom - EDGE_PX) step = edgeStep(bottom - y)
+  if (step === 0) return false
+  const before = window.scrollY
+  window.scrollBy(0, step)
+  return window.scrollY !== before
+}
+
 function scrollTowards(box: HTMLElement, x: number): boolean {
   const rect = box.getBoundingClientRect()
   let step = 0
@@ -128,6 +169,7 @@ export function usePointerDrag<Target>({
   onDrop,
   ghostClassName,
   scroller,
+  pageTopInset,
 }: PointerDragOptions<Target>): PointerDrag<Target> {
   const [key, setKey] = useState<string | null>(null)
   const [target, setTarget] = useState<Target | null>(null)
@@ -137,12 +179,17 @@ export function usePointerDrag<Target>({
   const lastTarget = useRef<Target | null>(null)
   /** Read by a click handler, which runs after the pointer sequence has ended. */
   const dragged = useRef(false)
+  /**
+   * The pointer whose drag Escape put back, still down. Its release is what produces the
+   * click to swallow, and it may come long after the key.
+   */
+  const escaped = useRef<number | null>(null)
   const draggedReset = useRef(0)
 
-  const options = useRef({ targetAt, onDrop, ghostClassName, scroller })
+  const options = useRef({ targetAt, onDrop, ghostClassName, scroller, pageTopInset })
   useEffect(() => {
-    options.current = { targetAt, onDrop, ghostClassName, scroller }
-  }, [targetAt, onDrop, ghostClassName, scroller])
+    options.current = { targetAt, onDrop, ghostClassName, scroller, pageTopInset }
+  }, [targetAt, onDrop, ghostClassName, scroller, pageTopInset])
 
   /*
    * Only a target that names somewhere else is news. A hit test answers with a fresh object
@@ -208,8 +255,8 @@ export function usePointerDrag<Target>({
 
     const className = options.current.ghostClassName
     if (className) {
-      const rect = held.element.getBoundingClientRect()
-      const ghost = held.element.cloneNode(true) as HTMLElement
+      const rect = held.item.getBoundingClientRect()
+      const ghost = held.item.cloneNode(true) as HTMLElement
       ghost.classList.add(className)
       ghost.setAttribute('aria-hidden', 'true')
       ghost.removeAttribute('id')
@@ -222,14 +269,16 @@ export function usePointerDrag<Target>({
       moveGhost(held)
     }
 
-    if (options.current.scroller) {
+    if (options.current.scroller || options.current.pageTopInset) {
       const follow = () => {
         const current = press.current
         if (!current?.dragging) return
         const box = options.current.scroller?.()
-        if (box && scrollTowards(box, current.at.x)) {
-          aim(options.current.targetAt(current.at.x, current.at.y))
-        }
+        const inset = options.current.pageTopInset?.()
+        // Both may move in one frame: a finger in a corner is asking for both.
+        const across = box ? scrollTowards(box, current.at.x) : false
+        const down = inset === undefined ? false : scrollPageTowards(current.at.y, inset)
+        if (across || down) aim(options.current.targetAt(current.at.x, current.at.y))
         current.frame = window.requestAnimationFrame(follow)
       }
       held.frame = window.requestAnimationFrame(follow)
@@ -249,7 +298,7 @@ export function usePointerDrag<Target>({
       const travelled = Math.hypot(event.clientX - held.from.x, event.clientY - held.from.y)
 
       if (!held.dragging) {
-        if (event.pointerType === 'mouse') {
+        if (event.pointerType === 'mouse' || held.handle) {
           if (travelled < MOUSE_THRESHOLD_PX) return
           arm()
         } else {
@@ -265,6 +314,14 @@ export function usePointerDrag<Target>({
     }
 
     const onUp = (event: PointerEvent) => {
+      if (escaped.current === event.pointerId) {
+        escaped.current = null
+        window.clearTimeout(draggedReset.current)
+        draggedReset.current = window.setTimeout(() => {
+          dragged.current = false
+        }, CLICK_AFTER_DROP_MS)
+        return
+      }
       const held = press.current
       if (!held || event.pointerId !== held.pointerId) return
       if (!held.dragging) {
@@ -285,11 +342,31 @@ export function usePointerDrag<Target>({
     }
 
     const onCancel = (event: PointerEvent) => {
+      if (escaped.current === event.pointerId) {
+        escaped.current = null
+        dragged.current = false
+        return
+      }
       if (press.current?.pointerId !== event.pointerId) return
       clear()
       // A cancelled drag sends no click to swallow. Left set, the flag ate the next click
       // that arrived without a press before it — Enter on a card's button.
       dragged.current = false
+    }
+
+    /*
+     * Escape puts the item back where it was. The pointer is still down, so its release
+     * must not drop anything either — the press is forgotten here, and the click that
+     * release produces, whenever it comes, is swallowed like any other after a drag.
+     * Stopped, so the key closes no dialog or menu underneath on the way.
+     */
+    const onKeyDown = (event: KeyboardEvent) => {
+      const held = press.current
+      if (event.key !== 'Escape' || !held?.dragging) return
+      event.preventDefault()
+      event.stopPropagation()
+      escaped.current = held.pointerId
+      clear()
     }
 
     // The pan the browser would otherwise start the moment a held finger moves.
@@ -312,7 +389,9 @@ export function usePointerDrag<Target>({
     window.addEventListener('pointercancel', onCancel)
     window.addEventListener('touchmove', onTouchMove, { passive: false })
     window.addEventListener('contextmenu', onContextMenu)
+    window.addEventListener('keydown', onKeyDown, true)
     return () => {
+      window.removeEventListener('keydown', onKeyDown, true)
       window.removeEventListener('pointermove', onMove)
       window.removeEventListener('pointerup', onUp)
       window.removeEventListener('pointercancel', onCancel)
@@ -325,7 +404,7 @@ export function usePointerDrag<Target>({
   useEffect(() => clear, [clear])
 
   const start = useCallback(
-    (event: ReactPointerEvent<HTMLElement>, dragKey: string) => {
+    (event: ReactPointerEvent<HTMLElement>, dragKey: string, { item, handle = false }: StartOptions = {}) => {
       // The primary button only: a right-click belongs to the context menu, and a
       // middle-click to whatever the browser does with one.
       if (event.pointerType === 'mouse' && event.button !== 0) return
@@ -333,7 +412,7 @@ export function usePointerDrag<Target>({
       window.clearTimeout(draggedReset.current)
       dragged.current = false
       const element = event.currentTarget
-      const hold = event.pointerType === 'mouse'
+      const hold = event.pointerType === 'mouse' || handle
         ? 0
         : window.setTimeout(arm, TOUCH_HOLD_MS)
 
@@ -342,6 +421,8 @@ export function usePointerDrag<Target>({
         pointerId: event.pointerId,
         pointerType: event.pointerType,
         element,
+        item: item ?? element,
+        handle,
         from: { x: event.clientX, y: event.clientY },
         at: { x: event.clientX, y: event.clientY },
         dragging: false,

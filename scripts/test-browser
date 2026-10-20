@@ -77,7 +77,13 @@ if $docker_firefox; then
       tar --exclude=./node_modules --exclude=./data --exclude=./dist --exclude=./src/test/screenshots -cf - . | tar -xf - -C /work
       cd /work
       corepack enable
-      corepack pnpm install --frozen-lockfile --store-dir /pnpm-store --reporter=silent
+      # CI, so pnpm rebuilds the shared install when another worktree left it in a state it
+      # wants to replace, instead of asking a terminal there is none of and stopping. Quiet
+      # unless it fails, when the log is the only way to see why.
+      if ! CI=true corepack pnpm install --frozen-lockfile --store-dir /pnpm-store >/tmp/install.log 2>&1; then
+        cat /tmp/install.log >&2
+        exit 1
+      fi
       corepack pnpm exec vitest run -c "$0" --project firefox "$@"
     ' "$config" ${args[@]+"${args[@]}"} || status=1
 fi

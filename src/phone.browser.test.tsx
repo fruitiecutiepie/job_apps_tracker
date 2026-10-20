@@ -72,6 +72,19 @@ function expectOnScreen(panel: Element) {
   }
 }
 
+/**
+ * Moves the mouse off everything before a picture is taken. A test before it can leave the
+ * pointer resting where a button now is, and the baseline then holds that button's hover
+ * state — a picture that depends on which tests ran first.
+ */
+async function parkPointer() {
+  const corner = document.createElement('div')
+  corner.style.cssText = 'position:fixed;top:0;left:0;width:2px;height:2px;z-index:99'
+  document.body.append(corner)
+  await userEvent.hover(corner)
+  corner.remove()
+}
+
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['Date'] })
   vi.setSystemTime(new Date(DEFAULT_DEMO_REFERENCE))
@@ -105,9 +118,11 @@ describe('menus on a phone', () => {
   it.each(THEMES)('locks in the board, and a card\'s End menu open on it, %s', async (theme) => {
     useTheme(theme)
     renderBoard()
+    await parkPointer()
     await expect.element(page.elementLocator(document.querySelector('.kanban')!)).toMatchScreenshot(`kanban-phone-${theme}`)
 
     await userEvent.click(screen.getByRole('button', { name: 'End Northstar Labs' }))
+    await parkPointer()
     await expect.element(page.elementLocator(document.body)).toMatchScreenshot(`kanban-end-menu-phone-${theme}`)
   })
 })
@@ -144,6 +159,7 @@ describe('Prep on a phone', () => {
   it.each(THEMES)('locks in the panel, %s', async (theme) => {
     useTheme(theme)
     renderPanel()
+    await parkPointer()
     await expect.element(page.elementLocator(document.querySelector('.panel')!)).toMatchScreenshot(`prep-phone-${theme}`)
   })
 })
@@ -159,9 +175,11 @@ describe('on a desktop', () => {
   it.each(THEMES)('locks in the board and the panel, %s', async (theme) => {
     useTheme(theme)
     renderBoard()
+    await parkPointer()
     await expect.element(page.elementLocator(document.querySelector('.kanban')!)).toMatchScreenshot(`kanban-desktop-${theme}`)
     cleanup()
     renderPanel()
+    await parkPointer()
     await expect.element(page.elementLocator(document.querySelector('.panel')!)).toMatchScreenshot(`prep-desktop-${theme}`)
   })
 })

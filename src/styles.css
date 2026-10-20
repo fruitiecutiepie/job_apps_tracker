@@ -1287,13 +1287,55 @@ a.actions-menu__item {
 }
 
 /*
- * Held to be dragged, a card is not text to select or an image to save: a long press on a
- * phone otherwise raises the selection handles or the callout menu instead of picking the
- * card up.
+ * The company and role, and the grip a card is picked up by. Only the grip starts a drag,
+ * so the card's text stays selectable — the company name especially, which is what gets
+ * copied into an email or a search.
  */
-.application-card {
+.application-card__head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s2);
+}
+
+.application-card__head .application-card__open {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Text in a button is not selectable by default in every engine; this one is a name. */
+.application-card__open {
+  user-select: text;
+}
+
+/*
+ * `touch-action: none` is what lets a finger move the card the moment it moves: the
+ * browser is told up front there is nothing to scroll from here, so it never takes the
+ * gesture as a pan. The callout and selection go with it, a long press on a grip being a
+ * drag and nothing else.
+ */
+.application-card__grip {
+  display: grid;
+  flex: none;
+  width: var(--control);
+  height: var(--control);
+  margin: calc(-1 * var(--s2)) calc(-1 * var(--s2)) 0 0;
+  place-items: center;
+  border-radius: var(--r1);
+  color: var(--ink-3);
+  cursor: grab;
+  touch-action: none;
   -webkit-touch-callout: none;
   user-select: none;
+}
+
+.application-card__grip:hover {
+  color: var(--ink);
+  background: var(--surface-2);
+}
+
+.application-card--dragging .application-card__grip,
+.application-card--ghost .application-card__grip {
+  cursor: grabbing;
 }
 
 /* The copy that follows the pointer while the card itself waits, dimmed, in its lane. */
