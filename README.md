@@ -478,7 +478,10 @@ own; `TEST_FIREFOX=native pnpm test:browser` tries Firefox natively instead.
 
 The suite also compares screenshots of the board and the Prep panel at phone and desktop width,
 in light and dark, against baselines in `src/test/screenshots/`. After a deliberate visual change, update them with
-`pnpm test:browser -u` and look at the new images before committing them.
+`pnpm test:browser -u` and look at the new images before committing them. A pre-commit hook,
+turned on by `pnpm install`, does the update for you when a commit touches the UI: it stops the
+commit with the new images in your working tree, and committing again after `git add` passes.
+`SKIP_SCREENSHOTS=1 git commit` skips it.
 
 Use `pnpm test:watch` while developing. The automated smoke test and optional browser checklist are documented in [SMOKE_TEST.md](./SMOKE_TEST.md).
 

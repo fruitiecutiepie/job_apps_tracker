@@ -9,6 +9,7 @@
     "dev:demo": "VITE_TRACKER_PROFILE=demo vite --port 5273",
     "start": "vite preview",
     "start:demo": "VITE_TRACKER_PROFILE=demo vite preview --port 4273",
+    "prepare": "git config core.hooksPath .githooks || true",
     "build": "tsc -b && vite build",
     "build:workers": "rm -rf dist && VITE_USAGE_URL=/projects/job_apps_tracker/app/api/usage VITE_TRACKER_BACKEND=browser VITE_BASE_PATH=/projects/job_apps_tracker/app/ VITE_OUT_DIR=dist/projects/job_apps_tracker/app vite build && VITE_USAGE_URL=/projects/job_apps_tracker/app/api/usage VITE_TRACKER_BACKEND=browser VITE_TRACKER_PROFILE=demo VITE_BASE_PATH=/projects/job_apps_tracker/app/demo/ VITE_OUT_DIR=dist/projects/job_apps_tracker/app/demo vite build",
     "preview:workers": "pnpm build:workers && wrangler dev",
