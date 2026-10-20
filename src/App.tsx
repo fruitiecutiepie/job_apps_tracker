@@ -97,6 +97,7 @@ import type { FileHandleLike } from './backend/fileSystem'
 import { useStorageState } from './useStorageState'
 import { demoSiteUrl, trackerSiteUrl } from './siteLinks'
 import { recordUsage, setUsageTracker, usageAvailable, usageOffByBrowser, useUsagePreference, useViewTime } from './usage'
+import { USAGE_SUMMARY } from './usageCopy'
 import type { UsageProps } from './usageEvent'
 import { referrerKind, usageChanges, usageSnapshot } from './usageSnapshot'
 import { TrackerSwitcher } from './TrackerSwitcher'
@@ -1900,7 +1901,7 @@ export default function App() {
                 className="actions-menu__item"
                 onClick={() => setUsageOn(!usageOn)}
                 role="switch"
-                title="Counts things like how many applications you have and which views you use, never what you write."
+                title={USAGE_SUMMARY}
                 type="button"
               >
                 <ChartNoAxesCombined aria-hidden="true" size={16} />

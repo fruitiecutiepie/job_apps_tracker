@@ -125,7 +125,7 @@ export type UsageProps<E extends UsageEventName> = {
 
 export interface UsageReport {
   v: typeof USAGE_VERSION
-  /** 16 hex characters: a hash of the tracker id. */
+  /** 16 hex characters: a hash of the tracker id under a secret its browser keeps (`usageTag`). */
   tracker: string
   profile: 'live' | 'demo'
   event: UsageEventName

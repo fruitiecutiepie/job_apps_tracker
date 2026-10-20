@@ -785,10 +785,29 @@ p {
 
 /* The usage line is small print, not a warning: the hint's colour and size, and no rule
    above it to make it read as a section of its own. */
-.storage-intro p.storage-intro__usage {
+.storage-intro .storage-intro__usage {
   margin: var(--s3) 0 0;
   color: var(--ink-3);
   font-size: var(--t2);
+}
+
+/* Outranks `.storage-intro p`, which sets the body's size and colour for the intro's prose. */
+.storage-intro .storage-intro__usage p {
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+}
+
+.storage-intro__usage-list h3 {
+  margin: var(--s3) 0 var(--s1);
+  color: var(--ink-2);
+  font-size: var(--t2);
+}
+
+.storage-intro__usage-list ul {
+  max-width: 62ch;
+  margin: 0;
+  padding-left: var(--s5);
 }
 
 /* A button that reads as a link in running text: an action inside a sentence. */
