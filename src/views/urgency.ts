@@ -1,4 +1,4 @@
-import { FINAL_STAGE, STAGE_IDS, classifyLifecycle, stageRank } from "../domain";
+import { FINAL_STAGE, STAGE_IDS, classifyLifecycle, scheduledNextAction, stageRank } from "../domain";
 import type { Application, StageId } from "../domain";
 import {
   applicationAgeInDays,
@@ -137,25 +137,34 @@ function deadlinePressure(application: Application, today: Date): PressureTerm {
   return { ...term, pressure: Math.max(0, 1 - days / DEADLINE_HORIZON_DAYS) };
 }
 
+/**
+ * The soonest dated task, which out-presses every later one since pressure falls with
+ * distance. An undated task still pushes, at the unscheduled level, and wins only where the
+ * dated one is far enough out to push less — the same reading one task always had.
+ */
 function actionPressure(application: Application, today: Date): PressureTerm {
-  if (!application.next_action?.trim()) return NO_PRESSURE;
-  if (!application.next_action_at) {
-    return {
-      kind: "action",
-      dueAt: null,
-      pressure: UNSCHEDULED_ACTION_PRESSURE,
-      detail: "Action not scheduled",
-    };
-  }
-  const days = daysUntil(application.next_action_at, today);
-  if (days === null) return NO_PRESSURE;
+  const unscheduled: PressureTerm = application.next_actions.some((entry) => entry.at === null)
+    ? {
+        kind: "action",
+        dueAt: null,
+        pressure: UNSCHEDULED_ACTION_PRESSURE,
+        detail: "Action not scheduled",
+      }
+    : NO_PRESSURE;
+  const dueAt = scheduledNextAction(application)?.at ?? null;
+  if (!dueAt) return unscheduled;
+  const days = daysUntil(dueAt, today);
+  if (days === null) return unscheduled;
   const term = {
     kind: "action" as const,
-    dueAt: application.next_action_at,
+    dueAt,
     detail: describeDue("action", days),
   };
-  if (days <= 0) return { ...term, pressure: 1 };
-  return { ...term, pressure: Math.max(0, 1 - days / ACTION_HORIZON_DAYS) };
+  const dated =
+    days <= 0
+      ? { ...term, pressure: 1 }
+      : { ...term, pressure: Math.max(0, 1 - days / ACTION_HORIZON_DAYS) };
+  return unscheduled.pressure > dated.pressure ? unscheduled : dated;
 }
 
 /**
@@ -246,8 +255,8 @@ export function rankByUrgency(
       if (byDeadline !== 0) return byDeadline;
 
       const byAction = compareTimes(
-        left.application.next_action_at,
-        right.application.next_action_at,
+        scheduledNextAction(left.application)?.at ?? null,
+        scheduledNextAction(right.application)?.at ?? null,
       );
       if (byAction !== 0) return byAction;
 

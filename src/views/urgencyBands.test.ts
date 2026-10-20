@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest'
 import { emptyCompensation } from '../domain'
 import type { Application, StageEvent, StageId } from '../domain'
 import { URGENCY_BANDS, bandRank, urgencyBandFor } from './urgencyBands'
+import { task } from '../test/nextActions'
 
 const today = new Date(2026, 7, 14, 12)
 
@@ -25,8 +26,7 @@ function application(company: string, overrides: Partial<Application> = {}): App
     outcome: 'active',
     stage_history: [{ stage, outcome: 'active', at: at(-1) }],
     archived_at: null,
-    next_action: null,
-    next_action_at: null,
+    next_actions: [],
     deadline_at: null,
     notes: null,
     compensation: emptyCompensation(),
@@ -71,7 +71,7 @@ describe('band membership', () => {
 
   it('keeps a named task with no date undated, because the band is about dates', () => {
     const placement = urgencyBandFor(
-      application('Task Co', { next_action: 'Follow up' }),
+      application('Task Co', { ...task('Follow up') }),
       today,
     )
 
@@ -82,16 +82,22 @@ describe('band membership', () => {
   it('bands a dated next action by its distance, negative when overdue', () => {
     expect(
       urgencyBandFor(
-        application('Overdue Co', { next_action: 'Follow up', next_action_at: at(-3) }),
+        application('Overdue Co', { ...task('Follow up', at(-3)) }),
         today,
       ),
     ).toEqual({ band: 'due', days: -3 })
   })
 
-  it('ignores a date whose action text was removed, the way the ranking does', () => {
-    expect(
-      urgencyBandFor(application('Orphan Co', { next_action_at: at(2) }), today).band,
-    ).toBe('undated')
+  it('bands by the soonest dated task when there are several', () => {
+    const several = application('Busy Co', {
+      next_actions: [
+        { id: 'soon', action: 'Chase the recruiter', at: at(2) },
+        { id: 'later', action: 'Send the deck', at: at(6) },
+        { id: 'undated', action: 'Read the annual report', at: null },
+      ],
+    })
+
+    expect(urgencyBandFor(several, today)).toEqual({ band: 'due', days: 2 })
   })
 
   it('bands a deadline with no action of its own', () => {
@@ -110,8 +116,7 @@ describe('band membership', () => {
   it('takes the nearest date when several compete, whichever field it came from', () => {
     const placement = urgencyBandFor(
       application('Busy Co', {
-        next_action: 'Follow up',
-        next_action_at: at(9),
+        ...task('Follow up', at(9)),
         deadline_at: at(5),
         stage_events: [invite({ starts_at: at(7) })],
       }),
@@ -126,7 +131,7 @@ describe('band membership', () => {
     // dated, and a band that read the score would file it with the rows that have no plan.
     expect(
       urgencyBandFor(
-        application('Far Off Co', { next_action: 'Submit the exercise', next_action_at: at(30) }),
+        application('Far Off Co', { ...task('Submit the exercise', at(30)) }),
         today,
       ),
     ).toEqual({ band: 'due', days: 30 })
@@ -154,7 +159,7 @@ describe('band membership', () => {
     }
 
     expect(
-      urgencyBandFor(application('Loose End Co', { ...rejected, next_action: 'Ask for feedback' }), today)
+      urgencyBandFor(application('Loose End Co', { ...rejected, ...task('Ask for feedback') }), today)
         .band,
     ).toBe('outstanding')
     expect(urgencyBandFor(application('Done Co', rejected), today).band).toBe('closed')

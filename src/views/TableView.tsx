@@ -2,7 +2,7 @@ import { useMemo, useRef, useState, type ReactNode } from "react";
 import { COMPENSATION_CONFIG, SOURCE_SUGGESTIONS, STAGE_CONFIG, outcomeRank, stageRank } from "../domain";
 import type { Application, StageId } from "../domain";
 import { AttachmentFilenames } from "./AttachmentFilenames";
-import { CompleteActionButton } from "./CompleteActionButton";
+import { NextActionList } from "./NextActionList";
 import { InviteSummaries } from "./InviteSummaries";
 import { MoveControls, OutcomeBadge } from "./MoveControls";
 import { PostingButton } from "./PostingButton";
@@ -175,6 +175,8 @@ function comparableValue(
   if (field === "deadline_at") {
     return application.deadline_at ? parseTimestamp(application.deadline_at)?.getTime() ?? null : null;
   }
+  // The first task in stored order, which is the soonest dated one; none sinks either way.
+  if (field === "next_action") return application.next_actions[0]?.action.toLocaleLowerCase() ?? null;
   if (field === "created_at") return parseTimestamp(application.created_at)?.getTime() ?? 0;
   if (field === "updated_at") return parseTimestamp(application.updated_at)?.getTime() ?? 0;
   return (application[field] ?? "").toLocaleLowerCase();
@@ -199,8 +201,10 @@ function matchesColumnFilters(
   if (!includesQuery(application.source ?? "", filters.source)) return false;
   if (!includesQuery(describeIdle(idleStatusFor(application, new Date(), quietDays)), filters.activity)) return false;
 
-  const nextActionText = [application.next_action, formatShortDate(application.next_action_at)]
-    .filter((value) => value && value !== "Not scheduled")
+  // Every task and its date, so a filter reaches the second task as readily as the first.
+  const nextActionText = application.next_actions
+    .flatMap((entry) => [entry.action, entry.at ? formatShortDate(entry.at) : ""])
+    .filter(Boolean)
     .join(" ");
   if (!includesQuery(nextActionText, filters.next_action)) return false;
   if (!includesQuery(inviteFilterText(application.stage_events), filters.invites)) return false;
@@ -264,6 +268,7 @@ export function TableView({
   onOpenStageNotes,
   onOpenPosting,
   onCompleteAction,
+  onDeleteAction,
   onMove,
   onArchive,
   quietDays,
@@ -624,20 +629,13 @@ export function TableView({
       )}
       {bodyCell(
         "next_action",
-        application.next_action?.trim() ? (
-          <>
-            <span>{application.next_action}</span>
-            {application.next_action_at ? (
-              <time className="table-view__date" dateTime={application.next_action_at}>
-                {formatShortDate(application.next_action_at)}
-              </time>
-            ) : null}
-            <CompleteActionButton
-              application={application}
-              onCompleteAction={onCompleteAction}
-              variant="table"
-            />
-          </>
+        application.next_actions.length > 0 ? (
+          <NextActionList
+            application={application}
+            onCompleteAction={onCompleteAction}
+            onDeleteAction={onDeleteAction}
+            variant="table"
+          />
         ) : (
           <span aria-label="Not set">—</span>
         ),

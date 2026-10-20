@@ -1495,7 +1495,8 @@ a.actions-menu__item {
 .application-card--idle .application-card__label,
 .application-card--idle .stage-notes-button--card,
 .application-card--idle .posting-button--card,
-.application-card--idle .complete-action-button--card {
+.application-card--idle .complete-action-button--card,
+.application-card--idle .delete-action-button--card {
   color: var(--ink-2);
 }
 
@@ -1568,13 +1569,6 @@ a.actions-menu__item {
   font-weight: 500;
 }
 
-/* Label left, Done right, on one line above the task text. */
-.application-card__action-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--s2);
-}
 
 .application-card__attachments {
   display: flex;
@@ -3248,25 +3242,49 @@ tbody tr:hover {
 }
 
 /*
- * One row for the action, its date, and Done — in that order, so the control follows the
- * fields it acts on. The action takes the free space; the date and the button keep their
- * intrinsic width. `align-items: end` lines all three up on the inputs rather than on the
- * labels above them.
+ * One row per task: the task, its date, Done and Delete — in that order, so the controls
+ * follow the fields they act on. The task takes the free space; the date and the buttons
+ * keep their intrinsic width. The headings and every row share one set of tracks through
+ * `subgrid`, so "Date" stands over the date boxes however many rows there are.
  */
 .next-action-field {
-  grid-template-columns: minmax(0, 1fr) auto auto;
-  align-items: end;
+  gap: var(--s3);
 }
 
-.next-action-field > label {
+.next-action-field__grid {
   display: grid;
-  gap: var(--s2);
+  grid-template-columns: minmax(0, 1fr) auto auto auto;
+  row-gap: var(--s2);
+  column-gap: var(--s2);
   min-width: 0;
 }
 
-.next-action-field > button {
+.next-action-field__heads,
+.next-action-field__list,
+.next-action-field__row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  min-width: 0;
+}
+
+.next-action-field__list {
+  row-gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.next-action-field__row {
+  align-items: center;
+}
+
+/* Done and Delete carry only their icons, so each is a square the height of the inputs. */
+.next-action-field__row > button {
+  justify-content: center;
+  min-width: var(--control-form);
   min-height: var(--control-form);
-  white-space: nowrap;
+  padding: 0;
 }
 
 /* ---------------------------------------------------- completed actions --- */
@@ -3313,8 +3331,7 @@ tbody tr:hover {
 
 .stage-notes-button,
 .posting-button,
-.messages-button,
-.complete-action-button {
+.messages-button {
   gap: var(--s2);
   padding: 0 var(--s3);
   font-size: var(--t2);
@@ -3322,15 +3339,13 @@ tbody tr:hover {
 
 .stage-notes-button--card,
 .posting-button--card,
-.messages-button--card,
-.complete-action-button--card {
+.messages-button--card {
   min-height: 30px;
   color: var(--ink-2);
 }
 
 .stage-notes-button--table,
-.posting-button--table,
-.complete-action-button--table {
+.posting-button--table {
   min-height: 28px;
   white-space: nowrap;
 }
@@ -3348,11 +3363,76 @@ tbody tr:hover {
 }
 
 /*
- * In the table the button sits under the action text inside its own cell, so it needs the
- * gap the surrounding cell layout does not provide.
+ * Every task still to do, each followed by its own Done and Delete. The text takes the free
+ * space and wraps; the buttons keep their size and sit at the top of a task that wraps, so a
+ * long one cannot push its controls onto a line of their own.
  */
-.complete-action-button--table {
-  margin-top: var(--s2);
+.next-action-list {
+  display: grid;
+  gap: var(--s2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.next-action-list__item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--s1);
+}
+
+.next-action-list__text {
+  flex: 1;
+  min-width: 0;
+}
+
+/* On the card the date follows the task on its line, the way the invite line reads. */
+.next-action-list--card .next-action-list__date::before {
+  content: " · ";
+}
+
+/*
+ * The table's column is too narrow for the buttons beside the text — a task wrapped to a word
+ * a line — so there each task's buttons go on the line under it, the way they sat when a row
+ * held one task.
+ */
+.next-action-list--table .next-action-list__item {
+  flex-wrap: wrap;
+}
+
+.next-action-list--table .next-action-list__text {
+  flex-basis: 100%;
+}
+
+/* In the table it goes under the task, the way the Deadline column's date does. */
+.next-action-list--table .next-action-list__date {
+  display: block;
+  color: var(--ink-3);
+  white-space: nowrap;
+}
+
+/*
+ * Done and Delete are square, because each carries only its icon: the task it acts on is in
+ * its accessible name and what it does is in its hover title. Delete is quiet like Done and
+ * the move controls — giving up on a task is ordinary, not destructive.
+ */
+.complete-action-button,
+.delete-action-button {
+  justify-content: center;
+  padding: 0;
+}
+
+.complete-action-button--card,
+.delete-action-button--card {
+  min-width: 30px;
+  min-height: 30px;
+  color: var(--ink-2);
+}
+
+.complete-action-button--table,
+.delete-action-button--table {
+  min-width: 28px;
+  min-height: 28px;
 }
 
 /*
@@ -6455,14 +6535,20 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .move-controls__button,
   .move-controls--table .move-controls__button,
   .stage-notes-button--table,
-  .complete-action-button--table,
   .stage-note__mode {
     min-height: 40px;
   }
 
+  .complete-action-button--table,
+  .complete-action-button--card,
+  .delete-action-button--table,
+  .delete-action-button--card {
+    min-width: 40px;
+    min-height: 40px;
+  }
+
   .application-card__move,
-  .stage-notes-button--card,
-  .complete-action-button--card {
+  .stage-notes-button--card {
     min-height: 40px;
   }
 
@@ -6500,9 +6586,21 @@ ol.markdown__list > .markdown__item > .markdown__item-line > .markdown__item-con
   .correspondence-item__head,
   .correspondence-item__grid,
   .rating-grid,
-  .compensation-row,
-  .next-action-field {
+  .compensation-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  /* The task over its date, with the two buttons on a row of their own beneath. */
+  .next-action-field__grid {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+
+  .next-action-field__row > input {
+    grid-column: 1 / -1;
+  }
+
+  .next-action-field__heads {
+    display: none;
   }
 
   .field--wide {

@@ -1,37 +1,37 @@
 import { CircleCheck } from "lucide-react";
-import type { Application } from "../domain";
+import type { Application, NextAction } from "../domain";
 
 interface CompleteActionButtonProps {
   application: Application;
-  onCompleteAction: (id: string) => void;
+  action: NextAction;
+  onCompleteAction: (id: string, actionId: string) => void;
   variant: "card" | "table";
 }
 
 /**
- * Resolves an application's next action: the plan is cleared and what was done is logged in
- * the notes as a dated line. Renders nothing when there is no action, because there is
- * nothing to resolve — a disabled control on every untasked row would be pure noise.
+ * Resolves one of an application's next actions: it leaves the plan and joins the record of
+ * completed actions. One per task, beside the task it closes, so an application carrying
+ * several never has to guess which one Done meant.
  *
- * The accessible name names the action, so a screen reader hears which task is being closed
- * rather than a row of identical "Done" buttons.
+ * Icon-only: the check says what it does, the hover title says it in words, and the
+ * accessible name names the task, so a screen reader hears which one is being closed rather
+ * than a row of identical buttons.
  */
 export function CompleteActionButton({
   application,
+  action,
   onCompleteAction,
   variant,
 }: CompleteActionButtonProps) {
-  const action = application.next_action?.trim();
-  if (!action) return null;
-
   return (
     <button
-      aria-label={`Mark done for ${application.company}: ${action}`}
+      aria-label={`Mark done for ${application.company}: ${action.action}`}
       className={`button button--quiet complete-action-button complete-action-button--${variant}`}
-      onClick={() => onCompleteAction(application.id)}
+      onClick={() => onCompleteAction(application.id, action.id)}
+      title="Mark next action done"
       type="button"
     >
       <CircleCheck aria-hidden="true" size={14} />
-      <span>Done</span>
     </button>
   );
 }

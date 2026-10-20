@@ -12,13 +12,14 @@ export const TRACKER_JSON_SCHEMA = {
   additionalProperties: false,
   properties: {
     schema_version: {
-      const: 4,
+      const: 5,
       description:
         'The layout this file is written in. Files with no version are version 1, which kept '
         + 'how an application ended inside its state; version 2 had taking the job as an '
         + 'outcome rather than the last stage; version 3 named three stages by their old '
         + 'labels (`recruiter_interview`, `interview_1`, `interview_2`) and called the field '
-        + '`state`, `state_history` and `state_events`. All are migrated on load.',
+        + '`state`, `state_history` and `state_events`; version 4 held one next action per '
+        + 'application rather than a list. All are migrated on load.',
     },
     schema: {
       type: 'object',
@@ -73,8 +74,7 @@ export const TRACKER_JSON_SCHEMA = {
         'outcome',
         'stage_history',
         'archived_at',
-        'next_action',
-        'next_action_at',
+        'next_actions',
         'deadline_at',
         'notes',
         'completed_actions',
@@ -125,8 +125,10 @@ export const TRACKER_JSON_SCHEMA = {
           type: ['string', 'null'],
           description: 'When the application was put away, or null. Hides it; keeps its outcome.',
         },
-        next_action: { type: ['string', 'null'] },
-        next_action_at: { type: ['string', 'null'] },
+        next_actions: {
+          type: 'array',
+          items: { $ref: '#/$defs/next_action' },
+        },
         deadline_at: { type: ['string', 'null'] },
         notes: { type: ['string', 'null'] },
         completed_actions: {
@@ -178,6 +180,17 @@ export const TRACKER_JSON_SCHEMA = {
         },
         created_at: { type: 'string' },
         updated_at: { type: 'string' },
+      },
+    },
+    next_action: {
+      type: 'object',
+      description: 'A task still to do, with an optional planning date of your own.',
+      required: ['id', 'action', 'at'],
+      additionalProperties: false,
+      properties: {
+        id: { type: 'string', minLength: 1 },
+        action: { type: 'string', minLength: 1 },
+        at: { type: ['string', 'null'] },
       },
     },
     completed_action: {

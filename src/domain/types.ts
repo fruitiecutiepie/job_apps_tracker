@@ -89,6 +89,29 @@ export interface CompletedAction {
   at: string
 }
 
+/**
+ * One task still to do on an application, and optionally when you mean to do it. An
+ * application holds as many as it needs, each with an id of its own, so Done and Delete act
+ * on one task rather than on whatever single task the application happened to carry.
+ *
+ * `at` is your own planning date, not an external one: a posting closing or an offer
+ * decision is `deadline_at`, which no task owns. It is optional, because a task you have not
+ * scheduled is still a task, and it is the same name `CompletedAction` uses, since Done
+ * carries the action across and replaces this date with the moment it was done.
+ */
+export interface NextAction {
+  id: string
+  action: string
+  at: string | null
+}
+
+/** A next action as held by the editor, before an id is resolved. */
+export interface NextActionDraft {
+  id?: string
+  action: string
+  at?: string | null
+}
+
 /** A completed action as held by the editor, before an id and timestamp are resolved. */
 export interface CompletedActionDraft {
   id?: string
@@ -310,8 +333,8 @@ export interface Application {
    * the last one's leftovers.
    */
   archived_at: string | null
-  next_action: string | null
-  next_action_at: string | null
+  /** Tasks still to do: dated soonest first, then undated in the order they were listed. */
+  next_actions: NextAction[]
   deadline_at: string | null
   notes: string | null
   /** Next actions carried out, oldest first. */
@@ -349,7 +372,7 @@ export interface TrackerIndexes {
 
 export interface TrackerDatabase {
   /** The document layout this file is written in; see `DATA_VERSION`. */
-  schema_version: 4
+  schema_version: 5
   schema: JsonSchemaObject
   /**
    * What the reader called this tracker, absent until they name it. In the document rather
@@ -383,8 +406,7 @@ export interface ApplicationInput {
   source?: string | null
   stage?: StageId
   outcome?: OutcomeId
-  next_action?: string | null
-  next_action_at?: string | null
+  next_actions?: NextActionDraft[]
   deadline_at?: string | null
   notes?: string | null
   // No `| null` here, unlike the text fields: "no compensation recorded" is a whole empty
@@ -399,8 +421,6 @@ export type ApplicationEdits = Partial<
     | 'role'
     | 'url'
     | 'source'
-    | 'next_action'
-    | 'next_action_at'
     | 'deadline_at'
     | 'notes'
     | 'attachments'

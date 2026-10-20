@@ -26,7 +26,7 @@ The catch worth knowing up front: without a connected folder, your data lives on
 - Compensation as a measurement rather than a rating: what was advertised, what you expect, and what was offered, kept side by side and compared against your target
 - Derived urgency ranking that explains itself, combining stage, scheduled invites, deadline, next-action date, and how long an application has sat in the same stage, into one sortable column
 - Sortable and filterable table with invites, deadline, urgency, preference, compensation, and attachments columns, where sorting by invite sorts by what is next, and opening on urgency bands the rows under headings — what is dated, what is live but undated, what is finished with a task still on it, and what is finished
-- A **Done** control on the Kanban card and in the table's next action cell that clears a finished task and records it as a dated completed action, kept apart from your notes
+- As many next actions per application as you need, each with an optional date, listed on the Kanban card and in the table's next action cell with its own **Done**, which records it as a dated completed action kept apart from your notes, and its own **Delete**, for a task that is not going to happen
 - Calendar invites imported from the `.ics` a recruiter sends, filed against a stage, with a rescheduled invite replacing the one it supersedes
 - Where an application stands is two things, kept apart: the **stage** it got to, and its **outcome** — still running, rejected by them, withdrawn by you, or closed by them without a rejection (the role was filled, pulled or frozen, or they went silent)
 - One-press moves on every card and table row: back a stage, on a stage, **End** (Rejected, I withdrew, Employer closed), and once ended, **Reopen** or **Archive**
@@ -80,15 +80,17 @@ This is the only local setup where the demo's **Open my tracker** and the tracke
 
 ### Track an application
 
-Select **Add application** and enter a company, optional role and URL, its current stage, notes, and an optional next action. A next action can be saved without a date; its date is cleared automatically if the action text is removed. A deadline is separate: it records an external closing or decision date and can be set with no next action at all. URLs must begin with `http://` or `https://`.
+Select **Add application** and enter a company, optional role and URL, its current stage, notes, and any next actions — **Add next action** adds another row. A next action can be saved without a date; a date with no task beside it is not saved. Tasks are listed soonest dated first, then the undated ones in the order you wrote them, and the urgency ranking reads the soonest dated one. A deadline is separate: it records an external closing or decision date and can be set with no next action at all. URLs must begin with `http://` or `https://`.
 
-Select **Done** beside a next action — on a Kanban card or in the table's next action
-column — when you have finished it. The task moves to that application's **Completed
-actions**, a dated record kept separately from Notes, and the next action clears. The deadline
-is left alone, since a closing date is not something you complete, and finishing a task is not
-a stage change, so no history entry is added.
+Select **Done** (the check) beside a next action — on a Kanban card or in the table's next
+action column — when you have finished it. That task moves to the application's **Completed
+actions**, a dated record kept separately from Notes, and any other tasks stay where they are.
+The deadline is left alone, since a closing date is not something you complete, and finishing a
+task is not a stage change, so no history entry is added. **Delete** (the bin) beside it takes a
+task off without recording it, for one that is not going to happen; the notice repeats what it
+said, in case you meant the one next to it.
 
-Ending an application as **Rejected** or **Withdrawn** clears an outstanding next action for you, and the
+Ending an application as **Rejected** or **Withdrawn** clears its outstanding next actions for you, and the
 notice for the move says so. Either ends the work, so the follow-up you had planned
 is work that will not happen, and left in place it sits on your plan forever because nothing
 asks about it again. It is dropped rather than recorded under Completed actions, since you never
@@ -102,8 +104,9 @@ write and rewrite; a completed action is one line the app writes the moment you 
 Keeping them apart means editing your notes can never disturb the record, the date is not
 something to parse back out of a sentence, and a Done pressed by mistake can be removed.
 
-Open an application to see the whole list, newest first, above Notes. **Done** sits on the same
-row as the next action and its date there, so you can finish a task while editing, and
+Open an application to see the whole list, newest first, above Notes. Each row under **Next
+actions** carries its own **Done** and **Delete** after the task and its date, so you can finish
+or drop a task while editing, and
 **Remove** deletes an entry you did not mean to record. Both are drafts until you save, like everything else in that dialog. Removing an entry
 does not put the task back on your plan — undoing the record is not the same as undoing the
 work, and the app does not guess which you meant.

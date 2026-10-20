@@ -1,5 +1,6 @@
 import { COMPENSATION_STAGE_IDS, emptyCompensation } from './compensation'
 import { prepareTrackerDatabase } from './database'
+import { sortedNextActions } from './nextActions'
 import { RATING_IDS } from './ratings'
 import { DEFAULT_STAGE_CONFIG, OUTCOME_IDS } from './stages'
 import type {
@@ -9,6 +10,7 @@ import type {
   CorrespondenceEntry,
   Compensation,
   CompensationStageId,
+  NextAction,
   Rating,
   RatingDimensionId,
   StageNote,
@@ -34,6 +36,8 @@ interface DemoSeed {
   priorStages?: StageId[]
   nextAction?: string
   nextActionDaysFromNow?: number
+  /** Tasks beyond the first, as [what to do, days from the reference or null for undated]. */
+  moreNextActions?: readonly (readonly [string, number | null])[]
   deadlineDaysFromNow?: number
   /** Edits updated_at without moving stage, so silence and last-touched diverge. */
   editedDaysAgo?: number
@@ -159,7 +163,7 @@ const DEMO_SEEDS: readonly DemoSeed[] = [
   { company: 'Tidal Grove', role: 'Platform Engineer', stage: 'recruiter_messaged', outcome: 'rejected', createdDaysAgo: 26, updatedDaysAgo: 17, priorStages: ['applied', 'recruiter_messaged'], notes: 'Role requires a different on-call timezone.', source: 'LinkedIn' },
   { company: 'Orbit & Oak', role: 'Operations Lead', stage: 'online_assessment', createdDaysAgo: 12, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [120_000, 140_000], expected: 135_000 }, priorStages: ['applied', 'recruiter_messaged'], nextAction: 'Complete the scenario assessment', nextActionDaysFromNow: 3, deadlineDaysFromNow: 4, notes: 'Assessment should take about 75 minutes.', source: 'Company site' },
   { company: 'Bright Harbor', role: 'Software Engineer', stage: 'online_assessment', outcome: 'rejected', createdDaysAgo: 44, updatedDaysAgo: 29, priorStages: ['applied', 'online_assessment'], notes: 'Passed most cases; concurrency section was incomplete.' },
-  { company: 'Atlas Thread', role: 'Design Systems Lead', stage: 'screening', createdDaysAgo: 18, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [160_000, 185_000], expected: 175_000 }, ratings: { work: 4, growth: 4, people: null }, priorStages: ['applied', 'recruiter_messaged'], nextAction: 'Prepare examples of system governance', nextActionDaysFromNow: 1, completedActions: [[9, 'Reply to the recruiter'], [4, 'Send the portfolio link']], notes: 'Thirty-minute video call with the internal recruiter.', source: 'Recruiter', correspondence: [{ stage: 'recruiter_messaged', direction: 'received', daysAgo: 12, hour: 9, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Thanks for applying — I would love to set up a half-hour call this week.\n\nCould you send me two or three windows that suit you?' }, { stage: 'recruiter_messaged', direction: 'sent', daysAgo: 11, hour: 18, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Wednesday or Thursday after 4pm both work, and Friday morning is open too.' }, { stage: 'recruiter_messaged', direction: 'received', daysAgo: 11, hour: 20, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Friday 11:30 it is. Calendar invite to follow.' }, { stage: 'screening', direction: 'received', daysAgo: 3, hour: 14, subject: 'After Thursday — next steps', channel: 'Email', who: 'Dana Okafor', body: ATLAS_PANEL_EMAIL }, { stage: 'screening', direction: 'sent', daysAgo: 2, hour: 9, subject: 'After Thursday — next steps', channel: 'Email', who: 'Dana Okafor', body: 'Understood on all three — I will bring the governance story. See you Friday.' }, { stage: 'screening', direction: 'received', daysAgo: 2, hour: 11, subject: 'Panel logistics — Friday 11:30', channel: 'Email', who: 'Sam Whitfield', body: 'Hi Audrey — I look after scheduling for the design team.\n\nFriday 11:30 is confirmed. The joining link is on the invite, and Ravi may be five minutes late coming out of another call.' }, { stage: 'screening', direction: 'sent', daysAgo: 2, hour: 12, subject: 'Panel logistics — Friday 11:30', channel: 'Email', who: 'Sam Whitfield', body: 'Thanks Sam — noted, and no problem on Ravi.' }], stageEvents: [{ stage: 'screening', summary: 'Screening call with Dana', daysFromNow: 1, hour: 11, minutes: 30, location: 'Level 4, 220 Example Street', url: 'https://example.com/meet/atlas-thread' }], stageNotes: { recruiter_messaged: '- Recruiter is **Dana**\n- Asked for salary expectations early — answer with the band, not a number', screening: '## Story to lead with\n\n- Consolidating four component libraries into one system\n  - Cut component duplication by half\n  - Adopted by six product teams in a quarter\n\n## Questions to ask\n\n- How is design system work resourced between product teams?\n- What does the loop after this look like?' } },
+  { company: 'Atlas Thread', role: 'Design Systems Lead', stage: 'screening', createdDaysAgo: 18, updatedDaysAgo: 2, compensation: { currency: 'AUD', advertised: [160_000, 185_000], expected: 175_000 }, ratings: { work: 4, growth: 4, people: null }, priorStages: ['applied', 'recruiter_messaged'], nextAction: 'Prepare examples of system governance', nextActionDaysFromNow: 1, moreNextActions: [['Send the case study deck', null]], completedActions: [[9, 'Reply to the recruiter'], [4, 'Send the portfolio link']], notes: 'Thirty-minute video call with the internal recruiter.', source: 'Recruiter', correspondence: [{ stage: 'recruiter_messaged', direction: 'received', daysAgo: 12, hour: 9, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Thanks for applying — I would love to set up a half-hour call this week.\n\nCould you send me two or three windows that suit you?' }, { stage: 'recruiter_messaged', direction: 'sent', daysAgo: 11, hour: 18, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Wednesday or Thursday after 4pm both work, and Friday morning is open too.' }, { stage: 'recruiter_messaged', direction: 'received', daysAgo: 11, hour: 20, subject: 'Design Systems Lead — a quick call?', channel: 'Email', who: 'Dana Okafor', body: 'Friday 11:30 it is. Calendar invite to follow.' }, { stage: 'screening', direction: 'received', daysAgo: 3, hour: 14, subject: 'After Thursday — next steps', channel: 'Email', who: 'Dana Okafor', body: ATLAS_PANEL_EMAIL }, { stage: 'screening', direction: 'sent', daysAgo: 2, hour: 9, subject: 'After Thursday — next steps', channel: 'Email', who: 'Dana Okafor', body: 'Understood on all three — I will bring the governance story. See you Friday.' }, { stage: 'screening', direction: 'received', daysAgo: 2, hour: 11, subject: 'Panel logistics — Friday 11:30', channel: 'Email', who: 'Sam Whitfield', body: 'Hi Audrey — I look after scheduling for the design team.\n\nFriday 11:30 is confirmed. The joining link is on the invite, and Ravi may be five minutes late coming out of another call.' }, { stage: 'screening', direction: 'sent', daysAgo: 2, hour: 12, subject: 'Panel logistics — Friday 11:30', channel: 'Email', who: 'Sam Whitfield', body: 'Thanks Sam — noted, and no problem on Ravi.' }], stageEvents: [{ stage: 'screening', summary: 'Screening call with Dana', daysFromNow: 1, hour: 11, minutes: 30, location: 'Level 4, 220 Example Street', url: 'https://example.com/meet/atlas-thread' }], stageNotes: { recruiter_messaged: '- Recruiter is **Dana**\n- Asked for salary expectations early — answer with the band, not a number', screening: '## Story to lead with\n\n- Consolidating four component libraries into one system\n  - Cut component duplication by half\n  - Adopted by six product teams in a quarter\n\n## Questions to ask\n\n- How is design system work resourced between product teams?\n- What does the loop after this look like?' } },
   { company: 'Cinder Studio', role: 'Product Designer', stage: 'screening', outcome: 'rejected', createdDaysAgo: 35, updatedDaysAgo: 20, priorStages: ['applied', 'recruiter_messaged', 'screening'], notes: 'Team selected someone with deeper enterprise experience.', source: 'LinkedIn', correspondence: [{ stage: 'screening', direction: 'received', daysAgo: 21, hour: 16, subject: 'Product Designer — update', who: 'Priya Raman', body: CINDER_REJECTION }] },
   { company: 'Kindred Cloud', role: 'Developer Advocate', stage: 'take_home_assessment', createdDaysAgo: 16, updatedDaysAgo: 1, compensation: { currency: 'USD', advertised: [90_000, 110_000], expected: 105_000 }, priorStages: ['applied', 'screening'], nextAction: 'Submit the API tutorial', nextActionDaysFromNow: 9, deadlineDaysFromNow: 12, notes: 'Keep the written exercise under 1,500 words. The window is generous, so this is not pressing yet.', source: 'Company site', stageNotes: { take_home_assessment: '## Brief\n\nWrite an API tutorial under **1,500 words**.\n\n## Outline\n\n1. Problem\n2. Quickstart\n3. One worked example\n4. Troubleshooting\n\nReuse the webhook walkthrough structure that tested well before.' } },
   { company: 'Willow Finance', role: 'Risk Product Manager', stage: 'take_home_assessment', outcome: 'rejected', createdDaysAgo: 51, updatedDaysAgo: 24, priorStages: ['applied', 'screening', 'take_home_assessment'], notes: 'Good feedback on structure; domain depth was the deciding factor.', source: 'Job board' },
@@ -191,6 +195,20 @@ function historyFor(seed: DemoSeed, reference: Date): StageHistoryEntry[] {
     const at = new Date(created + (updated - created) * fraction).toISOString()
     return { ...status, at }
   })
+}
+
+/** Dated tasks are due at nine on their day; the list is stored in its canonical order. */
+function nextActionsFor(seed: DemoSeed, index: number, reference: Date): NextAction[] {
+  if (seed.nextAction === undefined) return []
+  const tasks: (readonly [string, number | null])[] = [
+    [seed.nextAction, seed.nextActionDaysFromNow ?? null],
+    ...(seed.moreNextActions ?? []),
+  ]
+  return sortedNextActions(tasks.map(([action, daysFromNow], order) => ({
+    id: demoNextActionId(index, order),
+    action,
+    at: daysFromNow === null ? null : localDay(reference, daysFromNow, 9).toISOString(),
+  })))
 }
 
 /** Timestamps come from the reference date, never the wall clock, to stay deterministic. */
@@ -323,6 +341,11 @@ function demoCorrespondenceId(index: number, order: number): string {
   return `018f0000-0000-7001-8000-${String(index + 1).padStart(9, '0')}${String(order + 1).padStart(3, '0')}`
 }
 
+/** A sixth family, on the next spare bit of the version group after correspondence's. */
+function demoNextActionId(index: number, order: number): string {
+  return `018f0000-0000-7002-8000-${String(index + 1).padStart(9, '0')}${String(order + 1).padStart(3, '0')}`
+}
+
 /**
  * The instant every demo timestamp is measured from. Exported so tests can pin the wall clock
  * to it: the seeds are deterministic, but a view's notion of "today" is not, and the two drift
@@ -359,11 +382,7 @@ export function createDemoDocument(
         seed.archivedDaysAgo !== undefined
           ? localDay(reference, -seed.archivedDaysAgo, 18).toISOString()
           : null,
-      next_action: seed.nextAction ?? null,
-      next_action_at:
-        seed.nextAction !== undefined && seed.nextActionDaysFromNow !== undefined
-          ? localDay(reference, seed.nextActionDaysFromNow, 9).toISOString()
-          : null,
+      next_actions: nextActionsFor(seed, index, reference),
       deadline_at:
         seed.deadlineDaysFromNow !== undefined
           ? localDay(reference, seed.deadlineDaysFromNow, 17).toISOString()

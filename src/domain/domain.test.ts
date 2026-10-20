@@ -14,7 +14,11 @@ import {
   clearRating,
   completeApplicationNextAction,
   completeNextAction,
+  applyNextActions,
+  dropApplicationNextAction,
+  dropNextAction,
   updateApplicationCompletedActions,
+  updateApplicationNextActions,
   createApplication,
   createAttachmentMetadata,
   createDemoDocument,
@@ -186,14 +190,15 @@ describe('stage configuration and demo content', () => {
     expect(document.indexes.by_id).toHaveProperty(document.applications[0]!.id)
 
     const now = REFERENCE.getTime()
-    expect(document.applications.some(({ next_action, next_action_at }) =>
-      next_action && next_action_at && new Date(next_action_at).getTime() < now,
-    )).toBe(true)
-    expect(document.applications.some(({ next_action, next_action_at }) =>
-      next_action && next_action_at && new Date(next_action_at).getTime() > now,
-    )).toBe(true)
-    expect(document.applications.some(({ next_action, next_action_at }) =>
-      next_action && next_action_at === null,
+    const tasks = document.applications.flatMap(({ next_actions }) => next_actions)
+    expect(tasks.some(({ at }) => at !== null && new Date(at).getTime() < now)).toBe(true)
+    expect(tasks.some(({ at }) => at !== null && new Date(at).getTime() > now)).toBe(true)
+    expect(tasks.some(({ at }) => at === null)).toBe(true)
+    // One application carries a dated task and an undated one, so a list is on screen.
+    expect(document.applications.some(({ next_actions }) =>
+      next_actions.length > 1
+      && next_actions.some(({ at }) => at === null)
+      && next_actions.some(({ at }) => at !== null),
     )).toBe(true)
     expect(document.applications.some(({ updated_at }) =>
       now - new Date(updated_at).getTime() >= 14 * 24 * 60 * 60 * 1000,
@@ -262,6 +267,7 @@ describe('stage configuration and demo content', () => {
       application.id,
       ...application.stage_notes.flatMap((note) => note.heard.map((entry) => entry.id)),
       ...application.completed_actions.map((entry) => entry.id),
+      ...application.next_actions.map((entry) => entry.id),
       ...application.stage_events.map((event) => event.id),
       ...application.correspondence.map((entry) => entry.id),
     ])
@@ -343,26 +349,24 @@ describe('application mutations', () => {
     expect(edited.source).toBeNull()
   })
 
-  it('separates ordinary edits from stage history and clears orphan dates', () => {
+  it('separates ordinary edits from stage history and leaves the tasks alone', () => {
     const original = createApplication(
-      { company: 'Northwind', next_action: 'Follow up', next_action_at: '2026-08-20T09:00:00+10:00' },
+      { company: 'Northwind', next_actions: [{ action: 'Follow up', at: '2026-08-20T09:00:00+10:00' }] },
       REFERENCE,
     )
     const editTime = new Date('2026-08-15T12:00:00+10:00')
-    const edited = editApplication(original, { role: 'Staff Engineer', next_action: null }, editTime)
+    const edited = editApplication(original, { role: 'Staff Engineer' }, editTime)
 
     expect(edited.stage_history).toEqual(original.stage_history)
     expect(edited.updated_at).toBe(editTime.toISOString())
-    expect(edited.next_action).toBeNull()
-    expect(edited.next_action_at).toBeNull()
+    expect(edited.next_actions).toBe(original.next_actions)
   })
 
   it('keeps a deadline independent of the next action', () => {
     const created = createApplication(
       {
         company: 'Northwind',
-        next_action: 'Follow up',
-        next_action_at: '2026-08-20T09:00:00+10:00',
+        next_actions: [{ action: 'Follow up', at: '2026-08-20T09:00:00+10:00' }],
         deadline_at: '2026-08-22T17:00:00+10:00',
       },
       REFERENCE,
@@ -370,13 +374,13 @@ describe('application mutations', () => {
 
     expect(created.deadline_at).toBe(new Date('2026-08-22T17:00:00+10:00').toISOString())
 
-    const cleared = editApplication(created, { next_action: null }, REFERENCE)
-    expect(cleared.next_action_at).toBeNull()
+    const cleared = applyNextActions(created, [], REFERENCE)
+    expect(cleared.next_actions).toEqual([])
     expect(cleared.deadline_at).toBe(created.deadline_at)
 
     const removed = editApplication(created, { deadline_at: null }, REFERENCE)
     expect(removed.deadline_at).toBeNull()
-    expect(removed.next_action_at).toBe(created.next_action_at)
+    expect(removed.next_actions).toBe(created.next_actions)
 
     const untouched = editApplication(created, { role: 'Staff Engineer' }, REFERENCE)
     expect(untouched.deadline_at).toBe(created.deadline_at)
@@ -388,8 +392,7 @@ describe('application mutations', () => {
       REFERENCE,
     )
 
-    expect(created.next_action).toBeNull()
-    expect(created.next_action_at).toBeNull()
+    expect(created.next_actions).toEqual([])
     expect(created.deadline_at).toBe(new Date('2026-08-22T17:00:00+10:00').toISOString())
   })
 
@@ -448,8 +451,10 @@ describe('completing a next action', () => {
       {
         company: 'Northwind',
         stage: 'applied',
-        next_action: 'Email the recruiter',
-        next_action_at: '2026-08-18T09:00:00+10:00',
+        next_actions: [
+          { action: 'Email the recruiter', at: '2026-08-18T09:00:00+10:00' },
+          { action: 'Send the portfolio' },
+        ],
         deadline_at: '2026-08-30T17:00:00+10:00',
         notes: 'Referred by Dana.',
         ...overrides,
@@ -458,11 +463,15 @@ describe('completing a next action', () => {
     )
   }
 
-  it('clears the plan and records the task as its own entry', () => {
-    const done = completeNextAction(planned(), LATER)
+  function taskId(application: Application, action: string): string {
+    return application.next_actions.find((entry) => entry.action === action)!.id
+  }
 
-    expect(done.next_action).toBeNull()
-    expect(done.next_action_at).toBeNull()
+  it('takes the one task off the plan and records it as its own entry', () => {
+    const application = planned()
+    const done = completeNextAction(application, taskId(application, 'Email the recruiter'), LATER)
+
+    expect(done.next_actions.map((entry) => entry.action)).toEqual(['Send the portfolio'])
     expect(done.completed_actions).toHaveLength(1)
     expect(done.completed_actions[0]).toMatchObject({
       action: 'Email the recruiter',
@@ -473,18 +482,21 @@ describe('completing a next action', () => {
 
   it('leaves the notes alone, so prose and record cannot clobber each other', () => {
     const application = planned()
-    const done = completeNextAction(application, LATER)
+    const done = completeNextAction(application, taskId(application, 'Send the portfolio'), LATER)
 
     expect(done.notes).toBe(application.notes)
   })
 
   it('stacks entries oldest first', () => {
-    const first = completeNextAction(planned(), LATER)
+    const application = planned()
+    const first = completeNextAction(application, taskId(application, 'Email the recruiter'), LATER)
     const second = completeNextAction(
-      { ...first, next_action: 'Send the portfolio', next_action_at: null },
+      first,
+      taskId(first, 'Send the portfolio'),
       new Date('2026-08-21T09:00:00+10:00'),
     )
 
+    expect(second.next_actions).toEqual([])
     expect(second.completed_actions.map((entry) => entry.action)).toEqual([
       'Email the recruiter',
       'Send the portfolio',
@@ -493,33 +505,35 @@ describe('completing a next action', () => {
 
   it('leaves the deadline alone: it is an external fact, not the task', () => {
     const application = planned()
+    const done = completeNextAction(application, taskId(application, 'Email the recruiter'), LATER)
 
-    expect(completeNextAction(application, LATER).deadline_at).toBe(application.deadline_at)
+    expect(done.deadline_at).toBe(application.deadline_at)
   })
 
   it('never appends stage history, because finishing a task is not a stage change', () => {
     const application = planned()
-    const done = completeNextAction(application, LATER)
+    const done = completeNextAction(application, taskId(application, 'Email the recruiter'), LATER)
 
     expect(done.stage).toBe(application.stage)
     expect(done.stage_history).toEqual(application.stage_history)
   })
 
-  it('is a no-op when there is no action to resolve', () => {
-    const idle = planned({ next_action: null, next_action_at: null })
+  it('is a no-op for a task the application does not hold', () => {
+    const application = planned()
 
     // Returning the same object keeps a pointless save from refreshing updated_at.
-    expect(completeNextAction(idle, LATER)).toBe(idle)
-    expect(completeNextAction({ ...idle, next_action: '   ' }, LATER).completed_actions).toEqual([])
+    expect(completeNextAction(application, 'missing', LATER)).toBe(application)
   })
 
   it('touches only the named application in the document', () => {
     const document = createDemoDocument(REFERENCE)
-    const target = document.applications.find((item) => item.next_action?.trim())!
-    const next = completeApplicationNextAction(document, target.id, LATER)
+    const target = document.applications.find((item) => item.next_actions.length > 0)!
+    const next = completeApplicationNextAction(document, target.id, target.next_actions[0]!.id, LATER)
 
     expect(next).not.toBe(document)
-    expect(next.applications.find((item) => item.id === target.id)!.next_action).toBeNull()
+    expect(next.applications.find((item) => item.id === target.id)!.next_actions).toEqual(
+      target.next_actions.slice(1),
+    )
     for (const application of next.applications) {
       if (application.id !== target.id) {
         expect(application).toBe(document.applications.find((item) => item.id === application.id))
@@ -527,20 +541,141 @@ describe('completing a next action', () => {
     }
   })
 
-  it('returns the same document for an unknown id or an application with no action', () => {
+  it('returns the same document for an unknown application or task', () => {
     const document = createDemoDocument(REFERENCE)
-    const idle = document.applications.find((item) => !item.next_action?.trim())!
+    const target = document.applications.find((item) => item.next_actions.length > 0)!
 
-    expect(completeApplicationNextAction(document, 'missing', LATER)).toBe(document)
-    expect(completeApplicationNextAction(document, idle.id, LATER)).toBe(document)
+    expect(completeApplicationNextAction(document, 'missing', target.next_actions[0]!.id, LATER)).toBe(document)
+    expect(completeApplicationNextAction(document, target.id, 'missing', LATER)).toBe(document)
+  })
+
+  describe('dropping an action instead', () => {
+    it('takes the one task off without recording it as done', () => {
+      const application = planned()
+      const dropped = dropNextAction(application, taskId(application, 'Email the recruiter'), LATER)
+
+      expect(dropped.next_actions.map((entry) => entry.action)).toEqual(['Send the portfolio'])
+      expect(dropped.completed_actions).toEqual(application.completed_actions)
+      expect(dropped.updated_at).toBe(LATER.toISOString())
+    })
+
+    it('leaves the deadline, the notes and the history alone', () => {
+      const application = planned()
+      const dropped = dropNextAction(application, taskId(application, 'Send the portfolio'), LATER)
+
+      expect(dropped.deadline_at).toBe(application.deadline_at)
+      expect(dropped.notes).toBe(application.notes)
+      expect(dropped.stage_history).toEqual(application.stage_history)
+    })
+
+    it('is a no-op for a task the application does not hold', () => {
+      const application = planned()
+
+      expect(dropNextAction(application, 'missing', LATER)).toBe(application)
+    })
+
+    it('touches only the named application, and returns the document when nothing changes', () => {
+      const document = createDemoDocument(REFERENCE)
+      const target = document.applications.find((item) => item.next_actions.length > 0)!
+      const next = dropApplicationNextAction(document, target.id, target.next_actions[0]!.id, LATER)
+
+      expect(next.applications.find((item) => item.id === target.id)!.next_actions).toEqual(
+        target.next_actions.slice(1),
+      )
+      for (const application of next.applications) {
+        if (application.id !== target.id) {
+          expect(application).toBe(document.applications.find((item) => item.id === application.id))
+        }
+      }
+      expect(dropApplicationNextAction(document, 'missing', 'missing', LATER)).toBe(document)
+      expect(dropApplicationNextAction(document, target.id, 'missing', LATER)).toBe(document)
+    })
+  })
+
+  describe('editing the list of tasks', () => {
+    it('stores dated tasks soonest first, then undated in the order they were listed', () => {
+      const application = createApplication(
+        {
+          company: 'Northwind',
+          next_actions: [
+            { action: 'Undated first' },
+            { action: 'Later', at: '2026-08-25T09:00:00+10:00' },
+            { action: 'Sooner', at: '2026-08-19T09:00:00+10:00' },
+            { action: 'Undated second' },
+          ],
+        },
+        REFERENCE,
+      )
+
+      expect(application.next_actions.map((entry) => entry.action)).toEqual([
+        'Sooner',
+        'Later',
+        'Undated first',
+        'Undated second',
+      ])
+    })
+
+    it('keeps ids across a save and mints one for a new task', () => {
+      const application = planned()
+      const kept = application.next_actions[0]!
+      const edited = applyNextActions(
+        application,
+        [{ id: kept.id, action: 'Email Dana', at: kept.at }, { action: 'Book the flight' }],
+        LATER,
+      )
+
+      expect(edited.next_actions[0]).toEqual({ ...kept, action: 'Email Dana' })
+      expect(edited.next_actions[1]!.action).toBe('Book the flight')
+      expect(edited.next_actions[1]!.id).not.toBe(kept.id)
+      expect(edited.updated_at).toBe(LATER.toISOString())
+    })
+
+    it('drops a blank task, and its date with it', () => {
+      const application = planned()
+      const edited = applyNextActions(
+        application,
+        [{ action: '   ', at: '2026-08-25T09:00:00+10:00' }],
+        LATER,
+      )
+
+      expect(edited.next_actions).toEqual([])
+    })
+
+    it('returns the same object when nothing changed', () => {
+      const application = planned()
+      const drafts = application.next_actions.map(({ id, action, at }) => ({ id, action, at }))
+
+      expect(applyNextActions(application, drafts, LATER)).toBe(application)
+    })
+
+    it('refuses the same task twice', () => {
+      const application = planned()
+      const task = application.next_actions[0]!
+
+      expect(() => applyNextActions(application, [task, task], LATER)).toThrow(/twice/i)
+    })
+
+    it('touches only the named application in the document', () => {
+      const document = createDemoDocument(REFERENCE)
+      const target = document.applications.find((item) => item.next_actions.length > 0)!
+      const next = updateApplicationNextActions(document, target.id, [], LATER)
+
+      expect(next.applications.find((item) => item.id === target.id)!.next_actions).toEqual([])
+      expect(updateApplicationNextActions(document, 'missing', [], LATER)).toBe(document)
+    })
   })
 
   describe('editing the recorded list', () => {
+    function done(): Application {
+      const application = planned()
+      return completeNextAction(application, taskId(application, 'Email the recruiter'), LATER)
+    }
+
     it('keeps an existing entry\'s timestamp and stamps a new one now', () => {
-      const done = completeNextAction(planned(), LATER)
-      const kept = done.completed_actions[0]!
+      const completed = done()
+      const kept = completed.completed_actions[0]!
       const edited = applyCompletedActions(
-        done,
+        completed,
         [{ id: kept.id, action: kept.action }, { action: 'Book the flight' }],
         new Date('2026-08-22T09:00:00+10:00'),
       )
@@ -553,27 +688,27 @@ describe('completing a next action', () => {
     })
 
     it('drops a blank entry, which is how a Done pressed by mistake is removed', () => {
-      const done = completeNextAction(planned(), LATER)
-      const cleared = applyCompletedActions(done, [], LATER)
+      const completed = done()
+      const cleared = applyCompletedActions(completed, [], LATER)
 
       expect(cleared.completed_actions).toEqual([])
       // The plan is not restored: undoing the record is not the same as undoing the work.
-      expect(cleared.next_action).toBeNull()
+      expect(cleared.next_actions).toEqual(completed.next_actions)
     })
 
     it('returns the same object when nothing changed', () => {
-      const done = completeNextAction(planned(), LATER)
-      const drafts = done.completed_actions.map(({ id, action, at }) => ({ id, action, at }))
+      const completed = done()
+      const drafts = completed.completed_actions.map(({ id, action, at }) => ({ id, action, at }))
 
-      expect(applyCompletedActions(done, drafts, LATER)).toBe(done)
+      expect(applyCompletedActions(completed, drafts, LATER)).toBe(completed)
     })
 
     it('refuses the same entry twice', () => {
-      const done = completeNextAction(planned(), LATER)
-      const entry = done.completed_actions[0]!
+      const completed = done()
+      const entry = completed.completed_actions[0]!
 
       expect(() =>
-        applyCompletedActions(done, [
+        applyCompletedActions(completed, [
           { id: entry.id, action: entry.action },
           { id: entry.id, action: entry.action },
         ], LATER),
@@ -2381,7 +2516,7 @@ describe('document validation and persistence', () => {
     expect(parsed.schema).toBeDefined()
     expect(parsed.indexes).toBeDefined()
     expect(parsed.applications[0]).not.toHaveProperty('ignored_application_field')
-    expect(parsed.applications[0]?.next_action_at).toBeNull()
+    expect(parsed.applications[0]?.next_actions).toEqual([])
     expect(parsed.applications[0]?.stage_history).toEqual([
       { stage: 'applied', outcome: 'active', at: '2026-08-14T09:00:00+10:00' },
     ])
@@ -2459,7 +2594,7 @@ describe('document validation and persistence', () => {
   })
 
   it.each([
-    [{ schema_version: 5, applications: [] }, 'schema_version'],
+    [{ schema_version: 6, applications: [] }, 'schema_version'],
     [{ schema_version: 2, applications: [{
       id: 'one', company: 'Northwind', state: 'auto_rejected', outcome: 'active',
       created_at: REFERENCE.toISOString(), updated_at: REFERENCE.toISOString(),
@@ -2504,10 +2639,9 @@ describe('document validation and persistence', () => {
         },
       },
       {
-        path: 'applications[0].next_action_at',
+        path: 'applications[0].next_actions[0].at',
         mutate: (document) => {
-          document.applications[0]!.next_action = 'Follow up'
-          document.applications[0]!.next_action_at = impossible
+          document.applications[0]!.next_actions = [{ id: 'task', action: 'Follow up', at: impossible }]
         },
       },
       {
@@ -2574,27 +2708,28 @@ describe('ending an application clears an outstanding next action', () => {
     return createApplication(
       {
         company: 'Northwind',
-        next_action: 'Follow up with the recruiter',
-        next_action_at: '2026-08-30T09:00:00+10:00',
+        next_actions: [
+          { action: 'Follow up with the recruiter', at: '2026-08-30T09:00:00+10:00' },
+          { action: 'Send the references' },
+        ],
         deadline_at: '2026-09-05T17:00:00+10:00',
       },
       REFERENCE,
     )
   }
 
-  it('drops the action and its date when the application is rejected', () => {
+  it('drops every task when the application is rejected', () => {
     const moved = moveApplicationStatus(withAction(), { outcome: 'rejected' }, REJECTED_AT)
 
     expect(moved.stage).toBe('applied')
     expect(moved.outcome).toBe('rejected')
-    expect(moved.next_action).toBeNull()
-    expect(moved.next_action_at).toBeNull()
+    expect(moved.next_actions).toEqual([])
   })
 
   it('drops it when you withdraw, too', () => {
     const moved = moveApplicationStatus(withAction(), { outcome: 'withdrawn' }, REJECTED_AT)
 
-    expect(moved.next_action).toBeNull()
+    expect(moved.next_actions).toEqual([])
   })
 
   it('does not record the dropped action as completed', () => {
@@ -2621,30 +2756,30 @@ describe('ending an application clears an outstanding next action', () => {
   })
 
   it('keeps the action when moving between stages', () => {
-    const moved = moveApplicationStatus(withAction(), { stage: 'screening' }, REJECTED_AT)
+    const application = withAction()
+    const moved = moveApplicationStatus(application, { stage: 'screening' }, REJECTED_AT)
 
-    expect(moved.next_action).toBe('Follow up with the recruiter')
-    expect(moved.next_action_at).toBe(new Date('2026-08-30T09:00:00+10:00').toISOString())
+    expect(moved.next_actions).toBe(application.next_actions)
   })
 
   it('keeps the action when accepted, where a task is still live work', () => {
     const moved = moveApplicationStatus(withAction(), { stage: 'accepted', outcome: 'active' }, REJECTED_AT)
 
-    expect(moved.next_action).toBe('Follow up with the recruiter')
+    expect(moved.next_actions).toHaveLength(2)
   })
 
   it('keeps the action when the employer closed it, which may still be worth a check back', () => {
     const moved = moveApplicationStatus(withAction(), { outcome: 'closed' }, REJECTED_AT)
 
-    expect(moved.next_action).toBe('Follow up with the recruiter')
+    expect(moved.next_actions).toHaveLength(2)
   })
 
   it('keeps a task set after the rejection when the stage is corrected', () => {
     const rejected = moveApplicationStatus(withAction(), { outcome: 'rejected' }, REJECTED_AT)
-    const replanned = editApplication(rejected, { next_action: 'Ask for feedback' }, REJECTED_AT)
+    const replanned = applyNextActions(rejected, [{ action: 'Ask for feedback' }], REJECTED_AT)
     const corrected = moveApplicationStatus(replanned, { stage: 'round_1' }, REJECTED_AT)
 
-    expect(corrected.next_action).toBe('Ask for feedback')
+    expect(corrected.next_actions.map((entry) => entry.action)).toEqual(['Ask for feedback'])
   })
 
   it('is still a no-op when the application already ended that way', () => {
@@ -2656,15 +2791,14 @@ describe('ending an application clears an outstanding next action', () => {
   it('clears through the document-level move as well', () => {
     const document = addApplication(
       createEmptyDocument(),
-      { company: 'Northwind', next_action: 'Follow up with the recruiter' },
+      { company: 'Northwind', next_actions: [{ action: 'Follow up with the recruiter' }] },
       REFERENCE,
     )
     const application = document.applications[0]!
     const moved = moveApplication(document, application.id, { outcome: 'rejected' }, REJECTED_AT)
     const stored = moved.applications.find((item) => item.id === application.id)!
 
-    expect(stored.next_action).toBeNull()
-    expect(stored.next_action_at).toBeNull()
+    expect(stored.next_actions).toEqual([])
   })
 })
 
@@ -2879,6 +3013,92 @@ describe('migrating version-1 documents', () => {
 
     expect(parsed.schema_version).toBe(DATA_VERSION)
     expect(parsed.applications).toEqual(createDemoDocument(REFERENCE).applications)
+  })
+
+  it('turns version 3\'s single next action into the first entry of the list', () => {
+    const base = {
+      company: 'Northwind',
+      state: 'applied',
+      outcome: 'active',
+      state_history: [{ state: 'applied', outcome: 'active', at: AT }],
+      archived_at: null,
+      created_at: AT,
+      updated_at: LATER,
+    }
+    const raw = {
+      schema_version: 3,
+      applications: [
+        { ...base, id: 'dated', next_action: '  Email Dana  ', next_action_at: LATER },
+        { ...base, id: 'undated', next_action: 'Send the deck', next_action_at: null },
+        // A date with no task behind it was never a task, the rule the single field kept.
+        { ...base, id: 'orphan', next_action: '   ', next_action_at: LATER },
+        { ...base, id: 'none', next_action: null, next_action_at: null },
+      ],
+    }
+
+    expect(needsMigration(raw)).toBe(true)
+    const parsed = parseTrackerDocument(JSON.stringify(raw))
+    const tasks = Object.fromEntries(parsed.applications.map((item) => [item.id, item.next_actions]))
+    expect(parsed.schema_version).toBe(DATA_VERSION)
+    expect(tasks.dated).toEqual([{ id: expect.any(String), action: 'Email Dana', at: LATER }])
+    expect(tasks.undated).toEqual([{ id: expect.any(String), action: 'Send the deck', at: null }])
+    expect(tasks.orphan).toEqual([])
+    expect(tasks.none).toEqual([])
+    expect(parsed.applications[0]).not.toHaveProperty('next_action')
+    expect(parsed.applications[0]).not.toHaveProperty('next_action_at')
+  })
+
+  it('turns version 4\'s single next action into the first entry of the list', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({
+      schema_version: 4,
+      applications: [{
+        id: 'dated',
+        company: 'Northwind',
+        stage: 'screening',
+        outcome: 'active',
+        stage_history: [{ stage: 'screening', outcome: 'active', at: AT }],
+        next_action: 'Email Dana',
+        next_action_at: LATER,
+        archived_at: null,
+        created_at: AT,
+        updated_at: LATER,
+      }],
+    }))
+
+    expect(parsed.schema_version).toBe(DATA_VERSION)
+    expect(parsed.applications[0]).toMatchObject({ stage: 'screening' })
+    expect(parsed.applications[0]!.next_actions).toEqual([{ id: expect.any(String), action: 'Email Dana', at: LATER }])
+  })
+
+  it('reads a version-4 file a branch wrote with the list but the old state keys', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({
+      schema_version: 4,
+      applications: [{
+        id: 'branch',
+        company: 'Northwind',
+        state: 'interview_1',
+        outcome: 'active',
+        state_history: [{ state: 'interview_1', outcome: 'active', at: AT }],
+        next_actions: [{ id: 'task', action: 'Email Dana', at: null }],
+        archived_at: null,
+        created_at: AT,
+        updated_at: LATER,
+      }],
+    }))
+
+    expect(parsed.applications[0]).toMatchObject({ stage: 'round_1' })
+    expect(parsed.applications[0]!.stage_history).toEqual([{ stage: 'round_1', outcome: 'active', at: AT }])
+    expect(parsed.applications[0]!.next_actions).toEqual([{ id: 'task', action: 'Email Dana', at: null }])
+  })
+
+  it('carries a version-1 next action all the way to the list', () => {
+    const parsed = parseTrackerDocument(JSON.stringify({
+      applications: [{ ...legacyApplication(), next_action: 'Follow up', next_action_at: LATER }],
+    }))
+
+    expect(parsed.applications[0]!.next_actions).toEqual([
+      { id: expect.any(String), action: 'Follow up', at: LATER },
+    ])
   })
 
   it('leaves a current document alone', () => {

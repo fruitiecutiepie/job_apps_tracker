@@ -2,7 +2,6 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import {
   Archive,
   ChartNoAxesCombined,
-  CircleCheck,
   ChartNoAxesColumnIncreasing,
   ClipboardCopy,
   Coffee,
@@ -37,6 +36,7 @@ import {
   addApplication,
   clearLegacyLocalStorage,
   completeApplicationNextAction,
+  dropApplicationNextAction,
   updateApplicationCompletedActions,
   createAttachmentMetadata,
   createUuidV7,
@@ -77,6 +77,7 @@ import {
   type ApplicationInput,
   type Attachment,
   type CompletedActionDraft,
+  type NextActionDraft,
   type PostingDraft,
   type CorrespondenceDraft,
   type ArchiveFilter,
@@ -108,6 +109,8 @@ import { StagesDialog } from './StagesDialog'
 import { ARCHIVE_BULK_NOTHING, archiveBulkConfirmation, archiveBulkLabel, archiveBulkNotice } from './archiveCopy'
 import { ThemeMenu } from './ThemeMenu'
 import { CompletedActionFields, type CompletedActionRow } from './CompletedActionFields'
+import { NextActionFields } from './NextActionFields'
+import { nextActionDrafts, nextActionRowsFor, type NextActionRow } from './nextActionRows'
 import { RatingFields } from './RatingFields'
 import { StageHistory } from './StageHistory'
 import { CompensationFields } from './CompensationFields'
@@ -237,8 +240,6 @@ interface EditorValues {
   stage: StageId
   outcome: OutcomeId
   archived: boolean
-  nextAction: string
-  nextActionAt: string
   deadlineAt: string
   notes: string
   ratings: RatingValues
@@ -271,6 +272,7 @@ interface ApplicationEditorProps {
     posting: PostingDraft | null,
     correspondence: CorrespondenceDraft[],
     opened: Application | null,
+    nextActions: NextActionDraft[],
   ) => Promise<void>
 }
 
@@ -286,8 +288,6 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
     stage: application?.stage ?? 'applied',
     outcome: application?.outcome ?? 'active',
     archived: application ? application.archived_at !== null : false,
-    nextAction: application?.next_action ?? '',
-    nextActionAt: toDateTimeInput(application?.next_action_at ?? null),
     deadlineAt: toDateTimeInput(application?.deadline_at ?? null),
     notes: application?.notes ?? '',
     ratings: ratingValuesFor(application),
@@ -297,6 +297,7 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
   const [correspondence, setCorrespondence] = useState<CorrespondenceRow[]>(() =>
     correspondenceRowsFor(application),
   )
+  const [nextActions, setNextActions] = useState<NextActionRow[]>(() => nextActionRowsFor(application))
   const [completedActions, setCompletedActions] = useState<CompletedActionRow[]>(() =>
     (application?.completed_actions ?? []).map((entry) => ({
       key: entry.id,
@@ -420,6 +421,7 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
                 postingDraftFrom(posting),
                 correspondenceDrafts(correspondence),
                 openedRef.current,
+                nextActionDrafts(nextActions),
               )
             } catch (error) {
               setFormError(errorMessage(error))
@@ -522,53 +524,17 @@ function ApplicationEditor({ application, messagesFor, onClose, onDelete, onOpen
                 value={values.deadlineAt}
               />
             </label>
-            {/*
-              * Action, its date, then Done — the control comes after the fields it acts on,
-              * so the row reads in the order you fill it in. The button is a sibling of the
-              * labels rather than inside one: a label hands its click to the first labelable
-              * thing it wraps, and nesting an interactive control in there makes which one
-              * you hit depend on the browser.
-              */}
-            <div className="field field--wide next-action-field">
-              <label>
-                <span>Next action</span>
-                <input
-                  onChange={(event) => update('nextAction', event.target.value)}
-                  placeholder="Follow up, prepare, send…"
-                  value={values.nextAction}
-                />
-              </label>
-              <label>
-                <span>Next action date</span>
-                <input
-                  disabled={!values.nextAction.trim()}
-                  onChange={(event) => update('nextActionAt', event.target.value)}
-                  type="datetime-local"
-                  value={values.nextActionAt}
-                />
-              </label>
-              <button
-                aria-label="Mark next action done"
-                className="button button--quiet"
-                disabled={!values.nextAction.trim()}
-                onClick={() => {
-                  const action = values.nextAction.trim()
-                  if (!action) return
-                  // Draft only: the record is written when the dialog is saved, like every
-                  // other control here, so closing without saving changes nothing.
-                  setCompletedActions((current) => [
-                    ...current,
-                    { key: createUuidV7(), action, at: new Date().toISOString() },
-                  ])
-                  setValues((current) => ({ ...current, nextAction: '', nextActionAt: '' }))
-                }}
-                title={values.nextAction.trim() ? undefined : 'Set a next action to mark one done'}
-                type="button"
-              >
-                <CircleCheck aria-hidden="true" size={14} />
-                <span>Done</span>
-              </button>
-            </div>
+            <NextActionFields
+              onChange={setNextActions}
+              onComplete={(action) =>
+                // Draft only: the record is written when the dialog is saved, like every
+                // other control here, so closing without saving changes nothing.
+                setCompletedActions((current) => [
+                  ...current,
+                  { key: createUuidV7(), action, at: new Date().toISOString() },
+                ])}
+              rows={nextActions}
+            />
             <CompletedActionFields onChange={setCompletedActions} rows={completedActions} />
             <label className="field field--wide">
               <span>Notes</span>
@@ -1593,7 +1559,7 @@ export default function App() {
     // A rejection or a withdrawal drops an outstanding next action, so the notice says so
     // rather than leaving the task to vanish quietly off the plan.
     const clearing =
-      Boolean(moving.next_action?.trim())
+      moving.next_actions.length > 0
       && target.outcome !== moving.outcome
       && outcomeAbandonsTask(target.outcome)
     // A move to where it already stands returns the same document, and `commit` reads
@@ -1621,11 +1587,22 @@ export default function App() {
     commit((current) => archiveEndedApplications(current), archiveBulkNotice(archivable))
   }
 
-  const completeAction = (id: string) => {
+  const completeAction = (id: string, actionId: string) => {
     const finishing = tracker.applications.find((application) => application.id === id)
     commit(
-      (current) => completeApplicationNextAction(current, id),
+      (current) => completeApplicationNextAction(current, id, actionId),
       `Action marked done for ${finishing?.company ?? 'the application'}.`,
+    )
+  }
+
+  // Not confirmed: the task is one line, and the notice repeats it so a slip is retyped
+  // rather than lost.
+  const deleteAction = (id: string, actionId: string) => {
+    const dropping = tracker.applications.find((application) => application.id === id)
+    const task = dropping?.next_actions.find((entry) => entry.id === actionId)?.action ?? ''
+    commit(
+      (current) => dropApplicationNextAction(current, id, actionId),
+      `Next action deleted for ${dropping?.company ?? 'the application'}: ${task}`,
     )
   }
 
@@ -1655,6 +1632,7 @@ export default function App() {
       onOpenPosting: openPosting,
       onOpenMessages: openApplication,
       onCompleteAction: completeAction,
+      onDeleteAction: deleteAction,
       quietDays: statsSettings.quietDays,
     }
     switch (activeView) {
@@ -2201,6 +2179,7 @@ export default function App() {
             posting,
             correspondence,
             opened,
+            nextActions,
           ) => {
             const input: ApplicationInput = {
               company: values.company,
@@ -2209,8 +2188,7 @@ export default function App() {
               source: values.source || null,
               stage: values.stage,
               outcome: values.outcome,
-              next_action: values.nextAction || null,
-              next_action_at: values.nextAction.trim() ? fromDateTimeInput(values.nextActionAt) : null,
+              next_actions: nextActions,
               deadline_at: fromDateTimeInput(values.deadlineAt),
               notes: values.notes || null,
               compensation: compensationFromValues(values.compensation),
@@ -2246,7 +2224,7 @@ export default function App() {
                 stage: values.stage,
                 outcome: values.outcome,
                 archived: values.archived,
-                nextActionAt: values.nextActionAt,
+                nextActions,
                 deadlineAt: values.deadlineAt,
                 attachments,
                 removedAttachmentIds: attachmentPlan.removedAttachmentIds,

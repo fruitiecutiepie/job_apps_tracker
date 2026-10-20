@@ -8,9 +8,10 @@ import { correspondenceDrafts, correspondenceRowsFor } from './correspondence'
 import { compensationFromValues, compensationValuesFor } from './compensation'
 import type { CompensationValues } from './compensation'
 import { toDateTimeInput } from './dateInput'
-import type { Application, ApplicationEdits, ApplicationInput, Attachment, CompletedActionDraft, CorrespondenceDraft, PostingDraft, RatingDimensionId, StageEventDraft, StageId, TrackerDocument } from './domain'
-import { archiveApplication, clearApplicationRating, moveApplication, updateApplication, updateApplicationCompletedActions, updateApplicationCorrespondence, updateApplicationPosting, updateApplicationRatings, updateApplicationStageEvents } from './domain/mutations'
+import type { Application, ApplicationEdits, ApplicationInput, Attachment, CompletedActionDraft, CorrespondenceDraft, NextActionDraft, PostingDraft, RatingDimensionId, StageEventDraft, StageId, TrackerDocument } from './domain'
+import { archiveApplication, clearApplicationRating, moveApplication, updateApplication, updateApplicationCompletedActions, updateApplicationCorrespondence, updateApplicationNextActions, updateApplicationPosting, updateApplicationRatings, updateApplicationStageEvents } from './domain/mutations'
 import { inviteDrafts, inviteRowsFor } from './invites'
+import { nextActionDrafts, nextActionRowsFor } from './nextActionRows'
 import { postingDraftFrom, postingRowFor } from './posting'
 import { clearedRatingDimensions, ratingDrafts, ratingValuesFor } from './ratings'
 import type { RatingValues } from './ratings'
@@ -26,7 +27,7 @@ export interface EditorForm {
   stage: StageId
   outcome: Application['outcome']
   archived: boolean
-  nextActionAt: string
+  nextActions: NextActionDraft[]
   deadlineAt: string
   attachments: Attachment[]
   removedAttachmentIds: string[]
@@ -55,6 +56,47 @@ export function attachmentsAfterEdit(
   const keptIds = new Set(kept.map((item) => item.id))
   const openedIds = new Set(opened.map((item) => item.id))
   return [...kept, ...uploaded.filter((item) => !openedIds.has(item.id) && !keptIds.has(item.id))]
+}
+
+function sameTask(left: NextActionDraft, right: NextActionDraft): boolean {
+  return left.action.trim() === right.action.trim() && (left.at ?? null) === (right.at ?? null)
+}
+
+/**
+ * The next actions the save should store, merged task by task, or null when the form changed
+ * none. Each task has an id, so another tab marking one done, deleting one or adding one is
+ * kept beside what this form did: a task the form left alone keeps what is stored now, one
+ * it edited or removed takes the form's word, and one it added joins the list. A task edited
+ * here and removed elsewhere comes back, since dropping what was just typed would lose it.
+ * Both sides are compared as the form reads them, so a stored date the minute-wide field
+ * cannot show does not read as an edit.
+ */
+export function nextActionsToWrite(
+  stored: Application,
+  opened: Application,
+  form: NextActionDraft[],
+): NextActionDraft[] | null {
+  const before = nextActionDrafts(nextActionRowsFor(opened))
+  if (sameList(form, before)) return null
+  const openedById = new Map(before.flatMap((draft) => (draft.id ? [[draft.id, draft] as const] : [])))
+  const formById = new Map(form.flatMap((draft) => (draft.id ? [[draft.id, draft] as const] : [])))
+  const storedIds = new Set(stored.next_actions.map((entry) => entry.id))
+  const merged: NextActionDraft[] = []
+  for (const entry of stored.next_actions) {
+    const was = openedById.get(entry.id)
+    const now = formById.get(entry.id)
+    if (!was) merged.push({ id: entry.id, action: entry.action, at: entry.at })
+    else if (!now) continue
+    else merged.push(sameTask(now, was) ? { id: entry.id, action: entry.action, at: entry.at } : now)
+  }
+  for (const draft of form) {
+    if (!draft.id) merged.push(draft)
+    else if (!storedIds.has(draft.id)) {
+      const was = openedById.get(draft.id)
+      if (!was || !sameTask(draft, was)) merged.push(draft)
+    }
+  }
+  return merged
 }
 
 function ratingsToWrite(opened: Application, values: RatingValues) {
@@ -88,11 +130,6 @@ export function applyEditorSave(
       ? stored.compensation
       : compensationFromValues(form.compensationValues),
     deadline_at: form.deadlineAt === toDateTimeInput(opened.deadline_at) ? stored.deadline_at : input.deadline_at,
-    next_action: sameText(input.next_action, opened.next_action) ? stored.next_action : input.next_action,
-    next_action_at:
-      sameText(input.next_action, opened.next_action) && form.nextActionAt === toDateTimeInput(opened.next_action_at)
-        ? stored.next_action_at
-        : input.next_action_at,
     notes: sameText(input.notes, opened.notes) ? stored.notes : input.notes,
     attachments: attachmentsAfterEdit(
       stored.attachments,
@@ -109,6 +146,10 @@ export function applyEditorSave(
   }
   if (!sameList(form.invites, inviteDrafts(inviteRowsFor(opened)))) {
     document = updateApplicationStageEvents(document, opened.id, form.invites, at)
+  }
+  const nextActions = nextActionsToWrite(stored, opened, form.nextActions)
+  if (nextActions) {
+    document = updateApplicationNextActions(document, opened.id, nextActions, at)
   }
   if (!sameList(form.completedActions, opened.completed_actions.map(({ id, action, at: when }) => ({ id, action, at: when })))) {
     document = updateApplicationCompletedActions(document, opened.id, form.completedActions, at)

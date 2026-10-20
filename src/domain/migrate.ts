@@ -1,3 +1,4 @@
+import { createUuidV7 } from './id'
 import { isStageIdShape } from './stages'
 import type { StageId, Status } from './types'
 
@@ -17,13 +18,16 @@ import type { StageId, Status } from './types'
  *   a label would read wrong the moment its label changed. It also calls the field what the
  *   interface always called it: `state`, `state_history` and `state_events` are `stage`,
  *   `stage_history` and `stage_events`, and everything filed by stage says `stage`.
+ * - **5** holds next actions as a list, `next_actions`, in place of the one `next_action`
+ *   and its `next_action_at`, so an application can carry several tasks and each can be
+ *   done or dropped on its own.
  *
  * Each step rewrites the raw document into the next layout; a file is walked forward from
- * whatever it was written in. Every step before the last reads and writes the old `state`
- * keys, so the layouts they were written for stay exactly as they were; the last step is the
- * one that renames them.
+ * whatever it was written in. Every step before version 4's reads and writes the old `state`
+ * keys, so the layouts they were written for stay exactly as they were; version 4's step is
+ * the one that renames them.
  */
-export const DATA_VERSION = 4
+export const DATA_VERSION = 5
 
 /** The version-3 stage ids that version 4 renamed, and what they are now. */
 const RENAMED_STAGES: Record<string, StageId> = {
@@ -234,6 +238,28 @@ function version4Application(value: unknown): unknown {
   }
 }
 
+/**
+ * Version 4's one next action as the first entry of version 5's list. A blank action was no
+ * task, and its date went with it, which is the rule the single field already kept. The id is
+ * minted against the application's `updated_at`, the last moment the task can be said to have
+ * existed by; it is a UUIDv7 like every other id, and its time only orders undated tasks.
+ */
+function version5Application(value: unknown): unknown {
+  if (!isRecord(value)) return value
+  const { next_action: action, next_action_at: at, ...rest } = value
+  if ('next_actions' in value) return rest
+  const text = typeof action === 'string' ? action.trim() : ''
+  const minted = typeof value.updated_at === 'string' && !Number.isNaN(Date.parse(value.updated_at))
+    ? new Date(value.updated_at)
+    : new Date()
+  return {
+    ...rest,
+    next_actions: text
+      ? [{ id: createUuidV7(minted), action: text, at: typeof at === 'string' && at !== '' ? at : null }]
+      : [],
+  }
+}
+
 function mapApplications(
   value: Record<string, unknown>,
   step: (application: unknown) => unknown,
@@ -256,37 +282,30 @@ export function onMigration(listener: (from: 1 | 2) => void): () => void {
 /**
  * Walks a document forward to the current layout, leaving validation to decide whether what
  * came out is sound. Raw in, raw out: the validator is the one place a document is
- * canonicalized, and it runs straight after this. Version 1's migration splits each state in
- * version-4 ids — its `accepted` state was always a stage — and then takes the renaming step;
- * a version-2 file takes the Accepted step and then the renaming one, and a version-3 file the
- * renaming one alone.
+ * canonicalized, and it runs straight after this. Each older version takes the steps after
+ * it in turn. Version 1's migration splits each state in version-4 ids — its `accepted` state
+ * was always a stage — so it skips the Accepted step a version-2 file takes; from there every
+ * file takes the renaming step, then the list of next actions.
  */
 export function migrateDocument(value: Record<string, unknown>): Record<string, unknown> {
   const version = documentVersion(value)
+  if (!isOlderVersion(version)) return value
   if (version === 1 || version === 2) for (const listener of migrationListeners) listener(version)
-  if (version === 1) {
-    return {
-      ...value,
-      schema_version: DATA_VERSION,
-      applications: mapApplications(value, (application) => version4Application(migratedApplication(application))),
-    }
-  }
-  if (version === 2) {
-    return {
-      ...value,
-      schema_version: DATA_VERSION,
-      applications: mapApplications(value, (application) => version4Application(version3Application(application))),
-    }
-  }
-  if (version === 3) {
-    return { ...value, schema_version: DATA_VERSION, applications: mapApplications(value, version4Application) }
-  }
-  return value
+  const steps: Array<(application: unknown) => unknown> = []
+  if (version === 1) steps.push(migratedApplication)
+  if (version === 2) steps.push(version3Application)
+  // A version-4 file takes the renaming step again, which leaves a record already saying
+  // `stage` alone: a branch wrote next actions as a list under version 4 before that version
+  // renamed anything, so a file can say 4 and still say `state`.
+  steps.push(version4Application)
+  steps.push(version5Application)
+  const step = (application: unknown) => steps.reduce((current, next) => next(current), application)
+  return { ...value, schema_version: DATA_VERSION, applications: mapApplications(value, step) }
 }
 
 /** Whether a raw document is a version this build still reads, but no longer writes. */
 export function isOlderVersion(version: unknown): boolean {
-  return version === 1 || version === 2 || version === 3
+  return version === 1 || version === 2 || version === 3 || version === 4
 }
 
 /** Whether a raw document predates the current layout and will be rewritten on load. */

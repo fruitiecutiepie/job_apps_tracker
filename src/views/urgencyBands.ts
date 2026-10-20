@@ -1,4 +1,4 @@
-import { classifyLifecycle } from "../domain";
+import { classifyLifecycle, hasNextAction, scheduledNextAction } from "../domain";
 import type { Application } from "../domain";
 import type { PreferenceScore } from "./preference";
 import { SCORE_EPSILON, daysUntil, type UrgencyRanking } from "./urgency";
@@ -62,8 +62,9 @@ function drivingDays(application: Application, today: Date): number | null {
     const days = daysUntil(application.deadline_at, today);
     if (days !== null) candidates.push(days);
   }
-  if (application.next_action?.trim() && application.next_action_at) {
-    const days = daysUntil(application.next_action_at, today);
+  const action = scheduledNextAction(application);
+  if (action?.at) {
+    const days = daysUntil(action.at, today);
     if (days !== null) candidates.push(days);
   }
 
@@ -81,7 +82,7 @@ export function urgencyBandFor(
 ): BandPlacement {
   if (classifyLifecycle(application) !== "live") {
     return {
-      band: application.next_action?.trim() ? "outstanding" : "closed",
+      band: hasNextAction(application) ? "outstanding" : "closed",
       days: null,
     };
   }

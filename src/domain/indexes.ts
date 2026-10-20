@@ -1,3 +1,4 @@
+import { hasNextAction, scheduledNextAction } from './nextActions'
 import { DEFAULT_STAGE_CONFIG, OUTCOME_IDS, statusLabel, type StageConfig } from './stages'
 import type { Application, OutcomeId, StageId, TrackerIndexes } from './types'
 
@@ -72,13 +73,12 @@ export function rebuildIndexes(
       by_deadline_at.push(application.id)
     }
 
-    if (application.next_action?.trim()) {
+    // An application with a dated task and an undated one is in both lists: each says
+    // something true about it.
+    if (hasNextAction(application)) {
       with_next_action.push(application.id)
-      if (application.next_action_at) {
-        by_next_action_at.push(application.id)
-      } else {
-        unscheduled.push(application)
-      }
+      if (scheduledNextAction(application)) by_next_action_at.push(application.id)
+      if (application.next_actions.some((entry) => entry.at === null)) unscheduled.push(application)
     }
 
     search_text[application.id] = [
@@ -86,7 +86,7 @@ export function rebuildIndexes(
       application.role,
       application.source,
       application.notes,
-      application.next_action,
+      ...application.next_actions.map((entry) => entry.action),
       // What you did is as findable as what you plan to do; before Done had a field of its
       // own these lines lived in `notes` and were already matched here.
       ...application.completed_actions.map((entry) => entry.action),
@@ -133,8 +133,8 @@ export function rebuildIndexes(
 
   by_next_action_at.sort(
     (leftId, rightId) =>
-      Date.parse(applications[by_id[leftId]].next_action_at!) -
-      Date.parse(applications[by_id[rightId]].next_action_at!),
+      Date.parse(scheduledNextAction(applications[by_id[leftId]])!.at!) -
+      Date.parse(scheduledNextAction(applications[by_id[rightId]])!.at!),
   )
 
   by_deadline_at.sort(

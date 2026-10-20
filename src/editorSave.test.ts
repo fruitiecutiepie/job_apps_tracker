@@ -5,6 +5,7 @@ import { createDemoDocument } from './domain/demo'
 import type { Application, TrackerDocument } from './domain/types'
 import { correspondenceDrafts, correspondenceRowsFor } from './correspondence'
 import { inviteDrafts, inviteRowsFor } from './invites'
+import { nextActionDrafts, nextActionRowsFor } from './nextActionRows'
 import { postingDraftFrom, postingRowFor } from './posting'
 import { ratingValuesFor } from './ratings'
 import { applyEditorSave, type EditorForm } from './editorSave'
@@ -20,8 +21,6 @@ function formFor(application: Application): EditorForm {
       role: application.role,
       url: application.url,
       source: application.source,
-      next_action: application.next_action,
-      next_action_at: application.next_action_at,
       deadline_at: application.deadline_at,
       notes: application.notes,
       compensation: application.compensation,
@@ -35,7 +34,7 @@ function formFor(application: Application): EditorForm {
     stage: application.stage,
     outcome: application.outcome,
     archived: application.archived_at !== null,
-    nextActionAt: toDateTimeInput(application.next_action_at),
+    nextActions: nextActionDrafts(nextActionRowsFor(application)),
     deadlineAt: toDateTimeInput(application.deadline_at),
     attachments: application.attachments,
     removedAttachmentIds: [],
@@ -93,5 +92,77 @@ describe('saving the application editor', () => {
     const application = saved.applications.find((item) => item.id === opened.id)
 
     expect(application?.correspondence.map((item) => item.body)).toContain('Logged in the other tab.')
+  })
+
+  describe('next actions', () => {
+    /** Atlas Thread, which the demo gives two tasks: one dated, one not. */
+    function twoTasks() {
+      const document = createDemoDocument()
+      const opened = document.applications.find((item) => item.company === 'Atlas Thread')!
+      expect(opened.next_actions).toHaveLength(2)
+      return { document, opened, dated: opened.next_actions[0]!, undated: opened.next_actions[1]! }
+    }
+
+    function withTasks(document: TrackerDocument, id: string, tasks: Application['next_actions']): TrackerDocument {
+      return {
+        ...document,
+        applications: document.applications.map((item) => (item.id === id ? { ...item, next_actions: tasks } : item)),
+      }
+    }
+
+    function tasksAfter(document: TrackerDocument, id: string) {
+      return document.applications.find((item) => item.id === id)!.next_actions.map(({ action }) => action)
+    }
+
+    it('keeps a task another tab added when the form did not touch the tasks', () => {
+      const { document, opened } = twoTasks()
+      const added = { id: '01990000-0000-7000-8000-0000000000aa', action: 'Added in the other tab', at: null }
+      const stored = withTasks(document, opened.id, [...opened.next_actions, added])
+      const form = formFor(opened)
+      form.input = { ...form.input, role: 'From the form' }
+
+      expect(tasksAfter(applyEditorSave(stored, opened, form, AT), opened.id)).toContain('Added in the other tab')
+    })
+
+    it('keeps a task done in another tab done while the form edits a different one', () => {
+      const { document, opened, dated, undated } = twoTasks()
+      const stored = withTasks(document, opened.id, [undated])
+      const form = formFor(opened)
+      form.nextActions = form.nextActions.map((draft) =>
+        draft.id === undated.id ? { ...draft, action: 'Send the case study deck and the brief' } : draft,
+      )
+
+      const after = tasksAfter(applyEditorSave(stored, opened, form, AT), opened.id)
+      expect(after).toEqual(['Send the case study deck and the brief'])
+      expect(after).not.toContain(dated.action)
+    })
+
+    it('removes what the form removed and adds what it added, beside another tab\'s new task', () => {
+      const { document, opened, dated } = twoTasks()
+      const added = { id: '01990000-0000-7000-8000-0000000000aa', action: 'Added in the other tab', at: null }
+      const stored = withTasks(document, opened.id, [...opened.next_actions, added])
+      const form = formFor(opened)
+      form.nextActions = [
+        ...form.nextActions.filter((draft) => draft.id === dated.id),
+        { action: 'Typed in the form', at: null },
+      ]
+
+      expect(tasksAfter(applyEditorSave(stored, opened, form, AT), opened.id)).toEqual([
+        dated.action,
+        'Added in the other tab',
+        'Typed in the form',
+      ])
+    })
+
+    it('brings back a task edited here that another tab removed', () => {
+      const { document, opened, dated, undated } = twoTasks()
+      const stored = withTasks(document, opened.id, [dated])
+      const form = formFor(opened)
+      form.nextActions = form.nextActions.map((draft) =>
+        draft.id === undated.id ? { ...draft, action: 'Rewritten here' } : draft,
+      )
+
+      expect(tasksAfter(applyEditorSave(stored, opened, form, AT), opened.id)).toEqual([dated.action, 'Rewritten here'])
+    })
   })
 })
